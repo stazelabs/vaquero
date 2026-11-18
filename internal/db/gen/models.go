@@ -4,8 +4,104 @@
 
 package gen
 
+import (
+	"database/sql"
+)
+
+type Actor struct {
+	ID        string
+	Kind      string
+	Name      string
+	CreatedAt string
+}
+
+type Comment struct {
+	ID        string
+	TicketID  string
+	AuthorID  string
+	Body      string
+	CreatedAt string
+	UpdatedAt string
+	DeletedAt sql.NullString
+}
+
+type Event struct {
+	Seq       int64
+	At        string
+	ActorID   string
+	Kind      string
+	ProjectID sql.NullString
+	TicketID  sql.NullString
+	Payload   string
+}
+
+type Milestone struct {
+	ID          string
+	ProjectID   string
+	Name        string
+	Description string
+	DueOn       sql.NullString
+	CreatedAt   string
+	ClosedAt    sql.NullString
+}
+
+type Project struct {
+	ID          string
+	Key         string
+	Name        string
+	Description string
+	NextNumber  int64
+	CreatedAt   string
+	UpdatedAt   string
+	ArchivedAt  sql.NullString
+}
+
 type Setting struct {
 	Key       string
 	Value     string
 	UpdatedAt string
+}
+
+type Status struct {
+	ID        string
+	ProjectID string
+	Name      string
+	Category  string
+	Position  int64
+}
+
+type Tag struct {
+	ID        string
+	Name      string
+	CreatedAt string
+}
+
+type Ticket struct {
+	ID          string
+	ProjectID   string
+	Number      int64
+	Title       string
+	Body        string
+	StatusID    string
+	Priority    int64
+	AssigneeID  sql.NullString
+	ParentID    sql.NullString
+	MilestoneID sql.NullString
+	Position    float64
+	CreatedBy   string
+	CreatedAt   string
+	UpdatedAt   string
+}
+
+type TicketLink struct {
+	ID        string
+	FromID    string
+	ToID      string
+	Kind      string
+	CreatedAt string
+}
+
+type TicketTag struct {
+	TicketID string
+	TagID    string
 }
