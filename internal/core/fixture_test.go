@@ -21,6 +21,7 @@ type fixture struct {
 	Milestone gen.Milestone
 	Other     gen.Project
 	O1        gen.Ticket
+	OtherTodo gen.Status     // OTH's Todo
 	Comment   gen.Comment    // on T1
 	Link      gen.TicketLink // T2 relates to T1
 }
@@ -52,6 +53,8 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	f.Other, err = c.CreateProject(ctx, owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
 	must(err)
 	f.O1, err = c.CreateTicket(ctx, owner.ID, f.Other.ID, core.TicketInput{Title: "Elsewhere"})
+	must(err)
+	f.OtherTodo, err = d.RQ.GetStatus(ctx, f.O1.StatusID)
 	must(err)
 	f.Comment, err = c.AddComment(ctx, owner.ID, f.T1.ID, "First comment.")
 	must(err)
@@ -142,6 +145,15 @@ func init() {
 			},
 			func(c *core.Core, f fixture) error {
 				_, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "  ", Tags: []string{"never-made"}})
+				return err
+			}},
+		coreOp{"MoveTicket",
+			func(c *core.Core, f fixture) error {
+				_, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, f.Statuses[2].ID, "", "")
+				return err
+			},
+			func(c *core.Core, f fixture) error {
+				_, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, f.OtherTodo.ID, "", "")
 				return err
 			}},
 		coreOp{"UpdateTicket",

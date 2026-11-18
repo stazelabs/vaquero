@@ -166,6 +166,39 @@ func (q *Queries) ListAncestorIDs(ctx context.Context, id string) ([]string, err
 	return items, nil
 }
 
+const listColumn = `-- name: ListColumn :many
+SELECT id, position FROM tickets WHERE status_id = ? ORDER BY position, number
+`
+
+type ListColumnRow struct {
+	ID       string
+	Position float64
+}
+
+// A status column's tickets, top to bottom.
+func (q *Queries) ListColumn(ctx context.Context, statusID string) ([]ListColumnRow, error) {
+	rows, err := q.db.QueryContext(ctx, listColumn, statusID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListColumnRow{}
+	for rows.Next() {
+		var i ListColumnRow
+		if err := rows.Scan(&i.ID, &i.Position); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubTickets = `-- name: ListSubTickets :many
 SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, s.name AS status_name, s.category AS status_category
 FROM tickets t JOIN statuses s ON s.id = t.status_id
@@ -316,6 +349,43 @@ func (q *Queries) MaxPositionInStatus(ctx context.Context, statusID string) (flo
 	var column_1 float64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const placeTicket = `-- name: PlaceTicket :exec
+UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ? WHERE id = ?
+`
+
+type PlaceTicketParams struct {
+	StatusID        string
+	Position        float64
+	StatusChangedAt string
+	UpdatedAt       string
+	ID              string
+}
+
+func (q *Queries) PlaceTicket(ctx context.Context, arg PlaceTicketParams) error {
+	_, err := q.db.ExecContext(ctx, placeTicket,
+		arg.StatusID,
+		arg.Position,
+		arg.StatusChangedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const setTicketPosition = `-- name: SetTicketPosition :exec
+UPDATE tickets SET position = ? WHERE id = ?
+`
+
+type SetTicketPositionParams struct {
+	Position float64
+	ID       string
+}
+
+func (q *Queries) SetTicketPosition(ctx context.Context, arg SetTicketPositionParams) error {
+	_, err := q.db.ExecContext(ctx, setTicketPosition, arg.Position, arg.ID)
+	return err
 }
 
 const updateTicket = `-- name: UpdateTicket :exec

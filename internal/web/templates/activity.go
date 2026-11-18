@@ -69,6 +69,8 @@ func EventSentence(e EventView) string {
 		return "created " + e.TicketKey + " " + title
 	case core.EvTicketUpdated:
 		return ticketUpdated(e)
+	case core.EvTicketReordered:
+		return fmt.Sprintf("reordered %s in %s", e.TicketKey, s("status"))
 	case core.EvCommentCreated:
 		return "commented on " + e.TicketKey
 	case core.EvCommentUpdated:

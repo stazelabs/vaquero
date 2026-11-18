@@ -231,7 +231,7 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 			ID: idgen.New(), ProjectID: p.ID, Number: num, Title: tf.Title, Body: tf.Body,
 			StatusID: tf.StatusID, Priority: tf.Priority, AssigneeID: nullString(tf.AssigneeID),
 			ParentID: nullString(tf.ParentID), MilestoneID: nullString(tf.MilestoneID),
-			Position: pos, CreatedBy: by, CreatedAt: now, UpdatedAt: now,
+			Position: pos, CreatedBy: by, CreatedAt: now, UpdatedAt: now, StatusChangedAt: now,
 		})
 		if err != nil {
 			return fmt.Errorf("create ticket: %w", err)
@@ -278,17 +278,18 @@ func (c *Core) UpdateTicket(ctx context.Context, by, ticketID string, in TicketI
 		if len(changes) == 0 {
 			return nil
 		}
-		pos := t.Position
+		now := timefmt.Format(c.Now())
+		pos, statusAt := t.Position, t.StatusChangedAt
 		if tf.StatusID != t.StatusID {
 			if pos, err = c.nextPosition(ctx, q, tf.StatusID); err != nil {
 				return err
 			}
+			statusAt = now
 		}
-		now := timefmt.Format(c.Now())
 		if err := q.UpdateTicket(ctx, gen.UpdateTicketParams{
 			Title: tf.Title, Body: tf.Body, StatusID: tf.StatusID, Priority: tf.Priority,
 			AssigneeID: nullString(tf.AssigneeID), ParentID: nullString(tf.ParentID),
-			MilestoneID: nullString(tf.MilestoneID), Position: pos, UpdatedAt: now, ID: t.ID,
+			MilestoneID: nullString(tf.MilestoneID), Position: pos, UpdatedAt: now, StatusChangedAt: statusAt, ID: t.ID,
 		}); err != nil {
 			return fmt.Errorf("update ticket: %w", err)
 		}

@@ -41,3 +41,13 @@ WITH RECURSIVE up(id, parent_id, depth) AS (
     WHERE up.depth < 1000
 )
 SELECT CAST(id AS TEXT) FROM up WHERE depth > 0 ORDER BY depth;
+
+-- name: ListColumn :many
+-- A status column's tickets, top to bottom.
+SELECT id, position FROM tickets WHERE status_id = ? ORDER BY position, number;
+
+-- name: SetTicketPosition :exec
+UPDATE tickets SET position = ? WHERE id = ?;
+
+-- name: PlaceTicket :exec
+UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ? WHERE id = ?;

@@ -69,3 +69,9 @@ func snapshot(t *testing.T, d dbtest.DB) map[string]int64 {
 	}
 	return out
 }
+
+type timeT = time.Time
+
+const time3h = 3 * time.Hour
+
+func itoa(i int) string { return fmt.Sprint(i) }

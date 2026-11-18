@@ -14,7 +14,8 @@ import (
 //   - *.created: {} unless noted; ticket.created {"title"}.
 //   - *.updated: {"changes": {field: {"from", "to"}}}, only changed fields;
 //     ticket tags are sorted name lists.
-//   - status.moved: {"from": position, "to": position}.
+//   - status.moved: {"name", "from": position, "to": position}.
+//   - ticket.reordered: {"status": name}, a move within one column.
 //   - status.deleted: {"name"}.
 //   - comment.*: {"comment_id"}.
 //   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
@@ -34,6 +35,7 @@ const (
 	EvMilestoneReopened = "milestone.reopened"
 	EvTicketCreated     = "ticket.created"
 	EvTicketUpdated     = "ticket.updated"
+	EvTicketReordered   = "ticket.reordered"
 	EvCommentCreated    = "comment.created"
 	EvCommentUpdated    = "comment.updated"
 	EvCommentDeleted    = "comment.deleted"
@@ -78,7 +80,7 @@ func EventKinds() []string {
 		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored,
 		EvStatusCreated, EvStatusUpdated, EvStatusMoved, EvStatusDeleted,
 		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
-		EvTicketCreated, EvTicketUpdated,
+		EvTicketCreated, EvTicketUpdated, EvTicketReordered,
 		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
 		EvLinkCreated, EvLinkDeleted,
 		EvActorCreated,
