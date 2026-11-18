@@ -31,21 +31,41 @@ templ Shell(title string) {
 			<a href="#main" class="sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
 			<div class="flex min-h-screen flex-col">
 				<header class="border-t-4 border-accent border-b border-b-line">
-					<div class="mx-auto flex h-14 w-full max-w-7xl items-center px-4">
+					<div class="mx-auto flex h-14 w-full max-w-7xl min-w-0 items-center px-4">
 						<a href="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink hover:text-accent">
 							<img src={ static.URL("logo.svg") } alt="" width="28" height="28" class="h-7 w-7"/>
-							Vaquero
+							<span class="max-sm:sr-only">Vaquero</span>
 						</a>
-						<nav aria-label="Main" class="ml-8 flex items-center gap-5">
-							<a href="/" class={ navLink }>Projects</a>
-							<a href="/activity" class={ navLink }>Activity</a>
+						<nav aria-label="Main" class="ml-4 flex items-center gap-3 sm:ml-8 sm:gap-5">
+							<a href="/" class={ navIconLink }>
+								@Icon("projects")
+								<span class="max-sm:sr-only">Projects</span>
+							</a>
+							<a href="/activity" class={ navIconLink }>
+								@Icon("activity")
+								<span class="max-sm:sr-only">Activity</span>
+							</a>
 						</nav>
-						<form method="get" action="/search" role="search" class="ml-auto">
+						<form method="get" action="/search" role="search" class="relative ml-auto">
 							<label for="vq-search" class="sr-only">Search tickets and comments</label>
-							<input id="vq-search" name="q" type="search" autocomplete="off" placeholder="Search  /" class={ inputClass + " w-48 py-1" }/>
+							<span class="pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted">
+								@Icon("search")
+							</span>
+							<input id="vq-search" name="q" type="search" autocomplete="off" placeholder="Search  /" class={ inputClass + " w-48 py-1 pl-8 max-sm:w-28" }/>
 						</form>
-						<a href="/admin" class={ "ml-4 " + navLink }>Admin</a>
-						<button type="button" data-shortcuts-open class="ml-3 text-sm text-muted hover:text-accent" aria-label="Keyboard shortcuts">?</button>
+						<nav aria-label="Tools" class="ml-3 flex items-center gap-3 sm:ml-4 sm:gap-4">
+							<a href="/help" class={ navIconLink }>
+								@Icon("help")
+								<span class="max-sm:sr-only">Help</span>
+							</a>
+							<a href="/admin" class={ navIconLink }>
+								@Icon("admin")
+								<span class="max-sm:sr-only">Admin</span>
+							</a>
+							<button type="button" data-shortcuts-open class="text-muted hover:text-accent" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+								@IconLg("keyboard")
+							</button>
+						</nav>
 					</div>
 				</header>
 				<main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-10">

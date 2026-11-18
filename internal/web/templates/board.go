@@ -29,10 +29,14 @@ func cardClass(ready bool) string {
 }
 
 func priorityClass(p int64) string {
-	if p <= 2 {
-		return "text-[10px] font-semibold text-accent"
+	base := "inline-flex items-center gap-0.5 text-[10px] "
+	switch {
+	case p == 1:
+		return base + "font-semibold text-danger"
+	case p == 2:
+		return base + "font-semibold text-accent"
 	}
-	return "text-[10px] text-muted"
+	return base + "text-muted"
 }
 
 // railsIn is the board's rails of one category, in status order.

@@ -155,3 +155,28 @@ func eventHref(e EventView) string {
 	}
 	return ""
 }
+
+// eventIcons are the glyphs for event kinds that don't follow their prefix.
+var eventIcons = map[string]string{
+	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved",
+	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
+	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+}
+
+// prefixIcons are the glyphs for each kind's first word.
+var prefixIcons = map[string]string{
+	"project": "project", "status": "settings", "milestone": "milestone",
+	"comment": "comment", "link": "link", "token": "token",
+}
+
+// EventIcon is the glyph an activity line starts with.
+func EventIcon(kind string) string {
+	if i, ok := eventIcons[kind]; ok {
+		return i
+	}
+	prefix, _, _ := strings.Cut(kind, ".")
+	if i, ok := prefixIcons[prefix]; ok {
+		return i
+	}
+	return "activity"
+}

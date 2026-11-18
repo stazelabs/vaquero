@@ -23,6 +23,8 @@ const (
 	btnDanger    = btnBase + " border border-danger/40 text-danger hover:bg-danger/10"
 	btnLink      = "text-sm text-accent hover:underline"
 	navLink      = "text-sm font-medium text-ink/70 hover:text-accent"
+	navIconLink  = navLink + " inline-flex items-center gap-1.5"
+	h2IconClass  = h2Class + " flex items-center gap-1.5"
 	panelClass   = "rounded-lg border border-line bg-paper-alt p-5"
 	inputClass   = "block w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 aria-[invalid=true]:border-danger"
 	labelClass   = "mb-1 block text-xs font-semibold uppercase tracking-wider text-ink/80"
@@ -117,9 +119,9 @@ var shortcuts = [][2]string{
 
 func adminNavClass(current bool) string {
 	if current {
-		return "block rounded-md bg-paper-alt px-2 py-1 text-sm font-medium text-ink"
+		return "flex items-center gap-2 rounded-md bg-paper-alt px-2 py-1 text-sm font-medium text-ink"
 	}
-	return "block rounded-md px-2 py-1 text-sm text-ink/70 hover:text-accent"
+	return "flex items-center gap-2 rounded-md px-2 py-1 text-sm text-ink/70 hover:text-accent"
 }
 
 // dayOf is a stored instant's date, or the text as stored if it won't parse.

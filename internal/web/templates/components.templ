@@ -64,3 +64,11 @@ templ FieldError(msg string) {
 		<p class="mt-1 text-sm text-danger" role="alert">{ msg }</p>
 	}
 }
+
+// emptyState is a muted glyph above a sentence, for a page with nothing in it.
+templ emptyState(icon, text string) {
+	<div class="mt-8 flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
+		@IconClass(icon, "h-8 w-8 shrink-0 opacity-70")
+		<p>{ text }</p>
+	</div>
+}

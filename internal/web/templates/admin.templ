@@ -9,6 +9,9 @@ import (
 // AdminPages are the admin section's pages, in its side list.
 var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/tokens", "API tokens"}}
 
+// adminIcons are the side list's glyphs.
+var adminIcons = map[string]string{"/admin": "overview", "/admin/tokens": "token"}
+
 // AdminShell is an admin page: the side list, then the page.
 templ AdminShell(title, current string) {
 	@Shell(title) {
@@ -18,7 +21,10 @@ templ AdminShell(title, current string) {
 				<ul class="mt-2 space-y-1">
 					for _, p := range AdminPages {
 						<li>
-							<a href={ templ.SafeURL(p[0]) } aria-current?={ p[0] == current } class={ adminNavClass(p[0] == current) }>{ p[1] }</a>
+							<a href={ templ.SafeURL(p[0]) } aria-current?={ p[0] == current } class={ adminNavClass(p[0] == current) }>
+								@Icon(adminIcons[p[0]])
+								{ p[1] }
+							</a>
 						</li>
 					}
 				</ul>

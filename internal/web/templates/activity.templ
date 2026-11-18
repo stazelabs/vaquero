@@ -5,11 +5,14 @@ templ ActivityPage(events []EventView) {
 	@Shell("Activity") {
 		<h1 class={ h1Class }>Activity</h1>
 		if len(events) == 0 {
-			<p class="mt-6 text-sm text-muted">Nothing has happened yet.</p>
+			@emptyState("empty", "Nothing has happened yet.")
 		}
 		<ul id="feed" hx-get="/activity" hx-trigger="vq:change" hx-select="#feed" hx-swap="outerHTML" data-live class="mt-6 space-y-2">
 			for _, e := range events {
-				<li class="flex flex-wrap items-baseline gap-x-2 text-sm text-ink/80">
+				<li class="flex flex-wrap items-center gap-x-2 text-sm text-ink/80">
+					<span class="text-muted">
+						@Icon(EventIcon(e.Kind))
+					</span>
 					<span class="font-medium text-ink">{ e.Actor }</span>
 					if href := eventHref(e); href != "" {
 						<a href={ templ.SafeURL(href) } class="hover:text-accent hover:underline">{ EventSentence(e) }</a>

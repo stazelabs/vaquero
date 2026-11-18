@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"strings"
+
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
@@ -111,4 +113,30 @@ func orNone(s, none string) string {
 // linkKindOptions words each link kind from this ticket's side.
 func linkKindOptions() []Option {
 	return []Option{{"blocks", "Blocks"}, {"relates", "Relates to"}, {"duplicates", "Duplicates"}}
+}
+
+// CategoryIcon is a status category's glyph name.
+func CategoryIcon(c string) string { return "cat-" + strings.ReplaceAll(c, "_", "-") }
+
+// categoryTint colours a category's glyph.
+func categoryTint(c string) string {
+	switch c {
+	case "in_progress":
+		return "text-accent"
+	case "in_review":
+		return "text-warn"
+	case "done":
+		return "text-ink/70"
+	}
+	return "text-muted"
+}
+
+var priorityIcons = []string{"", "priority-urgent", "priority-high", "priority-medium", "priority-low"}
+
+// PriorityIcon is a priority's glyph name, or "" for no priority.
+func PriorityIcon(p int64) string {
+	if p < 0 || int(p) >= len(priorityIcons) {
+		return ""
+	}
+	return priorityIcons[p]
 }

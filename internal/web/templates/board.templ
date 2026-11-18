@@ -36,11 +36,23 @@ templ projectHeader(p gen.Project, view string) {
 			<h1 class={ h1Class }>{ p.Name }</h1>
 		</div>
 		<nav aria-label="Project" class="flex items-center gap-4">
-			<a href={ templ.SafeURL("/p/" + p.Key) } class={ navLink } aria-current?={ view == "board" }>Board</a>
-			<a href={ templ.SafeURL("/p/" + p.Key + "/list") } class={ navLink } aria-current?={ view == "list" }>List</a>
-			<a href={ templ.SafeURL("/p/" + p.Key + "/settings") } class={ navLink }>Settings</a>
+			<a href={ templ.SafeURL("/p/" + p.Key) } class={ navIconLink } aria-current?={ view == "board" }>
+				@Icon("board")
+				Board
+			</a>
+			<a href={ templ.SafeURL("/p/" + p.Key + "/list") } class={ navIconLink } aria-current?={ view == "list" }>
+				@Icon("list")
+				List
+			</a>
+			<a href={ templ.SafeURL("/p/" + p.Key + "/settings") } class={ navIconLink }>
+				@Icon("settings")
+				Settings
+			</a>
 			if !p.ArchivedAt.Valid {
-				<a href={ templ.SafeURL("/p/" + p.Key + "/new") } class={ btnPrimary }>New ticket</a>
+				<a href={ templ.SafeURL("/p/" + p.Key + "/new") } class={ btnPrimary + " gap-1.5" }>
+					@Icon("plus")
+					New ticket
+				</a>
 			}
 		</nav>
 	</div>
@@ -99,7 +111,12 @@ templ BoardSection(b board.Board) {
 templ rail(b board.Board, c board.Column) {
 	<details data-rail={ c.Status.ID } class="group shrink-0 rounded-md bg-paper-alt open:w-64">
 		<summary class="cursor-pointer list-none px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb] hover:text-accent">
-			{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
+			<span class="inline-flex items-center gap-1.5">
+				<span class={ categoryTint(c.Status.Category) }>
+					@Icon(CategoryIcon(c.Status.Category))
+				</span>
+				{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
+			</span>
 		</summary>
 		<div class="px-2 pb-2">
 			@cards(b, c)
@@ -110,7 +127,12 @@ templ rail(b board.Board, c board.Column) {
 templ column(b board.Board, c board.Column) {
 	<section class="w-64 shrink-0 rounded-md bg-paper-alt p-2" aria-label={ c.Status.Name }>
 		<h2 class="mb-2 flex justify-between px-1 text-xs font-semibold uppercase tracking-wider text-muted">
-			<span>{ c.Status.Name }</span>
+			<span class="flex items-center gap-1.5">
+				<span class={ categoryTint(c.Status.Category) }>
+					@Icon(CategoryIcon(c.Status.Category))
+				</span>
+				{ c.Status.Name }
+			</span>
 			<span>
 				if c.Status.Category == "done" {
 					this week
@@ -143,17 +165,32 @@ templ card(k board.Card) {
 			<span class="font-mono text-[10px] text-muted">{ k.Key }</span>
 			<span class="mt-0.5 block text-sm leading-snug text-ink">{ k.Title }</span>
 			<span class="mt-1 flex flex-wrap items-center gap-1">
+				if k.Ready {
+					<span class="inline-flex items-center gap-0.5 text-[10px] font-semibold text-accent">
+						@IconClass("ready", "h-3 w-3 shrink-0")
+						Ready
+					</span>
+				}
 				if k.Priority > 0 {
-					<span class={ priorityClass(k.Priority) }>{ PriorityLabel(k.Priority) }</span>
+					<span class={ priorityClass(k.Priority) }>
+						@IconClass(PriorityIcon(k.Priority), "h-3 w-3 shrink-0")
+						{ PriorityLabel(k.Priority) }
+					</span>
 				}
 				for _, t := range k.Tags {
 					<span class="rounded-full bg-accent/10 px-1.5 text-[10px] text-ink/80">{ t }</span>
 				}
 				if k.Assignee != "" {
 					if k.AssigneeIsAgent {
-						<span class="ml-auto rounded-full border border-accent px-1.5 text-[10px] text-accent">{ k.Assignee }</span>
+						<span class="ml-auto inline-flex items-center gap-0.5 rounded-full border border-accent px-1.5 text-[10px] text-accent">
+							@IconClass("agent", "h-3 w-3 shrink-0")
+							{ k.Assignee }
+						</span>
 					} else {
-						<span class="ml-auto text-[10px] text-muted">{ k.Assignee }</span>
+						<span class="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted">
+							@IconClass("person", "h-3 w-3 shrink-0")
+							{ k.Assignee }
+						</span>
 					}
 				}
 			</span>
@@ -163,7 +200,10 @@ templ card(k board.Card) {
 
 templ milestonePanel(b board.Board) {
 	<aside class="w-48 shrink-0 space-y-4 border-l border-line pl-3 text-xs max-lg:hidden" aria-label="Milestones">
-		<h2 class={ h2Class }>Milestones</h2>
+		<h2 class={ h2IconClass }>
+			@Icon("milestone")
+			Milestones
+		</h2>
 		if len(b.Milestones) == 0 {
 			<p class="text-muted">No open milestones.</p>
 		}
@@ -198,12 +238,17 @@ templ ListPage(v ListView) {
 			class="mt-8 space-y-8"
 		>
 			if listEmpty(v.Columns) {
-				<p class="text-sm text-muted">No tickets match.</p>
+				@emptyState("no-results", "No tickets match.")
 			}
 			for _, c := range v.Columns {
 				if len(c.Cards) > 0 {
 					<section>
-						<h2 class={ h2Class }>{ c.Status.Name } <span class="font-normal">· { itoa(int64(len(c.Cards))) }</span></h2>
+						<h2 class={ h2IconClass }>
+							<span class={ categoryTint(c.Status.Category) }>
+								@Icon(CategoryIcon(c.Status.Category))
+							</span>
+							{ c.Status.Name } <span class="font-normal">· { itoa(int64(len(c.Cards))) }</span>
+						</h2>
 						<ul class="mt-2 divide-y divide-line rounded-md border border-line">
 							for _, k := range c.Cards {
 								@listRow(k)
@@ -220,14 +265,30 @@ templ listRow(k board.Card) {
 	<li data-card={ k.Key } class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="font-mono text-xs text-muted hover:text-accent">{ k.Key }</a>
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="min-w-0 flex-1 text-sm text-ink hover:text-accent">{ k.Title }</a>
+		if k.Ready {
+			<span class="inline-flex items-center gap-1 text-xs font-semibold text-accent">
+				@IconClass("ready", "h-3.5 w-3.5 shrink-0")
+				Ready
+			</span>
+		}
 		if k.Priority > 0 {
-			<span class="text-xs text-muted">{ PriorityLabel(k.Priority) }</span>
+			<span class="inline-flex items-center gap-1 text-xs text-muted">
+				@IconClass(PriorityIcon(k.Priority), "h-3.5 w-3.5 shrink-0")
+				{ PriorityLabel(k.Priority) }
+			</span>
 		}
 		for _, t := range k.Tags {
 			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ t }</span>
 		}
 		if k.Assignee != "" {
-			<span class="text-xs text-muted">{ k.Assignee }</span>
+			<span class="inline-flex items-center gap-1 text-xs text-muted">
+				if k.AssigneeIsAgent {
+					@IconClass("agent", "h-3.5 w-3.5 shrink-0")
+				} else {
+					@IconClass("person", "h-3.5 w-3.5 shrink-0")
+				}
+				{ k.Assignee }
+			</span>
 		}
 	</li>
 }

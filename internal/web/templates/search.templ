@@ -9,10 +9,13 @@ templ SearchPage(q string, hits []search.Hit) {
 		<form method="get" action="/search" role="search" class="mt-4 flex max-w-xl gap-3">
 			<label for="f-q" class="sr-only">Search tickets and comments</label>
 			<input id="f-q" name="q" type="search" value={ q } autocomplete="off" class={ inputClass } placeholder="Search tickets and comments"/>
-			<button type="submit" class={ btnPrimary }>Search</button>
+			<button type="submit" class={ btnPrimary + " gap-1.5" }>
+				@Icon("search")
+				Search
+			</button>
 		</form>
 		if q != "" && len(hits) == 0 {
-			<p class="mt-8 text-sm text-muted">No tickets match.</p>
+			@emptyState("no-results", "No tickets match.")
 		}
 		<ul class="mt-6 space-y-3">
 			for _, h := range hits {
