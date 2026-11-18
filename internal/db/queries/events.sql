@@ -39,3 +39,14 @@ LEFT JOIN tickets t ON t.id = e.ticket_id
 WHERE e.seq > ?
 ORDER BY e.seq
 LIMIT ?;
+
+-- name: ListEventsNewest :many
+-- The newest events, newest first (callers reverse them).
+SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+FROM events e
+JOIN actors a ON a.id = e.actor_id
+LEFT JOIN projects p ON p.id = e.project_id
+LEFT JOIN tickets t ON t.id = e.ticket_id
+ORDER BY e.seq DESC
+LIMIT ?;

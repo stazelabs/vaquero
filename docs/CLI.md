@@ -4,7 +4,12 @@ The `vaquero` binary is also the command line. It talks to a vaquero server over
 
 ## Commands
 
-Every command takes `--profile NAME` and `--json`. Flags may come before or after the other arguments. `-` in place of a text argument (or `--body -`) reads standard input.
+Every command takes `--profile NAME` and `--json`. Flags may come before or after the other arguments. `-` as a comment's text (or `--body -`, `--description -`) reads standard input.
+
+Text that starts with `-`, such as a markdown list, would read as a flag: put `--` before it. Everything after `--` is taken as written:
+
+    vaquero comment VAQ-12 -- "- checked the logs
+    - restarted the job"
 
 | Command | What it does |
 |---|---|
@@ -22,7 +27,7 @@ Every command takes `--profile NAME` and `--json`. Flags may come before or afte
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero search WORDS...` | Search titles, descriptions and comments |
-| `vaquero activity [--after SEQ] [--limit N]` | Recent changes, oldest first |
+| `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
 | `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to |
 

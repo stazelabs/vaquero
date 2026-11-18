@@ -176,6 +176,67 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 	return items, nil
 }
 
+const listEventsNewest = `-- name: ListEventsNewest :many
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+FROM events e
+JOIN actors a ON a.id = e.actor_id
+LEFT JOIN projects p ON p.id = e.project_id
+LEFT JOIN tickets t ON t.id = e.ticket_id
+ORDER BY e.seq DESC
+LIMIT ?
+`
+
+type ListEventsNewestRow struct {
+	Seq          int64
+	At           string
+	ActorID      string
+	Kind         string
+	ProjectID    sql.NullString
+	TicketID     sql.NullString
+	Payload      string
+	ActorName    string
+	ProjectKey   string
+	TicketNumber int64
+	TicketTitle  string
+}
+
+// The newest events, newest first (callers reverse them).
+func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEventsNewestRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEventsNewest, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEventsNewestRow{}
+	for rows.Next() {
+		var i ListEventsNewestRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.At,
+			&i.ActorID,
+			&i.Kind,
+			&i.ProjectID,
+			&i.TicketID,
+			&i.Payload,
+			&i.ActorName,
+			&i.ProjectKey,
+			&i.TicketNumber,
+			&i.TicketTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketEvents = `-- name: ListTicketEvents :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title

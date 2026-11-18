@@ -21,7 +21,8 @@ type probeResult int
 const (
 	probeUp      probeResult = iota // vaquero answered /healthz
 	probeRefused                    // nothing is listening
-	probeOther                      // something answered, or hung, that isn't vaquero
+	probeSilent                     // something accepted but didn't answer in time (maybe vaquero, still migrating)
+	probeOther                      // something answered that isn't vaquero
 )
 
 // probe asks url's /healthz, briefly.
@@ -37,7 +38,7 @@ func probe(ctx context.Context, url string) probeResult {
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			return probeRefused
 		}
-		return probeOther
+		return probeSilent
 	}
 	defer res.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(res.Body, 16))
@@ -50,16 +51,24 @@ func probe(ctx context.Context, url string) probeResult {
 // EnsureLocal makes sure the local server at url answers. When nothing is
 // listening it starts `exe serve` in the background, in its own session
 // (it outlives the CLI), with its output in {dataDir}/vaquero.log, and
-// waits up to wait for it. It never hangs: something else on the address,
-// a server that stops while starting, or one that doesn't come up in time
-// are each a plain error naming the address or the log.
+// waits up to wait for it. Several CLIs may do this at once: the servers
+// that lose the race for the address exit, and their CLIs use the winner.
+// A listener that hasn't answered yet may be vaquero still migrating, so
+// it is given until wait. It never hangs: something else on the address,
+// or no answer in time, is a plain error naming the address or the log.
 func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Duration) error {
 	addr := strings.TrimPrefix(strings.TrimPrefix(url, "http://"), "https://")
-	switch probe(ctx, url) {
+	foreign := fmt.Errorf("something other than vaquero is using %s; stop it, or set VQ_ADDR to another address", addr)
+	deadline := time.Now().Add(wait)
+	first := probe(ctx, url)
+	for first == probeSilent && time.Now().Before(deadline) {
+		first = probe(ctx, url)
+	}
+	switch first {
 	case probeUp:
 		return nil
-	case probeOther:
-		return fmt.Errorf("something other than vaquero is using %s; stop it, or set VQ_ADDR to another address", addr)
+	case probeOther, probeSilent:
+		return foreign
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return err
@@ -80,8 +89,9 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	}
 	exited := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(exited) }()
-	deadline := time.NewTimer(wait)
-	defer deadline.Stop()
+	stopped := false
+	timer := time.NewTimer(time.Until(deadline))
+	defer timer.Stop()
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -89,8 +99,12 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-exited:
-			return fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
-		case <-deadline.C:
+			// Usually another CLI's server won the address; keep probing.
+			stopped, exited = true, nil
+		case <-timer.C:
+			if stopped {
+				return fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
+			}
 			return fmt.Errorf("vaquero didn't start on %s within %v; see %s", addr, wait, logPath)
 		case <-tick.C:
 			if probe(ctx, url) == probeUp {

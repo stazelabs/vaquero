@@ -210,3 +210,15 @@ func TestEditFormConflict(t *testing.T) {
 		t.Fatalf("deliberate overwrite: %d", r.Status)
 	}
 }
+
+// A field error keeps the version the form was opened at, so the next save
+// is still checked.
+func TestEditFormKeepsVersionOnFieldError(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "Original"})
+	c := e.Client()
+	r := c.Post("/t/VAQ-1", url.Values{"title": {"Mine"}, "parent": {"garbage"}, "version": {"1"}})
+	if r.Status != 422 || !strings.Contains(r.Body, `name="version" value="1"`) {
+		t.Fatalf("%d: version lost", r.Status)
+	}
+}

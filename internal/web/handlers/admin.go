@@ -93,6 +93,7 @@ func AdminTokenRevoke(d Deps) http.HandlerFunc {
 		var inv *core.Invalid
 		switch {
 		case err == nil:
+			renewLocalToken(r, d)
 			redirectWithFlash(w, r, flash.Success, "Token revoked.", "/admin/tokens")
 		case errors.As(err, &inv):
 			redirectWithFlash(w, r, flash.Error, inv.Error(), "/admin/tokens")
@@ -101,5 +102,16 @@ func AdminTokenRevoke(d Deps) http.HandlerFunc {
 		default:
 			serverError(w, r, d, err)
 		}
+	}
+}
+
+// renewLocalToken writes a new local token if the revoked one was it, so
+// the CLI keeps working.
+func renewLocalToken(r *http.Request, d Deps) {
+	if d.RenewLocalToken == nil {
+		return
+	}
+	if err := d.RenewLocalToken(r.Context()); err != nil {
+		d.Logger.ErrorContext(r.Context(), "renew local token", "err", err)
 	}
 }

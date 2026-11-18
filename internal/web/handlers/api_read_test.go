@@ -8,6 +8,8 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -144,5 +146,47 @@ func TestAPIEventsAfter(t *testing.T) {
 	decode(t, c.API("GET", "/api/v1/events?limit=2", tok, nil).Body, &some)
 	if len(some) != 2 || some[0].Seq != all[0].Seq {
 		t.Fatalf("limit: %+v", some)
+	}
+}
+
+// "mine" is the token's actor, not the server's owner.
+func TestAPIMineIsTheCaller(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, mustTicketID(t, e, 1), core.TicketPatch{AssigneeID: new(e.Deps.Actor.ID)}, 0); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := e.DB.Q.CreateActor(bg, gen.CreateActorParams{ID: idgen.New(), Kind: "agent", Name: "builder", CreatedAt: "2026-11-18T12:00:00Z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentTok, _, err := e.Deps.Core.CreateToken(bg, e.Deps.Actor.ID, agent.ID, "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mine []api.TicketSummary
+	decode(t, c.API("GET", "/api/v1/projects/VAQ/tickets?mine=1", tok, nil).Body, &mine)
+	var theirs []api.TicketSummary
+	decode(t, c.API("GET", "/api/v1/projects/VAQ/tickets?mine=1", agentTok, nil).Body, &theirs)
+	if len(mine) != 1 || len(theirs) != 0 {
+		t.Fatalf("owner %d, agent %d", len(mine), len(theirs))
+	}
+}
+
+func mustTicketID(t *testing.T, e *webtest.Env, n int64) string {
+	t.Helper()
+	tk, _, err := e.Deps.Core.ResolveTicket(bg, e.Deps.R, core.TicketKey{Project: "VAQ", Number: n})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tk.ID
+}
+
+func TestAPIEventsNewest(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	var all, newest []api.Event
+	decode(t, c.API("GET", "/api/v1/events?limit=500", tok, nil).Body, &all)
+	decode(t, c.API("GET", "/api/v1/events?newest=2", tok, nil).Body, &newest)
+	if len(newest) != 2 || newest[1].Seq != all[len(all)-1].Seq || newest[0].Seq != all[len(all)-2].Seq {
+		t.Fatalf("%+v", newest)
 	}
 }

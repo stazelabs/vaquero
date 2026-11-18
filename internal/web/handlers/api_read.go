@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -186,7 +187,7 @@ func APITickets(d Deps) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		cols, err := board.LoadList(r.Context(), d.R, p, d.Actor, board.ParseFilter(q))
+		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), board.ParseFilter(q))
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return
@@ -341,11 +342,22 @@ func APISearch(d Deps) http.HandlerFunc {
 }
 
 // APIEvents is GET /api/v1/events?after={seq}&limit=: events after a
-// sequence number, oldest first. Poll with the last seq seen.
+// sequence number, oldest first; poll with the last seq seen. newest=N
+// instead gives the newest N, still oldest first.
 func APIEvents(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
-		rows, err := d.R.ListEventsAfter(r.Context(), gen.ListEventsAfterParams{Seq: after, Limit: limitParam(r, 100, maxAPIList)})
+		var rows []gen.ListEventsAfterRow
+		var err error
+		if n, perr := strconv.ParseInt(r.URL.Query().Get("newest"), 10, 64); perr == nil && n > 0 {
+			var newest []gen.ListEventsNewestRow
+			newest, err = d.R.ListEventsNewest(r.Context(), min(n, maxAPIList))
+			for _, n := range slices.Backward(newest) {
+				rows = append(rows, gen.ListEventsAfterRow(n))
+			}
+		} else {
+			after, _ := strconv.ParseInt(r.URL.Query().Get("after"), 10, 64)
+			rows, err = d.R.ListEventsAfter(r.Context(), gen.ListEventsAfterParams{Seq: after, Limit: limitParam(r, 100, maxAPIList)})
+		}
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

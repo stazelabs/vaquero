@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -30,10 +31,19 @@ var stdin io.Reader
 // startWait is how long the CLI waits for a local server it started.
 const startWait = 5 * time.Second
 
-// usageError is a command used wrongly: exit 2 with its usage line.
-type usageError struct{ usage string }
+// usageError is a command used wrongly: exit 2 with its usage line and,
+// when there is one, a hint.
+type usageError struct{ usage, hint string }
 
-func (e usageError) Error() string { return "usage: " + e.usage }
+func (e usageError) Error() string {
+	if e.hint != "" {
+		return e.hint + "\nusage: " + e.usage
+	}
+	return "usage: " + e.usage
+}
+
+// dashHint explains how to pass text that starts with "-".
+const dashHint = "to pass text starting with -, put -- before it, or use - to read it from standard input"
 
 // cmd is one CLI invocation: its output streams, flags and client.
 type cmd struct {
@@ -55,13 +65,18 @@ func newCmd(stdout, stderr io.Writer, usage string) *cmd {
 	return c
 }
 
-// parse reads flags anywhere among the arguments and returns the
-// positional ones, which must number between min and max (-1: any).
+// parse reads flags anywhere among the arguments before a "--" and
+// returns the positional ones (everything after "--" is positional), which
+// must number between min and max (-1: any).
 func (c *cmd) parse(args []string, min, max int) ([]string, error) {
+	var rest []string
+	if i := slices.Index(args, "--"); i >= 0 {
+		args, rest = args[:i], args[i+1:]
+	}
 	var pos []string
 	for {
 		if err := c.fs.Parse(args); err != nil {
-			return nil, usageError{c.usage}
+			return nil, usageError{usage: c.usage, hint: dashHint}
 		}
 		args = c.fs.Args()
 		if len(args) == 0 {
@@ -70,8 +85,9 @@ func (c *cmd) parse(args []string, min, max int) ([]string, error) {
 		pos = append(pos, args[0])
 		args = args[1:]
 	}
+	pos = append(pos, rest...)
 	if len(pos) < min || max >= 0 && len(pos) > max {
-		return nil, usageError{c.usage}
+		return nil, usageError{usage: c.usage}
 	}
 	return pos, nil
 }
@@ -98,9 +114,9 @@ func (c *cmd) connect(ctx context.Context) error {
 		if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
 			return err
 		}
-		if p.Token == "" {
-			p.Token = client.LocalToken(p.DataDir)
-		}
+		// Read the token now: the server may have just written it, or
+		// written a new one after the old was revoked.
+		p.Token = client.LocalToken(p.DataDir)
 	}
 	c.client = &client.Client{BaseURL: p.URL, Token: p.Token, Agent: os.Getenv("VAQUERO_AGENT"), Version: version.Version}
 	return nil

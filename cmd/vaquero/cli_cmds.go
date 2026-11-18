@@ -81,7 +81,7 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 	switch pos[0] {
 	case "create":
 		if len(pos) != 3 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			d, err := text(*desc)
@@ -95,6 +95,9 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			return nil
 		})
 	case "show":
+		if len(pos) != 2 {
+			return c.finish(usageError{usage: usage})
+		}
 		return c.connected(ctx, nil, func() error {
 			if err := c.call(ctx, "GET", "/api/v1/projects/"+url.PathEscape(pos[1]), nil, &p); err != nil {
 				return err
@@ -103,6 +106,9 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			return nil
 		})
 	case "edit":
+		if len(pos) != 2 {
+			return c.finish(usageError{usage: usage})
+		}
 		body := map[string]string{}
 		if c.set("name") {
 			body["name"] = *name
@@ -123,7 +129,7 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		})
 	case "key":
 		if len(pos) != 3 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			if err := c.call(ctx, "POST", "/api/v1/projects/"+url.PathEscape(pos[1])+"/key", map[string]string{"key": pos[2]}, &p); err != nil {
@@ -133,7 +139,7 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			return nil
 		})
 	}
-	return c.finish(usageError{usage})
+	return c.finish(usageError{usage: usage})
 }
 
 func cmdTickets(ctx context.Context, stdout, stderr io.Writer, args []string) int {
@@ -289,7 +295,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	switch pos[0] {
 	case "show":
 		if len(pos) != 2 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			key, err := canon(pos[1])
@@ -304,7 +310,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		})
 	case "new":
 		if len(pos) != 3 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			b, err := fields()
@@ -320,7 +326,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		})
 	case "edit":
 		if len(pos) != 2 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			key, err := canon(pos[1])
@@ -342,7 +348,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		})
 	case "move":
 		if len(pos) != 3 {
-			return c.finish(usageError{usage})
+			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
 			key, err := canon(pos[1])
@@ -356,7 +362,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 			return nil
 		})
 	}
-	return c.finish(usageError{usage})
+	return c.finish(usageError{usage: usage})
 }
 
 func cmdComment(ctx context.Context, stdout, stderr io.Writer, args []string) int {
@@ -385,7 +391,7 @@ func cmdLink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	c := newCmd(stdout, stderr, usage)
 	pos, err := c.parse(args, 3, 3)
 	if err == nil && pos[1] != "blocks" && pos[1] != "relates" && pos[1] != "duplicates" {
-		err = usageError{usage}
+		err = usageError{usage: usage}
 	}
 	return c.connected(ctx, err, func() error {
 		key, err := canon(pos[0])
@@ -469,28 +475,14 @@ func cmdActivity(ctx context.Context, stdout, stderr io.Writer, args []string) i
 	limit := c.fs.Int("limit", 20, "at most this many (the newest, unless --after)")
 	_, err := c.parse(args, 0, 0)
 	return c.connected(ctx, err, func() error {
+		if *limit < 1 {
+			return usageError{usage: c.usage}
+		}
 		q := url.Values{"limit": {strconv.Itoa(*limit)}}
 		if *after > 0 {
 			q.Set("after", strconv.FormatInt(*after, 10))
 		} else {
-			// The newest N: find the newest sequence, then read from there.
-			var newest []api.Event
-			if err := c.call(ctx, "GET", "/api/v1/events?limit=500", nil, &newest); err != nil {
-				return err
-			}
-			for len(newest) == 500 {
-				var more []api.Event
-				if err := c.call(ctx, "GET", fmt.Sprintf("/api/v1/events?limit=500&after=%d", newest[len(newest)-1].Seq), nil, &more); err != nil {
-					return err
-				}
-				if len(more) == 0 {
-					break
-				}
-				newest = more
-			}
-			if n := len(newest); n > *limit {
-				q.Set("after", strconv.FormatInt(newest[n-*limit-1].Seq, 10))
-			}
+			q = url.Values{"newest": {strconv.Itoa(*limit)}}
 		}
 		var evs []api.Event
 		if err := c.call(ctx, "GET", "/api/v1/events?"+q.Encode(), nil, &evs); err != nil {
@@ -557,7 +549,7 @@ func cmdToken(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 			return nil
 		})
 	}
-	return c.finish(usageError{usage})
+	return c.finish(usageError{usage: usage})
 }
 
 // cmdProfile manages saved profiles; it never talks to a server.
@@ -623,7 +615,7 @@ func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int 
 		}
 		return c.finish(cfg.Save())
 	}
-	return c.finish(usageError{usage})
+	return c.finish(usageError{usage: usage})
 }
 
 func mark(on bool) string {

@@ -216,15 +216,16 @@ func TicketUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		key := ticketKey(p, t.Number)
-		f := templates.TicketForm{Project: p, TicketKey: key}
+		// The version rides through every re-render, field errors included,
+		// so the next save is still checked.
+		f := templates.TicketForm{Project: p, TicketKey: key, Version: r.PostFormValue("version")}
 		in, errs := readTicketForm(r, d, p, &f)
 		if len(errs) > 0 {
 			f.Errors = errs
 			formPage(w, r, d, p, f, t.MilestoneID.String, http.StatusUnprocessableEntity)
 			return
 		}
-		version, _ := strconv.ParseInt(r.PostFormValue("version"), 10, 64)
-		f.Version = r.PostFormValue("version")
+		version, _ := strconv.ParseInt(f.Version, 10, 64)
 		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, in.Patch(), version); err != nil {
 			if conflict, ok := errors.AsType[*core.Conflict](err); ok {
 				// Keep what was typed; the form now carries the current

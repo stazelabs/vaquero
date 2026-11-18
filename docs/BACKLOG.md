@@ -95,6 +95,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] `vaquero stop` (stop a background local server) and `vaquero logs`
 - [ ] Refreshing the tokens page right after creating a token offers to resubmit the form, creating another token
 
+- [ ] Local mode trusts every process on the machine: any local program (another user's included) can reach the server and mint a token at `/admin/tokens`. Fine on a personal laptop; decide on a guard before shared machines or Phase 4 (review 2a, declined to judge)
+- [ ] Review 2a minors: project writes answer `open_count: 0`; `--version` below 1 silently skips the check; exit 3 should key on the `conflict` code, not on `current` being present; sub-tickets in the API are partial summaries; `ticketDTO` loads the whole board for one `ready`; unknown `before`/`after` keys on move are ignored rather than refused; token revoke by prefix should compare exactly (base64 is case-sensitive); `profile add` takes the token in argv (accept `-`) and doesn't check the URL; `.tmp` files keep an old mode; `ensureLocalToken` doesn't check the token's actor or revoke old "local" tokens; a lock pid of 0 reads "(pid 0)"; the loop walk caps nodes, not depth; name lookups report database errors as 422; "dev" builds count as 0.0.0 and the upgrade message repeats per request; `vaquero.log` grows without limit; create ignores `version`/`remove_tags`; docs: CLAUDE.md `Deps` lacks `Touch`/`RenewLocalToken`, handlers.md "no writer queries" vs `Deps.Touch` (extend the guard test to ban `d.Touch.`), the token-create exception to redirect-after-POST, and `VAQUERO_AGENT` is undocumented
+
 ## Admin section (requested 2026-11-19)
 
 - [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`

@@ -161,3 +161,50 @@ func TestCLIUpgradeMessage(t *testing.T) {
 		t.Fatalf("%d %q", code, errOut)
 	}
 }
+
+// Text starting with "-" (a markdown list) goes through after --, which
+// ends flag parsing for everything after it.
+func TestCLIDashText(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "x")
+	mustCLI(t, "comment", "VAQ-1", "--", "- did the thing\n- and another")
+	mustCLI(t, "comment", "--", "VAQ-1", "- also this")
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "- did the thing") || !strings.Contains(out, "- also this") {
+		t.Fatalf("%s", out)
+	}
+	if code, _, errOut := cli(t, "comment", "VAQ-1", "- oops"); code != 2 || !strings.Contains(errOut, "put -- before it") {
+		t.Fatalf("%d %q", code, errOut)
+	}
+}
+
+func TestCLIActivityNewest(t *testing.T) {
+	cliEnv(t)
+	for range 30 {
+		mustCLI(t, "ticket", "new", "VAQ", "t")
+	}
+	var evs []struct{ Seq int64 }
+	if err := json.Unmarshal([]byte(mustCLI(t, "activity", "--limit", "5", "--json")), &evs); err != nil {
+		t.Fatal(err)
+	}
+	var all []struct{ Seq int64 }
+	json.Unmarshal([]byte(mustCLI(t, "activity", "--limit", "500", "--json")), &all)
+	if len(evs) != 5 || evs[4].Seq != all[len(all)-1].Seq || evs[0].Seq > evs[4].Seq {
+		t.Fatalf("%v (newest %d)", evs, all[len(all)-1].Seq)
+	}
+	for _, bad := range []string{"0", "-5"} {
+		if code, _, _ := cli(t, "activity", "--limit", bad); code != 2 {
+			t.Errorf("--limit %s: exit %d", bad, code)
+		}
+	}
+}
+
+func TestCLIProjectEditNeedsFlags(t *testing.T) {
+	cliEnv(t)
+	if code, _, _ := cli(t, "project", "edit", "VAQ", "New name"); code != 2 {
+		t.Fatalf("extra argument accepted: exit %d", code)
+	}
+	mustCLI(t, "project", "edit", "VAQ", "--name", "New name")
+	if out := mustCLI(t, "project", "show", "VAQ"); !strings.Contains(out, "New name") {
+		t.Fatalf("%s", out)
+	}
+}

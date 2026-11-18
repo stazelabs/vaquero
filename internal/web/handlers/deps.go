@@ -5,6 +5,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"log/slog"
 	"time"
@@ -26,6 +27,9 @@ type Deps struct {
 	Logger *slog.Logger
 	// Touch records an API token's last use: the API middleware's one write.
 	Touch middleware.Toucher
+	// RenewLocalToken (nil in tests) makes sure the local token file holds a
+	// live token; called after a revoke, in case it was the local one.
+	RenewLocalToken func(context.Context) error
 	// BackupDir is where a snapshot is saved before a project is deleted.
 	BackupDir string
 	Now       func() time.Time

@@ -65,6 +65,7 @@ func APITokenRevoke(d Deps) http.HandlerFunc {
 					apiCoreFail(w, r, d, gen.Project{}, err)
 					return
 				}
+				renewLocalToken(r, d)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
