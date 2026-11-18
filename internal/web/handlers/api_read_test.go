@@ -190,3 +190,29 @@ func TestAPIEventsNewest(t *testing.T) {
 		t.Fatalf("%+v", newest)
 	}
 }
+
+// The API article promises milestone and assignee filters by name.
+func TestAPITicketFiltersByName(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	p, _ := e.Deps.R.GetProjectByKey(bg, "VAQ")
+	m, err := e.Deps.Core.CreateMilestone(bg, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Beta"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, mustTicketID(t, e, 1), core.TicketPatch{MilestoneID: &m.ID, AssigneeID: new(e.Deps.Actor.ID)}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for q, want := range map[string]int{"milestone=beta": 1, "milestone=none": 2, "assignee=owner": 1, "assignee=Owner&milestone=Beta": 1} {
+		var got []api.TicketSummary
+		r := c.API("GET", "/api/v1/projects/VAQ/tickets?"+q, tok, nil)
+		decode(t, r.Body, &got)
+		if r.Status != 200 || len(got) != want {
+			t.Errorf("%s: %d, %d tickets", q, r.Status, len(got))
+		}
+	}
+	for _, q := range []string{"milestone=Gamma", "assignee=nobody"} {
+		if r := c.API("GET", "/api/v1/projects/VAQ/tickets?"+q, tok, nil); r.Status != 422 {
+			t.Errorf("%s: %d", q, r.Status)
+		}
+	}
+}

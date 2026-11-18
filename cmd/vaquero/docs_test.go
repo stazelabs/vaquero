@@ -32,7 +32,7 @@ func TestCLICommandsDocumented(t *testing.T) {
 		names = append(names, n)
 	}
 	for _, n := range names {
-		if !strings.Contains(a.Markdown, "`vaquero "+n) {
+		if !strings.Contains(a.Markdown, "`vaquero "+n+" ") && !strings.Contains(a.Markdown, "`vaquero "+n+"`") {
 			t.Errorf("vaquero %s isn't in the cli article", n)
 		}
 	}

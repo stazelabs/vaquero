@@ -1,6 +1,11 @@
 package help
 
 import (
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/stazelabs/vaquero/internal/timefmt"
 	"regexp"
 	"slices"
 	"strings"
@@ -51,13 +56,13 @@ func TestHeadings(t *testing.T) {
 
 // Review Focus 2: a /help link in any article goes to an article (and an
 // anchor on it, when given).
-var helpLink = regexp.MustCompile(`\(/help/([a-z0-9-]+)(?:\.md)?(?:#([a-z0-9-]+))?\)`)
+var helpLink = regexp.MustCompile(`href="/help/([^"#]*?)(?:\.md)?(?:#([^"]*))?"`)
 
 func TestHelpLinksResolve(t *testing.T) {
 	n := 0
 	for _, s := range Sections() {
 		for _, a := range s.Articles {
-			for _, m := range helpLink.FindAllStringSubmatch(a.Markdown, -1) {
+			for _, m := range helpLink.FindAllStringSubmatch(string(a.HTML), -1) {
 				n++
 				target, ok := Get(m[1])
 				if !ok {
@@ -88,5 +93,42 @@ func TestBadArticlesRefused(t *testing.T) {
 	a, err := parseArticle("x", []byte("---\ntitle: X\nsummary: Y\nsection: getting-started\norder: 1\n---\n## A\n\n<b>raw</b> <javascript:alert(1)> [x](javascript:alert(2))"))
 	if err != nil || strings.Contains(string(a.HTML), "<b>") || strings.Contains(string(a.HTML), `href="javascript`) {
 		t.Fatalf("%v %s", err, a.HTML)
+	}
+}
+
+// The API article's time example has the format the API sends.
+func TestAPITimeExample(t *testing.T) {
+	a, _ := Get("api")
+	m := regexp.MustCompile("such as `([^`]+)`").FindStringSubmatch(a.Markdown)
+	if m == nil {
+		t.Fatal("no time example")
+	}
+	if _, err := time.Parse(timefmt.Layout, m[1]); err != nil {
+		t.Fatalf("%s: %v", m[1], err)
+	}
+}
+
+// Every error code the API can answer is in the API article.
+func TestAPIErrorCodesDocumented(t *testing.T) {
+	a, _ := Get("api")
+	code := regexp.MustCompile(`Fail\([^,]+,\s*"([a-z_]+)"`)
+	seen := 0
+	for _, dir := range []string{"../api", "../web/handlers", "../web/middleware"} {
+		files, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+		for _, f := range files {
+			if strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+			b, _ := os.ReadFile(f)
+			for _, m := range code.FindAllStringSubmatch(string(b), -1) {
+				seen++
+				if !strings.Contains(a.Markdown, "`"+m[1]+"`") {
+					t.Errorf("%s: error code %q isn't in the api article", f, m[1])
+				}
+			}
+		}
+	}
+	if seen < 5 {
+		t.Fatalf("found %d codes", seen)
 	}
 }

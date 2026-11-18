@@ -10,7 +10,7 @@ Type in the search box at the top of any page (press `/` to jump to it) and pres
 
 ## How words match
 
-Each word you type matches words that start with it, so `deploy` finds "deploy", "deployed" and "deployment". A ticket must contain every word. Punctuation and search operators are treated as plain text. Only the first 20 words of a long search are used.
+Each word you type matches words that start with it, so `deploy` finds "deploy", "deployed" and "deployment". A result must contain every word, either in the ticket's title and description together or within one comment: `deploy failed` won't find a ticket with "deploy" in its title and "failed" only in a comment. Punctuation separates words, and search operators are treated as ordinary words. Only the first 20 words of a long search are used.
 
 Deleted comments are not searched.
 

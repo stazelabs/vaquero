@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/help"
+	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -80,5 +82,22 @@ func TestContextualHelpLinks(t *testing.T) {
 	r := c.Post("/t/VAQ-1", url.Values{"title": {"Mine"}, "version": {"1"}})
 	if r.Status != 409 || !strings.Contains(r.Body, `href="/help/editing-and-conflicts"`) {
 		t.Fatalf("conflict banner: %d", r.Status)
+	}
+}
+
+// The side panel draws the bot glyph for an agent assignee.
+func TestTicketPanelAgentGlyph(t *testing.T) {
+	e := webtest.New(t)
+	tk := ticket(t, e, project(t, e), core.TicketInput{Title: "x"})
+	agent, err := e.DB.Q.CreateActor(bg, gen.CreateActorParams{ID: idgen.New(), Kind: "agent", Name: "builder", CreatedAt: "2026-11-18T12:00:00Z"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{AssigneeID: &agent.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	r := e.Client().Get("/t/VAQ-1")
+	if !strings.Contains(r.Body, `data-icon="agent"`) {
+		t.Fatal("agent assignee drawn without the bot glyph")
 	}
 }

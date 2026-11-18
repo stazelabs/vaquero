@@ -283,6 +283,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			return v, err
 		}
 		v.Assignee = a.Name
+		v.AssigneeIsAgent = a.Kind == "agent"
 	}
 	if t.MilestoneID.Valid {
 		m, err := d.R.GetMilestone(ctx, t.MilestoneID.String)

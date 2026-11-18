@@ -9,11 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stazelabs/vaquero/internal/help"
 	"github.com/stazelabs/vaquero/internal/web/icons"
 )
 
 // Review Focus 1: every icon a template or a Go table names is in ui.json.
-var iconCall = regexp.MustCompile(`Icon(?:Lg|Class)?\("([a-z0-9-]+)"|(?:icon|Icon)\s*[:=]\s*"([a-z0-9-]+)"`)
+var iconCall = regexp.MustCompile(`(?:Icon(?:Lg|Class)?|emptyState)\("([a-z0-9-]+)"|(?:icon|Icon)\s*[:=]\s*"([a-z0-9-]+)"|iconField\([^)]*?, "([a-z0-9-]+)", "text-`)
 
 func TestEveryIconNameKnown(t *testing.T) {
 	files, _ := filepath.Glob("*.templ")
@@ -26,7 +27,7 @@ func TestEveryIconNameKnown(t *testing.T) {
 		}
 		b, _ := os.ReadFile(f)
 		for _, m := range iconCall.FindAllStringSubmatch(string(b), -1) {
-			name := m[1] + m[2]
+			name := m[1] + m[2] + m[3]
 			seen++
 			if _, ok := icons.UI(name); !ok {
 				t.Errorf("%s: icon %q isn't in ui.json", f, name)
@@ -69,6 +70,22 @@ func TestNoAdHocSVG(t *testing.T) {
 		b, _ := os.ReadFile(f)
 		if bytes.Contains(b, []byte("<svg")) {
 			t.Errorf("%s draws its own <svg>; use Icon", f)
+		}
+	}
+}
+
+func TestAdminPagesHaveIcons(t *testing.T) {
+	for _, p := range AdminPages {
+		if _, ok := icons.UI(adminIcons[p[0]]); !ok {
+			t.Errorf("admin page %s: icon %q", p[0], adminIcons[p[0]])
+		}
+	}
+}
+
+func TestHelpSectionIconsKnown(t *testing.T) {
+	for _, s := range help.Sections() {
+		if _, ok := icons.UI(s.Icon); !ok {
+			t.Errorf("help section %s: icon %q", s.Key, s.Icon)
 		}
 	}
 }

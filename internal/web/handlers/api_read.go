@@ -187,7 +187,20 @@ func APITickets(d Deps) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), board.ParseFilter(q))
+		// The API takes milestone and assignee by name; the board filter
+		// wants ids.
+		f := board.ParseFilter(q)
+		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
+		if f.Milestone != "" && f.Milestone != "none" {
+			f.Milestone = n.milestone(f.Milestone)
+		}
+		if f.Assignee != "" {
+			f.Assignee = n.assignee(f.Assignee)
+		}
+		if n.fail(w) {
+			return
+		}
+		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

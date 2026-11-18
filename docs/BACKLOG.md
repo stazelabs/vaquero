@@ -101,6 +101,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Icons and in-app help (requested 2026-11-19)
 
 - [x] Lucide icons through the UI; in-app help at `/help` (with markdown for agents and `vaquero docs`) — plan: docs/superpowers/plans/2026-11-19-icons-and-help.md
+- [ ] Review (icons and help) minors: the icon generator should fail on an SVG element it can't parse rather than drop it; `TestUIGlyphsAreDrawingOnly` should assert the allowlist shape; `icon.templ` says icon-only buttons use `IconLg` but the toast close uses `Icon`; `TestIconOnlyButtonsLabelled` misses an icon wrapped in a span; a shortcut added to app.js but not to `templates.shortcuts` escapes the docs test; CLI subcommands and flags have no docs guard; the Activity empty state sits outside the live-swapped feed, so it stays after the first event
 - [ ] Help: search the articles from the header search box; an agents-and-claims and an MCP article arrive with Phase 2b
 
 ## Folded into Phase 2b

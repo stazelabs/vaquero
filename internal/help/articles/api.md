@@ -19,7 +19,7 @@ Make tokens on the Admin page or with `vaquero token create`; see [API tokens](/
 - Projects are named by key (`VAQ`), tickets by key (`VAQ-12`), in any case.
 - Statuses, assignees and milestones are sent and returned by name; names match in any case within the ticket's project.
 - Priorities are numbers: 0 none, 1 urgent, 2 high, 3 medium, 4 low.
-- Times are text in UTC, such as `2026-11-19T14:05:00Z`.
+- Times are text in UTC, such as `2026-11-19T14:05:00.000Z`.
 - A request body is one JSON object; unknown fields are refused, and bodies over 1 MiB get `413`.
 - Every answer carries `Vaquero-Version` (the server's version) and `Vaquero-Min-Client` (the oldest command line it works with).
 - Lists take `limit` (most endpoints allow up to 500).
@@ -33,7 +33,7 @@ Make tokens on the Admin page or with `vaquero token create`; see [API tokens](/
 | `GET /api/v1/projects/{key}` | One project |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
-| `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` |
+| `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name); an unknown name is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets`, `links` and `comments` |
 | `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words |
 | `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N |
@@ -71,7 +71,8 @@ Every refusal has the same shape:
 |---|---|---|
 | 400 | `bad_request` | The body isn't one JSON object of known fields |
 | 401 | `unauthorized` | No valid token |
-| 404 | `not_found` | No such project, ticket, comment, link or token |
+| 404 | `not_found` | No such project, ticket, comment, link or token, or no such endpoint |
+| 405 | `method_not_allowed` | The endpoint exists but not for that method (say, `DELETE` on a ticket) |
 | 409 | `conflict` | The ticket changed since the `version` you sent; `current` holds it as it is now |
 | 413 | `too_large` | The body is over 1 MiB |
 | 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields |

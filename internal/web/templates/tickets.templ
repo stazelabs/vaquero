@@ -46,6 +46,7 @@ type TicketView struct {
 	Body                       template.HTML
 	Status                     gen.Status
 	Assignee, Milestone        string
+	AssigneeIsAgent            bool
 	Parent                     *TicketRef
 	Tags                       []string
 	Subs                       []TicketRef
@@ -213,7 +214,11 @@ templ TicketPage(v TicketView) {
 			<aside class={ panelClass + " h-fit space-y-3 text-sm" }>
 				@iconField("Status", v.Status.Name, CategoryIcon(v.Status.Category), categoryTint(v.Status.Category))
 				@iconField("Priority", PriorityLabel(v.Ticket.Priority), PriorityIcon(v.Ticket.Priority), "text-muted")
-				@iconField("Assignee", orNone(v.Assignee, "Unassigned"), "person", "text-muted")
+				if v.AssigneeIsAgent {
+					@iconField("Assignee", v.Assignee, "agent", "text-accent")
+				} else {
+					@iconField("Assignee", orNone(v.Assignee, "Unassigned"), "person", "text-muted")
+				}
 				@iconField("Milestone", orNone(v.Milestone, "None"), "milestone", "text-muted")
 				<div>
 					<p class={ labelClass }>Parent</p>
