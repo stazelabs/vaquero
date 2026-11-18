@@ -49,6 +49,18 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Post("/milestones/{id}", handlers.MilestoneUpdate(d))
 		r.Post("/milestones/{id}/close", handlers.MilestoneClose(d))
 		r.Post("/milestones/{id}/reopen", handlers.MilestoneReopen(d))
+		r.Get("/new", handlers.TicketNew(d))
+		r.Post("/tickets", handlers.TicketCreate(d))
+	})
+	r.Route("/t/{ticket}", func(r chi.Router) {
+		r.Get("/", handlers.TicketShow(d))
+		r.Post("/", handlers.TicketUpdate(d))
+		r.Get("/edit", handlers.TicketEdit(d))
+		r.Post("/comments", handlers.CommentCreate(d))
+		r.Post("/comments/{id}", handlers.CommentUpdate(d))
+		r.Post("/comments/{id}/delete", handlers.CommentDelete(d))
+		r.Post("/links", handlers.LinkCreate(d))
+		r.Post("/links/{id}/delete", handlers.LinkDelete(d))
 	})
 	return r
 }

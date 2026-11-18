@@ -1,0 +1,263 @@
+package templates
+
+import (
+	"html/template"
+
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+// TicketForm is the new-ticket and edit-ticket form.
+type TicketForm struct {
+	Project                                       gen.Project
+	TicketKey                                     string // "" when creating
+	Title, Body, StatusID, Priority, AssigneeID   string
+	Parent, MilestoneID, Tags                     string
+	Statuses, Assignees, Milestones               []Option
+	Errors                                        map[string]string
+}
+
+// TicketRef is another ticket, named on this one's page.
+type TicketRef struct {
+	ID, Key, Title, Status string
+	Done                   bool
+}
+
+// LinkGroup is one direction and kind of link: "Blocks", "Blocked by".
+type LinkGroup struct {
+	Label string
+	Items []TicketRef // ID is the link's id, for Remove
+}
+
+// CommentRow is one comment in the thread.
+type CommentRow struct {
+	ID, Author, Raw, Ago string
+	Body                 template.HTML
+	Mine, Editing        bool
+	Edited               bool
+}
+
+// TicketView is the ticket page.
+type TicketView struct {
+	Project                    gen.Project
+	Ticket                     gen.Ticket
+	Key                        string
+	Body                       template.HTML
+	Status                     gen.Status
+	Assignee, Milestone        string
+	Parent                     *TicketRef
+	Tags                       []string
+	Subs                       []TicketRef
+	Links                      []LinkGroup
+	Comments                   []CommentRow
+	Events                     []EventView
+	LinkKind, LinkTo, LinkErr  string
+	CommentBody, CommentErr    string
+}
+
+// TicketFormPage is the form for a new ticket or an edit.
+templ TicketFormPage(f TicketForm) {
+	@Shell(formTitle(f)) {
+		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + f.Project.Key) } class="hover:text-accent">{ f.Project.Key }</a></p>
+		<h1 class={ h1Class }>{ formTitle(f) }</h1>
+		if msg := f.Errors["project"]; msg != "" {
+			<p class="mt-4 text-sm text-danger" role="alert">{ msg }</p>
+		}
+		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
+			<div class="space-y-4 lg:col-span-2">
+				@TextInput(InputProps{Name: "title", Label: "Title", Value: f.Title, Required: true, Error: f.Errors["title"]})
+				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"]})
+			</div>
+			<div class="space-y-4">
+				@Select(SelectProps{Name: "status", Label: "Status", Selected: f.StatusID, Options: f.Statuses, Error: f.Errors["status"]})
+				@Select(SelectProps{Name: "priority", Label: "Priority", Selected: f.Priority, Options: PriorityOptions(), Error: f.Errors["priority"]})
+				@Select(SelectProps{Name: "assignee", Label: "Assignee", Selected: f.AssigneeID, Options: f.Assignees, Error: f.Errors["assignee"]})
+				@Select(SelectProps{Name: "milestone", Label: "Milestone", Selected: f.MilestoneID, Options: f.Milestones, Error: f.Errors["milestone"]})
+				@TextInput(InputProps{Name: "parent", Label: "Parent ticket", Value: f.Parent, Placeholder: f.Project.Key + "-12", Error: f.Errors["parent"]})
+				@TextInput(InputProps{Name: "tags", Label: "Tags", Value: f.Tags, Placeholder: "ui, bug", Error: f.Errors["tags"]})
+			</div>
+			<div class="flex items-center gap-4 lg:col-span-3">
+				<button type="submit" class={ btnPrimary }>
+					if f.TicketKey == "" {
+						Create ticket
+					} else {
+						Save ticket
+					}
+				</button>
+				<a href={ templ.SafeURL(formCancel(f)) } class={ btnLink }>Cancel</a>
+			</div>
+		</form>
+	}
+}
+
+// TicketPage shows one ticket: its description and fields, sub-tickets,
+// links, the comment thread and its history.
+templ TicketPage(v TicketView) {
+	@Shell(v.Key + " " + v.Ticket.Title) {
+		<p class="font-mono text-sm text-muted">
+			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
+		</p>
+		<div class="flex flex-wrap items-start justify-between gap-4">
+			<h1 class={ h1Class }>{ v.Ticket.Title }</h1>
+			<a href={ templ.SafeURL("/t/" + v.Key + "/edit") } class={ btnSecondary }>Edit ticket</a>
+		</div>
+		<div class="mt-6 grid gap-8 lg:grid-cols-3">
+			<div class="space-y-10 lg:col-span-2">
+				<section>
+					if v.Body == "" {
+						<p class="text-sm text-muted">No description.</p>
+					} else {
+						<div class={ proseClass }>
+							@templ.Raw(string(v.Body))
+						</div>
+					}
+				</section>
+				<section>
+					<div class="flex items-center justify-between">
+						<h2 class={ h2Class }>Sub-tickets</h2>
+						<a href={ templ.SafeURL("/p/" + v.Project.Key + "/new?parent=" + v.Key) } class={ btnLink }>New sub-ticket</a>
+					</div>
+					if len(v.Subs) == 0 {
+						<p class="mt-2 text-sm text-muted">No sub-tickets.</p>
+					}
+					<ul class="mt-2 space-y-1">
+						for _, s := range v.Subs {
+							<li class="text-sm">
+								@refLink(s)
+							</li>
+						}
+					</ul>
+				</section>
+				<section>
+					<h2 class={ h2Class }>Links</h2>
+					if len(v.Links) == 0 {
+						<p class="mt-2 text-sm text-muted">No links.</p>
+					}
+					for _, g := range v.Links {
+						<h3 class="mt-3 text-sm font-medium text-ink">{ g.Label }</h3>
+						<ul class="mt-1 space-y-1">
+							for _, l := range g.Items {
+								<li class="flex items-center gap-3 text-sm">
+									@refLink(l)
+									<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links/" + l.ID + "/delete") }>
+										<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove link to " + l.Key }>Remove</button>
+									</form>
+								</li>
+							}
+						</ul>
+					}
+					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
+						@Select(SelectProps{Name: "kind", Label: "This ticket", Selected: v.LinkKind, Options: linkKindOptions()})
+						<div class="flex-1">
+							@TextInput(InputProps{Name: "to", Label: "Ticket", Value: v.LinkTo, Placeholder: v.Project.Key + "-12", Required: true, Error: v.LinkErr})
+						</div>
+						<button type="submit" class={ btnSecondary }>Add link</button>
+					</form>
+				</section>
+				<section id="comments">
+					<h2 class={ h2Class }>Comments</h2>
+					if len(v.Comments) == 0 {
+						<p class="mt-2 text-sm text-muted">No comments yet.</p>
+					}
+					<ul class="mt-3 space-y-4">
+						for _, c := range v.Comments {
+							@commentItem(v.Key, c)
+						}
+					</ul>
+					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/comments") } class="mt-4 space-y-3">
+						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr})
+						<button type="submit" class={ btnPrimary }>Add comment</button>
+					</form>
+				</section>
+				<section>
+					<h2 class={ h2Class }>History</h2>
+					<ul class="mt-2 space-y-1">
+						for _, e := range v.Events {
+							@EventLine(e)
+						}
+					</ul>
+				</section>
+			</div>
+			<aside class={ panelClass + " h-fit space-y-3 text-sm" }>
+				@field("Status", v.Status.Name)
+				@field("Priority", PriorityLabel(v.Ticket.Priority))
+				@field("Assignee", orNone(v.Assignee, "Unassigned"))
+				@field("Milestone", orNone(v.Milestone, "None"))
+				<div>
+					<p class={ labelClass }>Parent</p>
+					if v.Parent != nil {
+						@refLink(*v.Parent)
+					} else {
+						<p class="text-muted">None</p>
+					}
+				</div>
+				<div>
+					<p class={ labelClass }>Tags</p>
+					if len(v.Tags) == 0 {
+						<p class="text-muted">None</p>
+					}
+					<p class="flex flex-wrap gap-1">
+						for _, t := range v.Tags {
+							<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ t }</span>
+						}
+					</p>
+				</div>
+			</aside>
+		</div>
+	}
+}
+
+templ field(label, value string) {
+	<div>
+		<p class={ labelClass }>{ label }</p>
+		<p class="text-ink">{ value }</p>
+	</div>
+}
+
+templ refLink(t TicketRef) {
+	<a href={ templ.SafeURL("/t/" + t.Key) } class={ "hover:text-accent", templ.KV("text-muted line-through", t.Done) }>
+		<span class="font-mono text-xs text-muted">{ t.Key }</span> { t.Title }
+	</a>
+	if t.Status != "" {
+		<span class="ml-2 text-xs text-muted">{ t.Status }</span>
+	}
+}
+
+templ commentItem(key string, c CommentRow) {
+	<li id={ "c-" + c.ID } class={ panelClass }>
+		<p class="text-xs text-muted">
+			<span class="font-medium text-ink">{ c.Author }</span> · { c.Ago }
+			if c.Edited {
+				· edited
+			}
+		</p>
+		if c.Editing {
+			<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID) } class="mt-2 space-y-2">
+				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4})
+				<div class="flex items-center gap-4">
+					<button type="submit" class={ btnPrimary }>Save comment</button>
+					<a href={ templ.SafeURL("/t/" + key + "#c-" + c.ID) } class={ btnLink }>Cancel</a>
+				</div>
+			</form>
+		} else {
+			<div class={ "mt-2 " + proseClass }>
+				@templ.Raw(string(c.Body))
+			</div>
+			if c.Mine {
+				<div class="mt-2 flex items-center gap-4">
+					<a href={ templ.SafeURL("/t/" + key + "?edit=" + c.ID + "#c-" + c.ID) } class="text-xs text-muted hover:text-accent">Edit</a>
+					<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID + "/delete") }>
+						<button type="submit" class="text-xs text-muted hover:text-danger">Delete</button>
+					</form>
+				</div>
+			}
+		}
+	</li>
+}
+
+// EventLine is one activity line: actor, what happened, when.
+templ EventLine(e EventView) {
+	<li class="text-sm text-ink/80">
+		<span class="font-medium text-ink">{ e.Actor }</span> { EventSentence(e) }
+		<span class="text-xs text-muted">· { e.Ago }</span>
+	</li>
+}

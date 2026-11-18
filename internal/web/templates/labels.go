@@ -79,3 +79,36 @@ func closeOrReopen(m gen.Milestone) string {
 	}
 	return "/close"
 }
+
+func formTitle(f TicketForm) string {
+	if f.TicketKey == "" {
+		return "New ticket"
+	}
+	return "Edit " + f.TicketKey
+}
+
+func formAction(f TicketForm) string {
+	if f.TicketKey == "" {
+		return "/p/" + f.Project.Key + "/tickets"
+	}
+	return "/t/" + f.TicketKey
+}
+
+func formCancel(f TicketForm) string {
+	if f.TicketKey == "" {
+		return "/p/" + f.Project.Key
+	}
+	return "/t/" + f.TicketKey
+}
+
+func orNone(s, none string) string {
+	if s == "" {
+		return none
+	}
+	return s
+}
+
+// linkKindOptions words each link kind from this ticket's side.
+func linkKindOptions() []Option {
+	return []Option{{"blocks", "Blocks"}, {"relates", "Relates to"}, {"duplicates", "Duplicates"}}
+}
