@@ -7,7 +7,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Phases
 
 - [x] Phase 0: Foundation — merged a69c53a
-- [ ] Phase 1: Core tracker (schema, `internal/core`, events, web UI)
+- [ ] Phase 1: Core tracker
+  - [x] Phase 1a: schema, `internal/core`, events, plain pages, activity feed
+  - [ ] Phase 1b: drag-and-drop board, list view with filters, search, live updates, keyboard shortcuts
 - [ ] Phase 2: API, CLI, MCP, coordination
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
   - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
@@ -18,7 +20,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 ## Deferred from the Phase 0 review
 
-- [ ] Fix the stale migration-order line in `.claude/rules/database.md` — the listener now binds before the database opens (review #3)
+- [x] Fix the stale migration-order line in `.claude/rules/database.md` (review #3) — Phase 1a
 - [ ] Make `VERSION` match its comment — `git describe` gives `0.1.0-3-gabc` on untagged commits; decide release-or-dev semantics with the Phase 3 release work (review #5)
 - [ ] Stop tightening an existing `VQ_DATA_DIR` to 0700 silently — `VQ_DATA_DIR=.` changes the working directory's permissions; decide refuse vs warn, and test it (review #6)
 - [ ] Reject loopback addresses outside the Host allowlist — `VQ_ADDR=127.0.0.2` boots, then every request gets 403 (review #7)
@@ -29,6 +31,14 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Log Host-check refusals (review #12)
 - [ ] Small items: validate `VQ_LOG_LEVEL`; log status 200 rather than 0 for empty responses; drop the duplicate `MkdirAll` in `openDB`; remove the dbtest template directory; stop serving `input.css` (review #13)
 - [ ] View the theme in dark mode and check contrast — only verified by stylesheet inspection so far
+
+## Deferred from Phase 1a
+
+- [ ] Tag management: rename, merge and delete tags (tags are created inline only)
+- [ ] Moving a ticket to another project (keys and numbers would change)
+- [ ] Editing an existing milestone's description (the settings form edits name and due date only)
+- [ ] A refused milestone or status form on the settings page loses the typed values (it redirects with a toast)
+- [ ] Ticket history shows "changed the description" without the old text (events record that the body changed, not its contents)
 
 ## Open questions
 

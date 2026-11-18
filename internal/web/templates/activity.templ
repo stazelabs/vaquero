@@ -1,0 +1,25 @@
+package templates
+
+// ActivityPage is the newest changes across every project.
+templ ActivityPage(events []EventView) {
+	@Shell("Activity") {
+		<h1 class={ h1Class }>Activity</h1>
+		if len(events) == 0 {
+			<p class="mt-6 text-sm text-muted">Nothing has happened yet.</p>
+		}
+		<ul class="mt-6 space-y-2">
+			for _, e := range events {
+				<li class="flex flex-wrap items-baseline gap-x-2 text-sm text-ink/80">
+					<span class="font-medium text-ink">{ e.Actor }</span>
+					<span>{ EventSentence(e) }</span>
+					if e.TicketKey != "" {
+						<a href={ templ.SafeURL("/t/" + e.TicketKey) } class="font-mono text-xs text-accent hover:underline">{ e.TicketKey }</a>
+					} else if e.ProjectKey != "" {
+						<a href={ templ.SafeURL("/p/" + e.ProjectKey) } class="font-mono text-xs text-accent hover:underline">{ e.ProjectKey }</a>
+					}
+					<span class="text-xs text-muted">· { e.Ago }</span>
+				</li>
+			}
+		</ul>
+	}
+}

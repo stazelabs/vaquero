@@ -14,6 +14,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 ## Queries
 
 - SQL lives in internal/db/queries; `make sqlc` (part of `make gen`) writes internal/db/gen. Never edit generated files.
+- Only internal/core writes the tracker tables (actors through events). Everything else reads through the reader pool.
 - Rejected: ORMs and mattn/go-sqlite3.
 
 ## Reader and writer pools (internal/db/sqlite.go)
@@ -27,7 +28,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 - Append-only and forward-only. Never edit a migration that has shipped in a release; add a new one.
 - Users upgrade by installing a new binary, so every migration must run unattended on any older database. A destructive change ships as an additive step in one release and the removal in a later one.
 - Create with `make migration name=add_thing`. Author migrations with `make dev` stopped (air migrates on rebuild and would apply a half-written file).
-- Migrations run at boot before the listener binds. `Migrate` refuses a database written by a newer vaquero.
+- Migrations run at boot, after the listener binds and before it serves anything. `Migrate` refuses a database written by a newer vaquero.
 - After a schema or query change, run `make gen` and commit the generated files.
 
 ## Instants and IDs

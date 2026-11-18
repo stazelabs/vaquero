@@ -9,12 +9,16 @@ All routes mount in internal/web/router.go. Handlers are `func Name(d Deps) http
 
 ## Writes go through internal/core
 
-Once internal/core exists (Phase 1), handlers must not call writer queries directly: every mutation goes through core, which writes its `events` row in the same transaction. The web UI, REST API and MCP all call the same core function, so the three never disagree about what an operation does. Reads may use `Deps.R` directly.
+Handlers never write directly: every change goes through `Deps.Core`, which writes its `events` row in the same transaction. `Deps` has no writer queries, and `TestHandlersNeverWriteDirectly` fails on `gen.New(`, `.Exec(`, `BeginTx(` or `d.DB.` in a handler (only /healthz pings `d.DB`). The web UI, and later the REST API and MCP, call the same core function, so they never disagree about what an operation does. Reads use `Deps.R`.
+
+Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form with 422 and its field messages; `core.ErrNotFound` goes home with "That no longer exists."; anything else is `serverError`. Small forms on a busy page (settings, comment edits) may instead redirect back with the message as an error toast.
 
 ## Feedback
 
 - Redirect after every successful POST (303).
-- A missing entity redirects with a flash, never a 404 (once flash exists).
+- Success is a toast: `redirectWithFlash(w, r, flash.Success, msg, to)`.
+- A missing entity redirects with a toast, never a 404.
+- An id in a URL (status, milestone, comment, link) must belong to the project or ticket in the same URL.
 
 ## Logging
 

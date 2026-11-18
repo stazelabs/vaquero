@@ -32,6 +32,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Get("/healthz", handlers.Healthz(d))
 	r.Handle("/static/*", http.StripPrefix("/static/", staticHandler()))
 	r.Get("/", handlers.ProjectList(d))
+	r.Get("/activity", handlers.Activity(d))
 	r.Get("/projects/new", handlers.ProjectNew(d))
 	r.Post("/projects", handlers.ProjectCreate(d))
 	r.Route("/p/{key}", func(r chi.Router) {

@@ -71,3 +71,16 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 	}
 	return nil
 }
+
+// EventKinds lists every event kind core emits.
+func EventKinds() []string {
+	return []string{
+		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored,
+		EvStatusCreated, EvStatusUpdated, EvStatusMoved, EvStatusDeleted,
+		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
+		EvTicketCreated, EvTicketUpdated,
+		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
+		EvLinkCreated, EvLinkDeleted,
+		EvActorCreated,
+	}
+}
