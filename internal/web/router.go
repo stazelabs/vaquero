@@ -31,6 +31,14 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.MethodNotAllowed(handlers.MethodNotAllowed(d))
 	r.Get("/healthz", handlers.Healthz(d))
 	r.Handle("/static/*", http.StripPrefix("/static/", staticHandler()))
+	// The API: bearer tokens, JSON answers and errors, no cookies.
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(middleware.APIHeaders, middleware.APIToken(middleware.APIAuth{R: d.R, Touch: d.Touch, Now: d.Now, Logger: d.Logger}))
+		r.NotFound(handlers.APINotFound)
+		r.MethodNotAllowed(handlers.APIMethodNotAllowed)
+		r.Get("/me", handlers.APIMe(d))
+	})
+
 	r.Get("/", handlers.ProjectList(d))
 	r.Get("/activity", handlers.Activity(d))
 	r.Get("/events/stream", handlers.Stream(d))

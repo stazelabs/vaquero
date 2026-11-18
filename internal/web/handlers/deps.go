@@ -12,6 +12,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
 
 // Deps is everything a handler may use.
@@ -23,6 +24,8 @@ type Deps struct {
 	Core   *core.Core   // every change
 	Actor  gen.Actor    // who changes things: the local owner in local mode
 	Logger *slog.Logger
+	// Touch records an API token's last use: the API middleware's one write.
+	Touch middleware.Toucher
 	// BackupDir is where a snapshot is saved before a project is deleted.
 	BackupDir string
 	Now       func() time.Time

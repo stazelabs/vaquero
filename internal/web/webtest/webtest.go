@@ -3,7 +3,9 @@
 package webtest
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -66,7 +68,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 	}
 	shutdown := make(chan struct{})
 	deps := handlers.Deps{
-		Cfg: cfg, DB: d.W, R: d.RQ, RDB: d.R, Core: c, Actor: owner,
+		Cfg: cfg, DB: d.W, R: d.RQ, RDB: d.R, Core: c, Actor: owner, Touch: d.Q,
 		Logger:     slog.New(slog.DiscardHandler),
 		Now:        now,
 		Shutdown:   shutdown,
@@ -145,6 +147,38 @@ func (c *Client) form(path string, form url.Values) *http.Request {
 func (c *Client) Get(path string) *Response {
 	c.t.Helper()
 	return c.do(c.newRequest(http.MethodGet, path, nil))
+}
+
+// Token mints an API token for the owner.
+func (e *Env) Token(t testing.TB) string {
+	t.Helper()
+	raw, _, err := e.Deps.Core.CreateToken(context.Background(), e.Deps.Actor.ID, e.Deps.Actor.ID, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// API sends a JSON API request with token as the bearer ("" for none) and
+// body (nil, or encoded as JSON).
+func (c *Client) API(method, path, token string, body any) *Response {
+	c.t.Helper()
+	var rd io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		rd = bytes.NewReader(b)
+	}
+	req := c.newRequest(method, path, rd)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	return c.do(req)
 }
 
 // GetHX requests path the way htmx does.
