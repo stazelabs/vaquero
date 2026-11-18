@@ -10,6 +10,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Phase 1: Core tracker (schema, `internal/core`, events, web UI)
 - [ ] Phase 2: API, CLI, MCP, coordination
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
+  - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
 - [ ] Phase 4: Hosted mode
 - [ ] Phase 5: Git integration
 - [ ] Phase 6: Notifications and attachments
