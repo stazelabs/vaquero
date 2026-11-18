@@ -11,11 +11,10 @@ templ ActivityPage(events []EventView) {
 			for _, e := range events {
 				<li class="flex flex-wrap items-baseline gap-x-2 text-sm text-ink/80">
 					<span class="font-medium text-ink">{ e.Actor }</span>
-					<span>{ EventSentence(e) }</span>
-					if e.TicketKey != "" {
-						<a href={ templ.SafeURL("/t/" + e.TicketKey) } class="font-mono text-xs text-accent hover:underline">{ e.TicketKey }</a>
-					} else if e.ProjectKey != "" {
-						<a href={ templ.SafeURL("/p/" + e.ProjectKey) } class="font-mono text-xs text-accent hover:underline">{ e.ProjectKey }</a>
+					if href := eventHref(e); href != "" {
+						<a href={ templ.SafeURL(href) } class="hover:text-accent hover:underline">{ EventSentence(e) }</a>
+					} else {
+						<span>{ EventSentence(e) }</span>
 					}
 					<span class="text-xs text-muted">· { e.Ago }</span>
 				</li>

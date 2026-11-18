@@ -39,6 +39,18 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Editing an existing milestone's description (the settings form edits name and due date only)
 - [ ] A refused milestone or status form on the settings page loses the typed values (it redirects with a toast)
 - [ ] Ticket history shows "changed the description" without the old text (events record that the body changed, not its contents)
+- [ ] Before Phase 2 exposes core: an empty `StatusID` on update silently moves the ticket to the first todo status — make empty mean "keep" or refuse it (review 1a #5)
+- [ ] Before Phase 2: decide link direction rules — "A blocks B" plus "B blocks A", and duplicates both ways, are accepted today (review 1a #8)
+- [ ] Before Phase 2: optimistic concurrency (an `updated_at` check) for the whole-ticket edit, so two agents don't silently overwrite each other (review 1a recommendation)
+- [ ] Link history is one-sided: link events attach to the "from" ticket only, so a blocked ticket's history never says it became blocked (review 1a #10)
+- [ ] `c.tx` should `defer tx.Rollback()` so a panic mid-operation can't hold the only writer connection (review 1a #4)
+- [ ] `/p/vaq/new?parent=VAQ-1` loses its query string on the case redirect (`ticketFromURL` keeps it) (review 1a #6)
+- [ ] Comments lose leading indentation (a comment starting with an indented code block) — trim trailing space and leading blank lines only (review 1a #7)
+- [ ] Fix stale docs: the payload list in `internal/core/events.go`; `Deps.Q` mentioned in `.claude/rules/database.md` and CLAUDE.md (review 1a #11, #12)
+- [ ] External images in markdown render broken (CSP `img-src 'self' data:`) — strip `<img>` or say so (review 1a #14)
+- [ ] Destructive buttons (comment delete, status delete, archive) act on one click with no confirmation (review 1a #16)
+- [ ] Test gaps: cross-site POST to a real mutating route with a no-write assertion; hostile markdown in a comment at page level; cross-project parent through the form (review 1a #15)
+- [ ] Tag names: `école` and `École` are one tag in the input but two in the database (SQLite NOCASE folds ASCII only) (review 1a #1, related)
 
 ## Open questions
 

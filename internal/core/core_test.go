@@ -70,3 +70,22 @@ func TestEveryOperationEmitsOneEventOrNothing(t *testing.T) {
 		})
 	}
 }
+
+// A failure after the first write (here: the event's actor doesn't exist, so
+// the event insert fails on its foreign key) rolls the whole operation back.
+func TestEveryOperationRollsBackPartWay(t *testing.T) {
+	for _, op := range ops {
+		t.Run(op.name, func(t *testing.T) {
+			c, d, f := newFixture(t)
+			snap := snapshot(t, d)
+			ghost := f
+			ghost.Owner.ID = "no-such-actor"
+			if err := op.good(c, ghost); err == nil {
+				t.Fatal("succeeded as a missing actor")
+			}
+			if got := snapshot(t, d); !maps.Equal(got, snap) {
+				t.Fatalf("failed operation left changes: %v → %v", snap, got)
+			}
+		})
+	}
+}

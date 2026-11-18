@@ -47,7 +47,9 @@ func normTags(f fields, names []string) []string {
 		if n == "" || slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, n) }) {
 			continue
 		}
-		if len([]rune(n)) > 40 {
+		if hasControl(n) {
+			f.add("tags", controlMsg)
+		} else if len([]rune(n)) > 40 {
 			f.add("tags", "Keep each tag under 40 characters.")
 		}
 		out = append(out, n)
@@ -63,7 +65,9 @@ func checkTicket(ctx context.Context, q *gen.Queries, p gen.Project, ticketID st
 	tf := ticketFields{TicketInput: in}
 	tf.Title = text(f, "title", in.Title, 200, "Enter a title.", "Keep the title under 200 characters.")
 	tf.Body = strings.TrimRight(in.Body, " \t\r\n")
-	if len([]rune(tf.Body)) > 100000 {
+	if hasControl(tf.Body) {
+		f.add("body", controlMsg)
+	} else if len([]rune(tf.Body)) > 100000 {
 		f.add("body", "Keep the description under 100,000 characters.")
 	}
 	tf.Tags = normTags(f, in.Tags)
@@ -163,8 +167,20 @@ func (c *Core) upsertTags(ctx context.Context, q *gen.Queries, names []string) (
 		}
 		tags = append(tags, t)
 	}
-	slices.SortFunc(tags, func(a, b gen.Tag) int { return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
+	sortTags(tags)
 	return tags, nil
+}
+
+// sortTags orders tags by name, folding case the same way for stored and
+// new tags (SQLite's NOCASE folds only ASCII, so its order can't be compared
+// with Go's).
+func sortTags(tags []gen.Tag) {
+	slices.SortFunc(tags, func(a, b gen.Tag) int {
+		if c := strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
 }
 
 func tagNames(tags []gen.Tag) []string {
@@ -306,6 +322,7 @@ func (c *Core) ticketView(ctx context.Context, q *gen.Queries, p gen.Project, t 
 	if tf.tags, err = q.ListTicketTags(ctx, t.ID); err != nil {
 		return tf, fmt.Errorf("ticket tags: %w", err)
 	}
+	sortTags(tf.tags)
 	return tf, nil
 }
 

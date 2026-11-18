@@ -216,3 +216,43 @@ func TestTagsAreNormalised(t *testing.T) {
 		t.Fatalf("%+v", tags)
 	}
 }
+
+// Tags whose case folds differently in SQLite (ASCII only) and Go (Unicode)
+// still compare equal on a no-op save.
+func TestNoOpUpdateWithAccentedTags(t *testing.T) {
+	c, d, f := newFixture(t)
+	tags := []string{"Érable", "école", "Zeta", "alpha"}
+	in := input(f.T2, tags...)
+	tk, err := c.UpdateTicket(bg, f.Owner.ID, f.T2.ID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := eventCount(t, d)
+	if _, err := c.UpdateTicket(bg, f.Owner.ID, f.T2.ID, input(tk, tags...)); err != nil {
+		t.Fatal(err)
+	}
+	if eventCount(t, d) != before {
+		t.Fatalf("no-op save wrote an event: %v", lastPayload(t, c))
+	}
+}
+
+// A NUL or other control character is refused plainly, not a 500 from the
+// database's CHECK constraints (SQLite's length() stops at NUL).
+func TestControlCharactersRefused(t *testing.T) {
+	c, _, f := newFixture(t)
+	const msg = "Remove the hidden control characters."
+	_, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "\x00"})
+	fieldErr(t, err, "title", msg)
+	_, err = c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "ok", Body: "a\x00b"})
+	fieldErr(t, err, "body", msg)
+	_, err = c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "ok", Tags: []string{"x\x07"}})
+	fieldErr(t, err, "tags", msg)
+	_, err = c.AddComment(bg, f.Owner.ID, f.T1.ID, "hi\x00")
+	fieldErr(t, err, "body", msg)
+	_, err = c.CreateProject(bg, f.Owner.ID, core.ProjectInput{Key: "CTL", Name: "a\x1bb"})
+	fieldErr(t, err, "name", msg)
+	// Tabs and newlines are ordinary text.
+	if _, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "ok", Body: "line\n\tindented\r\n"}); err != nil {
+		t.Fatal(err)
+	}
+}

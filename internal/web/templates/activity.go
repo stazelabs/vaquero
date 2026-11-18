@@ -61,7 +61,12 @@ func EventSentence(e EventView) string {
 	case core.EvMilestoneReopened:
 		return "reopened milestone " + s("name")
 	case core.EvTicketCreated:
-		return "created " + e.TicketKey + " " + e.TicketTitle
+		// The title as created, not as it is now.
+		title := s("title")
+		if title == "" {
+			title = e.TicketTitle
+		}
+		return "created " + e.TicketKey + " " + title
 	case core.EvTicketUpdated:
 		return ticketUpdated(e)
 	case core.EvCommentCreated:
@@ -127,4 +132,15 @@ func joinAnd(xs []string) string {
 		return xs[0]
 	}
 	return strings.Join(slices.Clone(xs[:len(xs)-1]), ", ") + " and " + xs[len(xs)-1]
+}
+
+// eventHref is where an activity line links: its ticket, else its project.
+func eventHref(e EventView) string {
+	switch {
+	case e.TicketKey != "":
+		return "/t/" + e.TicketKey
+	case e.ProjectKey != "":
+		return "/p/" + e.ProjectKey
+	}
+	return ""
 }

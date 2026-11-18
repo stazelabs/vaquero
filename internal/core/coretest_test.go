@@ -2,6 +2,8 @@ package core_test
 
 import (
 	"context"
+	"fmt"
+	"hash/fnv"
 	"testing"
 	"time"
 
@@ -36,31 +38,34 @@ func eventCount(t *testing.T, d dbtest.DB) int64 {
 // trackerTables are every table only core writes.
 var trackerTables = []string{"actors", "projects", "statuses", "milestones", "tickets", "tags", "ticket_tags", "comments", "ticket_links", "events"}
 
-// snapshot is the row count of every tracker table, plus a checksum of the
-// mutable ticket and comment columns so an UPDATE that changes no row count
-// still shows.
+// snapshot is the row count and a content hash of every tracker table, so
+// any insert, update or delete shows, whatever it does to lengths.
 func snapshot(t *testing.T, d dbtest.DB) map[string]int64 {
 	t.Helper()
 	out := map[string]int64{}
 	for _, tbl := range trackerTables {
-		var n int64
-		if err := d.R.QueryRow(`SELECT count(*) FROM ` + tbl).Scan(&n); err != nil {
+		rows, err := d.R.Query(`SELECT * FROM ` + tbl + ` ORDER BY rowid`)
+		if err != nil {
 			t.Fatal(err)
 		}
+		cols, _ := rows.Columns()
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		h := fnv.New64a()
+		var n int64
+		for rows.Next() {
+			if err := rows.Scan(ptrs...); err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintf(h, "%v\x1f", vals)
+			n++
+		}
+		rows.Close()
 		out[tbl] = n
-	}
-	for name, q := range map[string]string{
-		"tickets~":    `SELECT coalesce(sum(length(title || body || status_id || priority || coalesce(parent_id,'') || coalesce(milestone_id,'') || coalesce(assignee_id,'') || position)), 0) FROM tickets`,
-		"comments~":   `SELECT coalesce(sum(length(body || coalesce(deleted_at,''))), 0) FROM comments`,
-		"projects~":   `SELECT coalesce(sum(length(name || description || coalesce(archived_at,''))), 0) FROM projects`,
-		"statuses~":   `SELECT coalesce(sum(length(name || position)), 0) FROM statuses`,
-		"milestones~": `SELECT coalesce(sum(length(name || description || coalesce(due_on,'') || coalesce(closed_at,''))), 0) FROM milestones`,
-	} {
-		var n int64
-		if err := d.R.QueryRow(q).Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		out[name] = n
+		out[tbl+"#"] = int64(h.Sum64())
 	}
 	return out
 }
