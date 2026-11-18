@@ -56,6 +56,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Delete("/comments/{id}", handlers.APICommentDelete(d))
 		r.Post("/tickets/{ticket}/links", handlers.APILinkCreate(d))
 		r.Delete("/links/{id}", handlers.APILinkDelete(d))
+		r.Get("/tokens", handlers.APITokens(d))
+		r.Post("/tokens", handlers.APITokenCreate(d))
+		r.Post("/tokens/{prefix}/revoke", handlers.APITokenRevoke(d))
 	})
 
 	r.Route("/admin", func(r chi.Router) {

@@ -15,8 +15,8 @@ import (
 )
 
 // MinClient is the oldest CLI this server answers properly; clients older
-// than it tell the person to upgrade.
-const MinClient = "0.0.0"
+// than it tell the person to upgrade. A variable only so tests can raise it.
+var MinClient = "0.0.0"
 
 // APIHeaders sets the headers every API answer carries.
 func APIHeaders(next http.Handler) http.Handler {

@@ -84,3 +84,13 @@ type SearchHit struct {
 	Status  string `json:"status"`
 	Snippet string `json:"snippet"` // [ and ] around the matched words
 }
+
+type Token struct {
+	Name       string `json:"name"`
+	Prefix     string `json:"prefix"`
+	Actor      string `json:"actor"`
+	CreatedAt  string `json:"created_at"`
+	LastUsedAt string `json:"last_used_at,omitempty"`
+	Revoked    bool   `json:"revoked"`
+	Token      string `json:"token,omitempty"` // only in the answer that creates it
+}

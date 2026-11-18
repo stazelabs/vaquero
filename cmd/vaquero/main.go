@@ -20,10 +20,26 @@ import (
 
 const usage = `usage: vaquero <command>
 
-commands:
-  serve      run the server
+server:
+  serve      run the server (the commands below start it when needed)
   version    print the release, commit and build date
-  help       show this message
+
+tickets:
+  projects   list projects
+  project    create, show, edit or re-key a project
+  tickets    list a project's tickets
+  ticket     show, new, edit or move a ticket
+  comment    add a comment to a ticket
+  link       link two tickets (blocks, relates, duplicates)
+  unlink     remove the links between two tickets
+  search     search tickets and comments
+  activity   recent changes
+
+setup:
+  token      create, list or revoke API tokens
+  profile    add, list, use or remove servers to talk to
+
+Every command takes --profile NAME and --json. See docs/CLI.md.
 `
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -52,6 +68,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	default:
+		if fn, ok := cliCommands[args[0]]; ok {
+			return fn(context.Background(), stdout, stderr, args[1:])
+		}
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
