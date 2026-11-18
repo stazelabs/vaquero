@@ -1,0 +1,10 @@
+/.superpowers/
+/bin/
+/tmp/
+/data/
+/node_modules
+.env.local
+coverage.out
+.DS_Store
+
+.claude/worktrees/

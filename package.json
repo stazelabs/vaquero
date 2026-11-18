@@ -1,0 +1,13 @@
+{
+  "name": "vaquero",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Build-time CSS pipeline (Tailwind v4). Not a runtime dependency.",
+  "scripts": {
+    "css:build": "tailwindcss -i ./internal/web/static/css/input.css -o ./internal/web/static/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}
