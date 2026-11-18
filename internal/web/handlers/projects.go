@@ -145,6 +145,23 @@ func settingsAction(w http.ResponseWriter, r *http.Request, d Deps, p gen.Projec
 	}
 }
 
+// ProjectKeyChange gives the project a new key and goes to its settings
+// under that key; a refusal returns to settings with the message.
+func ProjectKeyChange(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		np, err := d.Core.ChangeProjectKey(r.Context(), d.Actor.ID, p.ID, r.PostFormValue("key"))
+		if err != nil {
+			settingsAction(w, r, d, p, "", func() error { return err })
+			return
+		}
+		redirectWithFlash(w, r, flash.Success, "Key changed to "+np.Key+".", projectPath(np, "/settings"))
+	}
+}
+
 // ProjectArchive and ProjectRestore set the project's archived state.
 func ProjectArchive(d Deps) http.HandlerFunc { return projectArchived(d, true, "Project archived.") }
 func ProjectRestore(d Deps) http.HandlerFunc { return projectArchived(d, false, "Project restored.") }

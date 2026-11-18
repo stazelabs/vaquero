@@ -24,3 +24,6 @@ UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?;
 
 -- name: NextTicketNumber :one
 UPDATE projects SET next_number = next_number + 1 WHERE id = ? RETURNING next_number - 1;
+
+-- name: SetProjectKey :exec
+UPDATE projects SET key = ?, updated_at = ? WHERE id = ?;

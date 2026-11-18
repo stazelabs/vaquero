@@ -44,6 +44,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Get("/list", handlers.ProjectListView(d))
 		r.Post("/", handlers.ProjectUpdate(d))
 		r.Get("/settings", handlers.ProjectSettings(d))
+		r.Post("/key", handlers.ProjectKeyChange(d))
 		r.Post("/archive", handlers.ProjectArchive(d))
 		r.Post("/restore", handlers.ProjectRestore(d))
 		r.Post("/statuses", handlers.StatusCreate(d))

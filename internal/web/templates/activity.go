@@ -36,6 +36,9 @@ func EventSentence(e EventView) string {
 	case core.EvProjectCreated:
 		return "created project " + e.ProjectKey
 	case core.EvProjectUpdated:
+		if from, to, ok := change(e.Payload, "key"); ok {
+			return fmt.Sprintf("changed the key of %s to %s", from, to)
+		}
 		return "updated project " + e.ProjectKey
 	case core.EvProjectArchived:
 		return "archived project " + e.ProjectKey

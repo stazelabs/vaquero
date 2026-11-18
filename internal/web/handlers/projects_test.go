@@ -175,3 +175,22 @@ func TestProjectPageListsTicketsByStatus(t *testing.T) {
 	r := e.Client().Get("/p/VAQ")
 	contains(t, r.Body, "VAQ-1", "Fix the gate", "High", "ui", `href="/t/VAQ-1"`, `href="/p/VAQ/new"`, "No tickets.")
 }
+
+func TestKeyChangeFlow(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "x"})
+	c := e.Client()
+	contains(t, c.Get("/p/VAQ/settings").Body, `action="/p/VAQ/key"`, "will stop working")
+	r := c.Post("/p/VAQ/key", url.Values{"key": {"vq"}})
+	if r.Status != 303 || r.Location != "/p/VQ/settings" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Key changed to VQ.")
+	contains(t, c.Follow(c.Get("/t/VAQ-1")).Body, "No ticket VAQ-1.")
+	if r := c.Get("/t/VQ-1"); r.Status != 200 {
+		t.Fatalf("VQ-1: %d", r.Status)
+	}
+	// A refusal comes back as a toast on settings.
+	r = c.Post("/p/VQ/key", url.Values{"key": {"9"}})
+	contains(t, c.Follow(r).Body, "Use 2 to 10 capital letters")
+}

@@ -167,6 +167,21 @@ func (q *Queries) SetProjectArchived(ctx context.Context, arg SetProjectArchived
 	return err
 }
 
+const setProjectKey = `-- name: SetProjectKey :exec
+UPDATE projects SET key = ?, updated_at = ? WHERE id = ?
+`
+
+type SetProjectKeyParams struct {
+	Key       string
+	UpdatedAt string
+	ID        string
+}
+
+func (q *Queries) SetProjectKey(ctx context.Context, arg SetProjectKeyParams) error {
+	_, err := q.db.ExecContext(ctx, setProjectKey, arg.Key, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const updateProject = `-- name: UpdateProject :exec
 UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?
 `

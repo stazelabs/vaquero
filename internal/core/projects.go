@@ -119,3 +119,36 @@ func (c *Core) SetProjectArchived(ctx context.Context, by, projectID string, arc
 		return c.emit(ctx, q, by, kind, p.ID, "", nil)
 	})
 }
+
+// ChangeProjectKey gives a project a new key. Ticket numbers stay; the old
+// key stops resolving (ticket links, branch names and commit references
+// that use it break) and is free for another project.
+func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey string) (gen.Project, error) {
+	var p gen.Project
+	key := strings.ToUpper(strings.TrimSpace(newKey))
+	err := c.tx(ctx, func(q *gen.Queries) error {
+		var err error
+		if p, err = q.GetProject(ctx, projectID); err != nil {
+			return notFound(err, "get project")
+		}
+		switch {
+		case !projectKeyRe.MatchString(key):
+			return invalid("key", "Use 2 to 10 capital letters or digits, starting with a letter.")
+		case key == p.Key:
+			return invalid("key", "That's already this project's key.")
+		}
+		if _, err := q.GetProjectByKey(ctx, key); err == nil {
+			return invalid("key", "That key is taken.")
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("check key: %w", err)
+		}
+		now := timefmt.Format(c.Now())
+		if err := q.SetProjectKey(ctx, gen.SetProjectKeyParams{Key: key, UpdatedAt: now, ID: p.ID}); err != nil {
+			return fmt.Errorf("set key: %w", err)
+		}
+		old := p.Key
+		p.Key, p.UpdatedAt = key, now
+		return c.emit(ctx, q, by, EvProjectUpdated, p.ID, "", map[string]any{"changes": map[string]Change{"key": {old, key}}})
+	})
+	return p, err
+}
