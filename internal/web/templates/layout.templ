@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/static"
 )
@@ -31,7 +32,10 @@ templ Shell(title string) {
 			<div class="flex min-h-screen flex-col">
 				<header class="border-t-4 border-accent border-b border-b-line">
 					<div class="mx-auto flex h-14 w-full max-w-7xl items-center px-4">
-						<a href="/" class="text-lg font-semibold tracking-tight text-ink hover:text-accent">Vaquero</a>
+						<a href="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink hover:text-accent">
+							<img src={ static.URL("logo.svg") } alt="" width="28" height="28" class="h-7 w-7"/>
+							Vaquero
+						</a>
 						<nav aria-label="Main" class="ml-8 flex items-center gap-5">
 							<a href="/" class={ navLink }>Projects</a>
 							<a href="/activity" class={ navLink }>Activity</a>
@@ -46,7 +50,7 @@ templ Shell(title string) {
 				<main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-10">
 					{ children... }
 				</main>
-				<footer class="border-t border-line py-4 text-center text-xs text-muted">Vaquero herds the chaos.</footer>
+				@footer()
 			</div>
 			@shortcutsDialog()
 		</body>
@@ -81,4 +85,23 @@ templ shortcutsDialog() {
 			<button type="submit" class={ btnSecondary }>Close</button>
 		</form>
 	</dialog>
+}
+
+// footer is every page's last line: the tagline, then copyright, the
+// running version and the licence links.
+templ footer() {
+	<footer class="border-t border-line py-4 text-center text-xs text-muted">
+		<p>Vaquero herds the chaos.</p>
+		<p class="mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-1">
+			<span>© 2026 Purple Bongo, Inc.</span>
+			<span aria-hidden="true">·</span>
+			<a href="https://stazelabs.com" class="hover:text-ink">A Stazelabs project</a>
+			<span aria-hidden="true">·</span>
+			<span>Vaquero { version.Version } ({ version.Commit })</span>
+			<span aria-hidden="true">·</span>
+			<a href="/about/licenses" class="hover:text-ink">Licence</a>
+			<span aria-hidden="true">·</span>
+			<a href="/about/licenses#notices" class="hover:text-ink">Open source notices</a>
+		</p>
+	</footer>
 }

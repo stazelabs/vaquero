@@ -19,7 +19,7 @@ SQLC_VERSION        := v1.31.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help tools gen templ sqlc css dev build test cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean
+.PHONY: help tools gen templ sqlc css notices dev build test cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean
 
 help: ## Show this list (the default)
 	@echo "usage: make <target>"
@@ -45,7 +45,10 @@ sqlc: ## Generate Go from SQL queries
 css: ## Build the Tailwind stylesheet
 	$(TAILWIND) -i $(CSS_IN) -o $(CSS_OUT) --minify
 
-gen: templ sqlc css ## Run every generator (templ, sqlc, css); generated files are committed
+notices: ## Regenerate the open source notices (internal/legal/third_party.json)
+	$(GO) run ./scripts/notices
+
+gen: templ sqlc css notices ## Run every generator (templ, sqlc, css, notices); generated files are committed
 
 dev: ## Run the server with hot reload on 127.0.0.1:7879 (logs to tmp/dev.log)
 	@# Only the listener on the dev port: 7878 belongs to a real vaquero, and a
