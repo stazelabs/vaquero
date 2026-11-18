@@ -78,25 +78,94 @@ window.vqDragging = false;
   });
 })();
 
-// Live refreshes wait while a card is being dragged: a refresh of #board
-// asked for mid-drag is dropped and run once the drag ends.
+// Live updates. One EventSource per tab (not per page part) listens to
+// /events/stream; on "change" every [data-live] element gets a vq:change
+// event, which its hx-trigger turns into a refresh. A hidden tab closes its
+// stream, since browsers allow only six connections to one host, and
+// refreshes once when it is shown again. A refresh of #board waits while a
+// card is being dragged.
 (function () {
+  if (!document.querySelector("[data-live]") || !window.EventSource || !window.htmx) {
+    return;
+  }
+  var source = null;
   var pending = false;
-  document.body.addEventListener("htmx:beforeRequest", function (ev) {
-    var elt = ev.detail && ev.detail.elt;
-    if (window.vqDragging && elt && elt.id === "board" && ev.detail.requestConfig && ev.detail.requestConfig.verb === "get") {
-      ev.preventDefault();
-      pending = true;
+  function refresh() {
+    document.querySelectorAll("[data-live]").forEach(function (el) {
+      if (el.id === "board" && window.vqDragging) {
+        pending = true;
+        return;
+      }
+      window.htmx.trigger(el, "vq:change");
+    });
+  }
+  function open() {
+    if (source) {
+      return;
+    }
+    source = new EventSource("/events/stream");
+    source.addEventListener("change", refresh);
+    window.vqStream = source;
+  }
+  function close() {
+    if (source) {
+      source.close();
+      source = null;
+      window.vqStream = null;
+    }
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) {
+      close();
+    } else {
+      open();
+      refresh(); // catch up on anything missed while hidden
     }
   });
+  window.addEventListener("pagehide", close);
   document.addEventListener("vq:dragend", function () {
-    if (pending && window.htmx) {
+    if (pending) {
       pending = false;
-      var board = document.getElementById("board");
-      if (board) {
-        window.htmx.trigger(board, "sse:change");
-      }
+      refresh();
     }
+  });
+  if (!document.hidden) {
+    open();
+  }
+})();
+
+// A board refresh replaces #board: rails that were open stay open and the
+// columns keep their sideways scroll.
+(function () {
+  var openRails = null;
+  var scroll = 0;
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    var target = ev.detail && ev.detail.target;
+    if (!target || target.id !== "board") {
+      return;
+    }
+    openRails = Array.prototype.map.call(target.querySelectorAll("details[data-rail][open]"), function (d) {
+      return d.dataset.rail;
+    });
+    var cols = target.querySelector("[data-board-scroll]");
+    scroll = cols ? cols.scrollLeft : 0;
+  });
+  document.body.addEventListener("htmx:afterSettle", function () {
+    var board = document.getElementById("board");
+    if (!board || openRails === null) {
+      return;
+    }
+    openRails.forEach(function (id) {
+      var d = board.querySelector('details[data-rail="' + id + '"]');
+      if (d) {
+        d.open = true;
+      }
+    });
+    var cols = board.querySelector("[data-board-scroll]");
+    if (cols) {
+      cols.scrollLeft = scroll;
+    }
+    openRails = null;
   });
 })();
 
@@ -182,13 +251,16 @@ window.vqDragging = false;
         focusCard(-1);
         break;
       case "Enter":
-        var list = cards();
-        if (current >= 0 && list[current]) {
-          var link = list[current].querySelector("a");
-          if (link) {
-            link.click();
-          }
+        // Enter on a focused link, button or rail summary is the browser's.
+        if (ev.target.closest && ev.target.closest("a,button,summary,[tabindex]")) {
+          return;
         }
+        var list = cards();
+        var link = current >= 0 && list[current] ? list[current].querySelector("a") : null;
+        if (!link) {
+          return;
+        }
+        link.click();
         break;
       case "?":
         if (dialog) {

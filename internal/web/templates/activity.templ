@@ -7,8 +7,7 @@ templ ActivityPage(events []EventView) {
 		if len(events) == 0 {
 			<p class="mt-6 text-sm text-muted">Nothing has happened yet.</p>
 		}
-		<div hx-ext="sse" sse-connect="/events/stream">
-		<ul id="feed" hx-get="/activity" hx-trigger="sse:change" hx-select="#feed" hx-swap="outerHTML" class="mt-6 space-y-2">
+		<ul id="feed" hx-get="/activity" hx-trigger="vq:change" hx-select="#feed" hx-swap="outerHTML" data-live class="mt-6 space-y-2">
 			for _, e := range events {
 				<li class="flex flex-wrap items-baseline gap-x-2 text-sm text-ink/80">
 					<span class="font-medium text-ink">{ e.Actor }</span>
@@ -21,6 +20,5 @@ templ ActivityPage(events []EventView) {
 				</li>
 			}
 		</ul>
-		</div>
 	}
 }

@@ -65,9 +65,7 @@ templ BoardPage(v BoardView) {
 	@Shell(v.Board.Project.Name) {
 		@projectHeader(v.Board.Project, "board")
 		@chips(v.Chips, v.Clear, v.Board.Filter.Active())
-		<div hx-ext="sse" sse-connect="/events/stream">
-			@BoardSection(v.Board)
-		</div>
+		@BoardSection(v.Board)
 	}
 }
 
@@ -78,14 +76,15 @@ templ BoardSection(b board.Board) {
 		id="board"
 		data-filter={ b.Filter.Query().Encode() }
 		hx-get={ FilterHref("/p/"+b.Project.Key+"/board", b.Filter) }
-		hx-trigger="sse:change"
+		hx-trigger="vq:change"
 		hx-swap="outerHTML"
+		data-live
 		class="mt-6 flex items-start gap-3"
 	>
 		for _, r := range railsIn(b, "backlog") {
 			@rail(b, r)
 		}
-		<div class="flex min-w-0 flex-1 items-start gap-3 overflow-x-auto pb-2">
+		<div data-board-scroll class="flex min-w-0 flex-1 items-start gap-3 overflow-x-auto pb-2">
 			for _, c := range b.Active {
 				@column(b, c)
 			}
@@ -98,7 +97,7 @@ templ BoardSection(b board.Board) {
 }
 
 templ rail(b board.Board, c board.Column) {
-	<details class="group shrink-0 rounded-md bg-paper-alt open:w-64">
+	<details data-rail={ c.Status.ID } class="group shrink-0 rounded-md bg-paper-alt open:w-64">
 		<summary class="cursor-pointer list-none px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb] hover:text-accent">
 			{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
 		</summary>
@@ -189,11 +188,11 @@ templ ListPage(v ListView) {
 	@Shell(v.Project.Name) {
 		@projectHeader(v.Project, "list")
 		@chips(v.Chips, v.Clear, v.Filter.Active())
-		<div hx-ext="sse" sse-connect="/events/stream">
 		<div
 			id="list"
 			hx-get={ FilterHref("/p/"+v.Project.Key+"/list", v.Filter) }
-			hx-trigger="sse:change"
+			hx-trigger="vq:change"
+			data-live
 			hx-select="#list"
 			hx-swap="outerHTML"
 			class="mt-8 space-y-8"
@@ -213,7 +212,6 @@ templ ListPage(v ListView) {
 					</section>
 				}
 			}
-		</div>
 		</div>
 	}
 }

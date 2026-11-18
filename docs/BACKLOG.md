@@ -61,6 +61,18 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Drag-and-drop has no automated browser test; checked by hand in Chrome with scripted pointer events (the browser tool's own drag gesture doesn't trigger Sortable)
 - [ ] Each open page polls the database once a second for the newest event; fine locally, revisit for hosted mode with many viewers (an in-process broadcast from core would replace polling)
 
+- [ ] A change between a page render and its stream connecting (or during a reconnect after a restart) isn't announced — emit `id:` and honour `Last-Event-ID` (review 1b #4)
+- [ ] A failed drop (500 or network error) leaves the card where it was dropped until the next change — refresh the board on `htmx:responseError`/`sendError` (review 1b #5)
+- [ ] A drop's response can swap the board while the next card is being dragged — defer swaps of `#board` while dragging (review 1b #6)
+- [ ] "N older" links to the whole list, not the done tickets — add a status or category filter (review 1b #7)
+- [ ] Search: decomposed accents (NFD "résumé") find nothing — normalise to NFC; terms split across a ticket and its comments never match; bm25 from two tables compared directly; title hits repeat the title as snippet; results past 50 cut silently (review 1b #8, #9)
+- [ ] FTS tables key on implicit rowids — note in database.md; add delete triggers and a rebuild if hard deletes ever arrive (review 1b #10)
+- [ ] `MoveTicket` reports any `GetStatus` failure as a bad status — map only `sql.ErrNoRows` (review 1b #11)
+- [ ] Test gaps: stale before/after keys at the endpoint, the stream's ping, top-of-column drop into another column, renumber with a mid-column insert (review 1b #12)
+- [ ] Accessibility: `aria-pressed` on chip links → `aria-current`; `role="group"` on the filters; `j`/`k` should move real focus, not just a ring (review 1b #13)
+- [ ] Activity: "Nothing has happened yet." stays after the first live event (it sits outside `#feed`) (review 1b #14)
+- [ ] Filter and search clipping cuts by bytes, not characters (review 1b #15)
+
 ## Open questions
 
 - [ ] Prevent two servers on different ports sharing one data directory (lock file?) — needed before the CLI starts the server on demand (Phase 2)

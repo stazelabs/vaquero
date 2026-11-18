@@ -112,6 +112,21 @@ func TestPagesSubscribeToStream(t *testing.T) {
 		"/p/VAQ/list": `hx-select="#list"`,
 		"/activity":   `hx-select="#feed"`,
 	} {
-		contains(t, c.Get(path).Body, `sse-connect="/events/stream"`, `hx-trigger="sse:change"`, target)
+		page := c.Get(path).Body
+		// app.js owns the one stream per tab and triggers vq:change on
+		// every [data-live] part; no htmx extension holds a connection.
+		contains(t, page, "data-live", `hx-trigger="vq:change"`, target)
+		lacks(t, page, "sse-connect", "htmx-ext-sse")
 	}
+}
+
+// Open rails are tagged so app.js can keep them open across refreshes.
+func TestRailsCarryStableIDs(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	page := e.Client().Get("/p/VAQ").Body
+	if n := strings.Count(page, "data-rail="); n != 2 {
+		t.Fatalf("%d rails tagged", n)
+	}
+	contains(t, page, "data-board-scroll")
 }

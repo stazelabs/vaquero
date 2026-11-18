@@ -20,7 +20,6 @@ templ Shell(title string) {
 			<link rel="icon" href={ static.URL("favicon.svg") } type="image/svg+xml"/>
 			<link rel="stylesheet" href={ static.URL("css/tailwind.css") }/>
 			<script src={ static.URL("vendor/htmx.min.js") } nonce={ templ.GetNonce(ctx) } defer></script>
-			<script src={ static.URL("vendor/htmx-ext-sse.min.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 			<script src={ static.URL("vendor/sortable.min.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 			<script src={ static.URL("js/app.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 		</head>
