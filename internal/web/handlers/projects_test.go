@@ -3,6 +3,8 @@ package handlers_test
 import (
 	"context"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -193,4 +195,53 @@ func TestKeyChangeFlow(t *testing.T) {
 	// A refusal comes back as a toast on settings.
 	r = c.Post("/p/VQ/key", url.Values{"key": {"9"}})
 	contains(t, c.Follow(r).Body, "Use 2 to 10 capital letters")
+}
+
+func TestDeleteFlow(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "x"})
+	c := e.Client()
+	contains(t, c.Get("/p/VAQ/settings").Body, `action="/p/VAQ/delete"`, "Type VAQ to delete")
+	r := c.Post("/p/VAQ/delete", url.Values{"confirm": {"VAQ"}})
+	if r.Status != 303 || r.Location != "/" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Project VAQ deleted. A backup was saved first.")
+	contains(t, c.Follow(c.Get("/p/VAQ")).Body, "No project VAQ.")
+	entries, err := os.ReadDir(e.Deps.BackupDir)
+	if err != nil || len(entries) != 1 || !strings.HasPrefix(entries[0].Name(), "vaquero-") {
+		t.Fatalf("backups: %v %v", entries, err)
+	}
+}
+
+func TestDeleteWrongConfirmation(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	r := c.Post("/p/VAQ/delete", url.Values{"confirm": {"nope"}})
+	contains(t, c.Follow(r).Body, "Type VAQ to confirm.")
+	if _, err := e.Deps.R.GetProjectByKey(bg, "VAQ"); err != nil {
+		t.Fatal("deleted anyway")
+	}
+}
+
+// Review Focus 5.
+func TestDeleteWhenSnapshotFails(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.Deps.BackupDir = filepath.Join(blocker, "backups") // under a file: can't be created
+	e.Rebuild()
+	c := e.Client()
+	r := c.Post("/p/VAQ/delete", url.Values{"confirm": {"VAQ"}})
+	if r.Status != 303 || r.Location != "/p/VAQ/settings" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Couldn&#39;t save a backup, so nothing was deleted.")
+	if _, err := e.Deps.R.GetProjectByKey(bg, "VAQ"); err != nil {
+		t.Fatal("deleted without a backup")
+	}
 }

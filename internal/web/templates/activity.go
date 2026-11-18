@@ -44,6 +44,8 @@ func EventSentence(e EventView) string {
 		return "archived project " + e.ProjectKey
 	case core.EvProjectRestored:
 		return "restored project " + e.ProjectKey
+	case core.EvProjectDeleted:
+		return "deleted project " + s("key")
 	case core.EvStatusCreated:
 		return fmt.Sprintf("added status %s to %s", s("name"), e.ProjectKey)
 	case core.EvStatusUpdated:

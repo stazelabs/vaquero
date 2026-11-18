@@ -61,11 +61,14 @@ func TestEveryOperationEmitsOneEventOrNothing(t *testing.T) {
 			if got := snapshot(t, d); !maps.Equal(got, snap) {
 				t.Fatalf("bad input changed rows: %v → %v", snap, got)
 			}
+			// Count appended events by the sequence, not the row count:
+			// deleting a project removes its history, then appends one.
+			before, _ := d.RQ.MaxEventSeq(bg)
 			if err := op.good(c, f); err != nil {
 				t.Fatal(err)
 			}
-			if got := snapshot(t, d)["events"]; got != snap["events"]+1 {
-				t.Fatalf("events %d → %d", snap["events"], got)
+			if after, _ := d.RQ.MaxEventSeq(bg); after != before+1 {
+				t.Fatalf("events appended: %d", after-before)
 			}
 		})
 	}

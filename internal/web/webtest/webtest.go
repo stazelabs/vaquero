@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +37,10 @@ type Env struct {
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
 }
+
+// Rebuild serves a router built from the current Deps, after a test
+// changed them.
+func (e *Env) Rebuild() { e.Server.Config.Handler = web.NewRouter(e.Deps) }
 
 // Shutdown closes Deps.Shutdown, as the server does when it stops.
 func (e *Env) Shutdown() { e.shutdownOnce.Do(func() { close(e.shutdown) }) }
@@ -66,6 +71,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		Now:        now,
 		Shutdown:   shutdown,
 		StreamPoll: 20 * time.Millisecond,
+		BackupDir:  filepath.Join(dir, "backups"),
 	}
 	srv := httptest.NewServer(web.NewRouter(deps))
 	e := &Env{DB: d, Deps: deps, Server: srv, t: t, shutdown: shutdown}

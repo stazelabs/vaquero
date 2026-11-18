@@ -23,7 +23,9 @@ type Deps struct {
 	Core   *core.Core   // every change
 	Actor  gen.Actor    // who changes things: the local owner in local mode
 	Logger *slog.Logger
-	Now    func() time.Time
+	// BackupDir is where a snapshot is saved before a project is deleted.
+	BackupDir string
+	Now       func() time.Time
 
 	// Shutdown closes when the server starts shutting down, ending open
 	// live-update streams. StreamPoll is how often a stream checks for

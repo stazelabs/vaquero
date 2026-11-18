@@ -152,3 +152,41 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 	})
 	return p, err
 }
+
+// DeleteProject removes a project and everything in it: its tickets, their
+// tags, comments and links (including links from other projects' tickets),
+// its milestones, statuses and history. confirm must be the project's key
+// (any case). One project.deleted event remains, with no project id.
+// Callers take a backup first.
+func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string) error {
+	return c.tx(ctx, func(q *gen.Queries) error {
+		p, err := q.GetProject(ctx, projectID)
+		if err != nil {
+			return notFound(err, "get project")
+		}
+		if !strings.EqualFold(strings.TrimSpace(confirm), p.Key) {
+			return invalid("confirm", "Type "+p.Key+" to confirm.")
+		}
+		steps := []struct {
+			what string
+			run  func(context.Context, string) error
+		}{
+			{"ticket tags", q.DeleteProjectTicketTags},
+			{"comments", q.DeleteProjectComments},
+			{"links", q.DeleteProjectLinks},
+			{"events", func(ctx context.Context, id string) error {
+				return q.DeleteProjectEvents(ctx, nullString(id))
+			}},
+			{"tickets", q.DeleteProjectTickets},
+			{"milestones", q.DeleteProjectMilestones},
+			{"statuses", q.DeleteProjectStatuses},
+			{"project", q.DeleteProjectRow},
+		}
+		for _, s := range steps {
+			if err := s.run(ctx, p.ID); err != nil {
+				return fmt.Errorf("delete %s: %w", s.what, err)
+			}
+		}
+		return c.emit(ctx, q, by, EvProjectDeleted, "", "", map[string]string{"key": p.Key, "name": p.Name})
+	})
+}

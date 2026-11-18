@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
@@ -56,7 +57,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		return fmt.Errorf("owner: %w", err)
 	}
 	shutdown := make(chan struct{})
-	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown}
+	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown,
+		BackupDir: filepath.Join(cfg.DataDir, "backups")}
 	srv := &http.Server{
 		Handler:           web.NewRouter(d),
 		ReadHeaderTimeout: 10 * time.Second,

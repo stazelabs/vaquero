@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/templates"
@@ -159,6 +160,40 @@ func ProjectKeyChange(d Deps) http.HandlerFunc {
 			return
 		}
 		redirectWithFlash(w, r, flash.Success, "Key changed to "+np.Key+".", projectPath(np, "/settings"))
+	}
+}
+
+// backupKeep is how many pre-delete snapshots are kept.
+const backupKeep = 7
+
+// ProjectDelete deletes the project and everything in it, once the person
+// has typed its key. A snapshot of the database is saved first; if that
+// fails, nothing is deleted.
+func ProjectDelete(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		settings := projectPath(p, "/settings")
+		confirm := r.PostFormValue("confirm")
+		if !strings.EqualFold(strings.TrimSpace(confirm), p.Key) {
+			redirectWithFlash(w, r, flash.Error, "Type "+p.Key+" to confirm.", settings)
+			return
+		}
+		if _, err := appdb.Snapshot(r.Context(), d.RDB, d.BackupDir, d.Now()); err != nil {
+			d.Logger.ErrorContext(r.Context(), "snapshot before delete", "err", err)
+			redirectWithFlash(w, r, flash.Error, "Couldn't save a backup, so nothing was deleted.", settings)
+			return
+		}
+		if _, err := appdb.PruneBackups(d.BackupDir, backupKeep); err != nil {
+			d.Logger.WarnContext(r.Context(), "prune backups", "err", err)
+		}
+		if err := d.Core.DeleteProject(r.Context(), d.Actor.ID, p.ID, confirm); err != nil {
+			settingsAction(w, r, d, p, "", func() error { return err })
+			return
+		}
+		redirectWithFlash(w, r, flash.Success, "Project "+p.Key+" deleted. A backup was saved first.", "/")
 	}
 }
 

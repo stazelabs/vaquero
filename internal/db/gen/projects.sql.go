@@ -47,6 +47,85 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const deleteProjectComments = `-- name: DeleteProjectComments :exec
+DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = ?)
+`
+
+func (q *Queries) DeleteProjectComments(ctx context.Context, projectID string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectComments, projectID)
+	return err
+}
+
+const deleteProjectEvents = `-- name: DeleteProjectEvents :exec
+DELETE FROM events
+WHERE events.project_id = ?1
+   OR events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1)
+`
+
+func (q *Queries) DeleteProjectEvents(ctx context.Context, pid sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectEvents, pid)
+	return err
+}
+
+const deleteProjectLinks = `-- name: DeleteProjectLinks :exec
+DELETE FROM ticket_links
+WHERE ticket_links.from_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1)
+   OR ticket_links.to_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1)
+`
+
+// Links touching the project's tickets, from any project.
+func (q *Queries) DeleteProjectLinks(ctx context.Context, pid string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectLinks, pid)
+	return err
+}
+
+const deleteProjectMilestones = `-- name: DeleteProjectMilestones :exec
+DELETE FROM milestones WHERE project_id = ?
+`
+
+func (q *Queries) DeleteProjectMilestones(ctx context.Context, projectID string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectMilestones, projectID)
+	return err
+}
+
+const deleteProjectRow = `-- name: DeleteProjectRow :exec
+DELETE FROM projects WHERE id = ?
+`
+
+func (q *Queries) DeleteProjectRow(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectRow, id)
+	return err
+}
+
+const deleteProjectStatuses = `-- name: DeleteProjectStatuses :exec
+DELETE FROM statuses WHERE project_id = ?
+`
+
+func (q *Queries) DeleteProjectStatuses(ctx context.Context, projectID string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectStatuses, projectID)
+	return err
+}
+
+const deleteProjectTicketTags = `-- name: DeleteProjectTicketTags :exec
+
+DELETE FROM ticket_tags WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = ?)
+`
+
+// The statements DeleteProject runs, in order, inside one transaction.
+func (q *Queries) DeleteProjectTicketTags(ctx context.Context, projectID string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectTicketTags, projectID)
+	return err
+}
+
+const deleteProjectTickets = `-- name: DeleteProjectTickets :exec
+DELETE FROM tickets WHERE project_id = ?
+`
+
+func (q *Queries) DeleteProjectTickets(ctx context.Context, projectID string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectTickets, projectID)
+	return err
+}
+
 const getProject = `-- name: GetProject :one
 SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at FROM projects WHERE id = ?
 `

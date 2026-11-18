@@ -17,6 +17,7 @@ import (
 //   - status.moved: {"name", "from": position, "to": position}.
 //   - ticket.reordered: {"status": name}, a move within one column.
 //   - status.deleted: {"name"}.
+//   - project.deleted: {"key", "name"}, with no project id (it is gone).
 //   - comment.*: {"comment_id"}.
 //   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
 //   - actor.created: {"kind", "name"}.
@@ -25,6 +26,7 @@ const (
 	EvProjectUpdated    = "project.updated"
 	EvProjectArchived   = "project.archived"
 	EvProjectRestored   = "project.restored"
+	EvProjectDeleted    = "project.deleted"
 	EvStatusCreated     = "status.created"
 	EvStatusUpdated     = "status.updated"
 	EvStatusMoved       = "status.moved"
@@ -77,7 +79,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 // EventKinds lists every event kind core emits.
 func EventKinds() []string {
 	return []string{
-		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored,
+		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored, EvProjectDeleted,
 		EvStatusCreated, EvStatusUpdated, EvStatusMoved, EvStatusDeleted,
 		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
 		EvTicketCreated, EvTicketUpdated, EvTicketReordered,
