@@ -10,6 +10,7 @@ internal/config 85
 internal/core 75
 internal/db 70
 internal/idgen 95
+internal/legal 75
 internal/markdown 85
 internal/search 90
 internal/timefmt 95

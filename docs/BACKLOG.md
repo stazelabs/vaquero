@@ -66,12 +66,17 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] A drop's response can swap the board while the next card is being dragged — defer swaps of `#board` while dragging (review 1b #6)
 - [ ] "N older" links to the whole list, not the done tickets — add a status or category filter (review 1b #7)
 - [ ] Search: decomposed accents (NFD "résumé") find nothing — normalise to NFC; terms split across a ticket and its comments never match; bm25 from two tables compared directly; title hits repeat the title as snippet; results past 50 cut silently (review 1b #8, #9)
-- [ ] FTS tables key on implicit rowids — note in database.md; add delete triggers and a rebuild if hard deletes ever arrive (review 1b #10)
+- [x] FTS tables key on implicit rowids — delete triggers added with project delete (0004_hard_delete.sql); VACUUM would still renumber rowids, so never VACUUM the live database in place (Snapshot uses VACUUM INTO a copy) (review 1b #10)
 - [ ] `MoveTicket` reports any `GetStatus` failure as a bad status — map only `sql.ErrNoRows` (review 1b #11)
 - [ ] Test gaps: stale before/after keys at the endpoint, the stream's ping, top-of-column drop into another column, renumber with a mid-column insert (review 1b #12)
 - [ ] Accessibility: `aria-pressed` on chip links → `aria-current`; `role="group"` on the filters; `j`/`k` should move real focus, not just a ring (review 1b #13)
 - [ ] Activity: "Nothing has happened yet." stays after the first live event (it sits outside `#feed`) (review 1b #14)
 - [ ] Filter and search clipping cuts by bytes, not characters (review 1b #15)
+
+## Deferred from the footer, key and delete work
+
+- [ ] Restoring a pre-delete backup is manual (stop vaquero, copy `backups/vaquero-….sqlite` over `vaquero.db`); a `vaquero admin restore` command belongs with Phase 3's upgrade tooling
+- [ ] The footer's commit reads "dev" under `make dev` (air builds without ldflags); release builds stamp it
 
 ## Open questions
 

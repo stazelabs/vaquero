@@ -31,6 +31,11 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 - Migrations run at boot, after the listener binds and before it serves anything. `Migrate` refuses a database written by a newer vaquero.
 - After a schema or query change, run `make gen` and commit the generated files.
 
+## Search indexes
+
+- `tickets_fts` and `comments_fts` are FTS5 external-content tables keyed on the tickets' and comments' implicit rowids, kept current by triggers (insert, update, soft delete, hard delete). Never `VACUUM` the live database in place: it can renumber rowids and attach hits to the wrong tickets. Snapshots use `VACUUM INTO` a copy, which is fine.
+- The search query is hand-written in `internal/db/search.go` because sqlc can't read FTS5 tables.
+
 ## Instants and IDs
 
 - Format and parse instants only through internal/timefmt. Never call `time.Format` with your own layout for storage.
