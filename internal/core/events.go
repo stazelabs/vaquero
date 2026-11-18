@@ -1,0 +1,73 @@
+package core
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
+)
+
+// Event kinds. Payloads, all JSON objects:
+//
+//   - *.created: {} unless noted; ticket.created {"title"}.
+//   - *.updated: {"changes": {field: {"from", "to"}}}, only changed fields;
+//     ticket tags are sorted name lists.
+//   - status.moved: {"from": position, "to": position}.
+//   - status.deleted: {"name"}.
+//   - comment.*: {"comment_id"}.
+//   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
+//   - actor.created: {"kind", "name"}.
+const (
+	EvProjectCreated    = "project.created"
+	EvProjectUpdated    = "project.updated"
+	EvProjectArchived   = "project.archived"
+	EvProjectRestored   = "project.restored"
+	EvStatusCreated     = "status.created"
+	EvStatusUpdated     = "status.updated"
+	EvStatusMoved       = "status.moved"
+	EvStatusDeleted     = "status.deleted"
+	EvMilestoneCreated  = "milestone.created"
+	EvMilestoneUpdated  = "milestone.updated"
+	EvMilestoneClosed   = "milestone.closed"
+	EvMilestoneReopened = "milestone.reopened"
+	EvTicketCreated     = "ticket.created"
+	EvTicketUpdated     = "ticket.updated"
+	EvCommentCreated    = "comment.created"
+	EvCommentUpdated    = "comment.updated"
+	EvCommentDeleted    = "comment.deleted"
+	EvLinkCreated       = "link.created"
+	EvLinkDeleted       = "link.deleted"
+	EvActorCreated      = "actor.created"
+)
+
+// Change is one field's value before and after an update.
+type Change struct {
+	From any `json:"from"`
+	To   any `json:"to"`
+}
+
+// emit appends one event inside the caller's transaction. Empty ids are
+// stored as NULL; a nil payload is {}.
+func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectID, ticketID string, payload any) error {
+	body := []byte("{}")
+	if payload != nil {
+		var err error
+		if body, err = json.Marshal(payload); err != nil {
+			return fmt.Errorf("event payload: %w", err)
+		}
+	}
+	_, err := q.AppendEvent(ctx, gen.AppendEventParams{
+		At:        timefmt.Format(c.Now()),
+		ActorID:   actorID,
+		Kind:      kind,
+		ProjectID: nullString(projectID),
+		TicketID:  nullString(ticketID),
+		Payload:   string(body),
+	})
+	if err != nil {
+		return fmt.Errorf("append event: %w", err)
+	}
+	return nil
+}
