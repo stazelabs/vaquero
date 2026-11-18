@@ -1,0 +1,266 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/db/gen"
+
+// ProjectForm is the new-project and edit-project form's values and errors.
+type ProjectForm struct {
+	Key, Name, Description string
+	Errors                 map[string]string
+}
+
+// TicketRow is one ticket in a list.
+type TicketRow struct {
+	Key, Title, Assignee string
+	Priority             int64
+	Tags                 []string
+}
+
+// StatusGroup is a status and its tickets, in board order.
+type StatusGroup struct {
+	Status  gen.Status
+	Tickets []TicketRow
+}
+
+// ProjectView is the project page.
+type ProjectView struct {
+	Project gen.Project
+	Groups  []StatusGroup
+}
+
+// StatusRow is one status on the settings page.
+type StatusRow struct {
+	Status      gen.Status
+	First, Last bool
+}
+
+// SettingsView is the project settings page.
+type SettingsView struct {
+	Project    gen.Project
+	Form       ProjectForm
+	Statuses   []StatusRow
+	Milestones []gen.Milestone
+}
+
+// ProjectListPage is the front page: every project, archived ones last.
+templ ProjectListPage(rows []gen.ListProjectsRow) {
+	@Shell("Projects") {
+		<div class="flex items-center justify-between gap-4">
+			<h1 class={ h1Class }>Projects</h1>
+			<a href="/projects/new" class={ btnPrimary }>New project</a>
+		</div>
+		if len(rows) == 0 {
+			<p class="mt-8 text-sm text-muted">No projects yet. Create one to start tracking tickets.</p>
+		}
+		<ul class="mt-6 divide-y divide-line">
+			for _, p := range rows {
+				if !p.ArchivedAt.Valid {
+					@projectItem(p)
+				}
+			}
+		</ul>
+		if hasArchived(rows) {
+			<details class="mt-8">
+				<summary class="cursor-pointer text-sm text-muted">Archived</summary>
+				<ul class="mt-2 divide-y divide-line">
+					for _, p := range rows {
+						if p.ArchivedAt.Valid {
+							@projectItem(p)
+						}
+					}
+				</ul>
+			</details>
+		}
+	}
+}
+
+templ projectItem(p gen.ListProjectsRow) {
+	<li class="flex items-baseline gap-4 py-3">
+		<a href={ templ.SafeURL("/p/" + p.Key) } class="font-mono text-sm font-semibold text-accent hover:underline">{ p.Key }</a>
+		<a href={ templ.SafeURL("/p/" + p.Key) } class="flex-1 text-ink hover:text-accent">{ p.Name }</a>
+		<span class="text-sm text-muted">{ countLabel(p.OpenCount, "open ticket", "open tickets") }</span>
+	</li>
+}
+
+// ProjectNewPage is the new-project form.
+templ ProjectNewPage(f ProjectForm) {
+	@Shell("New project") {
+		<h1 class={ h1Class }>New project</h1>
+		<form method="post" action="/projects" class="mt-6 max-w-lg space-y-4">
+			@TextInput(InputProps{Name: "key", Label: "Key", Value: f.Key, Required: true, Placeholder: "VAQ", Error: f.Errors["key"]})
+			<p class="-mt-2 text-xs text-muted">2 to 10 capital letters or digits. Ticket keys start with it, like VAQ-12. It can't be changed later.</p>
+			@TextInput(InputProps{Name: "name", Label: "Name", Value: f.Name, Required: true, Error: f.Errors["name"]})
+			@TextArea(InputProps{Name: "description", Label: "Description", Value: f.Description, Rows: 4, Error: f.Errors["description"]})
+			<div class="flex items-center gap-4">
+				<button type="submit" class={ btnPrimary }>Create project</button>
+				<a href="/" class={ btnLink }>Cancel</a>
+			</div>
+		</form>
+	}
+}
+
+// ProjectPage lists a project's tickets grouped by status.
+templ ProjectPage(v ProjectView) {
+	@Shell(v.Project.Name) {
+		<div class="flex flex-wrap items-center justify-between gap-4">
+			<div>
+				<p class="font-mono text-sm text-muted">{ v.Project.Key }</p>
+				<h1 class={ h1Class }>{ v.Project.Name }</h1>
+			</div>
+			<div class="flex items-center gap-4">
+				<a href={ templ.SafeURL("/p/" + v.Project.Key + "/settings") } class={ btnLink }>Settings</a>
+				if !v.Project.ArchivedAt.Valid {
+					<a href={ templ.SafeURL("/p/" + v.Project.Key + "/new") } class={ btnPrimary }>New ticket</a>
+				}
+			</div>
+		</div>
+		if v.Project.ArchivedAt.Valid {
+			<p class="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink">This project is archived. Restore it in settings to add tickets.</p>
+		}
+		<div class="mt-8 space-y-8">
+			for _, g := range v.Groups {
+				<section>
+					<h2 class={ h2Class }>{ g.Status.Name } <span class="font-normal">· { itoa(int64(len(g.Tickets))) }</span></h2>
+					if len(g.Tickets) == 0 {
+						<p class="mt-2 text-sm text-muted">No tickets.</p>
+					} else {
+						<ul class="mt-2 divide-y divide-line rounded-md border border-line">
+							for _, t := range g.Tickets {
+								@ticketItem(t)
+							}
+						</ul>
+					}
+				</section>
+			}
+		</div>
+	}
+}
+
+templ ticketItem(t TicketRow) {
+	<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+		<a href={ templ.SafeURL("/t/" + t.Key) } class="font-mono text-xs text-muted hover:text-accent">{ t.Key }</a>
+		<a href={ templ.SafeURL("/t/" + t.Key) } class="min-w-0 flex-1 text-sm text-ink hover:text-accent">{ t.Title }</a>
+		if t.Priority > 0 {
+			<span class="text-xs text-muted">{ PriorityLabel(t.Priority) }</span>
+		}
+		for _, tag := range t.Tags {
+			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ tag }</span>
+		}
+		if t.Assignee != "" {
+			<span class="text-xs text-muted">{ t.Assignee }</span>
+		}
+	</li>
+}
+
+// ProjectSettingsPage edits a project, its statuses and milestones.
+templ ProjectSettingsPage(v SettingsView) {
+	@Shell(v.Project.Name + " settings") {
+		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a></p>
+		<h1 class={ h1Class }>Settings</h1>
+		<section class="mt-8">
+			<h2 class={ h2Class }>Project</h2>
+			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key) } class="mt-3 max-w-lg space-y-4">
+				@TextInput(InputProps{Name: "name", Label: "Name", Value: v.Form.Name, Required: true, Error: v.Form.Errors["name"]})
+				@TextArea(InputProps{Name: "description", Label: "Description", Value: v.Form.Description, Rows: 4, Error: v.Form.Errors["description"]})
+				<button type="submit" class={ btnPrimary }>Save project</button>
+			</form>
+		</section>
+		<section class="mt-10">
+			<h2 class={ h2Class }>Statuses</h2>
+			<p class="mt-1 text-sm text-muted">Tickets move through these in order. Each category keeps at least one status.</p>
+			<ul class="mt-3 max-w-2xl divide-y divide-line rounded-md border border-line">
+				for _, s := range v.Statuses {
+					@statusItem(v.Project.Key, s)
+				}
+			</ul>
+			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/statuses") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
+				<div class="flex-1">
+					@TextInput(InputProps{Name: "name", Label: "New status", Required: true})
+				</div>
+				@Select(SelectProps{Name: "category", Label: "Category", Selected: "todo", Options: CategoryOptions()})
+				<button type="submit" class={ btnSecondary }>Add status</button>
+			</form>
+		</section>
+		<section class="mt-10">
+			<h2 class={ h2Class }>Milestones</h2>
+			if len(v.Milestones) == 0 {
+				<p class="mt-2 text-sm text-muted">No milestones yet.</p>
+			}
+			<ul class="mt-3 max-w-2xl space-y-3">
+				for _, m := range v.Milestones {
+					@milestoneItem(v.Project.Key, m)
+				}
+			</ul>
+			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/milestones") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
+				<div class="flex-1">
+					@TextInput(InputProps{Name: "name", Label: "New milestone", Required: true})
+				</div>
+				@TextInput(InputProps{Name: "due_on", Label: "Due", Type: "date"})
+				<button type="submit" class={ btnSecondary }>Add milestone</button>
+			</form>
+		</section>
+		<section class="mt-10">
+			<h2 class={ h2Class }>Archive</h2>
+			if v.Project.ArchivedAt.Valid {
+				<p class="mt-2 text-sm text-muted">This project is archived: it is listed last and takes no new tickets.</p>
+				<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/restore") } class="mt-3">
+					<button type="submit" class={ btnSecondary }>Restore project</button>
+				</form>
+			} else {
+				<p class="mt-2 text-sm text-muted">An archived project is listed last and takes no new tickets. Nothing is deleted.</p>
+				<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/archive") } class="mt-3">
+					<button type="submit" class={ btnDanger }>Archive project</button>
+				</form>
+			}
+		</section>
+	}
+}
+
+templ statusItem(key string, r StatusRow) {
+	<li class="flex flex-wrap items-center gap-3 px-3 py-2">
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/rename") } class="flex flex-1 items-center gap-2">
+			<label for={ "s-" + r.Status.ID } class="sr-only">Name</label>
+			<input id={ "s-" + r.Status.ID } name="name" value={ r.Status.Name } class={ inputClass + " max-w-48" }/>
+			<button type="submit" class={ btnLink }>Rename</button>
+		</form>
+		<span class="w-24 text-xs text-muted">{ CategoryLabel(r.Status.Category) }</span>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/up") }>
+			<button type="submit" class={ btnLink } disabled?={ r.First } aria-label={ "Move " + r.Status.Name + " up" }>Up</button>
+		</form>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/down") }>
+			<button type="submit" class={ btnLink } disabled?={ r.Last } aria-label={ "Move " + r.Status.Name + " down" }>Down</button>
+		</form>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/delete") }>
+			<button type="submit" class="text-sm text-danger hover:underline" aria-label={ "Delete " + r.Status.Name }>Delete</button>
+		</form>
+	</li>
+}
+
+templ milestoneItem(key string, m gen.Milestone) {
+	<li class={ panelClass }>
+		<div class="flex flex-wrap items-baseline justify-between gap-2">
+			<p class="font-medium text-ink">
+				{ m.Name }
+				if m.ClosedAt.Valid {
+					<span class="ml-2 text-xs text-muted">Closed</span>
+				}
+			</p>
+			<span class="text-sm text-muted">{ dueLabel(m) }</span>
+		</div>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/milestones/" + m.ID) } class="mt-3 flex flex-wrap items-end gap-3">
+			<div class="flex-1">
+				@TextInput(InputProps{Name: "name", ID: "m-name-" + m.ID, Label: "Name", Value: m.Name, Required: true})
+			</div>
+			@TextInput(InputProps{Name: "due_on", ID: "m-due-" + m.ID, Label: "Due", Type: "date", Value: m.DueOn.String})
+			<button type="submit" class={ btnSecondary }>Save</button>
+		</form>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/milestones/" + m.ID + closeOrReopen(m)) } class="mt-2">
+			<button type="submit" class={ btnLink }>
+				if m.ClosedAt.Valid {
+					Reopen milestone
+				} else {
+					Close milestone
+				}
+			</button>
+		</form>
+	</li>
+}

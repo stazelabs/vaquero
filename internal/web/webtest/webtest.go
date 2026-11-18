@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -69,11 +70,23 @@ type Client struct {
 	base string
 }
 
-// Client returns a new client that never follows redirects.
+// Client returns a new client with its own cookie jar (so a toast set on a
+// redirect shows on the next page) that never follows redirects.
 func (e *Env) Client() *Client {
+	jar, _ := cookiejar.New(nil)
 	return &Client{t: e.t, base: e.Server.URL, http: &http.Client{
+		Jar:           jar,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}}
+}
+
+// Follow requests the Location of a redirect response.
+func (c *Client) Follow(r *Response) *Response {
+	c.t.Helper()
+	if r.Location == "" {
+		c.t.Fatalf("not a redirect: %d", r.Status)
+	}
+	return c.Get(r.Location)
 }
 
 // Response is what a request returned, body read in full.

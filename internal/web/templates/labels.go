@@ -1,0 +1,84 @@
+package templates
+
+import (
+	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
+)
+
+var categoryLabels = map[string]string{
+	"backlog": "Backlog", "todo": "Todo", "in_progress": "In progress",
+	"in_review": "In review", "done": "Done", "cancelled": "Cancelled",
+}
+
+// CategoryLabel is a status category in words.
+func CategoryLabel(c string) string {
+	if l, ok := categoryLabels[c]; ok {
+		return l
+	}
+	return c
+}
+
+// CategoryOptions are the categories for a Select, in board order.
+func CategoryOptions() []Option {
+	out := make([]Option, len(core.Categories))
+	for i, c := range core.Categories {
+		out[i] = Option{Value: c, Label: CategoryLabel(c)}
+	}
+	return out
+}
+
+var priorityLabels = []string{"No priority", "Urgent", "High", "Medium", "Low"}
+
+// PriorityLabel is a ticket priority in words.
+func PriorityLabel(p int64) string {
+	if p < 0 || int(p) >= len(priorityLabels) {
+		return priorityLabels[0]
+	}
+	return priorityLabels[p]
+}
+
+// PriorityOptions are the priorities for a Select: none, then urgent to low.
+func PriorityOptions() []Option {
+	out := make([]Option, len(priorityLabels))
+	for i, l := range priorityLabels {
+		out[i] = Option{Value: itoa(int64(i)), Label: l}
+	}
+	return out
+}
+
+// dueLabel is a milestone's due date in words, or "".
+func dueLabel(m gen.Milestone) string {
+	if !m.DueOn.Valid {
+		return ""
+	}
+	return "Due " + timefmt.Day(m.DueOn.String)
+}
+
+// isDone says whether a status category counts as finished.
+func isDone(category string) bool { return category == "done" || category == "cancelled" }
+
+// countLabel is "1 open ticket" or "3 open tickets".
+func countLabel(n int64, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return itoa(n) + " " + many
+}
+
+func hasArchived(rows []gen.ListProjectsRow) bool {
+	for _, p := range rows {
+		if p.ArchivedAt.Valid {
+			return true
+		}
+	}
+	return false
+}
+
+// closeOrReopen is the path suffix of a milestone's close or reopen action.
+func closeOrReopen(m gen.Milestone) string {
+	if m.ClosedAt.Valid {
+		return "/reopen"
+	}
+	return "/close"
+}

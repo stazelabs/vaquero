@@ -98,3 +98,5 @@ func toastClass(k flash.Kind) string {
 	}
 	return "bg-ink text-paper"
 }
+
+func itoa(n int64) string { return strconv.FormatInt(n, 10) }
