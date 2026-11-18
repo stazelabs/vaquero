@@ -88,3 +88,32 @@ func TestServeReportsAddressInUse(t *testing.T) {
 		t.Fatalf("a failed second instance touched the data directory: %v", err)
 	}
 }
+
+// Review Focus 4: an open live-update stream doesn't hold up shutdown.
+func TestServeStopsPromptlyWithOpenStream(t *testing.T) {
+	addr := freeAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, testConfig(t, addr, t.TempDir()), slog.New(slog.DiscardHandler)) }()
+	var res *http.Response
+	var err error
+	for range 50 {
+		if res, err = http.Get("http://" + addr + "/events/stream"); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve held open by the stream")
+	}
+}

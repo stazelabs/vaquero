@@ -168,3 +168,14 @@ func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString)
 	}
 	return items, nil
 }
+
+const maxEventSeq = `-- name: MaxEventSeq :one
+SELECT CAST(coalesce(max(seq), 0) AS INTEGER) FROM events
+`
+
+func (q *Queries) MaxEventSeq(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, maxEventSeq)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}

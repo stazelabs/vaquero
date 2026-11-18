@@ -74,3 +74,25 @@ window.vqDragging = false;
     init(document);
   });
 })();
+
+// Live refreshes wait while a card is being dragged: a refresh of #board
+// asked for mid-drag is dropped and run once the drag ends.
+(function () {
+  var pending = false;
+  document.body.addEventListener("htmx:beforeRequest", function (ev) {
+    var elt = ev.detail && ev.detail.elt;
+    if (window.vqDragging && elt && elt.id === "board" && ev.detail.requestConfig && ev.detail.requestConfig.verb === "get") {
+      ev.preventDefault();
+      pending = true;
+    }
+  });
+  document.addEventListener("vq:dragend", function () {
+    if (pending && window.htmx) {
+      pending = false;
+      var board = document.getElementById("board");
+      if (board) {
+        window.htmx.trigger(board, "sse:change");
+      }
+    }
+  });
+})();

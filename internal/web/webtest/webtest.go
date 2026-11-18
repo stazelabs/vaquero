@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,7 +32,13 @@ type Env struct {
 	Deps   handlers.Deps
 	Server *httptest.Server
 	t      testing.TB
+
+	shutdown     chan struct{}
+	shutdownOnce sync.Once
 }
+
+// Shutdown closes Deps.Shutdown, as the server does when it stops.
+func (e *Env) Shutdown() { e.shutdownOnce.Do(func() { close(e.shutdown) }) }
 
 // New boots the router in local mode on a fresh database. opts adjust the
 // config before the router is built.
@@ -52,14 +59,19 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 	if err != nil {
 		t.Fatalf("webtest: owner: %v", err)
 	}
+	shutdown := make(chan struct{})
 	deps := handlers.Deps{
 		Cfg: cfg, DB: d.W, R: d.RQ, Core: c, Actor: owner,
-		Logger: slog.New(slog.DiscardHandler),
-		Now:    now,
+		Logger:     slog.New(slog.DiscardHandler),
+		Now:        now,
+		Shutdown:   shutdown,
+		StreamPoll: 20 * time.Millisecond,
 	}
 	srv := httptest.NewServer(web.NewRouter(deps))
-	t.Cleanup(srv.Close)
-	return &Env{DB: d, Deps: deps, Server: srv, t: t}
+	e := &Env{DB: d, Deps: deps, Server: srv, t: t, shutdown: shutdown}
+	// Streams end before the server closes, or Close would wait on them.
+	t.Cleanup(func() { e.Shutdown(); srv.Close() })
+	return e
 }
 
 // Client is an HTTP client for e's server. Its requests carry

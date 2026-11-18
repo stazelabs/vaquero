@@ -55,7 +55,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err != nil {
 		return fmt.Errorf("owner: %w", err)
 	}
-	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), Core: c, Actor: owner, Logger: logger, Now: time.Now}
+	shutdown := make(chan struct{})
+	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown}
 	srv := &http.Server{
 		Handler:           web.NewRouter(d),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -64,6 +65,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		IdleTimeout:       120 * time.Second,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 	}
+	// Open live-update streams end as soon as shutdown starts, so the drain
+	// doesn't wait on them.
+	srv.RegisterOnShutdown(func() { close(shutdown) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
 	logger.Info("vaquero is running", "url", "http://"+ln.Addr().String(), "data", cfg.DataDir, "version", version.Version)

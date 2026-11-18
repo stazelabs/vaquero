@@ -23,4 +23,10 @@ type Deps struct {
 	Actor  gen.Actor    // who changes things: the local owner in local mode
 	Logger *slog.Logger
 	Now    func() time.Time
+
+	// Shutdown closes when the server starts shutting down, ending open
+	// live-update streams. StreamPoll is how often a stream checks for
+	// changes (one second when zero).
+	Shutdown   <-chan struct{}
+	StreamPoll time.Duration
 }

@@ -24,3 +24,6 @@ ORDER BY e.seq DESC;
 
 -- name: CountEvents :one
 SELECT count(*) FROM events;
+
+-- name: MaxEventSeq :one
+SELECT CAST(coalesce(max(seq), 0) AS INTEGER) FROM events;
