@@ -190,3 +190,23 @@ func TestTicketBodyRenderedSafely(t *testing.T) {
 	lacks(t, page, "<script>alert", `href="javascript:`)
 	contains(t, page, "&lt;script&gt;")
 }
+
+// Review Focus 1 in the browser: a save from a form opened before someone
+// else's change is refused and keeps what was typed.
+func TestEditFormConflict(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "Original"})
+	c := e.Client()
+	contains(t, c.Get("/t/VAQ-1/edit").Body, `name="version" value="1"`)
+	if r := c.Post("/t/VAQ-1", url.Values{"title": {"Agent's title"}, "version": {"1"}}); r.Status != 303 {
+		t.Fatalf("first save: %d", r.Status)
+	}
+	r := c.Post("/t/VAQ-1", url.Values{"title": {"My title"}, "version": {"1"}})
+	if r.Status != 409 {
+		t.Fatalf("stale save: %d", r.Status)
+	}
+	contains(t, r.Body, "VAQ-1 changed since you opened this form.", `value="My title"`, `name="version" value="2"`)
+	if r := c.Post("/t/VAQ-1", url.Values{"title": {"My title"}, "version": {"2"}}); r.Status != 303 {
+		t.Fatalf("deliberate overwrite: %d", r.Status)
+	}
+}

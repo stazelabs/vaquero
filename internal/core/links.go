@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/idgen"
@@ -54,6 +55,9 @@ func (c *Core) AddLink(ctx context.Context, by, fromTicketID, kind string, to Ti
 		if dup {
 			return invalid("to", "Those tickets are already linked that way.")
 		}
+		if err := c.checkLoop(ctx, q, from, target, kind); err != nil {
+			return err
+		}
 		l, err = q.CreateLink(ctx, gen.CreateLinkParams{ID: idgen.New(), FromID: from.ID, ToID: target.ID, Kind: kind, CreatedAt: timefmt.Format(c.Now())})
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
@@ -90,4 +94,65 @@ func (c *Core) RemoveLink(ctx context.Context, by, linkID string) error {
 		key := TicketKey{Project: toProject.Key, Number: to.Number}.String()
 		return c.emit(ctx, q, by, EvLinkDeleted, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": l.Kind, "to": key})
 	})
+}
+
+// maxLoopWalk bounds the blocking-chain walk.
+const maxLoopWalk = 1000
+
+// checkLoop refuses a link that would close a loop: from blocking target
+// when target already blocks from (directly or through a chain), or from
+// duplicating target when target already duplicates from.
+func (c *Core) checkLoop(ctx context.Context, q *gen.Queries, from, target gen.Ticket, kind string) error {
+	keyOf := func(project string, number int64) string { return TicketKey{Project: project, Number: number}.String() }
+	switch kind {
+	case "duplicates":
+		n, err := q.LinkExists(ctx, gen.LinkExistsParams{FromID: target.ID, ToID: from.ID, Kind: "duplicates"})
+		if err != nil {
+			return fmt.Errorf("check duplicates: %w", err)
+		}
+		if n > 0 {
+			p, err := q.GetProject(ctx, target.ProjectID)
+			if err != nil {
+				return fmt.Errorf("get project: %w", err)
+			}
+			return invalid("to", keyOf(p.Key, target.Number)+" already duplicates this ticket.")
+		}
+	case "blocks":
+		// Walk outward from target along "blocks"; reaching from is a loop.
+		type step struct {
+			id, key string
+			prev    int
+		}
+		tp, err := q.GetProject(ctx, target.ProjectID)
+		if err != nil {
+			return fmt.Errorf("get project: %w", err)
+		}
+		queue := []step{{id: target.ID, key: keyOf(tp.Key, target.Number), prev: -1}}
+		seen := map[string]bool{target.ID: true}
+		for i := 0; i < len(queue) && i < maxLoopWalk; i++ {
+			next, err := q.ListBlockedBy(ctx, queue[i].id)
+			if err != nil {
+				return fmt.Errorf("walk blocks: %w", err)
+			}
+			for _, n := range next {
+				if n.ID == from.ID {
+					// The chain from target to here, without from itself.
+					var via []string
+					for j := i; j > 0; j = queue[j].prev {
+						via = append([]string{queue[j].key}, via...)
+					}
+					head := queue[0].key
+					if len(via) == 0 {
+						return invalid("to", head+" already blocks this ticket.")
+					}
+					return invalid("to", "That would make a loop: "+head+" blocks this ticket through "+strings.Join(via, ", ")+".")
+				}
+				if !seen[n.ID] {
+					seen[n.ID] = true
+					queue = append(queue, step{id: n.ID, key: keyOf(n.Key, n.Number), prev: i})
+				}
+			}
+		}
+	}
+	return nil
 }

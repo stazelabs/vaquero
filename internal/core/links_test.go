@@ -62,3 +62,44 @@ func TestLinksCrossProjects(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Review Focus 4.
+func TestBlockingLoopRefused(t *testing.T) {
+	c, d, f := newFixture(t)
+	t3, _ := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Third"})
+	// VAQ-1 blocks VAQ-2, VAQ-2 blocks VAQ-3.
+	if _, err := c.AddLink(bg, f.Owner.ID, f.T1.ID, "blocks", key("VAQ-2")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AddLink(bg, f.Owner.ID, f.T2.ID, "blocks", key("VAQ-3")); err != nil {
+		t.Fatal(err)
+	}
+	before := eventCount(t, d)
+	_, err := c.AddLink(bg, f.Owner.ID, f.T2.ID, "blocks", key("VAQ-1"))
+	fieldErr(t, err, "to", "VAQ-1 already blocks this ticket.")
+	_, err = c.AddLink(bg, f.Owner.ID, t3.ID, "blocks", key("VAQ-1"))
+	fieldErr(t, err, "to", "That would make a loop: VAQ-1 blocks this ticket through VAQ-2.")
+	if eventCount(t, d) != before {
+		t.Fatal("refusals wrote events")
+	}
+}
+
+func TestDuplicateBothWaysRefused(t *testing.T) {
+	c, _, f := newFixture(t)
+	if _, err := c.AddLink(bg, f.Owner.ID, f.T1.ID, "duplicates", key("VAQ-2")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.AddLink(bg, f.Owner.ID, f.T2.ID, "duplicates", key("VAQ-1"))
+	fieldErr(t, err, "to", "VAQ-1 already duplicates this ticket.")
+}
+
+func TestRelatesLoopAllowed(t *testing.T) {
+	c, _, f := newFixture(t)
+	t3, _ := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Third"})
+	if _, err := c.AddLink(bg, f.Owner.ID, f.T1.ID, "relates", key("VAQ-3")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AddLink(bg, f.Owner.ID, t3.ID, "relates", key("VAQ-2")); err != nil {
+		t.Fatal(err)
+	}
+}

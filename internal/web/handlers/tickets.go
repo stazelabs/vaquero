@@ -184,6 +184,7 @@ func TicketEdit(d Deps) http.HandlerFunc {
 			Project: p, TicketKey: ticketKey(p, t.Number), Title: t.Title, Body: t.Body,
 			StatusID: t.StatusID, Priority: strconv.FormatInt(t.Priority, 10),
 			AssigneeID: t.AssigneeID.String, MilestoneID: t.MilestoneID.String,
+			Version: strconv.FormatInt(t.Version, 10),
 		}
 		if t.ParentID.Valid {
 			parent, err := d.R.GetTicket(ctx, t.ParentID.String)
@@ -222,7 +223,17 @@ func TicketUpdate(d Deps) http.HandlerFunc {
 			formPage(w, r, d, p, f, t.MilestoneID.String, http.StatusUnprocessableEntity)
 			return
 		}
-		if _, err := d.Core.UpdateTicket(r.Context(), d.Actor.ID, t.ID, in); err != nil {
+		version, _ := strconv.ParseInt(r.PostFormValue("version"), 10, 64)
+		f.Version = r.PostFormValue("version")
+		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, in.Patch(), version); err != nil {
+			if conflict, ok := errors.AsType[*core.Conflict](err); ok {
+				// Keep what was typed; the form now carries the current
+				// version, so saving again overwrites knowingly.
+				f.Version = strconv.FormatInt(conflict.Current.Version, 10)
+				f.Conflict = strings.Replace(conflict.Error(), "since you read it", "since you opened this form", 1)
+				formPage(w, r, d, p, f, t.MilestoneID.String, http.StatusConflict)
+				return
+			}
 			invalidOrError(w, r, d, err, func(fields map[string]string) {
 				f.Errors = fields
 				formPage(w, r, d, p, f, t.MilestoneID.String, http.StatusUnprocessableEntity)

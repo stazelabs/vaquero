@@ -66,6 +66,59 @@ func (q *Queries) GetLink(ctx context.Context, id string) (TicketLink, error) {
 	return i, err
 }
 
+const linkExists = `-- name: LinkExists :one
+SELECT count(*) FROM ticket_links WHERE from_id = ? AND to_id = ? AND kind = ?
+`
+
+type LinkExistsParams struct {
+	FromID string
+	ToID   string
+	Kind   string
+}
+
+func (q *Queries) LinkExists(ctx context.Context, arg LinkExistsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, linkExists, arg.FromID, arg.ToID, arg.Kind)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const listBlockedBy = `-- name: ListBlockedBy :many
+SELECT l.to_id AS id, p.key, t.number
+FROM ticket_links l JOIN tickets t ON t.id = l.to_id JOIN projects p ON p.id = t.project_id
+WHERE l.from_id = ? AND l.kind = 'blocks'
+`
+
+type ListBlockedByRow struct {
+	ID     string
+	Key    string
+	Number int64
+}
+
+// The tickets a ticket blocks, for the loop check.
+func (q *Queries) ListBlockedBy(ctx context.Context, fromID string) ([]ListBlockedByRow, error) {
+	rows, err := q.db.QueryContext(ctx, listBlockedBy, fromID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBlockedByRow{}
+	for rows.Next() {
+		var i ListBlockedByRow
+		if err := rows.Scan(&i.ID, &i.Key, &i.Number); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinksFrom = `-- name: ListLinksFrom :many
 SELECT l.id, l.kind, t.id AS other_id, p.key AS other_key, t.number AS other_number,
        t.title AS other_title, s.category AS other_category

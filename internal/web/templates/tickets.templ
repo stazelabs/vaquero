@@ -12,6 +12,8 @@ type TicketForm struct {
 	TicketKey                                     string // "" when creating
 	Title, Body, StatusID, Priority, AssigneeID   string
 	Parent, MilestoneID, Tags                     string
+	Version                                       string // the version the form was opened at
+	Conflict                                      string // set when a save was refused as stale
 	Statuses, Assignees, Milestones               []Option
 	Errors                                        map[string]string
 }
@@ -62,7 +64,16 @@ templ TicketFormPage(f TicketForm) {
 		if msg := f.Errors["project"]; msg != "" {
 			<p class="mt-4 text-sm text-danger" role="alert">{ msg }</p>
 		}
+		if f.Conflict != "" {
+			<div class="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink" role="alert">
+				{ f.Conflict } Saving again will overwrite those changes.
+				<a href={ templ.SafeURL("/t/" + f.TicketKey) } class={ btnLink }>See the ticket now</a>
+			</div>
+		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
+			if f.Version != "" {
+				<input type="hidden" name="version" value={ f.Version }/>
+			}
 			<div class="space-y-4 lg:col-span-2">
 				@TextInput(InputProps{Name: "title", Label: "Title", Value: f.Title, Required: true, Error: f.Errors["title"]})
 				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"]})

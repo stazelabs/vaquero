@@ -250,60 +250,7 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 // included. A ticket whose status changes moves to the end of the new
 // status's column. An update that changes nothing writes nothing.
 func (c *Core) UpdateTicket(ctx context.Context, by, ticketID string, in TicketInput) (gen.Ticket, error) {
-	var t gen.Ticket
-	err := c.tx(ctx, func(q *gen.Queries) error {
-		var err error
-		if t, err = q.GetTicket(ctx, ticketID); err != nil {
-			return notFound(err, "get ticket")
-		}
-		p, err := q.GetProject(ctx, t.ProjectID)
-		if err != nil {
-			return fmt.Errorf("get project: %w", err)
-		}
-		tf, err := checkTicket(ctx, q, p, t.ID, in)
-		if err != nil {
-			return err
-		}
-		old, err := c.ticketView(ctx, q, p, t)
-		if err != nil {
-			return err
-		}
-		newTags, err := c.upsertTags(ctx, q, tf.Tags)
-		if err != nil {
-			return err
-		}
-		tf.tags = newTags
-
-		changes := diffTicket(old, tf)
-		if len(changes) == 0 {
-			return nil
-		}
-		now := timefmt.Format(c.Now())
-		pos, statusAt := t.Position, t.StatusChangedAt
-		if tf.StatusID != t.StatusID {
-			if pos, err = c.nextPosition(ctx, q, tf.StatusID); err != nil {
-				return err
-			}
-			statusAt = now
-		}
-		if err := q.UpdateTicket(ctx, gen.UpdateTicketParams{
-			Title: tf.Title, Body: tf.Body, StatusID: tf.StatusID, Priority: tf.Priority,
-			AssigneeID: nullString(tf.AssigneeID), ParentID: nullString(tf.ParentID),
-			MilestoneID: nullString(tf.MilestoneID), Position: pos, UpdatedAt: now, StatusChangedAt: statusAt, ID: t.ID,
-		}); err != nil {
-			return fmt.Errorf("update ticket: %w", err)
-		}
-		if _, ok := changes["tags"]; ok {
-			if err := c.replaceTags(ctx, q, t.ID, old.tags, newTags); err != nil {
-				return err
-			}
-		}
-		if t, err = q.GetTicket(ctx, t.ID); err != nil {
-			return fmt.Errorf("reload ticket: %w", err)
-		}
-		return c.emit(ctx, q, by, EvTicketUpdated, p.ID, t.ID, map[string]any{"changes": changes})
-	})
-	return t, err
+	return c.PatchTicket(ctx, by, ticketID, in.Patch(), 0)
 }
 
 // ticketView is a stored ticket in the shape checkTicket returns, so the

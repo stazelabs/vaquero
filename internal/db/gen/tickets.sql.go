@@ -359,7 +359,7 @@ func (q *Queries) MaxPositionInStatus(ctx context.Context, statusID string) (flo
 }
 
 const placeTicket = `-- name: PlaceTicket :exec
-UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ? WHERE id = ?
+UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?
 `
 
 type PlaceTicketParams struct {
@@ -397,7 +397,8 @@ func (q *Queries) SetTicketPosition(ctx context.Context, arg SetTicketPositionPa
 
 const updateTicket = `-- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
-       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?
+       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?,
+       version = version + 1
 WHERE id = ?
 `
 

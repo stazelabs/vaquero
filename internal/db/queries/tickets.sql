@@ -26,7 +26,8 @@ ORDER BY t.number;
 
 -- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
-       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?
+       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?,
+       version = version + 1
 WHERE id = ?;
 
 -- name: MaxPositionInStatus :one
@@ -50,4 +51,4 @@ SELECT id, position FROM tickets WHERE status_id = ? ORDER BY position, number;
 UPDATE tickets SET position = ? WHERE id = ?;
 
 -- name: PlaceTicket :exec
-UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ? WHERE id = ?;
+UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?;

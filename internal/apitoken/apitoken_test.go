@@ -33,7 +33,7 @@ func TestMintParseHash(t *testing.T) {
 	if apitoken.Prefix(raw) != raw[:9] {
 		t.Fatal(apitoken.Prefix(raw))
 	}
-	h1, h2 := apitoken.Hash(raw), apitoken.Hash(raw[:len(raw)-0])
+	h1, h2 := apitoken.Hash(raw), apitoken.Hash(strings.Clone(raw))
 	if h1 != h2 || h1 == apitoken.Hash(other) || strings.Contains(h1, raw[3:]) {
 		t.Fatal("hash")
 	}
