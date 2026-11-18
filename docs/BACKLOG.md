@@ -100,7 +100,8 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 ## Icons and in-app help (requested 2026-11-19)
 
-- [ ] Lucide icons through the UI; in-app help at `/help` (with markdown for agents and `vaquero docs`) — plan: docs/superpowers/plans/2026-11-19-icons-and-help.md
+- [x] Lucide icons through the UI; in-app help at `/help` (with markdown for agents and `vaquero docs`) — plan: docs/superpowers/plans/2026-11-19-icons-and-help.md
+- [ ] Help: search the articles from the header search box; an agents-and-claims and an MCP article arrive with Phase 2b
 
 ## Folded into Phase 2b
 

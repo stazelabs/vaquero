@@ -25,6 +25,12 @@ Applies to templ strings, toasts, error messages, CLI output, the README and doc
 - Never name competing products in docs or UI.
 - Never name a model provider in app copy.
 
+## Help articles
+
+- Documentation lives in `internal/help/articles/*.md` and ships in the binary (`/help`, `/help/{slug}.md`, `vaquero docs`). Front matter: `title`, `section` (getting-started, using, command-line, api-and-agents), `summary` (one sentence), `order`; every article has `##` headings.
+- A new CLI command, keyboard shortcut or `/api/v1` route needs its line in the `cli`, `keyboard-shortcuts` or `api` article: tests fail naming what is missing. Links between articles use `/help/slug` (and `#anchor`); a link to a missing article or heading fails a test.
+- Same voice as the UI. Write for someone using Vaquero, not someone reading the code; say what happens, then how.
+
 ## Specifics
 
 - Buttons name the action: "Create ticket", not "Submit".

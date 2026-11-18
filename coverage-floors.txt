@@ -12,6 +12,7 @@ internal/client 75
 internal/config 85
 internal/core 75
 internal/db 70
+internal/help 75
 internal/idgen 95
 internal/legal 75
 internal/lockfile 80
@@ -21,5 +22,6 @@ internal/timefmt 95
 internal/version 95
 internal/web 80
 internal/web/flash 95
+internal/web/icons 95
 internal/web/handlers 70
 internal/web/middleware 90
