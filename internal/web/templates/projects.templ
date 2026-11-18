@@ -89,7 +89,7 @@ templ ProjectNewPage(f ProjectForm) {
 templ ProjectSettingsPage(v SettingsView) {
 	@Shell(v.Project.Name + " settings") {
 		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a></p>
-		<h1 class={ h1Class }>Settings</h1>
+		@titleWithHelp("Settings", "projects-and-tickets", "About projects")
 		<section class="mt-8">
 			<h2 class={ h2Class }>Project</h2>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key) } class="mt-3 max-w-lg space-y-4">

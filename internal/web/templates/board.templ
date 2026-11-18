@@ -76,7 +76,12 @@ templ chips(cs []Chip, clear string, active bool) {
 templ BoardPage(v BoardView) {
 	@Shell(v.Board.Project.Name) {
 		@projectHeader(v.Board.Project, "board")
-		@chips(v.Chips, v.Clear, v.Board.Filter.Active())
+		<div class="flex flex-wrap items-start justify-between gap-4">
+			@chips(v.Chips, v.Clear, v.Board.Filter.Active())
+			<div class="mt-4">
+				@helpLink("the-board", "About the board")
+			</div>
+		</div>
 		@BoardSection(v.Board)
 	}
 }

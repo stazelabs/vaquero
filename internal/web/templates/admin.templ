@@ -73,8 +73,8 @@ type TokensView struct {
 
 templ TokensPage(v TokensView) {
 	@AdminShell("API tokens", "/admin/tokens") {
-		<h1 class={ h1Class }>API tokens</h1>
-		<p class="mt-2 max-w-xl text-sm text-muted">A token lets the CLI, a script or an agent use vaquero's API as you. The local token is kept in the data directory for the CLI; if you revoke it, a new one is written the next time vaquero starts.</p>
+		@titleWithHelp("API tokens", "api-tokens", "About tokens")
+		<p class="mt-2 max-w-xl text-sm text-muted">A token lets the CLI, a script or an agent use Vaquero's API as you. The local token is kept in the data directory for the CLI; if you revoke it, a new one is written straight away.</p>
 		if v.Created != "" {
 			<div class="mt-6 max-w-xl rounded-md border border-accent/40 bg-accent/10 p-4" role="status">
 				<label for="new-token" class="text-sm font-medium text-ink">Copy this token now. It won't be shown again.</label>

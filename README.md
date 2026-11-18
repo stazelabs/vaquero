@@ -18,6 +18,10 @@ Requires Go 1.27 and Node (for the build-time stylesheet only).
 
 Run `make` with no target to list every target. A plain `vaquero serve` keeps its data in `~/Library/Application Support/vaquero` on macOS and `~/.local/share/vaquero` on Linux; set `VQ_DATA_DIR` to change it.
 
+## Documentation
+
+The help is built in: open Help in the web app (`/help`), or run `vaquero docs` to list the articles and `vaquero docs cli` for the command line. The articles are in `internal/help/articles`.
+
 ## Licence
 
 Apache 2.0. See LICENSE.

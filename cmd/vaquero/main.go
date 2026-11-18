@@ -39,7 +39,11 @@ setup:
   token      create, list or revoke API tokens
   profile    add, list, use or remove servers to talk to
 
-Every command takes --profile NAME and --json. See docs/CLI.md.
+help:
+  docs       list the help articles, or print one (vaquero docs cli)
+
+Commands that talk to a server take --profile NAME and --json.
+Every command is in: vaquero docs cli
 `
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

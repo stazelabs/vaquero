@@ -141,3 +141,10 @@ func agoOr(stamp string, now time.Time, none string) string {
 	}
 	return timefmt.Ago(t, now, nil)
 }
+
+func helpNavClass(current bool) string {
+	if current {
+		return "font-medium text-accent"
+	}
+	return "text-ink/80 hover:text-accent"
+}

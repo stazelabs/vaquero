@@ -1,12 +1,17 @@
 package web_test
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/stazelabs/vaquero/internal/help"
+	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/static"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
@@ -92,5 +97,29 @@ func TestNoRawColoursInTemplates(t *testing.T) {
 		if m := re.Find(b); m != nil {
 			t.Fatalf("%s uses raw colour %s", f, m)
 		}
+	}
+}
+
+// Review Focus 3: every API route is in the API article, as "METHOD /path".
+func TestAPIRoutesDocumented(t *testing.T) {
+	a, ok := help.Get("api")
+	if !ok {
+		t.Fatal("no api article")
+	}
+	r := web.NewRouter(webtest.New(t).Deps).(chi.Routes)
+	n := 0
+	_ = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		route = strings.TrimSuffix(route, "/")
+		if !strings.HasPrefix(route, "/api/v1/") || strings.HasSuffix(route, "*") {
+			return nil
+		}
+		n++
+		if !strings.Contains(a.Markdown, "`"+method+" "+route+"`") {
+			t.Errorf("%s %s isn't in the api article", method, route)
+		}
+		return nil
+	})
+	if n < 20 {
+		t.Fatalf("walked %d API routes", n)
 	}
 }

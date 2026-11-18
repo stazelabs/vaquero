@@ -1,18 +1,20 @@
-# The vaquero CLI
-
-The `vaquero` binary is also the command line. It talks to a vaquero server over the API (`/api/v1`). With the built-in `local` profile it talks to the server on this machine and starts it in the background when it isn't running.
+---
+title: The command line
+section: command-line
+summary: Every vaquero command, its exit codes, profiles, and how scripts and agents should use it.
+order: 1
+---
+The `vaquero` program is also the command line. Commands other than `serve`, `version` and `docs` talk to a Vaquero server over [the API](/help/api). With the built-in `local` profile they talk to the server on this machine, and start it in the background if it isn't running.
 
 ## Commands
 
-Every command takes `--profile NAME` and `--json`. Flags may come before or after the other arguments. `-` as a comment's text (or `--body -`, `--description -`) reads standard input.
-
-Text that starts with `-`, such as a markdown list, would read as a flag: put `--` before it. Everything after `--` is taken as written:
-
-    vaquero comment VAQ-12 -- "- checked the logs
-    - restarted the job"
+Every command that talks to a server takes `--profile NAME` and `--json`. Flags may come before or after the other arguments. `-` as a comment's text (or `--body -`, `--description -`) reads standard input.
 
 | Command | What it does |
 |---|---|
+| `vaquero serve` | Run the server in the foreground |
+| `vaquero version` | Print the version |
+| `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |
 | `vaquero project show KEY` | Show a project |
@@ -33,6 +35,13 @@ Text that starts with `-`, such as a markdown list, would read as a flag: put `-
 
 Priorities are `none`, `urgent`, `high`, `medium` and `low`. Statuses, assignees and milestones are given by name, in any case.
 
+## Text that starts with a dash
+
+Text that starts with `-`, such as a markdown list, would read as a flag. Put `--` before it: everything after `--` is taken as written.
+
+    vaquero comment VAQ-12 -- "- checked the logs
+    - restarted the job"
+
 ## Exit codes
 
 | Code | Meaning |
@@ -44,8 +53,8 @@ Priorities are `none`, `urgent`, `high`, `medium` and `low`. Statuses, assignees
 
 ## Profiles
 
-`local` is built in: the server on this machine, at `VQ_ADDR` (default `127.0.0.1:7878`) with its data in `VQ_DATA_DIR`, and the token vaquero keeps in that directory. Other profiles are saved in your user config directory (`vaquero/config.json`, readable only by you) with `vaquero profile add`. The profile used is the `--profile` flag, else `VAQUERO_PROFILE`, else the one chosen with `vaquero profile use`, else `local`.
+`local` is built in: the server on this machine at `VQ_ADDR` (default `127.0.0.1:7878`), with its data in `VQ_DATA_DIR`, using the token Vaquero keeps there. Other profiles are saved in your user config directory (`vaquero/config.json`, readable only by you) with `vaquero profile add`. The profile used is the `--profile` flag, else `VAQUERO_PROFILE`, else the one chosen with `vaquero profile use`, else `local`.
 
 ## Scripts and agents
 
-Use `--json` and check the exit code. To edit safely when someone else might change the same ticket, read it (`vaquero ticket show TICKET --json`), then edit with `--version` set to the version you read; on exit 3, read again and decide.
+Use `--json` and check the exit code. To edit safely when someone else might change the same ticket, read it (`vaquero ticket show TICKET --json`), then edit with `--version` set to the version you read; on exit 3, read again and decide. [Editing and conflicts](/help/editing-and-conflicts) explains why.

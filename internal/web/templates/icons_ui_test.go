@@ -14,6 +14,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/help"
 	"github.com/stazelabs/vaquero/internal/web/icons"
 )
 
@@ -98,6 +99,19 @@ func TestIconOnlyButtonsLabelled(t *testing.T) {
 			if !strings.Contains(m[2], "aria-label") {
 				t.Errorf("%s: icon-only <%s> without aria-label: %s", f, m[1], m[0])
 			}
+		}
+	}
+}
+
+// Review Focus 3: every shortcut in the dialog is in the shortcuts article.
+func TestShortcutsDocumented(t *testing.T) {
+	a, ok := help.Get("keyboard-shortcuts")
+	if !ok {
+		t.Fatal("no keyboard-shortcuts article")
+	}
+	for _, s := range shortcuts {
+		if !strings.Contains(a.Markdown, "`"+s[0]+"`") {
+			t.Errorf("shortcut %q isn't documented", s[0])
 		}
 	}
 }

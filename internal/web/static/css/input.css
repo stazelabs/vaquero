@@ -59,7 +59,7 @@
   .prose-vq pre code { @apply bg-transparent p-0; }
   .prose-vq blockquote { @apply border-l-2 border-line pl-3 text-ink/70; }
   .prose-vq table { @apply border-collapse text-xs; }
-  .prose-vq th, .prose-vq td { @apply border border-line px-2 py-1; }
+  .prose-vq th, .prose-vq td { @apply border border-line px-2 py-1 text-left align-top; }
 }
 
 /* htmx shows these while its request is in flight (its own injected styles

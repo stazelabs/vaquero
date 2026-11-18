@@ -1,0 +1,40 @@
+---
+title: Projects and tickets
+section: using
+summary: Keys, statuses, priorities, tags, sub-tickets, links and milestones, and how to rename, archive or delete a project.
+order: 1
+---
+## Projects
+
+A project has a name and a key. The key is 2 to 10 capital letters or digits, starting with a letter, such as `VAQ`. Its tickets are numbered from 1: `VAQ-1`, `VAQ-2`. Addresses accept any case and leading zeros (`/t/vaq-012` goes to `VAQ-12`).
+
+## Statuses
+
+Every new project starts with six statuses: Backlog, Todo, In progress, In review, Done and Cancelled. Each status belongs to a category of the same names, and the category decides where it shows on [the board](/help/the-board) and whether a ticket counts as open. In project settings you can rename statuses, add more (say, Testing in the in progress category), reorder them, or delete one no ticket uses. Each category keeps at least one status.
+
+## Tickets
+
+A ticket has a title (up to 200 characters), a description in markdown, a status, a priority, an assignee, tags, an optional parent and an optional milestone.
+
+- **Priority** is none, urgent, high, medium or low.
+- **Tags** are words you make up as you go; a new one is created the first time you use it.
+- **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
+- **Comments** are markdown. You can edit or delete your own.
+
+Every change is recorded in the ticket's history and on the Activity page.
+
+## Links
+
+A ticket can block, relate to or duplicate another ticket, in any project. Vaquero refuses a link that would make a loop of blockers, directly or through a chain (`VAQ-1` blocks `VAQ-2` blocks `VAQ-3` blocks `VAQ-1`), and refuses two tickets duplicating each other. An open blocker keeps a ticket from being ready on the board.
+
+## Milestones
+
+A milestone is a named goal with an optional due date. The board's side panel shows each open milestone's progress, and clicking one shows only its tickets. Close a milestone when it ships.
+
+## Changing a project key
+
+In project settings, under Key. The old key stops working at once: links, branch names and commit messages that use it no longer lead anywhere, and another project may take it.
+
+## Archiving and deleting
+
+Archiving hides a project at the bottom of the list and stops new tickets; restore it any time. Deleting removes the project, its tickets, comments, links and history for good. You type the project's key to confirm, and Vaquero takes a snapshot of the database first (see [Your data and backups](/help/data-and-backups#backups)).

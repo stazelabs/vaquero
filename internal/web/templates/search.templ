@@ -5,7 +5,7 @@ import "github.com/stazelabs/vaquero/internal/search"
 // SearchPage is the results of a search across tickets and comments.
 templ SearchPage(q string, hits []search.Hit) {
 	@Shell("Search") {
-		<h1 class={ h1Class }>Search</h1>
+		@titleWithHelp("Search", "search", "How search works")
 		<form method="get" action="/search" role="search" class="mt-4 flex max-w-xl gap-3">
 			<label for="f-q" class="sr-only">Search tickets and comments</label>
 			<input id="f-q" name="q" type="search" value={ q } autocomplete="off" class={ inputClass } placeholder="Search tickets and comments"/>

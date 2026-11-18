@@ -1,0 +1,99 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/help"
+
+// helpLink is a small "Help" link to an article, for a page that has one.
+templ helpLink(slug, text string) {
+	<a href={ templ.SafeURL("/help/" + slug) } class={ btnLink + " inline-flex items-center gap-1" }>
+		@Icon("help")
+		{ text }
+	</a>
+}
+
+// titleWithHelp is a page's h1 with its help link on the right.
+templ titleWithHelp(title, slug, text string) {
+	<div class="flex flex-wrap items-baseline justify-between gap-4">
+		<h1 class={ h1Class }>{ title }</h1>
+		@helpLink(slug, text)
+	</div>
+}
+
+// HelpIndexPage lists every article by section.
+templ HelpIndexPage(sections []help.Section) {
+	@Shell("Help") {
+		<h1 class={ h1Class }>Help</h1>
+		<p class="mt-2 max-w-2xl text-sm text-muted">How Vaquero works, from the board to the command line and the API. Every article is also plain markdown: add .md to its address, or run <code class="font-mono">vaquero docs</code>.</p>
+		<div class="mt-8 grid gap-6 md:grid-cols-2">
+			for _, s := range sections {
+				<section class={ panelClass }>
+					<h2 class={ h2IconClass }>
+						@Icon(s.Icon)
+						{ s.Title }
+					</h2>
+					<ul class="mt-3 space-y-3">
+						for _, a := range s.Articles {
+							<li>
+								<a href={ templ.SafeURL("/help/" + a.Slug) } class="inline-flex items-center gap-1.5 font-medium text-ink hover:text-accent">
+									@Icon("article")
+									{ a.Title }
+								</a>
+								<p class="mt-0.5 text-sm text-muted">{ a.Summary }</p>
+							</li>
+						}
+					</ul>
+				</section>
+			}
+		</div>
+	}
+}
+
+// HelpArticlePage is one article, with its contents and its section's
+// other articles beside it.
+templ HelpArticlePage(a help.Article, s help.Section) {
+	@Shell(a.Title) {
+		<p class="text-sm text-muted">
+			<a href="/help" class="hover:text-accent">Help</a> / { s.Title }
+		</p>
+		<div class="mt-1 grid gap-10 lg:grid-cols-4">
+			<article class="min-w-0 lg:col-span-3">
+				<h1 class={ h1Class + " flex items-center gap-2" }>
+					@IconLg("article")
+					{ a.Title }
+				</h1>
+				<p class="mt-2 text-muted">{ a.Summary }</p>
+				<div class={ proseClass + " mt-6 max-w-3xl" }>
+					@templ.Raw(string(a.HTML))
+				</div>
+			</article>
+			<aside class="space-y-6 text-sm lg:sticky lg:top-6 lg:self-start">
+				if len(a.Headings) > 1 {
+					<nav aria-label="Contents">
+						<p class={ h2Class }>Contents</p>
+						<ul class="mt-2 space-y-1">
+							for _, h := range a.Headings {
+								<li><a href={ templ.SafeURL("#" + h.ID) } class="text-ink/80 hover:text-accent">{ h.Text }</a></li>
+							}
+						</ul>
+					</nav>
+				}
+				<nav aria-label={ s.Title }>
+					<p class={ h2IconClass }>
+						@Icon(s.Icon)
+						{ s.Title }
+					</p>
+					<ul class="mt-2 space-y-1">
+						for _, o := range s.Articles {
+							<li>
+								<a href={ templ.SafeURL("/help/" + o.Slug) } aria-current?={ o.Slug == a.Slug } class={ helpNavClass(o.Slug == a.Slug) }>{ o.Title }</a>
+							</li>
+						}
+					</ul>
+				</nav>
+				<a href={ templ.SafeURL("/help/" + a.Slug + ".md") } class="inline-flex items-center gap-1.5 text-muted hover:text-accent">
+					@Icon("markdown")
+					This page as markdown
+				</a>
+			</aside>
+		</div>
+	}
+}

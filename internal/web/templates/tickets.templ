@@ -68,6 +68,8 @@ templ TicketFormPage(f TicketForm) {
 			<div class="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink" role="alert">
 				{ f.Conflict } Saving again will overwrite those changes.
 				<a href={ templ.SafeURL("/t/" + f.TicketKey) } class={ btnLink }>See the ticket now</a>
+				<span class="text-muted">·</span>
+				@helpLink("editing-and-conflicts", "About conflicts")
 			</div>
 		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
