@@ -12,7 +12,7 @@ Requires Go 1.27 and Node (for the build-time stylesheet only).
 
     make tools   # one time
     cp .env.local.example .env.local   # keeps dev data in ./data
-    make dev     # hot reload at http://127.0.0.1:7878
+    make dev     # hot reload at http://127.0.0.1:7879 (a real `vaquero serve` uses 7878)
     make test
     make ci      # the full gate: generate, format, vet, lint, test, coverage floors
 

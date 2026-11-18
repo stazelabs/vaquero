@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
@@ -22,6 +23,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.CSP,
 		middleware.CrossOrigin(d.Logger),
 		middleware.BodyLimit(middleware.MaxBody),
+		// A HEAD for a GET route is served by the GET handler (net/http drops
+		// the body), so curl -I and uptime probes see 200, not a redirect.
+		chimw.GetHead,
 	)
 	r.NotFound(handlers.NotFound(d))
 	r.MethodNotAllowed(handlers.MethodNotAllowed(d))

@@ -45,22 +45,30 @@ func TestReaderRefusesWrites(t *testing.T) {
 	}
 }
 
-// Review Focus 3
-func TestOpenPathWithSpaces(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "Application Support", "vaquero", "vaquero.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	w, err := appdb.Open(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer w.Close()
-	if err := appdb.Migrate(w); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("database not at %q: %v", path, err)
+// Review Focus 3, plus the characters a file: URI treats specially.
+func TestOpenOddPaths(t *testing.T) {
+	for _, dir := range []string{"Application Support", "Work #2", "what?", "100%41"} {
+		t.Run(dir, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), dir, "vaquero", "vaquero.db")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			w, err := appdb.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer w.Close()
+			if err := appdb.Migrate(w); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatalf("database not at %q: %v", path, err)
+			}
+			var mode string
+			if err := w.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil || mode != "wal" {
+				t.Fatalf("journal_mode %q %v", mode, err)
+			}
+		})
 	}
 }
 

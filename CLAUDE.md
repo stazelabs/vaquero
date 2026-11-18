@@ -10,7 +10,7 @@ Vaquero is an agent-native, local-first, lightweight ticket tracker with coordin
 
     make tools     # one-time
     make gen       # templ + sqlc + tailwind (generated files are committed)
-    make dev       # air hot reload on 127.0.0.1:7878
+    make dev       # air hot reload on 127.0.0.1:7879 (7878 is a real vaquero's port)
     make test
 
 Run `make` with no target to list every target; give each new target a `## description`.

@@ -72,7 +72,10 @@ func openDSN(path string, p url.Values) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve db path: %w", err)
 	}
-	db, err := sql.Open("sqlite", "file:"+abs+"?"+p.Encode())
+	// SQLite reads the DSN as a URI, so the path must be escaped: a raw "#",
+	// "?" or "%" in a directory name would cut it short or garble it.
+	dsn := (&url.URL{Scheme: "file", Path: abs, RawQuery: p.Encode()}).String()
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

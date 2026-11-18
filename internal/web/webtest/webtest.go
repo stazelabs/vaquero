@@ -107,6 +107,12 @@ func (c *Client) Get(path string) *Response {
 	return c.do(c.newRequest(http.MethodGet, path, nil))
 }
 
+// Head requests path with HEAD, as uptime probes and curl -I do.
+func (c *Client) Head(path string) *Response {
+	c.t.Helper()
+	return c.do(c.newRequest(http.MethodHead, path, nil))
+}
+
 // GetWithHost requests path with the Host header set to host, as a browser
 // does when another site's hostname resolves to this server.
 func (c *Client) GetWithHost(host, path string) *Response {

@@ -18,6 +18,15 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+func TestHeadAnswersLikeGet(t *testing.T) {
+	e := webtest.New(t)
+	for _, p := range []string{"/healthz", "/"} {
+		if r := e.Client().Head(p); r.Status != 200 {
+			t.Fatalf("HEAD %s: %d (Location %q)", p, r.Status, r.Location)
+		}
+	}
+}
+
 func TestHomeIsThemed(t *testing.T) {
 	r := webtest.New(t).Client().Get("/")
 	if r.Status != 200 || !strings.Contains(r.Body, "Vaquero") || !strings.Contains(r.Body, "herds the chaos") {

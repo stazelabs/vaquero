@@ -47,8 +47,10 @@ css: ## Build the Tailwind stylesheet
 
 gen: templ sqlc css ## Run every generator (templ, sqlc, css); generated files are committed
 
-dev: ## Run the server with hot reload on 127.0.0.1:7878 (logs to tmp/dev.log)
-	@lsof -ti tcp:7878 | xargs kill 2>/dev/null || true
+dev: ## Run the server with hot reload on 127.0.0.1:7879 (logs to tmp/dev.log)
+	@# Only the listener on the dev port: 7878 belongs to a real vaquero, and a
+	@# plain tcp: match would also signal clients (browsers) holding a connection.
+	@lsof -ti tcp:7879 -sTCP:LISTEN | xargs kill 2>/dev/null || true
 	@mkdir -p tmp
 	air 2>&1 | tee tmp/dev.log
 
