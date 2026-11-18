@@ -23,7 +23,7 @@ func (q *Queries) CountOpenWithoutMilestone(ctx context.Context, projectID strin
 }
 
 const listBoardTickets = `-- name: ListBoardTickets :many
-SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at,
+SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
        CAST(s.category = 'todo' AND t.assignee_id IS NULL
@@ -70,6 +70,7 @@ type ListBoardTicketsRow struct {
 	StatusID        string
 	Position        float64
 	StatusChangedAt string
+	Version         int64
 	StatusName      string
 	StatusCategory  string
 	AssigneeName    string
@@ -105,6 +106,7 @@ func (q *Queries) ListBoardTickets(ctx context.Context, arg ListBoardTicketsPara
 			&i.StatusID,
 			&i.Position,
 			&i.StatusChangedAt,
+			&i.Version,
 			&i.StatusName,
 			&i.StatusCategory,
 			&i.AssigneeName,

@@ -2,7 +2,7 @@
 -- A project's tickets for the board and list views. Every filter is
 -- optional (NULL means any). ready: a todo ticket, unassigned, with no open
 -- blocker and no open sub-ticket.
-SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at,
+SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
        CAST(s.category = 'todo' AND t.assignee_id IS NULL

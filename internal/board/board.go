@@ -20,7 +20,7 @@ const DoneWindow = 7 * 24 * time.Hour
 type Card struct {
 	Key, Title, Assignee   string
 	AssigneeIsAgent, Ready bool
-	Priority               int64
+	Priority, Version      int64
 	Tags                   []string
 }
 
@@ -130,6 +130,7 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 			AssigneeIsAgent: r.AssigneeKind == "agent",
 			Ready:           r.Ready,
 			Priority:        r.Priority,
+			Version:         r.Version,
 			Tags:            tags[r.ID],
 		})
 	}

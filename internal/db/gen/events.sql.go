@@ -109,6 +109,73 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 	return items, nil
 }
 
+const listEventsAfter = `-- name: ListEventsAfter :many
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+FROM events e
+JOIN actors a ON a.id = e.actor_id
+LEFT JOIN projects p ON p.id = e.project_id
+LEFT JOIN tickets t ON t.id = e.ticket_id
+WHERE e.seq > ?
+ORDER BY e.seq
+LIMIT ?
+`
+
+type ListEventsAfterParams struct {
+	Seq   int64
+	Limit int64
+}
+
+type ListEventsAfterRow struct {
+	Seq          int64
+	At           string
+	ActorID      string
+	Kind         string
+	ProjectID    sql.NullString
+	TicketID     sql.NullString
+	Payload      string
+	ActorName    string
+	ProjectKey   string
+	TicketNumber int64
+	TicketTitle  string
+}
+
+// Events after a sequence number, oldest first, for clients that poll.
+func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams) ([]ListEventsAfterRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEventsAfter, arg.Seq, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEventsAfterRow{}
+	for rows.Next() {
+		var i ListEventsAfterRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.At,
+			&i.ActorID,
+			&i.Kind,
+			&i.ProjectID,
+			&i.TicketID,
+			&i.Payload,
+			&i.ActorName,
+			&i.ProjectKey,
+			&i.TicketNumber,
+			&i.TicketTitle,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketEvents = `-- name: ListTicketEvents :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
