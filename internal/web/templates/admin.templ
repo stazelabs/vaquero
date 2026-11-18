@@ -1,0 +1,110 @@
+package templates
+
+import (
+	"time"
+
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+// AdminPages are the admin section's pages, in its side list.
+var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/tokens", "API tokens"}}
+
+// AdminShell is an admin page: the side list, then the page.
+templ AdminShell(title, current string) {
+	@Shell(title) {
+		<div class="flex flex-col gap-8 md:flex-row">
+			<nav aria-label="Admin" class="shrink-0 md:w-48">
+				<p class={ h2Class }>Admin</p>
+				<ul class="mt-2 space-y-1">
+					for _, p := range AdminPages {
+						<li>
+							<a href={ templ.SafeURL(p[0]) } aria-current?={ p[0] == current } class={ adminNavClass(p[0] == current) }>{ p[1] }</a>
+						</li>
+					}
+				</ul>
+			</nav>
+			<div class="min-w-0 flex-1">
+				{ children... }
+			</div>
+		</div>
+	}
+}
+
+// AdminInfo is the admin home's facts.
+type AdminInfo struct {
+	Version, DataDir, DBSize string
+	Schema                   int64
+}
+
+templ AdminHomePage(i AdminInfo) {
+	@AdminShell("Admin", "/admin") {
+		<h1 class={ h1Class }>Overview</h1>
+		<dl class="mt-6 grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+			<dt class="text-muted">Version</dt>
+			<dd class="text-ink">{ i.Version }</dd>
+			<dt class="text-muted">Data directory</dt>
+			<dd class="break-all font-mono text-xs text-ink">{ i.DataDir }</dd>
+			<dt class="text-muted">Database size</dt>
+			<dd class="text-ink">{ i.DBSize }</dd>
+			<dt class="text-muted">Schema version</dt>
+			<dd class="text-ink">{ itoa(i.Schema) }</dd>
+		</dl>
+		<ul class="mt-8 space-y-2 text-sm">
+			<li><a href="/admin/tokens" class={ btnLink }>API tokens</a> <span class="text-muted">· for the CLI, scripts and agents</span></li>
+		</ul>
+	}
+}
+
+// TokensView is the tokens page; Created is set once, right after a token
+// is made, and is the only time its value is shown.
+type TokensView struct {
+	Tokens  []gen.ListTokensRow
+	Created string
+	Name    string
+	Error   string
+	Now     time.Time
+}
+
+templ TokensPage(v TokensView) {
+	@AdminShell("API tokens", "/admin/tokens") {
+		<h1 class={ h1Class }>API tokens</h1>
+		<p class="mt-2 max-w-xl text-sm text-muted">A token lets the CLI, a script or an agent use vaquero's API as you. The local token is kept in the data directory for the CLI; if you revoke it, a new one is written the next time vaquero starts.</p>
+		if v.Created != "" {
+			<div class="mt-6 max-w-xl rounded-md border border-accent/40 bg-accent/10 p-4" role="status">
+				<label for="new-token" class="text-sm font-medium text-ink">Copy this token now. It won't be shown again.</label>
+				<input id="new-token" readonly value={ v.Created } class={ inputClass + " mt-2 font-mono" }/>
+			</div>
+		}
+		<form method="post" action="/admin/tokens" class="mt-6 flex max-w-xl items-end gap-3">
+			<div class="flex-1">
+				@TextInput(InputProps{Name: "name", Label: "New token name", Value: v.Name, Placeholder: "ci runner", Required: true, Error: v.Error})
+			</div>
+			<button type="submit" class={ btnPrimary }>Create token</button>
+		</form>
+		<table class="mt-8 w-full max-w-3xl text-left text-sm">
+			<thead class="text-xs uppercase tracking-wider text-muted">
+				<tr><th class="py-2">Name</th><th>Token</th><th>Acts as</th><th>Created</th><th>Last used</th><th></th></tr>
+			</thead>
+			<tbody class="divide-y divide-line">
+				for _, t := range v.Tokens {
+					<tr class={ templ.KV("text-muted", t.RevokedAt.Valid) }>
+						<td class="py-2">{ t.Name }</td>
+						<td class="font-mono text-xs">{ t.Prefix }…</td>
+						<td>{ t.ActorName }</td>
+						<td>{ dayOf(t.CreatedAt) }</td>
+						<td>{ agoOr(t.LastUsedAt.String, v.Now, "Never") }</td>
+						<td class="text-right">
+							if t.RevokedAt.Valid {
+								Revoked
+							} else {
+								<form method="post" action={ templ.SafeURL("/admin/tokens/" + t.ID + "/revoke") }>
+									<button type="submit" class="text-xs text-danger hover:underline" aria-label={ "Revoke " + t.Name }>Revoke</button>
+								</form>
+							}
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	}
+}

@@ -4,9 +4,11 @@ package templates
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/a-h/templ"
 
+	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 )
 
@@ -111,4 +113,29 @@ var shortcuts = [][2]string{
 	{"enter", "Open the card"},
 	{"?", "This list"},
 	{"esc", "Close"},
+}
+
+func adminNavClass(current bool) string {
+	if current {
+		return "block rounded-md bg-paper-alt px-2 py-1 text-sm font-medium text-ink"
+	}
+	return "block rounded-md px-2 py-1 text-sm text-ink/70 hover:text-accent"
+}
+
+// dayOf is a stored instant's date, or the text as stored if it won't parse.
+func dayOf(stamp string) string {
+	t, err := timefmt.Parse(stamp)
+	if err != nil {
+		return stamp
+	}
+	return timefmt.DayOf(t)
+}
+
+// agoOr is how long ago a stored instant was, or none when it is empty.
+func agoOr(stamp string, now time.Time, none string) string {
+	t, err := timefmt.Parse(stamp)
+	if stamp == "" || err != nil {
+		return none
+	}
+	return timefmt.Ago(t, now, nil)
 }

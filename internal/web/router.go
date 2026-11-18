@@ -58,6 +58,13 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Delete("/links/{id}", handlers.APILinkDelete(d))
 	})
 
+	r.Route("/admin", func(r chi.Router) {
+		r.Get("/", handlers.AdminHome(d))
+		r.Get("/tokens", handlers.AdminTokens(d))
+		r.Post("/tokens", handlers.AdminTokenCreate(d))
+		r.Post("/tokens/{id}/revoke", handlers.AdminTokenRevoke(d))
+	})
+
 	r.Get("/", handlers.ProjectList(d))
 	r.Get("/activity", handlers.Activity(d))
 	r.Get("/events/stream", handlers.Stream(d))
