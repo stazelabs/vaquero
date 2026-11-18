@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -35,15 +37,19 @@ type Error struct {
 	Current json.RawMessage   `json:"current"`
 }
 
+// Error is the message, followed by any field messages it doesn't already
+// say, in field order.
 func (e *Error) Error() string {
-	if len(e.Fields) > 0 {
-		var parts []string
-		for k, v := range e.Fields {
+	var parts []string
+	for _, k := range slices.Sorted(maps.Keys(e.Fields)) {
+		if v := e.Fields[k]; !strings.Contains(e.Message, v) {
 			parts = append(parts, k+": "+v)
 		}
-		return e.Message + " (" + strings.Join(parts, "; ") + ")"
 	}
-	return e.Message
+	if len(parts) == 0 {
+		return e.Message
+	}
+	return e.Message + " (" + strings.Join(parts, "; ") + ")"
 }
 
 // Do sends body (nil, or encoded as JSON) to method path and decodes a 2xx

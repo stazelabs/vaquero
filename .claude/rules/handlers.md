@@ -20,6 +20,16 @@ Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form
 - A page part that should follow changes carries `data-live` and `hx-trigger="vq:change"`; app.js keeps one stream per tab and triggers `vq:change` on every such part. Don't add another EventSource or htmx's SSE extension: each holds one of the browser's six connections to the host. The stream only announces that something changed; parts re-read through the normal handlers.
 - A long-lived handler must clear its read and write deadlines (`http.NewResponseController`) and end on `d.Shutdown`.
 
+## API handlers
+
+- `api*.go` handlers answer JSON only: `api.WriteJSON`, `api.WriteFailure`, and `apiCoreFail` for core errors (a conflict carries the current ticket). Decode bodies with `api.Decode` (unknown fields refused). The actor is `apiActor(r)`, never `d.Actor`.
+- Tickets are addressed by key and other objects by name in requests; internal ids appear only for comments and links, which have no key.
+- The API is additive once released: add fields and endpoints, never rename or remove.
+
+## Admin pages
+
+Operator pages live under `/admin`, rendered inside `templates.AdminShell`, listed in `templates.AdminPages`.
+
 ## Feedback
 
 - Redirect after every successful POST (303).

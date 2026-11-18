@@ -172,3 +172,15 @@ func TestEnsureLocalReportsFailedStart(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// A field message the main message already says isn't repeated.
+func TestErrorMessageNotRepeated(t *testing.T) {
+	e := &client.Error{Message: "VAQ-1 already blocks this ticket.", Fields: map[string]string{"to": "VAQ-1 already blocks this ticket."}}
+	if e.Error() != "VAQ-1 already blocks this ticket." {
+		t.Fatalf("%q", e.Error())
+	}
+	e = &client.Error{Message: "Some names don't match anything.", Fields: map[string]string{"status": "No status Nope in VAQ."}}
+	if e.Error() != "Some names don't match anything. (status: No status Nope in VAQ.)" {
+		t.Fatalf("%q", e.Error())
+	}
+}

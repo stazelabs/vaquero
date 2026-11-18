@@ -4,13 +4,17 @@
 # Only files directly in the package directory count; sub-packages are excluded.
 # Blank lines and lines starting with # are ignored.
 
-cmd/vaquero 50
+cmd/vaquero 65
+internal/api 85
+internal/apitoken 85
 internal/board 85
+internal/client 75
 internal/config 85
 internal/core 75
 internal/db 70
 internal/idgen 95
 internal/legal 75
+internal/lockfile 80
 internal/markdown 85
 internal/search 90
 internal/timefmt 95

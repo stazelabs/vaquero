@@ -39,9 +39,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Editing an existing milestone's description (the settings form edits name and due date only)
 - [ ] A refused milestone or status form on the settings page loses the typed values (it redirects with a toast)
 - [ ] Ticket history shows "changed the description" without the old text (events record that the body changed, not its contents)
-- [ ] Before Phase 2 exposes core: an empty `StatusID` on update silently moves the ticket to the first todo status — make empty mean "keep" or refuse it (review 1a #5)
-- [ ] Before Phase 2: decide link direction rules — "A blocks B" plus "B blocks A", and duplicates both ways, are accepted today (review 1a #8)
-- [ ] Before Phase 2: optimistic concurrency (an `updated_at` check) for the whole-ticket edit, so two agents don't silently overwrite each other (review 1a recommendation)
+- [x] Before Phase 2 exposes core: an empty `StatusID` on update silently moves the ticket — PatchTicket keeps unnamed fields (Phase 2a)
+- [x] Before Phase 2: link direction rules — blocking loops and two-way duplicates refused (Phase 2a)
+- [x] Before Phase 2: optimistic concurrency — ticket versions, 409 on a stale save (Phase 2a)
 - [ ] Link history is one-sided: link events attach to the "from" ticket only, so a blocked ticket's history never says it became blocked (review 1a #10)
 - [ ] `c.tx` should `defer tx.Rollback()` so a panic mid-operation can't hold the only writer connection (review 1a #4)
 - [ ] `/p/vaq/new?parent=VAQ-1` loses its query string on the case redirect (`ticketFromURL` keeps it) (review 1a #6)
@@ -87,15 +87,23 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] The logo's colours are fixed in the SVG, so it doesn't follow the dark-mode accent (review fkd minor 9)
 - [ ] When sessions arrive (Phase 4), don't port startcase's snapshot `scrub` as is: its `VACUUM` can renumber the rowids the search indexes key on — scrub, then rebuild the FTS tables
 
+## Deferred from Phase 2a
+
+- [ ] Per-token API rate limits (and on failed authentication) — with hosted mode, Phase 4
+- [ ] `vaquero tickets --milestone NAME` — the API filters milestones by internal id; accept a name
+- [ ] A JSON 500 for panics inside `/api/v1` (today Recover answers plain text)
+- [ ] `vaquero stop` (stop a background local server) and `vaquero logs`
+- [ ] Refreshing the tokens page right after creating a token offers to resubmit the form, creating another token
+
 ## Admin section (requested 2026-11-19)
 
-- [ ] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
+- [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
 - [ ] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
 - [ ] Later: backups (list, prune, restore), API call log, users and roles (Phase 4), system details (disk space, uptime)
 
 ## Open questions
 
-- [ ] Prevent two servers on different ports sharing one data directory (lock file?) — needed before the CLI starts the server on demand (Phase 2)
+- [x] Prevent two servers sharing one data directory — `vaquero.lock` (Phase 2a)
 - [ ] CI triggers once outside contributors send pull requests (the repo is private and workflows are manual for now)
 - [ ] Check the name `vaquero` for collisions on Homebrew and the container registry before the first public release
 - [ ] Whether local mode should ever offer a LAN bind with sign-in (current answer: use hosted mode)
