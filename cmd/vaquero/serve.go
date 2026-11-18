@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/version"
@@ -49,7 +50,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		_ = w.Close()
 	}()
 
-	d := handlers.Deps{Cfg: cfg, DB: w, Q: gen.New(w), R: gen.New(r), Logger: logger, Now: time.Now}
+	c := core.New(w, time.Now)
+	owner, err := c.EnsureOwner(ctx)
+	if err != nil {
+		return fmt.Errorf("owner: %w", err)
+	}
+	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), Core: c, Actor: owner, Logger: logger, Now: time.Now}
 	srv := &http.Server{
 		Handler:           web.NewRouter(d),
 		ReadHeaderTimeout: 10 * time.Second,

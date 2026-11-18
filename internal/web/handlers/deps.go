@@ -1,4 +1,7 @@
 // Package handlers holds the HTTP handlers. Each is func(Deps) http.HandlerFunc.
+//
+// Handlers read through Deps.R and change the tracker only through
+// Deps.Core (TestHandlersNeverWriteDirectly holds it).
 package handlers
 
 import (
@@ -7,15 +10,17 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
 // Deps is everything a handler may use.
 type Deps struct {
 	Cfg    config.Config
-	DB     *sql.DB      // writer pool, for transactions and /healthz
-	Q      *gen.Queries // writer
-	R      *gen.Queries // reader: use it for reads on request paths
+	DB     *sql.DB      // writer pool; only /healthz pings it
+	R      *gen.Queries // reader: every read on a request path
+	Core   *core.Core   // every change
+	Actor  gen.Actor    // who changes things: the local owner in local mode
 	Logger *slog.Logger
 	Now    func() time.Time
 }

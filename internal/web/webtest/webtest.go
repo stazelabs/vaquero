@@ -3,6 +3,7 @@
 package webtest
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/handlers"
@@ -21,7 +23,8 @@ import (
 // Start is the fixed clock's reading.
 var Start = time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 
-// Env is one test's server.
+// Env is one test's server. Deps.Core and Deps.Actor make changes the way
+// the pages do, for arranging a test's starting state.
 type Env struct {
 	DB     dbtest.DB
 	Deps   handlers.Deps
@@ -42,10 +45,16 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		o(&cfg)
 	}
 	d := dbtest.New(t)
+	now := func() time.Time { return Start }
+	c := core.New(d.W, now)
+	owner, err := c.EnsureOwner(context.Background())
+	if err != nil {
+		t.Fatalf("webtest: owner: %v", err)
+	}
 	deps := handlers.Deps{
-		Cfg: cfg, DB: d.W, Q: d.Q, R: d.RQ,
+		Cfg: cfg, DB: d.W, R: d.RQ, Core: c, Actor: owner,
 		Logger: slog.New(slog.DiscardHandler),
-		Now:    func() time.Time { return Start },
+		Now:    now,
 	}
 	srv := httptest.NewServer(web.NewRouter(deps))
 	t.Cleanup(srv.Close)

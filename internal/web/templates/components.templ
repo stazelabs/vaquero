@@ -1,0 +1,66 @@
+package templates
+
+// TextInput is the one single-line field: a label, then the input with id
+// "f-" + Name (or ID), then its error message.
+templ TextInput(p InputProps) {
+	<div>
+		if p.Label != "" {
+			<label for={ p.id() } class={ labelClass }>{ p.Label }</label>
+		}
+		<input
+			id={ p.id() }
+			name={ p.Name }
+			type={ p.inputType() }
+			value={ p.Value }
+			placeholder={ p.Placeholder }
+			autocomplete={ p.autocomplete() }
+			required?={ p.Required }
+			aria-invalid?={ p.Error != "" }
+			class={ inputClass }
+			{ p.attrs()... }
+		/>
+		@FieldError(p.Error)
+	</div>
+}
+
+// TextArea is TextInput for several lines, Rows tall.
+templ TextArea(p InputProps) {
+	<div>
+		if p.Label != "" {
+			<label for={ p.id() } class={ labelClass }>{ p.Label }</label>
+		}
+		<textarea
+			id={ p.id() }
+			name={ p.Name }
+			rows={ p.rows() }
+			placeholder={ p.Placeholder }
+			required?={ p.Required }
+			aria-invalid?={ p.Error != "" }
+			class={ inputClass }
+			{ p.attrs()... }
+		>{ p.Value }</textarea>
+		@FieldError(p.Error)
+	</div>
+}
+
+// Select is a labelled drop-down with id "f-" + Name.
+templ Select(p SelectProps) {
+	<div>
+		if p.Label != "" {
+			<label for={ "f-" + p.Name } class={ labelClass }>{ p.Label }</label>
+		}
+		<select id={ "f-" + p.Name } name={ p.Name } aria-invalid?={ p.Error != "" } class={ inputClass }>
+			for _, o := range p.Options {
+				<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>
+			}
+		</select>
+		@FieldError(p.Error)
+	</div>
+}
+
+// FieldError is a refused field's message; nothing when msg is empty.
+templ FieldError(msg string) {
+	if msg != "" {
+		<p class="mt-1 text-sm text-danger" role="alert">{ msg }</p>
+	}
+}

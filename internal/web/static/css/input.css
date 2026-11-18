@@ -43,6 +43,25 @@
   }
 }
 
+/* Rendered markdown (ticket bodies, comments). Kept small: headings,
+   lists, code, quotes, tables, links. */
+@layer components {
+  .prose-vq > * + * { @apply mt-3; }
+  .prose-vq h1, .prose-vq h2, .prose-vq h3 { @apply font-semibold text-ink; }
+  .prose-vq h1 { @apply text-lg; }
+  .prose-vq h2 { @apply text-base; }
+  .prose-vq a { @apply text-accent underline; }
+  .prose-vq ul { @apply list-disc pl-5; }
+  .prose-vq ol { @apply list-decimal pl-5; }
+  .prose-vq li:has(> input[type="checkbox"]) { @apply list-none -ml-5; }
+  .prose-vq code { @apply rounded bg-paper-alt px-1 font-mono text-[0.85em]; }
+  .prose-vq pre { @apply overflow-x-auto rounded-md bg-paper-alt p-3 font-mono text-xs; }
+  .prose-vq pre code { @apply bg-transparent p-0; }
+  .prose-vq blockquote { @apply border-l-2 border-line pl-3 text-ink/70; }
+  .prose-vq table { @apply border-collapse text-xs; }
+  .prose-vq th, .prose-vq td { @apply border border-line px-2 py-1; }
+}
+
 /* htmx shows these while its request is in flight (its own injected styles
    are blocked by the CSP: includeIndicatorStyles is false). */
 .htmx-indicator {

@@ -297,8 +297,7 @@ func (c *Core) ticketView(ctx context.Context, q *gen.Queries, p gen.Project, t 
 		AssigneeID: t.AssigneeID.String, ParentID: t.ParentID.String, MilestoneID: t.MilestoneID.String,
 	}
 	tf, err := checkTicket(ctx, q, p, t.ID, in)
-	var inv *Invalid
-	if errors.As(err, &inv) {
+	if _, ok := errors.AsType[*Invalid](err); ok {
 		err = nil // a stored ticket that no longer validates still diffs
 	}
 	if err != nil {

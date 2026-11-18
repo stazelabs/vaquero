@@ -1,10 +1,13 @@
 package templates
 
-import "github.com/stazelabs/vaquero/internal/web/static"
+import (
+	"github.com/stazelabs/vaquero/internal/web/flash"
+	"github.com/stazelabs/vaquero/internal/web/static"
+)
 
 // Shell is every page's frame: the document head (htmx config, icon,
-// stylesheet, the two scripts with the CSP nonce), a top bar with the
-// wordmark, then <main id="main">.
+// stylesheet, the two scripts with the CSP nonce), the toast, a top bar
+// with the wordmark and navigation, then <main id="main">.
 templ Shell(title string) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -20,11 +23,17 @@ templ Shell(title string) {
 			<script src={ static.URL("js/app.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 		</head>
 		<body class="min-h-screen bg-paper text-ink font-sans antialiased">
+			if f, ok := flash.Current(ctx); ok {
+				@toast(f)
+			}
 			<a href="#main" class="sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
 			<div class="flex min-h-screen flex-col">
 				<header class="border-t-4 border-accent border-b border-b-line">
 					<div class="mx-auto flex h-14 w-full max-w-5xl items-center px-4">
 						<a href="/" class="text-lg font-semibold tracking-tight text-ink hover:text-accent">Vaquero</a>
+						<nav aria-label="Main" class="ml-8 flex items-center gap-5">
+							<a href="/" class={ navLink }>Projects</a>
+						</nav>
 					</div>
 				</header>
 				<main id="main" class="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
@@ -33,4 +42,18 @@ templ Shell(title string) {
 			</div>
 		</body>
 	</html>
+}
+
+// toast is the flash message: it fades after a few seconds (app.js) and its
+// × closes it. Errors stay until closed.
+templ toast(f flash.Flash) {
+	<div
+		id="vq-toast"
+		role="status"
+		data-sticky?={ f.Kind == flash.Error }
+		class={ "fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-4 rounded-md px-4 py-3 text-sm shadow-lg transition-opacity duration-500", toastClass(f.Kind) }
+	>
+		<span class="min-w-0">{ f.Message }</span>
+		<button type="button" data-toast-close aria-label="Dismiss" class="shrink-0 rounded-md px-2 text-lg leading-none opacity-80 hover:opacity-100">×</button>
+	</div>
 }
