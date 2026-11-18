@@ -1,0 +1,36 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/web/static"
+
+// Shell is every page's frame: the document head (htmx config, icon,
+// stylesheet, the two scripts with the CSP nonce), a top bar with the
+// wordmark, then <main id="main">.
+templ Shell(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="color-scheme" content="light dark"/>
+			<meta name="htmx-config" content={ htmxConfig }/>
+			<title>{ pageTitle(title) }</title>
+			<link rel="icon" href={ static.URL("favicon.svg") } type="image/svg+xml"/>
+			<link rel="stylesheet" href={ static.URL("css/tailwind.css") }/>
+			<script src={ static.URL("vendor/htmx.min.js") } nonce={ templ.GetNonce(ctx) } defer></script>
+			<script src={ static.URL("js/app.js") } nonce={ templ.GetNonce(ctx) } defer></script>
+		</head>
+		<body class="min-h-screen bg-paper text-ink font-sans antialiased">
+			<a href="#main" class="sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
+			<div class="flex min-h-screen flex-col">
+				<header class="border-t-4 border-accent border-b border-b-line">
+					<div class="mx-auto flex h-14 w-full max-w-5xl items-center px-4">
+						<a href="/" class="text-lg font-semibold tracking-tight text-ink hover:text-accent">Vaquero</a>
+					</div>
+				</header>
+				<main id="main" class="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
+					{ children... }
+				</main>
+			</div>
+		</body>
+	</html>
+}

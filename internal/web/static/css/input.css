@@ -1,0 +1,54 @@
+@import "tailwindcss" source(none);
+
+@source "../../templates/**/*.templ";
+@source "../../templates/**/*.go";
+@source "../js/*.js";
+
+/* Theme tokens. Use only these colours, plus opacity modifiers like
+   text-ink/70. Templates never carry a raw colour value. System fonts only:
+   nothing is downloaded. Placeholder palette until the brand is designed. */
+@theme {
+  --color-ink: oklch(0.24 0.02 50);         /* body text */
+  --color-paper: oklch(0.985 0.008 85);     /* page background */
+  --color-paper-alt: oklch(0.955 0.012 80); /* cards, columns */
+  --color-line: oklch(0.88 0.015 75);       /* borders */
+  --color-muted: oklch(0.55 0.02 60);       /* secondary text */
+  --color-accent: oklch(0.55 0.13 45);      /* saddle rust: links, primary buttons */
+  --color-danger: oklch(0.52 0.19 27);
+  --color-warn: oklch(0.62 0.13 75);
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-ink: oklch(0.93 0.01 80);
+    --color-paper: oklch(0.19 0.01 60);
+    --color-paper-alt: oklch(0.23 0.012 60);
+    --color-line: oklch(0.33 0.015 60);
+    --color-muted: oklch(0.68 0.02 70);
+    --color-accent: oklch(0.72 0.12 50);
+    --color-danger: oklch(0.68 0.17 27);
+    --color-warn: oklch(0.78 0.12 80);
+  }
+}
+
+/* Phones: a focused control under 16px makes iOS Safari zoom the whole
+   page, so below sm every text control is at least 1rem. */
+@media (max-width: 639.98px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"], [type="reset"], [type="image"], [type="hidden"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
+/* htmx shows these while its request is in flight (its own injected styles
+   are blocked by the CSP: includeIndicatorStyles is false). */
+.htmx-indicator {
+  @apply hidden;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  @apply inline;
+}
