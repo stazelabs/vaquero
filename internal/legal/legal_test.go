@@ -39,3 +39,21 @@ func TestThirdPartyCoversEveryLinkedModule(t *testing.T) {
 		}
 	}
 }
+
+// A module that ships several licence files (its own and those of code it
+// includes, or a patent grant) lists all of them.
+func TestNoticesIncludeEveryLicenceFile(t *testing.T) {
+	have := map[string]string{}
+	for _, c := range legal.ThirdParty() {
+		have[c.Name] = c.License
+	}
+	for mod, file := range map[string]string{
+		"modernc.org/sqlite": "SQLITE-LICENSE",
+		"modernc.org/libc":   "LICENSE-3RD-PARTY.md",
+		"golang.org/x/sys":   "PATENTS",
+	} {
+		if !strings.Contains(have[mod], "== "+file+" ==") {
+			t.Errorf("%s: %s missing", mod, file)
+		}
+	}
+}

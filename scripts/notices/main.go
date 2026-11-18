@@ -114,19 +114,39 @@ func addModules(mods map[string]component, goos, goarch string) error {
 	return nil
 }
 
-// licenseIn reads a module's licence file.
+// licenseIn reads every licence-like file at the top of a module (its own
+// licence, and any notices, patent grants or licences of code it includes),
+// each under an "== name ==" header, in name order.
 func licenseIn(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return "", err
 	}
-	for _, want := range []string{"license", "license.md", "license.txt", "licence", "copying", "unlicense"} {
-		for _, e := range entries {
-			if strings.EqualFold(e.Name(), want) {
-				b, err := os.ReadFile(filepath.Join(dir, e.Name()))
-				return string(b), err
-			}
+	var names []string
+	for _, e := range entries {
+		n := strings.ToLower(e.Name())
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(n, "licen") || strings.HasPrefix(n, "copying") || strings.HasPrefix(n, "notice") ||
+			n == "patents" || n == "unlicense" || strings.HasSuffix(n, "-license") || strings.HasSuffix(n, "-licence") {
+			names = append(names, e.Name())
 		}
 	}
-	return "", fmt.Errorf("no licence file in %s", dir)
+	if len(names) == 0 {
+		return "", fmt.Errorf("no licence file in %s", dir)
+	}
+	slices.Sort(names)
+	var b strings.Builder
+	for i, n := range names {
+		text, err := os.ReadFile(filepath.Join(dir, n))
+		if err != nil {
+			return "", err
+		}
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		fmt.Fprintf(&b, "== %s ==\n\n%s", n, strings.ReplaceAll(string(text), "\r\n", "\n"))
+	}
+	return b.String(), nil
 }

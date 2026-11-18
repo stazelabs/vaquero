@@ -147,6 +147,14 @@ func (c *Client) Get(path string) *Response {
 	return c.do(c.newRequest(http.MethodGet, path, nil))
 }
 
+// GetHX requests path the way htmx does.
+func (c *Client) GetHX(path string) *Response {
+	c.t.Helper()
+	req := c.newRequest(http.MethodGet, path, nil)
+	req.Header.Set("HX-Request", "true")
+	return c.do(req)
+}
+
 // Head requests path with HEAD, as uptime probes and curl -I do.
 func (c *Client) Head(path string) *Response {
 	c.t.Helper()

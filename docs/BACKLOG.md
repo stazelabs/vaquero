@@ -77,6 +77,15 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 - [ ] Restoring a pre-delete backup is manual (stop vaquero, copy `backups/vaquero-….sqlite` over `vaquero.db`); a `vaquero admin restore` command belongs with Phase 3's upgrade tooling
 - [ ] The footer's commit reads "dev" under `make dev` (air builds without ldflags); release builds stamp it
+- [ ] When restoring a backup by hand, remove `vaquero.db-wal` and `vaquero.db-shm` first, or a stale WAL is replayed onto the restored file
+- [ ] Surviving tickets' history still names deleted or re-keyed tickets ("marked OTH-1 as blocking VAQ-1") with no "link removed" line (review fkd minor 2)
+- [ ] `TestDeleteConfirmation` should compare the whole snapshot (`maps.Equal`); extend the delete test with a parent/child pair, a soft-deleted comment, `PRAGMA foreign_key_check` and the other project's event count (review fkd minor 3)
+- [ ] Notice links for `/vN` module paths (chi v5, ulid v2, goose v3) 404 — link to pkg.go.dev instead (review fkd minor 4)
+- [ ] The bundled versions in `scripts/notices` (htmx 2.0.4, SortableJS 1.15.6, Tailwind 4.3.5) aren't checked against the files; `package.json` allows Tailwind `^4.1.0` (review fkd minor 5)
+- [ ] backup.go carries unused ports (`EffectiveKeep`, `KeepFor`, `SpaceLow`, `OpenBackup`, `ParseBackupName`) and startcase-specific comments — trim or use in Phase 3 (review fkd minor 6); Linux free space should use `Frsize` (minor 7)
+- [ ] CLAUDE.md drift: route list lacks `/about/licenses`, `POST /p/{key}/key` and `/delete`; `Shell` still says "tagline footer"; static entry lacks `logo.svg`; `Deps` list lacks `BackupDir`; backups are `.sqlite`, not `.db` as the plan says (review fkd minor 8)
+- [ ] The logo's colours are fixed in the SVG, so it doesn't follow the dark-mode accent (review fkd minor 9)
+- [ ] When sessions arrive (Phase 4), don't port startcase's snapshot `scrub` as is: its `VACUUM` can renumber the rowids the search indexes key on — scrub, then rebuild the FTS tables
 
 ## Open questions
 

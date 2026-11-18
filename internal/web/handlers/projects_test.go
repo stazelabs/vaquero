@@ -240,8 +240,41 @@ func TestDeleteWhenSnapshotFails(t *testing.T) {
 	if r.Status != 303 || r.Location != "/p/VAQ/settings" {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
-	contains(t, c.Follow(r).Body, "Couldn&#39;t save a backup, so nothing was deleted.")
+	contains(t, c.Follow(r).Body, "Couldn&#39;t save a backup in ", ", so nothing was deleted.")
 	if _, err := e.Deps.R.GetProjectByKey(bg, "VAQ"); err != nil {
 		t.Fatal("deleted without a backup")
+	}
+}
+
+// An open board or list whose project was deleted or re-keyed elsewhere
+// reloads (and shows why) instead of swapping in another page.
+func TestLiveRefreshOfMissingProject(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	for _, path := range []string{"/p/GONE/board", "/p/GONE/list"} {
+		r := c.GetHX(path)
+		if r.Status != 200 || r.Header.Get("HX-Refresh") != "true" {
+			t.Errorf("%s: %d %v", path, r.Status, r.Header.Get("HX-Refresh"))
+		}
+	}
+}
+
+// Two deletes in the same second both get their own backup.
+func TestTwoDeletesInOneSecond(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	if _, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+		t.Fatal(err)
+	}
+	c := e.Client()
+	for _, key := range []string{"VAQ", "OTH"} {
+		r := c.Post("/p/"+key+"/delete", url.Values{"confirm": {key}})
+		if r.Status != 303 || r.Location != "/" {
+			t.Fatalf("%s: %d %q", key, r.Status, r.Location)
+		}
+	}
+	if entries, _ := os.ReadDir(e.Deps.BackupDir); len(entries) != 2 {
+		t.Fatalf("%d backups", len(entries))
 	}
 }

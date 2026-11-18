@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -27,6 +28,12 @@ func projectFromURL(w http.ResponseWriter, r *http.Request, d Deps) (p gen.Proje
 	}
 	p, err := d.R.GetProjectByKey(r.Context(), upper)
 	if errors.Is(err, sql.ErrNoRows) {
+		// A live refresh of a page whose project was deleted or re-keyed
+		// reloads the whole page rather than swapping a redirect into it.
+		if r.Header.Get("HX-Request") == "true" {
+			refreshWith(w, "No project "+upper+".")
+			return p, false
+		}
 		redirectWithFlash(w, r, flash.Error, "No project "+upper+".", "/")
 		return p, false
 	}
@@ -166,6 +173,28 @@ func ProjectKeyChange(d Deps) http.HandlerFunc {
 // backupKeep is how many pre-delete snapshots are kept.
 const backupKeep = 7
 
+// snapshot saves a backup before a delete. Backups are named by the second,
+// so a second delete in the same second takes the next free name.
+func snapshot(r *http.Request, d Deps) error {
+	now := d.Now()
+	for range 5 {
+		_, err := appdb.Snapshot(r.Context(), d.RDB, d.BackupDir, now)
+		if !errors.Is(err, appdb.ErrBackupExists) {
+			return err
+		}
+		now = now.Add(time.Second)
+	}
+	return appdb.ErrBackupExists
+}
+
+// backupFailMessage tells the person why a delete didn't happen.
+func backupFailMessage(err error, dir string) string {
+	if errors.Is(err, appdb.ErrLowSpace) {
+		return "Not enough free disk space to save a backup, so nothing was deleted."
+	}
+	return "Couldn't save a backup in " + dir + ", so nothing was deleted."
+}
+
 // ProjectDelete deletes the project and everything in it, once the person
 // has typed its key. A snapshot of the database is saved first; if that
 // fails, nothing is deleted.
@@ -181,9 +210,9 @@ func ProjectDelete(d Deps) http.HandlerFunc {
 			redirectWithFlash(w, r, flash.Error, "Type "+p.Key+" to confirm.", settings)
 			return
 		}
-		if _, err := appdb.Snapshot(r.Context(), d.RDB, d.BackupDir, d.Now()); err != nil {
+		if err := snapshot(r, d); err != nil {
 			d.Logger.ErrorContext(r.Context(), "snapshot before delete", "err", err)
-			redirectWithFlash(w, r, flash.Error, "Couldn't save a backup, so nothing was deleted.", settings)
+			redirectWithFlash(w, r, flash.Error, backupFailMessage(err, d.BackupDir), settings)
 			return
 		}
 		if _, err := appdb.PruneBackups(d.BackupDir, backupKeep); err != nil {
