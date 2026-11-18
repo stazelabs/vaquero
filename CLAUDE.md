@@ -19,10 +19,20 @@ Gate before every commit that touches Go, SQL, templ or CSS: `make gen && make f
 
 ## Package map
 
-- `cmd/vaquero`: the binary; `run(args, stdout, stderr) int` dispatches the subcommands (`version`, `help`).
+- `cmd/vaquero`: the binary; `run(args, stdout, stderr) int` dispatches the subcommands (`serve`, `version`, `help`); `serve.go` has `serve(ctx, cfg, logger)` (binds the address first, then creates the 0700 data dir, opens and migrates the DB, serves, drains 30 s on cancel, checkpoints the WAL); `main.go` has `openDB` and `newLogger`.
 - `internal/version`: `Version`, `Commit`, `BuildDate` stamped via `-ldflags -X`; `Line()`.
+- `internal/config`: `Load()`/`FromEnv(get)` read `VQ_MODE`, `VQ_ADDR`, `VQ_DATA_DIR`, `VQ_LOG_FORMAT`, `VQ_LOG_LEVEL` into one flat `Config`; local mode refuses a non-loopback address; hosted mode is refused for now; `DefaultDataDir(goos, get)`; `AllowedHosts()`.
 - `internal/idgen`: `New()` mints ULID primary keys.
 - `internal/timefmt`: the only place instants are formatted for storage or display.
+- `internal/db`: SQLite writer/reader pools (`Open`, `OpenReader`, `Checkpoint`), embedded goose migrations (`Migrate` refuses a database from a newer vaquero; `Newest`, `Version`, `MigrateTo`); `queries/` feeds sqlc into `db/gen`; `db/dbtest.New(t)` gives a migrated per-test database. Tables: `settings`.
+- `internal/web`: `NewRouter(handlers.Deps)` mounts every route (global middleware, `/healthz`, `/static/*`, `/`); `static.go` serves the embedded tree.
+- `internal/web/middleware`: request id, recover, `HostCheck` (403 for any Host but localhost, 127.0.0.1, ::1), request log, security headers, CSP nonce, `CrossOrigin` (403 for cross-site posts), `BodyLimit`, `CurrentPath`.
+- `internal/web/handlers`: `Deps` (Cfg, DB, Q, R, Logger, Now) plus `render`; `Healthz`, `NotFound`, `MethodNotAllowed`, `Home`; each handler is `func(Deps) http.HandlerFunc`.
+- `internal/web/templates`: templ components: `Shell`, `HomePage`, `NotFoundPage`, `ErrorPage`; class recipes in `helpers.go`. Theme tokens only.
+- `internal/web/static`: embedded `css` (input.css + generated tailwind.css), `js/app.js`, `vendor/htmx.min.js`, `favicon.svg`; `URL(path)` adds a content hash.
+- `internal/web/webtest`: `New(t)` boots the real router in local mode on a test database with a fixed clock; `Client` (`Get`, `GetWithHost`, `Post`, `PostCrossSite`; never follows redirects).
+
+Agent rules for each area are in `.claude/rules/` (database, handlers, security, ui-theming, copy-voice).
 
 ## Hard invariants
 

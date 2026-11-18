@@ -1,0 +1,31 @@
+name: quality-gate
+on:
+  workflow_call: {}
+permissions:
+  contents: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Go tools
+        run: |
+          go install github.com/a-h/templ/cmd/templ@v0.3.1020
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          go install honnef.co/go/tools/cmd/staticcheck@2026.2.1
+      - name: Generated files are fresh
+        run: make gen && git diff --exit-code
+      - name: gofmt
+        run: test -z "$(gofmt -l $(git ls-files '*.go'))"
+      - run: make vet
+      - run: make lint
+      - run: make test
+      - run: make cover-check

@@ -1,0 +1,15 @@
+# Per-package coverage floors enforced by scripts/cover-check.sh (make cover-check).
+# Format: one "<pkg> <floor>" per line, where <pkg> is a path relative to the
+# module root (for example internal/auth) and <floor> is a minimum percent.
+# Only files directly in the package directory count; sub-packages are excluded.
+# Blank lines and lines starting with # are ignored.
+
+cmd/vaquero 50
+internal/config 85
+internal/db 70
+internal/idgen 95
+internal/timefmt 95
+internal/version 95
+internal/web 80
+internal/web/handlers 50
+internal/web/middleware 90

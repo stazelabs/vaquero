@@ -1,0 +1,7 @@
+# Manual only, to conserve Actions minutes. Never add push or pull_request triggers.
+name: ci
+on:
+  workflow_dispatch: {}
+jobs:
+  gate:
+    uses: ./.github/workflows/quality-gate.yml

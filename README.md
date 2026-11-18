@@ -11,7 +11,12 @@ Status: early development. Not ready for use.
 Requires Go 1.27 and Node (for the build-time stylesheet only).
 
     make tools   # one time
-    make dev     # http://127.0.0.1:7878
+    cp .env.local.example .env.local   # keeps dev data in ./data
+    make dev     # hot reload at http://127.0.0.1:7878
+    make test
+    make ci      # the full gate: generate, format, vet, lint, test, coverage floors
+
+Run `make` with no target to list every target. A plain `vaquero serve` keeps its data in `~/Library/Application Support/vaquero` on macOS and `~/.local/share/vaquero` on Linux; set `VQ_DATA_DIR` to change it.
 
 ## Licence
 
