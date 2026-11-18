@@ -1,7 +1,9 @@
 package core
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -26,4 +28,31 @@ func (e *Invalid) Error() string {
 		msgs[i] = e.Fields[k]
 	}
 	return strings.Join(msgs, " ")
+}
+
+// invalid is an *Invalid with one field.
+func invalid(field, msg string) *Invalid { return &Invalid{Fields: map[string]string{field: msg}} }
+
+// fields collects messages for one input; err is nil when there are none.
+type fields map[string]string
+
+func (f fields) add(field, msg string) {
+	if _, ok := f[field]; !ok {
+		f[field] = msg
+	}
+}
+
+func (f fields) err() error {
+	if len(f) == 0 {
+		return nil
+	}
+	return &Invalid{Fields: f}
+}
+
+// notFound turns sql.ErrNoRows into ErrNotFound and wraps anything else.
+func notFound(err error, what string) error {
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return fmt.Errorf("%s: %w", what, err)
 }
