@@ -11,7 +11,8 @@ import (
 
 // fixture is the shared starting state for operation tests: project VAQ
 // with its default statuses plus an empty extra one, tickets VAQ-1 (tagged
-// "bug") and VAQ-2, milestone "M1", and project OTH with ticket OTH-1.
+// "bug", with one comment) and VAQ-2 (which "relates" to VAQ-1), milestone
+// "M1", and project OTH with ticket OTH-1.
 type fixture struct {
 	Owner     gen.Actor
 	Project   gen.Project
@@ -20,6 +21,8 @@ type fixture struct {
 	Milestone gen.Milestone
 	Other     gen.Project
 	O1        gen.Ticket
+	Comment   gen.Comment    // on T1
+	Link      gen.TicketLink // T2 relates to T1
 }
 
 func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
@@ -49,6 +52,10 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	f.Other, err = c.CreateProject(ctx, owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
 	must(err)
 	f.O1, err = c.CreateTicket(ctx, owner.ID, f.Other.ID, core.TicketInput{Title: "Elsewhere"})
+	must(err)
+	f.Comment, err = c.AddComment(ctx, owner.ID, f.T1.ID, "First comment.")
+	must(err)
+	f.Link, err = c.AddLink(ctx, owner.ID, f.T2.ID, "relates", core.TicketKey{Project: "VAQ", Number: 1})
 	must(err)
 	return c, d, f
 }
