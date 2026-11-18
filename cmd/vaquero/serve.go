@@ -9,12 +9,15 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/apitoken"
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/lockfile"
 	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/handlers"
@@ -39,6 +42,16 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err := os.Chmod(cfg.DataDir, 0o700); err != nil {
 		return fmt.Errorf("data directory: %w", err)
 	}
+	// One server per data directory, whatever port it listens on. Released
+	// last, after the WAL checkpoint (defers run in reverse).
+	release, held, err := lockfile.Acquire(cfg.DataDir)
+	if errors.Is(err, lockfile.ErrLocked) {
+		return fmt.Errorf("another vaquero is using %s (pid %d)", cfg.DataDir, held)
+	}
+	if err != nil {
+		return fmt.Errorf("data directory lock: %w", err)
+	}
+	defer release()
 	w, r, err := openDB(cfg.DBPath)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
@@ -55,6 +68,9 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	owner, err := c.EnsureOwner(ctx)
 	if err != nil {
 		return fmt.Errorf("owner: %w", err)
+	}
+	if err := ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir); err != nil {
+		return fmt.Errorf("local token: %w", err)
 	}
 	shutdown := make(chan struct{})
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown,
@@ -89,4 +105,32 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		return fmt.Errorf("server: %w", err)
 	}
 	return nil
+}
+
+// TokenFile is where the local token lives in the data directory. The CLI
+// and the MCP bridge read it to talk to the local server.
+const TokenFile = "token"
+
+// ensureLocalToken makes sure {dataDir}/token holds a live token for the
+// owner: one is minted ("local") and written with mode 0600 when the file
+// is missing, malformed, or names a token that is unknown or revoked.
+func ensureLocalToken(ctx context.Context, c *core.Core, r *gen.Queries, owner gen.Actor, dataDir string) error {
+	path := filepath.Join(dataDir, TokenFile)
+	if b, err := os.ReadFile(path); err == nil {
+		raw := strings.TrimSpace(string(b))
+		if apitoken.Valid(raw) {
+			if t, err := r.GetTokenByHash(ctx, apitoken.Hash(raw)); err == nil && !t.RevokedAt.Valid {
+				return os.Chmod(path, 0o600)
+			}
+		}
+	}
+	raw, _, err := c.CreateToken(ctx, owner.ID, owner.ID, "local")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(raw+"\n"), 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

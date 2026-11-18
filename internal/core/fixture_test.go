@@ -24,6 +24,7 @@ type fixture struct {
 	OtherTodo gen.Status     // OTH's Todo
 	Comment   gen.Comment    // on T1
 	Link      gen.TicketLink // T2 relates to T1
+	Token     gen.ApiToken   // the owner's, live
 }
 
 func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
@@ -59,6 +60,8 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	f.Comment, err = c.AddComment(ctx, owner.ID, f.T1.ID, "First comment.")
 	must(err)
 	f.Link, err = c.AddLink(ctx, owner.ID, f.T2.ID, "relates", core.TicketKey{Project: "VAQ", Number: 1})
+	must(err)
+	_, f.Token, err = c.CreateToken(ctx, owner.ID, owner.ID, "fixture")
 	must(err)
 	return c, d, f
 }

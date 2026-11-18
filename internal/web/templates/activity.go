@@ -95,6 +95,10 @@ func EventSentence(e EventView) string {
 		return fmt.Sprintf("removed a link from %s to %s", e.TicketKey, s("to"))
 	case core.EvActorCreated:
 		return "joined"
+	case core.EvTokenCreated:
+		return fmt.Sprintf("created API token %s (%s…)", s("name"), s("prefix"))
+	case core.EvTokenRevoked:
+		return fmt.Sprintf("revoked API token %s (%s…)", s("name"), s("prefix"))
 	}
 	return "made a change"
 }

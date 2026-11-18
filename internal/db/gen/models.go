@@ -15,6 +15,17 @@ type Actor struct {
 	CreatedAt string
 }
 
+type ApiToken struct {
+	ID         string
+	ActorID    string
+	Name       string
+	Prefix     string
+	TokenHash  string
+	CreatedAt  string
+	LastUsedAt sql.NullString
+	RevokedAt  sql.NullString
+}
+
 type Comment struct {
 	ID        string
 	TicketID  string
@@ -96,6 +107,7 @@ type Ticket struct {
 	CreatedAt       string
 	UpdatedAt       string
 	StatusChangedAt string
+	Version         int64
 }
 
 type TicketLink struct {

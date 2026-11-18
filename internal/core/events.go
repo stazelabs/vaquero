@@ -21,6 +21,7 @@ import (
 //   - comment.*: {"comment_id"}.
 //   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
 //   - actor.created: {"kind", "name"}.
+//   - token.created, token.revoked: {"name", "prefix"}.
 const (
 	EvProjectCreated    = "project.created"
 	EvProjectUpdated    = "project.updated"
@@ -44,6 +45,8 @@ const (
 	EvLinkCreated       = "link.created"
 	EvLinkDeleted       = "link.deleted"
 	EvActorCreated      = "actor.created"
+	EvTokenCreated      = "token.created"
+	EvTokenRevoked      = "token.revoked"
 )
 
 // Change is one field's value before and after an update.
@@ -85,6 +88,6 @@ func EventKinds() []string {
 		EvTicketCreated, EvTicketUpdated, EvTicketReordered,
 		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
 		EvLinkCreated, EvLinkDeleted,
-		EvActorCreated,
+		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 	}
 }

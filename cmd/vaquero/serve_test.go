@@ -2,17 +2,20 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
+	_ "modernc.org/sqlite"
 )
 
 func freeAddr(t *testing.T) string {
@@ -116,4 +119,69 @@ func TestServeStopsPromptlyWithOpenStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("serve held open by the stream")
 	}
+}
+
+func waitHealthy(t *testing.T, addr string) {
+	t.Helper()
+	for range 60 {
+		if resp, err := http.Get("http://" + addr + "/healthz"); err == nil {
+			resp.Body.Close()
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("server never answered")
+}
+
+func TestServeWritesLocalToken(t *testing.T) {
+	dir := t.TempDir()
+	for range 2 {
+		addr := freeAddr(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- serve(ctx, testConfig(t, addr, dir), slog.New(slog.DiscardHandler)) }()
+		waitHealthy(t, addr)
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	fi, err := os.Stat(filepath.Join(dir, "token"))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("%v %v", fi, err)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "token"))
+	if !strings.HasPrefix(string(b), "vq_") {
+		t.Fatalf("%q", b)
+	}
+	w, err := sql.Open("sqlite", "file:"+filepath.Join(dir, "vaquero.db")+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	var n int
+	w.QueryRow(`SELECT count(*) FROM api_tokens WHERE name = 'local' AND revoked_at IS NULL`).Scan(&n)
+	if n != 1 {
+		t.Fatalf("%d local tokens after two boots", n)
+	}
+}
+
+// Review Focus 3.
+func TestServeRefusesSharedDataDir(t *testing.T) {
+	dir := t.TempDir()
+	first := freeAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, testConfig(t, first, dir), slog.New(slog.DiscardHandler)) }()
+	waitHealthy(t, first)
+	err := serve(context.Background(), testConfig(t, freeAddr(t), dir), slog.New(slog.DiscardHandler))
+	if err == nil || !strings.Contains(err.Error(), "another vaquero is using") || !strings.Contains(err.Error(), strconv.Itoa(os.Getpid())) {
+		t.Fatalf("%v", err)
+	}
+	if resp, err := http.Get("http://" + first + "/healthz"); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("first server hurt: %v", err)
+	}
+	cancel()
+	<-done
 }
