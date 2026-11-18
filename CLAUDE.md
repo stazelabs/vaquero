@@ -4,7 +4,7 @@ Guidance for working in this repo. Keep it short and current: edit it when an in
 
 ## Summary
 
-Vaquero is an agent-native, local-first, lightweight ticket tracker with coordination primitives for agents. One Go binary, one SQLite file. Local mode (one person, loopback) now; hosted mode (sign-in, cloud) from Phase 4. Design: docs/superpowers/specs/2026-11-18-vaquero-design.md. Plans: docs/superpowers/plans/2026-11-18-phase-0-foundation.md. Infrastructure is ported from the sibling projects startcase and healthcheck-email (read-only); the porting reference is /Users/cstaszak/Stazelabs/projects/startcase/docs/superpowers/plans/2026-11-17-porting-map.md.
+Vaquero is an agent-native, local-first, lightweight ticket tracker with coordination primitives for agents. One Go binary, one SQLite file. Local mode (one person, loopback) now; hosted mode (sign-in, cloud) from Phase 4. Design: docs/superpowers/specs/2026-11-18-vaquero-design.md. Plans: docs/superpowers/plans/. Work list: docs/BACKLOG.md (no outside tracker; it moves into vaquero itself in Phase 3). Add deferred work and open questions there, and tick lines when they ship. Infrastructure is ported from the sibling projects startcase and healthcheck-email (read-only); the porting reference is /Users/cstaszak/Stazelabs/projects/startcase/docs/superpowers/plans/2026-11-17-porting-map.md.
 
 ## Commands
 
