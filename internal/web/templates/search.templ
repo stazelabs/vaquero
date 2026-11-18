@@ -1,0 +1,38 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/search"
+
+// SearchPage is the results of a search across tickets and comments.
+templ SearchPage(q string, hits []search.Hit) {
+	@Shell("Search") {
+		<h1 class={ h1Class }>Search</h1>
+		<form method="get" action="/search" role="search" class="mt-4 flex max-w-xl gap-3">
+			<label for="f-q" class="sr-only">Search tickets and comments</label>
+			<input id="f-q" name="q" type="search" value={ q } autocomplete="off" class={ inputClass } placeholder="Search tickets and comments"/>
+			<button type="submit" class={ btnPrimary }>Search</button>
+		</form>
+		if q != "" && len(hits) == 0 {
+			<p class="mt-8 text-sm text-muted">No tickets match.</p>
+		}
+		<ul class="mt-6 space-y-3">
+			for _, h := range hits {
+				<li data-card={ h.Key } class={ panelClass + " p-3" }>
+					<a href={ templ.SafeURL("/t/" + h.Key) } class="flex items-baseline gap-2 hover:text-accent">
+						<span class="font-mono text-xs text-muted">{ h.Key }</span>
+						<span class="font-medium text-ink">{ h.Title }</span>
+						<span class="ml-auto text-xs text-muted">{ h.Status }</span>
+					</a>
+					<p class="mt-1 text-sm text-ink/80">
+						for _, p := range h.Snippet {
+							if p.Mark {
+								<mark class="rounded bg-accent/20 px-0.5 text-ink">{ p.Text }</mark>
+							} else {
+								{ p.Text }
+							}
+						}
+					</p>
+				</li>
+			}
+		</ul>
+	}
+}

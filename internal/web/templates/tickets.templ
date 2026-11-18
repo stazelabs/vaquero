@@ -93,6 +93,7 @@ templ TicketFormPage(f TicketForm) {
 // links, the comment thread and its history.
 templ TicketPage(v TicketView) {
 	@Shell(v.Key + " " + v.Ticket.Title) {
+		<span hidden data-project={ v.Project.Key }></span>
 		<p class="font-mono text-sm text-muted">
 			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
 		</p>

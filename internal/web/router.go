@@ -34,6 +34,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Get("/", handlers.ProjectList(d))
 	r.Get("/activity", handlers.Activity(d))
 	r.Get("/events/stream", handlers.Stream(d))
+	r.Get("/search", handlers.Search(d))
 	r.Get("/projects/new", handlers.ProjectNew(d))
 	r.Post("/projects", handlers.ProjectCreate(d))
 	r.Route("/p/{key}", func(r chi.Router) {

@@ -31,19 +31,25 @@ templ Shell(title string) {
 			<a href="#main" class="sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
 			<div class="flex min-h-screen flex-col">
 				<header class="border-t-4 border-accent border-b border-b-line">
-					<div class="mx-auto flex h-14 w-full max-w-5xl items-center px-4">
+					<div class="mx-auto flex h-14 w-full max-w-7xl items-center px-4">
 						<a href="/" class="text-lg font-semibold tracking-tight text-ink hover:text-accent">Vaquero</a>
 						<nav aria-label="Main" class="ml-8 flex items-center gap-5">
 							<a href="/" class={ navLink }>Projects</a>
 							<a href="/activity" class={ navLink }>Activity</a>
 						</nav>
+						<form method="get" action="/search" role="search" class="ml-auto">
+							<label for="vq-search" class="sr-only">Search tickets and comments</label>
+							<input id="vq-search" name="q" type="search" autocomplete="off" placeholder="Search  /" class={ inputClass + " w-48 py-1" }/>
+						</form>
+						<button type="button" data-shortcuts-open class="ml-3 text-sm text-muted hover:text-accent" aria-label="Keyboard shortcuts">?</button>
 					</div>
 				</header>
-				<main id="main" class="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
+				<main id="main" class="mx-auto w-full max-w-7xl flex-1 px-4 py-10">
 					{ children... }
 				</main>
 				<footer class="border-t border-line py-4 text-center text-xs text-muted">Vaquero herds the chaos.</footer>
 			</div>
+			@shortcutsDialog()
 		</body>
 	</html>
 }
@@ -60,4 +66,20 @@ templ toast(f flash.Flash) {
 		<span class="min-w-0">{ f.Message }</span>
 		<button type="button" data-toast-close aria-label="Dismiss" class="shrink-0 rounded-md px-2 text-lg leading-none opacity-80 hover:opacity-100">×</button>
 	</div>
+}
+
+// shortcutsDialog lists the keyboard shortcuts; ? opens it (app.js).
+templ shortcutsDialog() {
+	<dialog id="vq-shortcuts" aria-labelledby="vq-shortcuts-title" class="m-auto w-full max-w-sm rounded-lg border border-line bg-paper p-5 text-ink backdrop:bg-ink/40">
+		<h2 id="vq-shortcuts-title" class="text-base font-semibold">Keyboard shortcuts</h2>
+		<dl class="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+			for _, s := range shortcuts {
+				<dt><kbd class="rounded border border-line bg-paper-alt px-1.5 font-mono text-xs">{ s[0] }</kbd></dt>
+				<dd class="text-ink/80">{ s[1] }</dd>
+			}
+		</dl>
+		<form method="dialog" class="mt-5 text-right">
+			<button type="submit" class={ btnSecondary }>Close</button>
+		</form>
+	</dialog>
 }

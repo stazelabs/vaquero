@@ -96,3 +96,103 @@ window.vqDragging = false;
     }
   });
 })();
+
+// Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
+// g b board, g l list, j/k next/previous card, enter open, ? shortcuts.
+// Ignored while typing in a field.
+(function () {
+  var dialog = document.getElementById("vq-shortcuts");
+  var opener = document.querySelector("[data-shortcuts-open]");
+  if (opener && dialog) {
+    opener.addEventListener("click", function () { dialog.showModal(); });
+  }
+  function project() {
+    var el = document.querySelector("[data-project]");
+    return el ? el.dataset.project : "";
+  }
+  function typing(el) {
+    if (!el) {
+      return false;
+    }
+    var tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+  }
+  var current = -1;
+  function cards() {
+    return Array.prototype.slice.call(document.querySelectorAll("[data-card]"));
+  }
+  function focusCard(step) {
+    var list = cards();
+    if (!list.length) {
+      return;
+    }
+    if (current >= 0 && list[current]) {
+      list[current].classList.remove("ring-2", "ring-accent");
+    }
+    current = Math.max(0, Math.min(list.length - 1, current + step));
+    var el = list[current];
+    el.classList.add("ring-2", "ring-accent");
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+  var pendingG = false;
+  document.addEventListener("keydown", function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || typing(ev.target)) {
+      return;
+    }
+    if (dialog && dialog.open) {
+      return; // the dialog closes itself on esc
+    }
+    var k = ev.key;
+    var p = project();
+    if (pendingG) {
+      pendingG = false;
+      if (k === "b") {
+        window.location.href = p ? "/p/" + p : "/";
+      } else if (k === "l") {
+        window.location.href = p ? "/p/" + p + "/list" : "/";
+      }
+      ev.preventDefault();
+      return;
+    }
+    switch (k) {
+      case "g":
+        pendingG = true;
+        setTimeout(function () { pendingG = false; }, 1500);
+        break;
+      case "c":
+        window.location.href = p ? "/p/" + p + "/new" : "/projects/new";
+        break;
+      case "/":
+        var box = document.getElementById("vq-search");
+        if (box) {
+          box.focus();
+        }
+        break;
+      case "j":
+        focusCard(1);
+        break;
+      case "k":
+        focusCard(-1);
+        break;
+      case "Enter":
+        var list = cards();
+        if (current >= 0 && list[current]) {
+          var link = list[current].querySelector("a");
+          if (link) {
+            link.click();
+          }
+        }
+        break;
+      case "?":
+        if (dialog) {
+          dialog.showModal();
+        }
+        break;
+      default:
+        return;
+    }
+    ev.preventDefault();
+  });
+  // A board refresh replaces the cards; start the focus over.
+  document.body.addEventListener("htmx:afterSwap", function () { current = -1; });
+})();

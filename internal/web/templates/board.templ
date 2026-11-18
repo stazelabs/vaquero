@@ -29,6 +29,7 @@ type ListView struct {
 
 // projectHeader is the key, name and the board/list/settings/new links.
 templ projectHeader(p gen.Project, view string) {
+	<span hidden data-project={ p.Key }></span>
 	<div class="flex flex-wrap items-center justify-between gap-4">
 		<div>
 			<p class="font-mono text-sm text-muted">{ p.Key }</p>

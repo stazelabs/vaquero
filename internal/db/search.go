@@ -13,18 +13,18 @@ type SearchHit struct {
 	Title          string
 	StatusName     string
 	StatusCategory string
-	Snippet        string // the best-matching text; [ and ] mark the hits
+	Snippet        string // the best-matching text; \x02 and \x03 mark the hits (content can't hold control characters)
 }
 
 // searchSQL is written by hand: sqlc can't read FTS5 virtual tables.
 const searchSQL = `
 WITH hits AS (
     SELECT t.id AS ticket_id, bm25(tickets_fts) AS score,
-           snippet(tickets_fts, -1, '[', ']', '…', 12) AS snip
+           snippet(tickets_fts, -1, char(2), char(3), '…', 12) AS snip
     FROM tickets_fts JOIN tickets t ON t.rowid = tickets_fts.rowid
     WHERE tickets_fts MATCH ?1
     UNION ALL
-    SELECT c.ticket_id, bm25(comments_fts), snippet(comments_fts, 0, '[', ']', '…', 12)
+    SELECT c.ticket_id, bm25(comments_fts), snippet(comments_fts, 0, char(2), char(3), '…', 12)
     FROM comments_fts JOIN comments c ON c.rowid = comments_fts.rowid
     WHERE comments_fts MATCH ?1 AND c.deleted_at IS NULL
 ),

@@ -19,6 +19,7 @@ type Deps struct {
 	Cfg    config.Config
 	DB     *sql.DB      // writer pool; only /healthz pings it
 	R      *gen.Queries // reader: every read on a request path
+	RDB    *sql.DB      // the reader pool itself, for the hand-written search query
 	Core   *core.Core   // every change
 	Actor  gen.Actor    // who changes things: the local owner in local mode
 	Logger *slog.Logger

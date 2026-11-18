@@ -100,3 +100,15 @@ func toastClass(k flash.Kind) string {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// shortcuts are the keyboard shortcuts app.js handles, as the dialog lists them.
+var shortcuts = [][2]string{
+	{"c", "New ticket"},
+	{"/", "Search"},
+	{"g b", "Board"},
+	{"g l", "List"},
+	{"j / k", "Next or previous card"},
+	{"enter", "Open the card"},
+	{"?", "This list"},
+	{"esc", "Close"},
+}
