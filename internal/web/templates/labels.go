@@ -55,9 +55,6 @@ func dueLabel(m gen.Milestone) string {
 	return "Due " + timefmt.Day(m.DueOn.String)
 }
 
-// isDone says whether a status category counts as finished.
-func isDone(category string) bool { return category == "done" || category == "cancelled" }
-
 // countLabel is "1 open ticket" or "3 open tickets".
 func countLabel(n int64, one, many string) string {
 	if n == 1 {
