@@ -87,6 +87,12 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] The logo's colours are fixed in the SVG, so it doesn't follow the dark-mode accent (review fkd minor 9)
 - [ ] When sessions arrive (Phase 4), don't port startcase's snapshot `scrub` as is: its `VACUUM` can renumber the rowids the search indexes key on — scrub, then rebuild the FTS tables
 
+## Admin section (requested 2026-11-19)
+
+- [ ] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
+- [ ] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
+- [ ] Later: backups (list, prune, restore), API call log, users and roles (Phase 4), system details (disk space, uptime)
+
 ## Open questions
 
 - [ ] Prevent two servers on different ports sharing one data directory (lock file?) — needed before the CLI starts the server on demand (Phase 2)

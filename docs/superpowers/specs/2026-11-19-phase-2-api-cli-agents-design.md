@@ -33,7 +33,11 @@ Decided on 2026-11-19:
 
 - An `api_tokens` table: the actor the token acts as, a display name, a prefix shown in lists (`vq_` plus 6 characters), the SHA-256 of the whole token, created, last used and revoked times. Tokens are 32 random bytes, base64url, prefixed `vq_`; they are high-entropy, so a plain SHA-256 is enough (no server secret to manage). A token is shown once, at creation.
 - On first boot in local mode, vaquero mints a token for the owner named "local" and writes it to `{data dir}/token` (mode 0600). The CLI and the stdio bridge read it from there.
-- A settings page lists tokens (name, prefix, last used) and creates and revokes them.
+- The tokens page lists tokens (name, prefix, last used) and creates and revokes them. It is the first page of the admin section.
+
+### The admin section (requested 2026-11-19)
+
+Operator pages live under `/admin`, linked as "Admin" in the top bar, with their own side list. In local mode the owner is the admin; Phase 4 adds roles. 2a: the admin home (version, data directory, database size, schema version) and tokens. 2b: MCP activity. Later: backups, system details, users and roles.
 
 ### The data directory lock
 
@@ -67,6 +71,7 @@ Decided on 2026-11-19:
 - Ready queue: the board's ready definition plus "no live claim", ordered by priority then position; `GET /api/v1/ready` and an MCP tool.
 - MCP tools mirror the API one to one, sharing its readers and writers; the tool list is frozen by a test.
 - Board cards show the claiming agent and the time left on its lease.
+- **MCP activity** (requested 2026-11-19): every MCP tool call is logged to an `mcp_calls` table (time, actor, token prefix, tool, a short argument summary with no long text, outcome: ok or the error code and message, duration). `/admin/mcp` lists them newest first, filterable by agent and tool, and refreshes live. API calls can share the log later. Rows older than 30 days are pruned by the background sweep.
 
 ## Not in Phase 2
 

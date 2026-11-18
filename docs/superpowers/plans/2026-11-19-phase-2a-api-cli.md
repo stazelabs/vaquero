@@ -167,14 +167,16 @@ Routes: `POST /projects` `{key, name, description}`; `PATCH /projects/{key}` `{n
 - [ ] **Tests first:** `TestAPICreateTicket` (names resolve; unknown status name → 422 `fields.status`), `TestAPIPatchConflict` (Review Focus 1 at the API: 409 with `current.version`), `TestAPIPatchPartial`, `TestAPIUnknownFieldRefused` (`{"titel": "x"}` → 400 naming the field; decoders use `DisallowUnknownFields`), `TestAPIMoveByName`, `TestAPICommentsAndLinks` (loop refusal surfaces as 422 with the message), `TestAPIWritesRecordTheTokenActor`.
 - [ ] Implement, gate, commit — `"API: create and change projects, tickets, comments and links"`
 
-### Task 6: Tokens page
+### Task 6: Admin section and the tokens page
 
-**Files:** `internal/web/handlers/tokens.go`, `tokens_test.go`, `internal/web/templates/tokens.templ`, router, layout nav ("Tokens" in the top bar's right side, small)
+The admin section is where operator pages live (requested 2026-11-19). In local mode the owner is the admin; Phase 4 adds roles. 2a creates the section and its first page; 2b adds MCP activity; later pages (backups, system information, users) are in the backlog.
 
-Routes: `GET /settings/tokens` (list: name, prefix, created, last used, revoked), `POST /settings/tokens` `{name}` (renders the page with status 201 showing the new token once in a copyable `<input readonly>`, with "Copy this token now. It won't be shown again."), `POST /settings/tokens/{id}/revoke`. The local token is listed and revocable (a new one is written at the next start).
+**Files:** `internal/web/handlers/admin.go`, `tokens.go`, `tokens_test.go`, `internal/web/templates/admin.templ` (`AdminShell(title, current)`: a side list of admin pages), `tokens.templ`, router (`r.Route("/admin", …)`), layout nav ("Admin" at the right of the top bar)
 
-- [ ] **Tests first:** `TestTokensPageCreateShowsOnce` (the raw token appears in the POST response only; a following GET shows the prefix but not the token), `TestTokenRevokeStopsAPI` (revoked token → 401).
-- [ ] Implement, gate, commit — `"Web: API tokens page"`
+Routes: `GET /admin` (the admin home: version, data directory, database file size, schema version, and links to each admin page), `GET /admin/tokens` (list: name, prefix, actor, created, last used, revoked), `POST /admin/tokens` `{name}` (renders the page with status 201 showing the new token once in a copyable `<input readonly>`, with "Copy this token now. It won't be shown again."), `POST /admin/tokens/{id}/revoke`. The local token is listed and revocable (a new one is written at the next start).
+
+- [ ] **Tests first:** `TestAdminHome` (version, data directory, schema version, a link to `/admin/tokens`; the top bar links to `/admin`), `TestTokensPageCreateShowsOnce` (the raw token appears in the POST response only; a following GET shows the prefix but not the token), `TestTokenRevokeStopsAPI` (revoked token → 401).
+- [ ] Implement, gate, commit — `"Web: admin section and API tokens page"`
 
 ### Task 7: CLI client and profiles
 
@@ -247,5 +249,5 @@ Exit codes: 0 ok, 1 failure (message on stderr), 2 usage, 3 conflict (the curren
 
 ### Task 9: Docs and check
 
-- [ ] CLAUDE.md (package map: `internal/apitoken`, `internal/lockfile`, `internal/api`, `internal/client`, API routes, CLI commands; invariants: tokens, lock, version and conflict rules), `.claude/rules/security.md` (tokens and the API chain), a short `docs/CLI.md` (the command table and profiles), `docs/BACKLOG.md` (tick the before-Phase-2 items and the data-dir lock; add per-token rate limits for Phase 4), floors for new packages.
+- [ ] CLAUDE.md (package map: `internal/apitoken`, `internal/lockfile`, `internal/api`, `internal/client`, API routes, CLI commands; invariants: tokens, lock, version and conflict rules), `.claude/rules/security.md` (tokens and the API chain), `.claude/rules/handlers.md` (operator pages go under `/admin` inside `AdminShell`), a short `docs/CLI.md` (the command table and profiles), `docs/BACKLOG.md` (tick the before-Phase-2 items and the data-dir lock; add per-token rate limits for Phase 4), floors for new packages.
 - [ ] `make ci`. By hand: stop any server, run `vaquero tickets VAQ` (the server starts), create, edit, move and comment from the CLI with the board open in Chrome and watch it update; `--json` through `jq`; two edits with the same `--version`. Commit — `"Docs: phase 2a"`
