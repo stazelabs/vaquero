@@ -1,0 +1,159 @@
+// Package board builds the board and list views of a project: its tickets
+// grouped into status columns, narrowed by a Filter, with each card's
+// readiness and the milestone panel's progress.
+package board
+
+import (
+	"context"
+	"database/sql"
+	"time"
+
+	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
+)
+
+// DoneWindow is how far back the board's done columns reach.
+const DoneWindow = 7 * 24 * time.Hour
+
+// Card is one ticket on the board or in the list.
+type Card struct {
+	Key, Title, Assignee   string
+	AssigneeIsAgent, Ready bool
+	Priority               int64
+	Tags                   []string
+}
+
+// Column is one status and its cards, top to bottom.
+type Column struct {
+	Status gen.Status
+	Cards  []Card
+	Older  int // done columns on the board: cards hidden as older than DoneWindow
+}
+
+// MilestoneProgress is one open milestone in the panel.
+type MilestoneProgress struct {
+	ID, Name, Due string
+	Done, Total   int64
+}
+
+// Board is a project's board.
+type Board struct {
+	Project     gen.Project
+	Filter      Filter
+	Active      []Column // todo, in progress, in review and done statuses, in order
+	Rails       []Column // backlog and cancelled statuses, in order
+	Milestones  []MilestoneProgress
+	NoMilestone int64 // open tickets without a milestone
+}
+
+func isRail(category string) bool { return category == "backlog" || category == "cancelled" }
+
+// Load builds the board as of now.
+func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Board, error) {
+	cols, err := columns(ctx, q, p, owner, f, now)
+	if err != nil {
+		return Board{}, err
+	}
+	b := Board{Project: p, Filter: f}
+	for _, c := range cols {
+		if isRail(c.Status.Category) {
+			b.Rails = append(b.Rails, c)
+		} else {
+			b.Active = append(b.Active, c)
+		}
+	}
+	progress, err := q.ListMilestoneProgress(ctx, p.ID)
+	if err != nil {
+		return b, err
+	}
+	for _, m := range progress {
+		if m.ClosedAt.Valid {
+			continue
+		}
+		mp := MilestoneProgress{ID: m.ID, Name: m.Name, Done: m.Done, Total: m.Total}
+		if m.DueOn.Valid {
+			mp.Due = timefmt.Day(m.DueOn.String)
+		}
+		b.Milestones = append(b.Milestones, mp)
+	}
+	if b.NoMilestone, err = q.CountOpenWithoutMilestone(ctx, p.ID); err != nil {
+		return b, err
+	}
+	return b, nil
+}
+
+// LoadList is every status column with every matching card: nothing folded
+// or hidden by age.
+func LoadList(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter) ([]Column, error) {
+	return columns(ctx, q, p, owner, f, time.Time{})
+}
+
+// columns groups the filtered tickets by status. A non-zero now hides done
+// cards older than DoneWindow, counting them in Older.
+func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, error) {
+	statuses, err := q.ListStatuses(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := q.ListBoardTickets(ctx, params(p, owner, f))
+	if err != nil {
+		return nil, err
+	}
+	tagRows, err := q.ListProjectTicketTags(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string][]string{}
+	for _, r := range tagRows {
+		tags[r.TicketID] = append(tags[r.TicketID], r.Name)
+	}
+	cols := make([]Column, len(statuses))
+	index := map[string]int{}
+	for i, s := range statuses {
+		cols[i].Status = s
+		index[s.ID] = i
+	}
+	cutoff := now.Add(-DoneWindow)
+	for _, r := range rows {
+		c := &cols[index[r.StatusID]]
+		if !now.IsZero() && r.StatusCategory == "done" {
+			if at, err := timefmt.Parse(r.StatusChangedAt); err == nil && at.Before(cutoff) {
+				c.Older++
+				continue
+			}
+		}
+		c.Cards = append(c.Cards, Card{
+			Key:             core.TicketKey{Project: p.Key, Number: r.Number}.String(),
+			Title:           r.Title,
+			Assignee:        r.AssigneeName,
+			AssigneeIsAgent: r.AssigneeKind == "agent",
+			Ready:           r.Ready,
+			Priority:        r.Priority,
+			Tags:            tags[r.ID],
+		})
+	}
+	return cols, nil
+}
+
+func params(p gen.Project, owner gen.Actor, f Filter) gen.ListBoardTicketsParams {
+	str := func(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
+	pr := gen.ListBoardTicketsParams{ProjectID: p.ID, Tag: str(f.Tag), AssigneeID: str(f.Assignee)}
+	if f.Mine {
+		pr.AssigneeID = str(owner.ID)
+	}
+	if f.Agents {
+		pr.AssigneeKind = str("agent")
+	}
+	if f.Priority >= 0 {
+		pr.Priority = sql.NullInt64{Int64: f.Priority, Valid: true}
+	}
+	switch f.Milestone {
+	case "":
+	case "none":
+		pr.NoMilestone = true
+	default:
+		pr.MilestoneID = str(f.Milestone)
+	}
+	return pr
+}
