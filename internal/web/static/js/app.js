@@ -43,6 +43,9 @@ window.vqDragging = false;
       window.Sortable.create(list, {
         group: "board",
         animation: 150,
+        // Pointer-event dragging rather than native HTML5 drag and drop:
+        // consistent across browsers and touch, and drivable in tests.
+        forceFallback: true,
         draggable: "[data-card]",
         onStart: function () {
           window.vqDragging = true;
@@ -118,8 +121,12 @@ window.vqDragging = false;
     return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
   }
   var current = -1;
+  // Visible cards only: a collapsed rail's cards are skipped.
   function cards() {
-    return Array.prototype.slice.call(document.querySelectorAll("[data-card]"));
+    return Array.prototype.slice.call(document.querySelectorAll("[data-card]")).filter(function (el) {
+      // checkVisibility sees a closed <details>; getClientRects is the fallback.
+      return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
+    });
   }
   function focusCard(step) {
     var list = cards();

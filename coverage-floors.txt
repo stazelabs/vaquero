@@ -5,11 +5,13 @@
 # Blank lines and lines starting with # are ignored.
 
 cmd/vaquero 50
+internal/board 85
 internal/config 85
 internal/core 75
 internal/db 70
 internal/idgen 95
 internal/markdown 85
+internal/search 90
 internal/timefmt 95
 internal/version 95
 internal/web 80

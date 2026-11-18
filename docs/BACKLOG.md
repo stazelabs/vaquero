@@ -7,9 +7,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Phases
 
 - [x] Phase 0: Foundation — merged a69c53a
-- [ ] Phase 1: Core tracker
+- [x] Phase 1: Core tracker
   - [x] Phase 1a: schema, `internal/core`, events, plain pages, activity feed
-  - [ ] Phase 1b: drag-and-drop board, list view with filters, search, live updates, keyboard shortcuts
+  - [x] Phase 1b: drag-and-drop board, list view with filters, search, live updates, keyboard shortcuts
 - [ ] Phase 2: API, CLI, MCP, coordination
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
   - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
@@ -30,7 +30,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Test the non-loopback refusal through `run("serve")`, including the hosted-mode pointer in the message (review #11)
 - [ ] Log Host-check refusals (review #12)
 - [ ] Small items: validate `VQ_LOG_LEVEL`; log status 200 rather than 0 for empty responses; drop the duplicate `MkdirAll` in `openDB`; remove the dbtest template directory; stop serving `input.css` (review #13)
-- [ ] View the theme in dark mode and check contrast — only verified by stylesheet inspection so far
+- [x] View the theme in dark mode and check contrast — viewed in Phase 1b by applying the dark tokens in Chrome; readable
 
 ## Deferred from Phase 1a
 
@@ -51,6 +51,15 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Destructive buttons (comment delete, status delete, archive) act on one click with no confirmation (review 1a #16)
 - [ ] Test gaps: cross-site POST to a real mutating route with a no-write assertion; hostile markdown in a comment at page level; cross-project parent through the form (review 1a #15)
 - [ ] Tag names: `école` and `École` are one tag in the input but two in the database (SQLite NOCASE folds ASCII only) (review 1a #1, related)
+
+## Deferred from Phase 1b
+
+- [ ] The milestone panel is hidden below laptop width (`max-lg:hidden`); small screens get no milestone filter except through the URL
+- [ ] At narrow widths an open rail pushes the active columns into sideways scroll; consider overlaying it instead
+- [ ] Reordering cards writes a "reordered" history line each time; consider folding repeated reorders or leaving them out of the activity page
+- [ ] Keyboard shortcuts have no automated test (app.js is untested JavaScript); checked by hand in Chrome
+- [ ] Drag-and-drop has no automated browser test; checked by hand in Chrome with scripted pointer events (the browser tool's own drag gesture doesn't trigger Sortable)
+- [ ] Each open page polls the database once a second for the newest event; fine locally, revisit for hosted mode with many viewers (an in-process broadcast from core would replace polling)
 
 ## Open questions
 
