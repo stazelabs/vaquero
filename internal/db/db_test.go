@@ -1,0 +1,76 @@
+package db_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/db/dbtest"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+func TestMigrateIsIdempotent(t *testing.T) {
+	d := dbtest.New(t)
+	if err := appdb.Migrate(d.W); err != nil {
+		t.Fatal(err)
+	}
+	v, _ := appdb.Version(d.W)
+	n, _ := appdb.Newest()
+	if v != n {
+		t.Fatalf("version %d, newest %d", v, n)
+	}
+}
+
+func TestSettingsRoundTrip(t *testing.T) {
+	d := dbtest.New(t)
+	ctx := context.Background()
+	for _, val := range []string{"a", "b"} {
+		if err := d.Q.PutSetting(ctx, gen.PutSettingParams{Key: "k", Value: val, UpdatedAt: "2026-11-18T00:00:00Z"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s, err := d.RQ.GetSetting(ctx, "k")
+	if err != nil || s.Value != "b" {
+		t.Fatalf("%+v %v", s, err)
+	}
+}
+
+func TestReaderRefusesWrites(t *testing.T) {
+	d := dbtest.New(t)
+	if _, err := d.R.Exec(`DELETE FROM settings`); err == nil {
+		t.Fatal("reader accepted a write")
+	}
+}
+
+// Review Focus 3
+func TestOpenPathWithSpaces(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Application Support", "vaquero", "vaquero.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	w, err := appdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err := appdb.Migrate(w); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("database not at %q: %v", path, err)
+	}
+}
+
+// Review Focus 5
+func TestMigrateRefusesNewerDatabase(t *testing.T) {
+	d := dbtest.New(t)
+	if _, err := d.W.Exec(`INSERT INTO goose_db_version (version_id, is_applied) VALUES (9999, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := appdb.Migrate(d.W); err == nil || !strings.Contains(err.Error(), "newer") {
+		t.Fatalf("err = %v", err)
+	}
+}
