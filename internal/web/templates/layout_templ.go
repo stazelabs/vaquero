@@ -120,9 +120,9 @@ func Shell(title string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(static.URL("js/app.js"))
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(static.URL("vendor/sortable.min.js"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 23, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 23, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -135,13 +135,39 @@ func Shell(title string) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.GetNonce(ctx))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 23, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 23, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" defer></script></head><body class=\"min-h-screen bg-paper text-ink font-sans antialiased\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" defer></script><script src=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(static.URL("js/app.js"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 24, Col: 40}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" nonce=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var11 string
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.GetNonce(ctx))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 24, Col: 70}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" defer></script></head><body class=\"min-h-screen bg-paper text-ink font-sans antialiased\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -151,29 +177,7 @@ func Shell(title string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<a href=\"#main\" class=\"sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4\">Skip to content</a><div class=\"flex min-h-screen flex-col\"><header class=\"border-t-4 border-accent border-b border-b-line\"><div class=\"mx-auto flex h-14 w-full max-w-5xl items-center px-4\"><a href=\"/\" class=\"text-lg font-semibold tracking-tight text-ink hover:text-accent\">Vaquero</a><nav aria-label=\"Main\" class=\"ml-8 flex items-center gap-5\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var10 = []any{navLink}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var10...)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<a href=\"/\" class=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var11 string
-		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var10).String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 1, Col: 0}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\">Projects</a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<a href=\"#main\" class=\"sr-only z-50 rounded-md bg-paper px-4 py-2 text-sm font-medium text-ink shadow focus:not-sr-only focus:fixed focus:left-4 focus:top-4\">Skip to content</a><div class=\"flex min-h-screen flex-col\"><header class=\"border-t-4 border-accent border-b border-b-line\"><div class=\"mx-auto flex h-14 w-full max-w-5xl items-center px-4\"><a href=\"/\" class=\"text-lg font-semibold tracking-tight text-ink hover:text-accent\">Vaquero</a><nav aria-label=\"Main\" class=\"ml-8 flex items-center gap-5\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -182,7 +186,7 @@ func Shell(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<a href=\"/activity\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<a href=\"/\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -195,7 +199,29 @@ func Shell(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\">Activity</a></nav></div></header><main id=\"main\" class=\"mx-auto w-full max-w-5xl flex-1 px-4 py-10\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\">Projects</a> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var14 = []any{navLink}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var14...)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<a href=\"/activity\" class=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var15 string
+		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var14).String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 1, Col: 0}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\">Activity</a></nav></div></header><main id=\"main\" class=\"mx-auto w-full max-w-5xl flex-1 px-4 py-10\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -203,7 +229,7 @@ func Shell(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</main><footer class=\"border-t border-line py-4 text-center text-xs text-muted\">Vaquero herds the chaos.</footer></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</main><footer class=\"border-t border-line py-4 text-center text-xs text-muted\">Vaquero herds the chaos.</footer></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -229,53 +255,53 @@ func toast(f flash.Flash) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var14 == nil {
-			templ_7745c5c3_Var14 = templ.NopComponent
+		templ_7745c5c3_Var16 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var16 == nil {
+			templ_7745c5c3_Var16 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var15 = []any{"fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-4 rounded-md px-4 py-3 text-sm shadow-lg transition-opacity duration-500", toastClass(f.Kind)}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var15...)
+		var templ_7745c5c3_Var17 = []any{"fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-4 rounded-md px-4 py-3 text-sm shadow-lg transition-opacity duration-500", toastClass(f.Kind)}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var17...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div id=\"vq-toast\" role=\"status\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div id=\"vq-toast\" role=\"status\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if f.Kind == flash.Error {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, " data-sticky")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " data-sticky")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, " class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var16 string
-		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var15).String())
+		var templ_7745c5c3_Var18 string
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var17).String())
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 1, Col: 0}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><span class=\"min-w-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"><span class=\"min-w-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var17 string
-		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(f.Message)
+		var templ_7745c5c3_Var19 string
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(f.Message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 58, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 59, Col: 35}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</span> <button type=\"button\" data-toast-close aria-label=\"Dismiss\" class=\"shrink-0 rounded-md px-2 text-lg leading-none opacity-80 hover:opacity-100\">×</button></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</span> <button type=\"button\" data-toast-close aria-label=\"Dismiss\" class=\"shrink-0 rounded-md px-2 text-lg leading-none opacity-80 hover:opacity-100\">×</button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

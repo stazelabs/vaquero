@@ -150,6 +150,14 @@ func (c *Client) Post(path string, form url.Values) *Response {
 	return c.do(c.form(path, form))
 }
 
+// PostHX submits a form the way htmx does.
+func (c *Client) PostHX(path string, form url.Values) *Response {
+	c.t.Helper()
+	req := c.form(path, form)
+	req.Header.Set("HX-Request", "true")
+	return c.do(req)
+}
+
 // PostCrossSite submits a form the way a browser would from another site.
 func (c *Client) PostCrossSite(path string, form url.Values) *Response {
 	c.t.Helper()

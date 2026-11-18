@@ -37,6 +37,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Post("/projects", handlers.ProjectCreate(d))
 	r.Route("/p/{key}", func(r chi.Router) {
 		r.Get("/", handlers.ProjectShow(d))
+		r.Get("/board", handlers.BoardFragment(d))
+		r.Get("/list", handlers.ProjectListView(d))
 		r.Post("/", handlers.ProjectUpdate(d))
 		r.Get("/settings", handlers.ProjectSettings(d))
 		r.Post("/archive", handlers.ProjectArchive(d))
@@ -57,6 +59,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Get("/", handlers.TicketShow(d))
 		r.Post("/", handlers.TicketUpdate(d))
 		r.Get("/edit", handlers.TicketEdit(d))
+		r.Post("/move", handlers.TicketMove(d))
 		r.Post("/comments", handlers.CommentCreate(d))
 		r.Post("/comments/{id}", handlers.CommentUpdate(d))
 		r.Post("/comments/{id}/delete", handlers.CommentDelete(d))

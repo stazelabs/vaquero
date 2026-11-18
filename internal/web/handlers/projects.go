@@ -77,53 +77,6 @@ func ProjectCreate(d Deps) http.HandlerFunc {
 	}
 }
 
-// ProjectShow lists a project's tickets grouped by status.
-func ProjectShow(d Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := projectFromURL(w, r, d)
-		if !ok {
-			return
-		}
-		ctx := r.Context()
-		statuses, err := d.R.ListStatuses(ctx, p.ID)
-		if err != nil {
-			serverError(w, r, d, err)
-			return
-		}
-		tickets, err := d.R.ListTicketsByProject(ctx, p.ID)
-		if err != nil {
-			serverError(w, r, d, err)
-			return
-		}
-		tagRows, err := d.R.ListProjectTicketTags(ctx, p.ID)
-		if err != nil {
-			serverError(w, r, d, err)
-			return
-		}
-		tags := map[string][]string{}
-		for _, t := range tagRows {
-			tags[t.TicketID] = append(tags[t.TicketID], t.Name)
-		}
-		v := templates.ProjectView{Project: p}
-		index := map[string]int{}
-		for _, s := range statuses {
-			index[s.ID] = len(v.Groups)
-			v.Groups = append(v.Groups, templates.StatusGroup{Status: s})
-		}
-		for _, t := range tickets {
-			g := &v.Groups[index[t.StatusID]]
-			g.Tickets = append(g.Tickets, templates.TicketRow{
-				Key:      core.TicketKey{Project: p.Key, Number: t.Number}.String(),
-				Title:    t.Title,
-				Assignee: t.AssigneeName,
-				Priority: t.Priority,
-				Tags:     tags[t.ID],
-			})
-		}
-		render(w, r, d, http.StatusOK, templates.ProjectPage(v))
-	}
-}
-
 // settingsPage renders the settings page with form f and status.
 func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f templates.ProjectForm, status int) {
 	ctx := r.Context()

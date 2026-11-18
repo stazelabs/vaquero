@@ -8,25 +8,6 @@ type ProjectForm struct {
 	Errors                 map[string]string
 }
 
-// TicketRow is one ticket in a list.
-type TicketRow struct {
-	Key, Title, Assignee string
-	Priority             int64
-	Tags                 []string
-}
-
-// StatusGroup is a status and its tickets, in board order.
-type StatusGroup struct {
-	Status  gen.Status
-	Tickets []TicketRow
-}
-
-// ProjectView is the project page.
-type ProjectView struct {
-	Project gen.Project
-	Groups  []StatusGroup
-}
-
 // StatusRow is one status on the settings page.
 type StatusRow struct {
 	Status      gen.Status
@@ -96,59 +77,6 @@ templ ProjectNewPage(f ProjectForm) {
 			</div>
 		</form>
 	}
-}
-
-// ProjectPage lists a project's tickets grouped by status.
-templ ProjectPage(v ProjectView) {
-	@Shell(v.Project.Name) {
-		<div class="flex flex-wrap items-center justify-between gap-4">
-			<div>
-				<p class="font-mono text-sm text-muted">{ v.Project.Key }</p>
-				<h1 class={ h1Class }>{ v.Project.Name }</h1>
-			</div>
-			<div class="flex items-center gap-4">
-				<a href={ templ.SafeURL("/p/" + v.Project.Key + "/settings") } class={ btnLink }>Settings</a>
-				if !v.Project.ArchivedAt.Valid {
-					<a href={ templ.SafeURL("/p/" + v.Project.Key + "/new") } class={ btnPrimary }>New ticket</a>
-				}
-			</div>
-		</div>
-		if v.Project.ArchivedAt.Valid {
-			<p class="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink">This project is archived. Restore it in settings to add tickets.</p>
-		}
-		<div class="mt-8 space-y-8">
-			for _, g := range v.Groups {
-				<section>
-					<h2 class={ h2Class }>{ g.Status.Name } <span class="font-normal">· { itoa(int64(len(g.Tickets))) }</span></h2>
-					if len(g.Tickets) == 0 {
-						<p class="mt-2 text-sm text-muted">No tickets.</p>
-					} else {
-						<ul class="mt-2 divide-y divide-line rounded-md border border-line">
-							for _, t := range g.Tickets {
-								@ticketItem(t)
-							}
-						</ul>
-					}
-				</section>
-			}
-		</div>
-	}
-}
-
-templ ticketItem(t TicketRow) {
-	<li class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
-		<a href={ templ.SafeURL("/t/" + t.Key) } class="font-mono text-xs text-muted hover:text-accent">{ t.Key }</a>
-		<a href={ templ.SafeURL("/t/" + t.Key) } class="min-w-0 flex-1 text-sm text-ink hover:text-accent">{ t.Title }</a>
-		if t.Priority > 0 {
-			<span class="text-xs text-muted">{ PriorityLabel(t.Priority) }</span>
-		}
-		for _, tag := range t.Tags {
-			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ tag }</span>
-		}
-		if t.Assignee != "" {
-			<span class="text-xs text-muted">{ t.Assignee }</span>
-		}
-	</li>
 }
 
 // ProjectSettingsPage edits a project, its statuses and milestones.

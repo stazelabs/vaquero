@@ -1,0 +1,216 @@
+package templates
+
+import (
+	"github.com/stazelabs/vaquero/internal/board"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+// Chip is one filter toggle: a link to the filter with it switched.
+type Chip struct {
+	Label, Href string
+	On          bool
+}
+
+// BoardView is the board page.
+type BoardView struct {
+	Board board.Board
+	Chips []Chip
+	Clear string // the unfiltered board's address
+}
+
+// ListView is the list page.
+type ListView struct {
+	Project gen.Project
+	Filter  board.Filter
+	Columns []board.Column
+	Chips   []Chip
+	Clear   string
+}
+
+// projectHeader is the key, name and the board/list/settings/new links.
+templ projectHeader(p gen.Project, view string) {
+	<div class="flex flex-wrap items-center justify-between gap-4">
+		<div>
+			<p class="font-mono text-sm text-muted">{ p.Key }</p>
+			<h1 class={ h1Class }>{ p.Name }</h1>
+		</div>
+		<nav aria-label="Project" class="flex items-center gap-4">
+			<a href={ templ.SafeURL("/p/" + p.Key) } class={ navLink } aria-current?={ view == "board" }>Board</a>
+			<a href={ templ.SafeURL("/p/" + p.Key + "/list") } class={ navLink } aria-current?={ view == "list" }>List</a>
+			<a href={ templ.SafeURL("/p/" + p.Key + "/settings") } class={ navLink }>Settings</a>
+			if !p.ArchivedAt.Valid {
+				<a href={ templ.SafeURL("/p/" + p.Key + "/new") } class={ btnPrimary }>New ticket</a>
+			}
+		</nav>
+	</div>
+	if p.ArchivedAt.Valid {
+		<p class="mt-4 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink">This project is archived. Restore it in settings to add tickets.</p>
+	}
+}
+
+templ chips(cs []Chip, clear string, active bool) {
+	<div class="mt-4 flex flex-wrap items-center gap-2" aria-label="Filters">
+		for _, c := range cs {
+			<a href={ templ.SafeURL(c.Href) } aria-pressed={ boolAttr(c.On) } class={ chipClass(c.On) }>{ c.Label }</a>
+		}
+		if active {
+			<a href={ templ.SafeURL(clear) } class="text-xs text-muted hover:text-accent">Clear filters</a>
+		}
+	</div>
+}
+
+// BoardPage is a project's board.
+templ BoardPage(v BoardView) {
+	@Shell(v.Board.Project.Name) {
+		@projectHeader(v.Board.Project, "board")
+		@chips(v.Chips, v.Clear, v.Board.Filter.Active())
+		@BoardSection(v.Board)
+	}
+}
+
+// BoardSection is the board's swappable part: rails, columns and the
+// milestone panel. data-filter carries the filter for drops and refreshes.
+templ BoardSection(b board.Board) {
+	<div id="board" data-filter={ b.Filter.Query().Encode() } class="mt-6 flex items-start gap-3">
+		for _, r := range railsIn(b, "backlog") {
+			@rail(b, r)
+		}
+		<div class="flex min-w-0 flex-1 items-start gap-3 overflow-x-auto pb-2">
+			for _, c := range b.Active {
+				@column(b, c)
+			}
+		</div>
+		for _, r := range railsIn(b, "cancelled") {
+			@rail(b, r)
+		}
+		@milestonePanel(b)
+	</div>
+}
+
+templ rail(b board.Board, c board.Column) {
+	<details class="group shrink-0 rounded-md bg-paper-alt open:w-64">
+		<summary class="cursor-pointer list-none px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb] hover:text-accent">
+			{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
+		</summary>
+		<div class="px-2 pb-2">
+			@cards(b, c)
+		</div>
+	</details>
+}
+
+templ column(b board.Board, c board.Column) {
+	<section class="w-64 shrink-0 rounded-md bg-paper-alt p-2" aria-label={ c.Status.Name }>
+		<h2 class="mb-2 flex justify-between px-1 text-xs font-semibold uppercase tracking-wider text-muted">
+			<span>{ c.Status.Name }</span>
+			<span>
+				if c.Status.Category == "done" {
+					this week
+				} else {
+					{ itoa(int64(len(c.Cards))) }
+				}
+			</span>
+		</h2>
+		@cards(b, c)
+		if c.Older > 0 {
+			<a href={ templ.SafeURL(listHref(b)) } class="mt-1 block text-center text-xs text-muted hover:text-accent">{ itoa(int64(c.Older)) } older</a>
+		}
+	</section>
+}
+
+templ cards(b board.Board, c board.Column) {
+	<ol data-board-column data-status={ c.Status.ID } class="min-h-12 space-y-2">
+		for _, k := range c.Cards {
+			@card(k)
+		}
+	</ol>
+	if len(c.Cards) == 0 {
+		<p class="px-1 text-xs text-muted">No tickets.</p>
+	}
+}
+
+templ card(k board.Card) {
+	<li data-card={ k.Key } data-ready?={ k.Ready } class={ cardClass(k.Ready) }>
+		<a href={ templ.SafeURL("/t/" + k.Key) } class="block">
+			<span class="font-mono text-[10px] text-muted">{ k.Key }</span>
+			<span class="mt-0.5 block text-sm leading-snug text-ink">{ k.Title }</span>
+			<span class="mt-1 flex flex-wrap items-center gap-1">
+				if k.Priority > 0 {
+					<span class={ priorityClass(k.Priority) }>{ PriorityLabel(k.Priority) }</span>
+				}
+				for _, t := range k.Tags {
+					<span class="rounded-full bg-accent/10 px-1.5 text-[10px] text-ink/80">{ t }</span>
+				}
+				if k.Assignee != "" {
+					if k.AssigneeIsAgent {
+						<span class="ml-auto rounded-full border border-accent px-1.5 text-[10px] text-accent">{ k.Assignee }</span>
+					} else {
+						<span class="ml-auto text-[10px] text-muted">{ k.Assignee }</span>
+					}
+				}
+			</span>
+		</a>
+	</li>
+}
+
+templ milestonePanel(b board.Board) {
+	<aside class="w-48 shrink-0 space-y-4 border-l border-line pl-3 text-xs max-lg:hidden" aria-label="Milestones">
+		<h2 class={ h2Class }>Milestones</h2>
+		if len(b.Milestones) == 0 {
+			<p class="text-muted">No open milestones.</p>
+		}
+		for _, m := range b.Milestones {
+			<a href={ templ.SafeURL(milestoneHref(b, m.ID)) } class="block hover:text-accent" aria-pressed={ boolAttr(b.Filter.Milestone == m.ID) }>
+				<span class="font-medium text-ink">{ m.Name }</span>
+				if m.Due != "" {
+					<span class="text-muted">· { m.Due }</span>
+				}
+				<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="mt-1 block h-1.5 w-full accent-accent">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
+				<span class="text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
+			</a>
+		}
+		<a href={ templ.SafeURL(milestoneHref(b, "none")) } class="block text-muted hover:text-accent" aria-pressed={ boolAttr(b.Filter.Milestone == "none") }>
+			No milestone · { itoa(b.NoMilestone) } open
+		</a>
+	</aside>
+}
+
+// ListPage is every status of a project with every matching ticket.
+templ ListPage(v ListView) {
+	@Shell(v.Project.Name) {
+		@projectHeader(v.Project, "list")
+		@chips(v.Chips, v.Clear, v.Filter.Active())
+		<div id="list" class="mt-8 space-y-8">
+			if listEmpty(v.Columns) {
+				<p class="text-sm text-muted">No tickets match.</p>
+			}
+			for _, c := range v.Columns {
+				if len(c.Cards) > 0 {
+					<section>
+						<h2 class={ h2Class }>{ c.Status.Name } <span class="font-normal">· { itoa(int64(len(c.Cards))) }</span></h2>
+						<ul class="mt-2 divide-y divide-line rounded-md border border-line">
+							for _, k := range c.Cards {
+								@listRow(k)
+							}
+						</ul>
+					</section>
+				}
+			}
+		</div>
+	}
+}
+
+templ listRow(k board.Card) {
+	<li data-card={ k.Key } class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+		<a href={ templ.SafeURL("/t/" + k.Key) } class="font-mono text-xs text-muted hover:text-accent">{ k.Key }</a>
+		<a href={ templ.SafeURL("/t/" + k.Key) } class="min-w-0 flex-1 text-sm text-ink hover:text-accent">{ k.Title }</a>
+		if k.Priority > 0 {
+			<span class="text-xs text-muted">{ PriorityLabel(k.Priority) }</span>
+		}
+		for _, t := range k.Tags {
+			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ t }</span>
+		}
+		if k.Assignee != "" {
+			<span class="text-xs text-muted">{ k.Assignee }</span>
+		}
+	</li>
+}
