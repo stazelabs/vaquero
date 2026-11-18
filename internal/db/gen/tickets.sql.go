@@ -12,25 +12,26 @@ import (
 
 const createTicket = `-- name: CreateTicket :one
 INSERT INTO tickets (id, project_id, number, title, body, status_id, priority, assignee_id,
-                     parent_id, milestone_id, position, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at
+                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at
 `
 
 type CreateTicketParams struct {
-	ID          string
-	ProjectID   string
-	Number      int64
-	Title       string
-	Body        string
-	StatusID    string
-	Priority    int64
-	AssigneeID  sql.NullString
-	ParentID    sql.NullString
-	MilestoneID sql.NullString
-	Position    float64
-	CreatedBy   string
-	CreatedAt   string
-	UpdatedAt   string
+	ID              string
+	ProjectID       string
+	Number          int64
+	Title           string
+	Body            string
+	StatusID        string
+	Priority        int64
+	AssigneeID      sql.NullString
+	ParentID        sql.NullString
+	MilestoneID     sql.NullString
+	Position        float64
+	CreatedBy       string
+	CreatedAt       string
+	UpdatedAt       string
+	StatusChangedAt string
 }
 
 func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error) {
@@ -49,6 +50,7 @@ func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Tic
 		arg.CreatedBy,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.StatusChangedAt,
 	)
 	var i Ticket
 	err := row.Scan(
@@ -66,12 +68,13 @@ func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Tic
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
 
 const getTicket = `-- name: GetTicket :one
-SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at FROM tickets WHERE id = ?
+SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at FROM tickets WHERE id = ?
 `
 
 func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
@@ -92,12 +95,13 @@ func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
 
 const getTicketByNumber = `-- name: GetTicketByNumber :one
-SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at FROM tickets WHERE project_id = ? AND number = ?
+SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at FROM tickets WHERE project_id = ? AND number = ?
 `
 
 type GetTicketByNumberParams struct {
@@ -123,6 +127,7 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.StatusChangedAt,
 	)
 	return i, err
 }
@@ -162,29 +167,30 @@ func (q *Queries) ListAncestorIDs(ctx context.Context, id string) ([]string, err
 }
 
 const listSubTickets = `-- name: ListSubTickets :many
-SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, s.name AS status_name, s.category AS status_category
+SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, s.name AS status_name, s.category AS status_category
 FROM tickets t JOIN statuses s ON s.id = t.status_id
 WHERE t.parent_id = ?
 ORDER BY t.number
 `
 
 type ListSubTicketsRow struct {
-	ID             string
-	ProjectID      string
-	Number         int64
-	Title          string
-	Body           string
-	StatusID       string
-	Priority       int64
-	AssigneeID     sql.NullString
-	ParentID       sql.NullString
-	MilestoneID    sql.NullString
-	Position       float64
-	CreatedBy      string
-	CreatedAt      string
-	UpdatedAt      string
-	StatusName     string
-	StatusCategory string
+	ID              string
+	ProjectID       string
+	Number          int64
+	Title           string
+	Body            string
+	StatusID        string
+	Priority        int64
+	AssigneeID      sql.NullString
+	ParentID        sql.NullString
+	MilestoneID     sql.NullString
+	Position        float64
+	CreatedBy       string
+	CreatedAt       string
+	UpdatedAt       string
+	StatusChangedAt string
+	StatusName      string
+	StatusCategory  string
 }
 
 func (q *Queries) ListSubTickets(ctx context.Context, parentID sql.NullString) ([]ListSubTicketsRow, error) {
@@ -211,6 +217,7 @@ func (q *Queries) ListSubTickets(ctx context.Context, parentID sql.NullString) (
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StatusChangedAt,
 			&i.StatusName,
 			&i.StatusCategory,
 		); err != nil {
@@ -228,7 +235,7 @@ func (q *Queries) ListSubTickets(ctx context.Context, parentID sql.NullString) (
 }
 
 const listTicketsByProject = `-- name: ListTicketsByProject :many
-SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, s.name AS status_name, s.category AS status_category,
+SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
@@ -238,23 +245,24 @@ ORDER BY s.position, t.position
 `
 
 type ListTicketsByProjectRow struct {
-	ID             string
-	ProjectID      string
-	Number         int64
-	Title          string
-	Body           string
-	StatusID       string
-	Priority       int64
-	AssigneeID     sql.NullString
-	ParentID       sql.NullString
-	MilestoneID    sql.NullString
-	Position       float64
-	CreatedBy      string
-	CreatedAt      string
-	UpdatedAt      string
-	StatusName     string
-	StatusCategory string
-	AssigneeName   string
+	ID              string
+	ProjectID       string
+	Number          int64
+	Title           string
+	Body            string
+	StatusID        string
+	Priority        int64
+	AssigneeID      sql.NullString
+	ParentID        sql.NullString
+	MilestoneID     sql.NullString
+	Position        float64
+	CreatedBy       string
+	CreatedAt       string
+	UpdatedAt       string
+	StatusChangedAt string
+	StatusName      string
+	StatusCategory  string
+	AssigneeName    string
 }
 
 func (q *Queries) ListTicketsByProject(ctx context.Context, projectID string) ([]ListTicketsByProjectRow, error) {
@@ -281,6 +289,7 @@ func (q *Queries) ListTicketsByProject(ctx context.Context, projectID string) ([
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StatusChangedAt,
 			&i.StatusName,
 			&i.StatusCategory,
 			&i.AssigneeName,
@@ -311,21 +320,22 @@ func (q *Queries) MaxPositionInStatus(ctx context.Context, statusID string) (flo
 
 const updateTicket = `-- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
-       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?
+       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?
 WHERE id = ?
 `
 
 type UpdateTicketParams struct {
-	Title       string
-	Body        string
-	StatusID    string
-	Priority    int64
-	AssigneeID  sql.NullString
-	ParentID    sql.NullString
-	MilestoneID sql.NullString
-	Position    float64
-	UpdatedAt   string
-	ID          string
+	Title           string
+	Body            string
+	StatusID        string
+	Priority        int64
+	AssigneeID      sql.NullString
+	ParentID        sql.NullString
+	MilestoneID     sql.NullString
+	Position        float64
+	UpdatedAt       string
+	StatusChangedAt string
+	ID              string
 }
 
 func (q *Queries) UpdateTicket(ctx context.Context, arg UpdateTicketParams) error {
@@ -339,6 +349,7 @@ func (q *Queries) UpdateTicket(ctx context.Context, arg UpdateTicketParams) erro
 		arg.MilestoneID,
 		arg.Position,
 		arg.UpdatedAt,
+		arg.StatusChangedAt,
 		arg.ID,
 	)
 	return err

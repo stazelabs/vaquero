@@ -1,7 +1,7 @@
 -- name: CreateTicket :one
 INSERT INTO tickets (id, project_id, number, title, body, status_id, priority, assignee_id,
-                     parent_id, milestone_id, position, created_by, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
+                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
 
 -- name: GetTicket :one
 SELECT * FROM tickets WHERE id = ?;
@@ -26,7 +26,7 @@ ORDER BY t.number;
 
 -- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
-       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?
+       parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?
 WHERE id = ?;
 
 -- name: MaxPositionInStatus :one

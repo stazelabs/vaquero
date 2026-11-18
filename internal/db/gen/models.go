@@ -25,6 +25,10 @@ type Comment struct {
 	DeletedAt sql.NullString
 }
 
+type CommentsFt struct {
+	Body string
+}
+
 type Event struct {
 	Seq       int64
 	At        string
@@ -77,20 +81,21 @@ type Tag struct {
 }
 
 type Ticket struct {
-	ID          string
-	ProjectID   string
-	Number      int64
-	Title       string
-	Body        string
-	StatusID    string
-	Priority    int64
-	AssigneeID  sql.NullString
-	ParentID    sql.NullString
-	MilestoneID sql.NullString
-	Position    float64
-	CreatedBy   string
-	CreatedAt   string
-	UpdatedAt   string
+	ID              string
+	ProjectID       string
+	Number          int64
+	Title           string
+	Body            string
+	StatusID        string
+	Priority        int64
+	AssigneeID      sql.NullString
+	ParentID        sql.NullString
+	MilestoneID     sql.NullString
+	Position        float64
+	CreatedBy       string
+	CreatedAt       string
+	UpdatedAt       string
+	StatusChangedAt string
 }
 
 type TicketLink struct {
@@ -104,4 +109,9 @@ type TicketLink struct {
 type TicketTag struct {
 	TicketID string
 	TagID    string
+}
+
+type TicketsFt struct {
+	Title string
+	Body  string
 }
