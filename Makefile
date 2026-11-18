@@ -48,7 +48,10 @@ css: ## Build the Tailwind stylesheet
 notices: ## Regenerate the open source notices (internal/legal/third_party.json)
 	$(GO) run ./scripts/notices
 
-gen: templ sqlc css notices ## Run every generator (templ, sqlc, css, notices); generated files are committed
+icons: ## Generate the UI glyphs (internal/web/icons/ui_gen.go) from ui.json and lucide-static
+	$(GO) run ./internal/web/icons/gen
+
+gen: templ sqlc icons css notices ## Run every generator (templ, sqlc, icons, css, notices); generated files are committed
 
 dev: ## Run the server with hot reload on 127.0.0.1:7879 (logs to tmp/dev.log)
 	@# Only the listener on the dev port: 7878 belongs to a real vaquero, and a

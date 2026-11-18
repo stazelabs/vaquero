@@ -57,3 +57,12 @@ func TestNoticesIncludeEveryLicenceFile(t *testing.T) {
 		}
 	}
 }
+
+func TestLucideNotice(t *testing.T) {
+	for _, c := range legal.ThirdParty() {
+		if c.Name == "Lucide" && strings.Contains(c.License, "ISC License") {
+			return
+		}
+	}
+	t.Fatal("no Lucide notice")
+}

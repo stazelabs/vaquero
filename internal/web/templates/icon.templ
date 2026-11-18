@@ -1,0 +1,27 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/web/icons"
+
+// Icon is a 16px UI glyph (internal/web/icons, Lucide) beside the text it
+// belongs to: hidden from screen readers and drawn in the text colour. It is
+// never the only label of a link or button; an icon-only button uses IconLg
+// and carries aria-label. An unknown name renders nothing (and
+// TestEveryIconNameKnown fails).
+templ Icon(name string) {
+	@IconClass(name, "h-4 w-4 shrink-0")
+}
+
+// IconLg is a 20px glyph, for an icon-only button that carries aria-label.
+templ IconLg(name string) {
+	@IconClass(name, "h-5 w-5 shrink-0")
+}
+
+// IconClass is a glyph with its own classes (an empty state's large muted
+// glyph, a coloured priority mark).
+templ IconClass(name, class string) {
+	if m, ok := icons.UI(name); ok {
+		<svg viewBox="0 0 24 24" class={ class } fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" data-icon={ m.Name }>
+			@templ.Raw(m.Inner)
+		</svg>
+	}
+}

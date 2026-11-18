@@ -32,6 +32,7 @@ type component struct {
 var bundled = []struct{ name, version, url, file string }{
 	{"Go standard library", "", "https://go.dev", "go.txt"},
 	{"htmx", "2.0.4", "https://htmx.org", "htmx.txt"},
+	{"Lucide", "1.48.0", "https://lucide.dev", "lucide.txt"},
 	{"SortableJS", "1.15.6", "https://github.com/SortableJS/Sortable", "sortablejs.txt"},
 	{"Tailwind CSS", "4.3.5", "https://tailwindcss.com", "tailwindcss.txt"},
 }

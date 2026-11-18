@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.1.0",
-    "tailwindcss": "^4.1.0"
+    "tailwindcss": "^4.1.0",
+    "lucide-static": "1.48.0"
   }
 }

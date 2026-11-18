@@ -67,8 +67,17 @@ templ toast(f flash.Flash) {
 		data-sticky?={ f.Kind == flash.Error }
 		class={ "fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-md items-center justify-between gap-4 rounded-md px-4 py-3 text-sm shadow-lg transition-opacity duration-500", toastClass(f.Kind) }
 	>
-		<span class="min-w-0">{ f.Message }</span>
-		<button type="button" data-toast-close aria-label="Dismiss" class="shrink-0 rounded-md px-2 text-lg leading-none opacity-80 hover:opacity-100">×</button>
+		<span class="flex min-w-0 items-center gap-2">
+			if f.Kind == flash.Error {
+				@Icon("error")
+			} else {
+				@Icon("success")
+			}
+			<span class="min-w-0">{ f.Message }</span>
+		</span>
+		<button type="button" data-toast-close aria-label="Dismiss" class="shrink-0 rounded-md p-1 opacity-80 hover:opacity-100">
+			@Icon("close")
+		</button>
 	</div>
 }
 
