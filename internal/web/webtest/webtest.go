@@ -68,7 +68,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 	}
 	shutdown := make(chan struct{})
 	deps := handlers.Deps{
-		Cfg: cfg, DB: d.W, R: d.RQ, RDB: d.R, Core: c, Actor: owner, Touch: d.Q,
+		Cfg: cfg, DB: d.W, R: d.RQ, RDB: d.R, Core: c, Actor: owner, Touch: d.Q, MCPCalls: d.Q,
 		Logger:     slog.New(slog.DiscardHandler),
 		Now:        now,
 		Shutdown:   shutdown,

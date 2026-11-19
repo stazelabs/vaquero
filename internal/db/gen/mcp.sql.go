@@ -7,7 +7,146 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 )
+
+const listMCPCallActors = `-- name: ListMCPCallActors :many
+SELECT DISTINCT a.name FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY a.name
+`
+
+func (q *Queries) ListMCPCallActors(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listMCPCallActors)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMCPCallTools = `-- name: ListMCPCallTools :many
+SELECT DISTINCT tool FROM mcp_calls ORDER BY tool
+`
+
+func (q *Queries) ListMCPCallTools(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listMCPCallTools)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var tool string
+		if err := rows.Scan(&tool); err != nil {
+			return nil, err
+		}
+		items = append(items, tool)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMCPCalls = `-- name: ListMCPCalls :many
+SELECT c.id, c.at, c.token_prefix, c.tool, c.args, c.outcome, c.message, c.duration_ms,
+       coalesce(a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
+FROM mcp_calls c
+LEFT JOIN actors a ON a.id = c.actor_id
+WHERE (?1 IS NULL OR a.name = ?1)
+  AND (?2 IS NULL OR c.tool = ?2)
+  AND (?3 IS NULL OR c.id < ?3)
+ORDER BY c.id DESC
+LIMIT ?4
+`
+
+type ListMCPCallsParams struct {
+	Actor  interface{}
+	Tool   interface{}
+	Before interface{}
+	Lim    int64
+}
+
+type ListMCPCallsRow struct {
+	ID          string
+	At          string
+	TokenPrefix string
+	Tool        string
+	Args        string
+	Outcome     string
+	Message     string
+	DurationMs  int64
+	ActorName   string
+	ActorKind   string
+}
+
+// Newest first, optionally one agent (by name) and one tool, older than
+// the call with id before (ULIDs sort by time).
+func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]ListMCPCallsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMCPCalls,
+		arg.Actor,
+		arg.Tool,
+		arg.Before,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMCPCallsRow{}
+	for rows.Next() {
+		var i ListMCPCallsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.TokenPrefix,
+			&i.Tool,
+			&i.Args,
+			&i.Outcome,
+			&i.Message,
+			&i.DurationMs,
+			&i.ActorName,
+			&i.ActorKind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const newestMCPCall = `-- name: NewestMCPCall :one
+SELECT CAST(coalesce(max(id), '') AS TEXT) FROM mcp_calls
+`
+
+func (q *Queries) NewestMCPCall(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, newestMCPCall)
+	var column_1 string
+	err := row.Scan(&column_1)
+	return column_1, err
+}
 
 const pruneMCPCalls = `-- name: PruneMCPCalls :execrows
 DELETE FROM mcp_calls WHERE at < ?
@@ -19,4 +158,36 @@ func (q *Queries) PruneMCPCalls(ctx context.Context, at string) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const recordMCPCall = `-- name: RecordMCPCall :exec
+INSERT INTO mcp_calls (id, at, actor_id, token_prefix, tool, args, outcome, message, duration_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`
+
+type RecordMCPCallParams struct {
+	ID          string
+	At          string
+	ActorID     sql.NullString
+	TokenPrefix string
+	Tool        string
+	Args        string
+	Outcome     string
+	Message     string
+	DurationMs  int64
+}
+
+func (q *Queries) RecordMCPCall(ctx context.Context, arg RecordMCPCallParams) error {
+	_, err := q.db.ExecContext(ctx, recordMCPCall,
+		arg.ID,
+		arg.At,
+		arg.ActorID,
+		arg.TokenPrefix,
+		arg.Tool,
+		arg.Args,
+		arg.Outcome,
+		arg.Message,
+		arg.DurationMs,
+	)
+	return err
 }

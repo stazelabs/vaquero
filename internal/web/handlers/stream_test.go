@@ -130,3 +130,14 @@ func TestRailsCarryStableIDs(t *testing.T) {
 	}
 	contains(t, page, "data-board-scroll")
 }
+
+// An MCP call is announced as "mcp", not "change": only the MCP activity
+// page follows it, so an agent's reads don't redraw every board.
+func TestStreamAnnouncesMCPCalls(t *testing.T) {
+	e, tok := agentEnv(t)
+	cs := mcpConnect(t, e, tok, "builder")
+	lines, _ := openStream(t, e.Server.URL)
+	time.Sleep(50 * time.Millisecond)
+	mcpCall(t, cs, "list_projects", nil)
+	waitFor(t, lines, "event: mcp", time.Second)
+}

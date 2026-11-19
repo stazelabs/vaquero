@@ -26,6 +26,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -43,7 +44,9 @@ const Instructions = "Vaquero is a ticket tracker shared by people and agents; t
 // Handler is POST /mcp. api serves /api/v1 without the token check (the
 // router's API routes); the request's actor, set by middleware.APIToken in
 // front of Handler, is passed to it on every tool call.
-func Handler(apiRoutes http.Handler, logger *slog.Logger) http.Handler {
+//
+// Every tool call is recorded in calls (nil: none), timed by now.
+func Handler(apiRoutes http.Handler, logger *slog.Logger, calls CallLog, now func() time.Time) http.Handler {
 	cache := mcp.NewSchemaCache()
 	sdk := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		s, _ := r.Context().Value(serverKey{}).(*mcp.Server)
@@ -85,6 +88,7 @@ func Handler(apiRoutes http.Handler, logger *slog.Logger) http.Handler {
 			Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 			SchemaCache:  cache,
 		})
+		s.AddReceivingMiddleware(logCalls(calls, logger, now, actor.ID, middleware.APITokenPrefix(ctx)))
 		addTools(s, caller)
 		sdk.ServeHTTP(w, r.WithContext(context.WithValue(ctx, serverKey{}, s)))
 	})

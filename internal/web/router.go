@@ -48,7 +48,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Route("/mcp", func(r chi.Router) {
 		r.Use(middleware.APIHeaders, auth)
 		r.MethodNotAllowed(handlers.APIMethodNotAllowed)
-		r.Post("/", mcpserver.Handler(apiRoutes, d.Logger).ServeHTTP)
+		r.Post("/", mcpserver.Handler(apiRoutes, d.Logger, d.MCPCalls, d.Now).ServeHTTP)
 	})
 
 	r.Route("/admin", func(r chi.Router) {
@@ -56,6 +56,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Get("/tokens", handlers.AdminTokens(d))
 		r.Post("/tokens", handlers.AdminTokenCreate(d))
 		r.Post("/tokens/{id}/revoke", handlers.AdminTokenRevoke(d))
+		r.Get("/mcp", handlers.AdminMCP(d))
 	})
 
 	r.Get("/", handlers.ProjectList(d))

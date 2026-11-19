@@ -27,6 +27,8 @@ type Deps struct {
 	Logger *slog.Logger
 	// Touch records an API token's last use: the API middleware's one write.
 	Touch middleware.Toucher
+	// MCPCalls keeps the MCP activity log (mcp_calls, not a tracker table).
+	MCPCalls MCPCallLog
 	// RenewLocalToken (nil in tests) makes sure the local token file holds a
 	// live token; called after a revoke, in case it was the local one.
 	RenewLocalToken func(context.Context) error
@@ -39,4 +41,9 @@ type Deps struct {
 	// changes (one second when zero).
 	Shutdown   <-chan struct{}
 	StreamPoll time.Duration
+}
+
+// MCPCallLog records an MCP tool call (mcpserver.CallLog).
+type MCPCallLog interface {
+	RecordMCPCall(ctx context.Context, arg gen.RecordMCPCallParams) error
 }

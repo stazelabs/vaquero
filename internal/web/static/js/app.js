@@ -85,7 +85,7 @@ window.vqDragging = false;
 // refreshes once when it is shown again. A refresh of #board waits while a
 // card is being dragged.
 (function () {
-  if (!document.querySelector("[data-live]") || !window.EventSource || !window.htmx) {
+  if (!document.querySelector("[data-live], [data-live-mcp]") || !window.EventSource || !window.htmx) {
     return;
   }
   var source = null;
@@ -99,12 +99,19 @@ window.vqDragging = false;
       window.htmx.trigger(el, "vq:change");
     });
   }
+  // MCP calls refresh only the parts that follow them (the MCP activity page).
+  function refreshMCP() {
+    document.querySelectorAll("[data-live-mcp]").forEach(function (el) {
+      window.htmx.trigger(el, "vq:mcp");
+    });
+  }
   function open() {
     if (source) {
       return;
     }
     source = new EventSource("/events/stream");
     source.addEventListener("change", refresh);
+    source.addEventListener("mcp", refreshMCP);
     window.vqStream = source;
   }
   function close() {
@@ -120,6 +127,7 @@ window.vqDragging = false;
     } else {
       open();
       refresh(); // catch up on anything missed while hidden
+      refreshMCP();
     }
   });
   window.addEventListener("pagehide", close);

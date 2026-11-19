@@ -8,7 +8,9 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/sweep"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 var bg = context.Background()
@@ -61,4 +63,24 @@ func TestSweeperStartStop(t *testing.T) {
 		t.Fatal("Stop hung")
 	}
 	s.Stop() // a second Stop is harmless
+}
+
+func TestMCPLogPruned(t *testing.T) {
+	d := dbtest.New(t)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	c := core.New(d.W, func() time.Time { return now })
+	q := gen.New(d.W)
+	for id, at := range map[string]time.Time{"01OLD": now.Add(-31 * 24 * time.Hour), "01NEW": now.Add(-29 * 24 * time.Hour)} {
+		if err := q.RecordMCPCall(bg, gen.RecordMCPCallParams{ID: id, At: timefmt.Format(at), Tool: "search", Outcome: "ok"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := &sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: func() time.Time { return now }}
+	if _, err := s.Tick(bg); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := d.RQ.ListMCPCalls(bg, gen.ListMCPCallsParams{Lim: 10})
+	if len(rows) != 1 || rows[0].ID != "01NEW" {
+		t.Fatalf("%+v", rows)
+	}
 }

@@ -7,10 +7,10 @@ import (
 )
 
 // AdminPages are the admin section's pages, in its side list.
-var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/tokens", "API tokens"}}
+var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/tokens", "API tokens"}, {"/admin/mcp", "MCP activity"}}
 
 // adminIcons are the side list's glyphs.
-var adminIcons = map[string]string{"/admin": "overview", "/admin/tokens": "token"}
+var adminIcons = map[string]string{"/admin": "overview", "/admin/tokens": "token", "/admin/mcp": "agent"}
 
 // AdminShell is an admin page: the side list, then the page.
 templ AdminShell(title, current string) {
@@ -57,6 +57,7 @@ templ AdminHomePage(i AdminInfo) {
 		</dl>
 		<ul class="mt-8 space-y-2 text-sm">
 			<li><a href="/admin/tokens" class={ btnLink }>API tokens</a> <span class="text-muted">· for the CLI, scripts and agents</span></li>
+			<li><a href="/admin/mcp" class={ btnLink }>MCP activity</a> <span class="text-muted">· every tool call agents made over MCP</span></li>
 		</ul>
 	}
 }
@@ -112,5 +113,100 @@ templ TokensPage(v TokensView) {
 				}
 			</tbody>
 		</table>
+	}
+}
+
+// MCPView is the MCP activity page: the calls shown, the agents and tools
+// that appear in the log (for the filters), the filters set, and the link
+// to older calls when there are more.
+type MCPView struct {
+	Calls        []gen.ListMCPCallsRow
+	Agents       []string
+	Tools        []string
+	Agent, Tool  string
+	Older        string
+	Now          time.Time
+}
+
+templ MCPPage(v MCPView) {
+	@AdminShell("MCP activity", "/admin/mcp") {
+		@titleWithHelp("MCP activity", "mcp", "About MCP")
+		<p class="mt-2 max-w-xl text-sm text-muted">Every tool call agents made over MCP, newest first. Long text in a call is cut short; calls are kept for 30 days.</p>
+		<div class="mt-6 space-y-2">
+			<div class="flex flex-wrap items-center gap-2" aria-label="Agent">
+				<a href={ templ.SafeURL(mcpFilterHref("", v.Tool)) } class={ chipClass(v.Agent == "") } aria-pressed={ boolAttr(v.Agent == "") }>All agents</a>
+				for _, a := range v.Agents {
+					<a href={ templ.SafeURL(mcpFilterHref(a, v.Tool)) } class={ chipClass(v.Agent == a) } aria-pressed={ boolAttr(v.Agent == a) }>{ a }</a>
+				}
+			</div>
+			<div class="flex flex-wrap items-center gap-2" aria-label="Tool">
+				<a href={ templ.SafeURL(mcpFilterHref(v.Agent, "")) } class={ chipClass(v.Tool == "") } aria-pressed={ boolAttr(v.Tool == "") }>All tools</a>
+				for _, t := range v.Tools {
+					<a href={ templ.SafeURL(mcpFilterHref(v.Agent, t)) } class={ chipClass(v.Tool == t) + " font-mono" } aria-pressed={ boolAttr(v.Tool == t) }>{ t }</a>
+				}
+			</div>
+		</div>
+		<div
+			id="mcp-calls"
+			hx-get={ mcpFilterHref(v.Agent, v.Tool) }
+			hx-trigger="vq:mcp"
+			data-live-mcp
+			hx-select="#mcp-calls"
+			hx-swap="outerHTML"
+			class="mt-6"
+		>
+			if len(v.Calls) == 0 && (v.Agent != "" || v.Tool != "") {
+				@emptyState("no-results", "No MCP calls match.")
+			} else if len(v.Calls) == 0 {
+				@emptyState("agent", "No MCP calls yet.")
+			} else {
+				<div class="overflow-x-auto">
+					<table class="w-full text-left text-sm">
+						<thead class="text-xs uppercase tracking-wider text-muted">
+							<tr><th class="py-2 pr-3">When</th><th class="pr-3">Agent</th><th class="pr-3">Tool</th><th class="pr-3">Arguments</th><th class="pr-3">Outcome</th><th class="text-right">Time</th></tr>
+						</thead>
+						<tbody class="divide-y divide-line">
+							for _, c := range v.Calls {
+								<tr class="align-top">
+									<td class="whitespace-nowrap py-2 pr-3 text-muted" title={ utcOf(c.At) }>{ agoOr(c.At, v.Now, "") }</td>
+									<td class="whitespace-nowrap pr-3">
+										<span class="inline-flex items-center gap-1">
+											if c.ActorKind == "agent" {
+												@IconClass("agent", "h-3.5 w-3.5 shrink-0 text-accent")
+											} else {
+												@IconClass("person", "h-3.5 w-3.5 shrink-0 text-muted")
+											}
+											{ c.ActorName }
+										</span>
+									</td>
+									<td class="font-mono text-xs">{ c.Tool }</td>
+									<td class="max-w-xs break-words pr-3 font-mono text-xs text-ink/80">{ c.Args }</td>
+									<td class="pr-3">
+										if c.Outcome == "ok" {
+											<span class="inline-flex items-center gap-1 text-xs text-muted">
+												@IconClass("success", "h-3.5 w-3.5 shrink-0")
+												ok
+											</span>
+										} else {
+											<span class="inline-flex items-center gap-1 text-xs text-danger">
+												@IconClass("error", "h-3.5 w-3.5 shrink-0")
+												{ c.Outcome }
+											</span>
+											if c.Message != "" {
+												<span class="block text-xs text-muted">{ c.Message }</span>
+											}
+										}
+									</td>
+									<td class="whitespace-nowrap text-right text-xs text-muted">{ itoa(c.DurationMs) } ms</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+				if v.Older != "" {
+					<a href={ templ.SafeURL(v.Older) } class={ btnLink + " mt-4 inline-block" }>Older</a>
+				}
+			}
+		</div>
 	}
 }

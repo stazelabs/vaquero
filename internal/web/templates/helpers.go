@@ -3,6 +3,7 @@
 package templates
 
 import (
+	"net/url"
 	"strconv"
 	"time"
 
@@ -147,4 +148,28 @@ func helpNavClass(current bool) string {
 		return "font-medium text-accent"
 	}
 	return "text-ink/80 hover:text-accent"
+}
+
+// mcpFilterHref is the MCP activity page filtered by agent and tool.
+func mcpFilterHref(agent, tool string) string {
+	q := url.Values{}
+	if agent != "" {
+		q.Set("agent", agent)
+	}
+	if tool != "" {
+		q.Set("tool", tool)
+	}
+	if len(q) == 0 {
+		return "/admin/mcp"
+	}
+	return "/admin/mcp?" + q.Encode()
+}
+
+// utcOf is a stored instant in UTC, for a title.
+func utcOf(stamp string) string {
+	t, err := timefmt.Parse(stamp)
+	if err != nil {
+		return stamp
+	}
+	return timefmt.DisplayUTC(t)
 }

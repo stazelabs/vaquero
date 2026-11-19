@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -19,7 +20,7 @@ import (
 func TestMCPToolPanicRecovered(t *testing.T) {
 	var logs bytes.Buffer
 	boom := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") })
-	h := Handler(boom, slog.New(slog.NewTextHandler(&logs, nil)))
+	h := Handler(boom, slog.New(slog.NewTextHandler(&logs, nil)), nil, time.Now)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.ServeHTTP(w, r.WithContext(middleware.WithAPIActor(r.Context(), gen.Actor{ID: "a", Name: "Owner", Kind: "human"})))
 	}))

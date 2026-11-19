@@ -12,7 +12,8 @@ const streamPing = 25 * time.Second
 // Stream is GET /events/stream: server-sent events announcing that the
 // tracker changed. Every Deps.StreamPoll it reads the newest event sequence
 // number and, when it rose, sends "event: change". Pages refresh their
-// content on it. The stream clears the server's read and write deadlines
+// content on it. When a new MCP call was logged it sends "event: mcp",
+// which only the MCP activity page follows. The stream clears the server's read and write deadlines
 // so it can stay open, and ends when the request does or the server shuts
 // down.
 func Stream(d Deps) http.HandlerFunc {
@@ -22,6 +23,11 @@ func Stream(d Deps) http.HandlerFunc {
 		_ = rc.SetReadDeadline(time.Time{})
 		_ = rc.SetWriteDeadline(time.Time{})
 		last, err := d.R.MaxEventSeq(ctx)
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		lastCall, err := d.R.NewestMCPCall(ctx)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -52,10 +58,21 @@ func Stream(d Deps) http.HandlerFunc {
 			if err != nil {
 				return
 			}
+			call, err := d.R.NewestMCPCall(ctx)
+			if err != nil {
+				return
+			}
 			switch {
 			case seq > last:
 				last, quiet = seq, 0
 				_, err = fmt.Fprintf(w, "event: change\ndata: %d\n\n", seq)
+				if err == nil && call > lastCall {
+					lastCall = call
+					_, err = fmt.Fprint(w, "event: mcp\ndata: 1\n\n")
+				}
+			case call > lastCall:
+				lastCall, quiet = call, 0
+				_, err = fmt.Fprint(w, "event: mcp\ndata: 1\n\n")
 			case quiet+poll >= streamPing:
 				quiet = 0
 				_, err = fmt.Fprint(w, ": ping\n\n")

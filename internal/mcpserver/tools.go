@@ -274,6 +274,7 @@ func add[In any](s *mcp.Server, c *caller, name, title string, readOnly bool, de
 			defer recoverTool(ctx, c.logger, name, &res, &err)
 			body, f := c.do(ctx, build(in))
 			if f != nil {
+				noteCode(ctx, f.Code)
 				return nil, nil, f
 			}
 			if !json.Valid(body) {
@@ -369,5 +370,6 @@ func recoverTool(ctx context.Context, logger *slog.Logger, name string, res **mc
 		return
 	}
 	logger.ErrorContext(ctx, "mcp tool panic", "tool", name, "err", v, "stack", string(debug.Stack()))
+	noteCode(ctx, errSomething.Code)
 	*res, *err = nil, errSomething
 }

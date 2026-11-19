@@ -62,6 +62,15 @@ func WithAPIActor(ctx context.Context, a gen.Actor) context.Context {
 	return context.WithValue(ctx, apiActorKey{}, a)
 }
 
+type apiTokenPrefixKey struct{}
+
+// APITokenPrefix is the shown prefix of the request's token ("vq_" and 6
+// characters), never the token.
+func APITokenPrefix(ctx context.Context) string {
+	p, _ := ctx.Value(apiTokenPrefixKey{}).(string)
+	return p
+}
+
 // APIActor is the actor the request's token acts as.
 func APIActor(ctx context.Context) (gen.Actor, bool) {
 	a, ok := ctx.Value(apiActorKey{}).(gen.Actor)
@@ -129,6 +138,7 @@ func APIToken(a APIAuth) func(http.Handler) http.Handler {
 				}
 				cancel()
 			}
+			ctx = context.WithValue(ctx, apiTokenPrefixKey{}, t.Prefix)
 			next.ServeHTTP(w, r.WithContext(context.WithValue(ctx, apiActorKey{}, actor)))
 		})
 	}
