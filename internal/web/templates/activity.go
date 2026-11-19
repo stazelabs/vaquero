@@ -99,6 +99,18 @@ func EventSentence(e EventView) string {
 		return fmt.Sprintf("created API token %s (%s…)", s("name"), s("prefix"))
 	case core.EvTokenRevoked:
 		return fmt.Sprintf("revoked API token %s (%s…)", s("name"), s("prefix"))
+	case core.EvTicketClaimed:
+		if renewed, _ := e.Payload["renewed"].(bool); renewed {
+			return "renewed the claim on " + e.TicketKey
+		}
+		return "claimed " + e.TicketKey
+	case core.EvTicketReleased:
+		return "released " + e.TicketKey
+	case core.EvClaimLapsed:
+		if st := s("status"); st != "" {
+			return fmt.Sprintf("let the claim on %s lapse; it is back in %s", e.TicketKey, st)
+		}
+		return "let the claim on " + e.TicketKey + " lapse"
 	}
 	return "made a change"
 }
@@ -161,6 +173,7 @@ var eventIcons = map[string]string{
 	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
 	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
 }
 
 // prefixIcons are the glyphs for each kind's first word.

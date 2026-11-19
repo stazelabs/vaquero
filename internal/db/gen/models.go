@@ -50,6 +50,18 @@ type Event struct {
 	Payload   string
 }
 
+type McpCall struct {
+	ID          string
+	At          string
+	ActorID     sql.NullString
+	TokenPrefix string
+	Tool        string
+	Args        string
+	Outcome     string
+	Message     string
+	DurationMs  int64
+}
+
 type Milestone struct {
 	ID          string
 	ProjectID   string
@@ -92,22 +104,25 @@ type Tag struct {
 }
 
 type Ticket struct {
-	ID              string
-	ProjectID       string
-	Number          int64
-	Title           string
-	Body            string
-	StatusID        string
-	Priority        int64
-	AssigneeID      sql.NullString
-	ParentID        sql.NullString
-	MilestoneID     sql.NullString
-	Position        float64
-	CreatedBy       string
-	CreatedAt       string
-	UpdatedAt       string
-	StatusChangedAt string
-	Version         int64
+	ID                string
+	ProjectID         string
+	Number            int64
+	Title             string
+	Body              string
+	StatusID          string
+	Priority          int64
+	AssigneeID        sql.NullString
+	ParentID          sql.NullString
+	MilestoneID       sql.NullString
+	Position          float64
+	CreatedBy         string
+	CreatedAt         string
+	UpdatedAt         string
+	StatusChangedAt   string
+	Version           int64
+	ClaimedBy         sql.NullString
+	ClaimExpiresAt    sql.NullString
+	ClaimPrevStatusID sql.NullString
 }
 
 type TicketLink struct {

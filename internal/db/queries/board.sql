@@ -1,11 +1,11 @@
 -- name: ListBoardTickets :many
 -- A project's tickets for the board and list views. Every filter is
--- optional (NULL means any). ready: a todo ticket, unassigned, with no open
+-- optional (NULL means any). ready: a todo ticket, unassigned and unclaimed, with no open
 -- blocker and no open sub-ticket.
 SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
-       CAST(s.category = 'todo' AND t.assignee_id IS NULL
+       CAST(s.category = 'todo' AND t.assignee_id IS NULL AND t.claimed_by IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM ticket_links l
                 JOIN tickets bt ON bt.id = l.from_id

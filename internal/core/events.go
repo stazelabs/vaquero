@@ -22,6 +22,13 @@ import (
 //   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
+//   - ticket.claimed: ClaimPayload. ticket.released: {}.
+//   - ticket.claim_lapsed: {"status"}, the status the ticket was left in;
+//     its actor is the claimant whose lease ran out.
+//
+// Every successful operation appends exactly one event, with one
+// exception: Heartbeat, which only extends a lease, appends none (a busy
+// agent would otherwise fill the history).
 const (
 	EvProjectCreated    = "project.created"
 	EvProjectUpdated    = "project.updated"
@@ -47,7 +54,19 @@ const (
 	EvActorCreated      = "actor.created"
 	EvTokenCreated      = "token.created"
 	EvTokenRevoked      = "token.revoked"
+	EvTicketClaimed     = "ticket.claimed"
+	EvTicketReleased    = "ticket.released"
+	EvClaimLapsed       = "ticket.claim_lapsed"
 )
+
+// ClaimPayload is a ticket.claimed event's payload: the lease's end, the
+// status before and after, and whether it renewed the claimant's own claim.
+type ClaimPayload struct {
+	Until   string `json:"until"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Renewed bool   `json:"renewed,omitempty"`
+}
 
 // Change is one field's value before and after an update.
 type Change struct {
@@ -89,5 +108,6 @@ func EventKinds() []string {
 		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
 		EvLinkCreated, EvLinkDeleted,
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
+		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 	}
 }
