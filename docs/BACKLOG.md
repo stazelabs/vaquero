@@ -14,8 +14,10 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
   - [x] Phase 2a: REST API, tokens, the CLI as an API client, admin section
   - [x] Phase 2b: agent identity, ready queue, claims with leases, MCP at `/mcp` and `vaquero mcp`, MCP activity — plan: docs/superpowers/plans/2026-11-19-phase-2b-agents.md
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
+  - [x] Phase 3a: snapshot before migrating, `stop`, `backup list|restore`, upgrade fixtures, restart of a stale local server, goreleaser and the Homebrew formula from a manual workflow — plan: docs/superpowers/plans/2026-11-20-phase-3a-releases-upgrades.md
+  - [ ] Phase 3b: export and import, the Linear importer, the stazelabs skills adapter, move this backlog into vaquero; then the first release (docs/RELEASING.md)
   - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
-- [ ] Phase 4: Hosted mode
+- [ ] Phase 4: Hosted mode (and the container image, moved from Phase 3)
 - [ ] Phase 5: Git integration
 - [ ] Phase 6: Notifications and attachments
 - [ ] Phase 7: LLM assists
@@ -125,6 +127,11 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
 - [x] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
 - [ ] Later: backups (list, prune, restore), API call log, users and roles (Phase 4), system details (disk space, uptime)
+
+## Deferred from Phase 3a
+
+- [ ] goreleaser's `brews` is deprecated (its replacement, casks, has no formula service block); move the formula when goreleaser removes it, or keep a hand-written formula in the tap
+- [ ] No test holds "never add push or pull_request triggers" for `.github/workflows`
 
 ## Open questions
 

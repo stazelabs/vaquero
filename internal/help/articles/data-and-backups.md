@@ -2,7 +2,7 @@
 title: Your data and backups
 section: getting-started
 summary: Where Vaquero keeps its data, what each file is for, and how to restore a backup.
-order: 2
+order: 3
 ---
 ## The data directory
 

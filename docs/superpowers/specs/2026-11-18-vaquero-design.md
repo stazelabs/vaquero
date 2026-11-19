@@ -146,14 +146,14 @@ IDs are ULIDs. Instants are stored as text and formatted through `timefmt`.
 
 ### Upgrades
 
-- Semver releases built by goreleaser: binaries, checksums, a signature, a Homebrew tap and a container image.
-- `vaquero upgrade` downloads, verifies, replaces the binary atomically and restarts the local service.
+- Semver releases built by goreleaser: binaries, checksums and a Homebrew tap. The container image moves to Phase 4, when hosted mode makes one useful.
+- Upgrades go through Homebrew: `brew upgrade vaquero` (decided by the user on 2026-11-20, replacing a `vaquero upgrade` command, so Vaquero itself never calls out). The next CLI command restarts a local server older than itself; `brew services` keeps Vaquero running at login, in place of a `vaquero service install` command. Linux users without Homebrew install from the release archive and `checksums.txt`.
 - Before applying pending migrations on boot, the server takes a `VACUUM INTO` snapshot and keeps the last few.
 - The server refuses to open a database newer than itself.
 - Migrations are append-only and forward-only. A destructive change ships as an additive step in one release and the removal in a later one.
 - The CLI sends its version; the server answers with its own and a minimum client version. A mismatch prints a plain instruction to upgrade.
 - CI keeps a fixture database from every release and proves each migrates to head.
-- An update-available notice checks the releases feed and can be turned off.
+- No update-available notice: `brew outdated` covers it (2026-11-20).
 - Full export and import (builder's calls): an archive of JSON plus attachment bytes. It includes projects, tickets, comments, tags, links, milestones, actors, events and settings; it leaves out sessions, token hashes and live claims. Import restores into an empty instance only, bypasses `core`, and keeps IDs, project keys and ticket numbers. Actors arrive without sign-in details; an owner attaches users to them afterwards.
 - The importer from the current tracker also keeps project keys and ticket numbers, so existing branch names and commit references still resolve.
 - Supported platforms for the local binary are macOS and Linux (decided by the user). Windows users run it under WSL or use a hosted instance; native Windows may follow.
@@ -178,7 +178,7 @@ Each phase ends with the gate green and something usable, and gets its own plan 
 0. **Foundation.** Licence, README, CLAUDE.md and rules, ported scaffold, config with modes, database open and migrate, `vaquero serve`, `/healthz`, `vaquero version`, Makefile, CI workflows.
 1. **Core tracker.** Schema, `internal/core`, events, and the web UI described above, in local mode.
 2. **API, CLI, MCP, coordination.**
-3. **Releases and upgrades.** First public release. Also `vaquero service install`, export and import, an importer from the tracker currently in use, and an adapter so the `stazelabs` agent-workflow skills can drive vaquero. Vaquero's own tickets move into vaquero.
+3. **Releases and upgrades.** First public release. Also export and import, an importer from the tracker currently in use, and an adapter so the `stazelabs` agent-workflow skills can drive vaquero. Vaquero's own tickets move into vaquero.
 4. **Hosted mode.** Users, sign-in, roles, Dockerfile, `fly.toml`, ops docs, scheduled snapshot upload.
 5. **Git integration.**
 6. **Notifications and attachments.** In-app inbox, outgoing webhooks, optional email, files.

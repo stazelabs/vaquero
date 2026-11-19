@@ -6,6 +6,13 @@ Vaquero is an agent-native, local-first, lightweight ticket tracker. It ships as
 
 Status: early development. Not ready for use.
 
+## Install
+
+    brew install stazelabs/vaquero/vaquero
+    vaquero docs welcome
+
+Upgrade with `brew upgrade vaquero`; the next command restarts the server on the new version, after snapshotting the database if its layout changes. Release archives for macOS and Linux, with `checksums.txt`, are on the releases page. `vaquero docs installing-and-upgrading` has the details.
+
 ## Build from source
 
 Requires Go 1.27 and Node (for the build-time stylesheet only).
@@ -17,6 +24,10 @@ Requires Go 1.27 and Node (for the build-time stylesheet only).
     make ci      # the full gate: generate, format, vet, lint, test, coverage floors
 
 Run `make` with no target to list every target. A plain `vaquero serve` keeps its data in `~/Library/Application Support/vaquero` on macOS and `~/.local/share/vaquero` on Linux; set `VQ_DATA_DIR` to change it.
+
+## Releasing
+
+See docs/RELEASING.md.
 
 ## Documentation
 
