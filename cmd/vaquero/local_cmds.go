@@ -71,7 +71,8 @@ var errBrewServices = message("Vaquero runs under brew services; run brew servic
 
 // stopLocal asks the server holding dataDir's lock to stop (SIGTERM, which
 // drains like Ctrl-C) and waits until it lets go. stopped is false when
-// nothing was running.
+// nothing was running. A different server taking the lock meanwhile (a
+// service manager's restart, or another command's) also ends the wait.
 func stopLocal(ctx context.Context, dataDir string, wait time.Duration) (stopped bool, err error) {
 	pid, running, err := lockfile.Holder(dataDir)
 	if err != nil || !running {
@@ -85,7 +86,7 @@ func stopLocal(ctx context.Context, dataDir string, wait time.Duration) (stopped
 	}
 	deadline := time.Now().Add(wait)
 	for {
-		if _, running, err := lockfile.Holder(dataDir); err != nil || !running {
+		if now, running, err := lockfile.Holder(dataDir); err != nil || !running || now != pid {
 			return true, err
 		}
 		if time.Now().After(deadline) {

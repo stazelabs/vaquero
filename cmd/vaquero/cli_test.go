@@ -11,6 +11,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/client"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
@@ -158,6 +159,9 @@ func TestCLIUpgradeMessage(t *testing.T) {
 	old := middleware.MinClient
 	middleware.MinClient = "99.0.0"
 	defer func() { middleware.MinClient = old }()
+	oldV := version.Version
+	version.Version = "1.0.0" // a release: dev builds are never told to upgrade
+	defer func() { version.Version = oldV }()
 	code, _, errOut := cli(t, "projects")
 	if code != 0 || !strings.Contains(errOut, "needs vaquero 99.0.0 or newer") {
 		t.Fatalf("%d %q", code, errOut)

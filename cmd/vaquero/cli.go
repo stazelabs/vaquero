@@ -122,6 +122,10 @@ func (c *cmd) connect(ctx context.Context) error {
 		// Read the token now: the server may have just written it, or
 		// written a new one after the old was revoked.
 		p.Token = client.LocalToken(p.DataDir)
+		if err := c.replaceStale(ctx, exe, p); err != nil {
+			return err
+		}
+		p.Token = client.LocalToken(p.DataDir)
 		c.restartLocal = func(ctx context.Context) (string, error) {
 			if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
 				return "", err
@@ -135,6 +139,37 @@ func (c *cmd) connect(ctx context.Context) error {
 	}
 	c.client = &client.Client{BaseURL: p.URL, Token: p.Token, Agent: agent, Version: version.Version}
 	return nil
+}
+
+// brewRestartWait is how long to wait for brew services to bring the
+// server back: launchd may hold a restart for up to 10 seconds.
+const brewRestartWait = 20 * time.Second
+
+// replaceStale restarts the local server when it runs an older release than
+// this CLI: after `brew upgrade vaquero`, the running server is still the
+// old binary. A newer server, or a dev build on either side, is left alone,
+// so two binaries never take turns restarting each other.
+func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) error {
+	own := version.Version
+	if client.IsDev(own) {
+		return nil
+	}
+	probe := &client.Client{BaseURL: p.URL, Token: p.Token, Version: own}
+	if err := probe.Do(ctx, "GET", "/api/v1/me", nil, nil); err != nil {
+		return nil // the command's own request reports any problem
+	}
+	running := probe.ServerVersion()
+	if client.IsDev(running) || !client.Older(running, own) {
+		return nil
+	}
+	fmt.Fprintf(c.stderr, "vaquero: restarting the local server to run %s (it was running %s)\n", own, running)
+	if _, err := stopLocal(ctx, p.DataDir, stopWait); err != nil {
+		return err
+	}
+	if brewService() {
+		return client.WaitUp(ctx, p.URL, brewRestartWait)
+	}
+	return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
 }
 
 // call sends one API request; after it, an outdated CLI says so.

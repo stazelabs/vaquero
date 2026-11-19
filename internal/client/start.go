@@ -113,3 +113,22 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 		}
 	}
 }
+
+// WaitUp waits up to wait for the server at url to answer /healthz, without
+// starting one: for a server a service manager restarts.
+func WaitUp(ctx context.Context, url string, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		if probe(ctx, url) == probeUp {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("vaquero didn't come back on %s within %v", strings.TrimPrefix(url, "http://"), wait)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}

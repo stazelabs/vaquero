@@ -25,7 +25,8 @@ type Client struct {
 	Version string // this client's release, sent as Vaquero-Client
 	HTTP    *http.Client
 
-	minClient string // the last answer's Vaquero-Min-Client
+	minClient     string // the last answer's Vaquero-Min-Client
+	serverVersion string // the last answer's Vaquero-Version
 }
 
 // Error is an API error answer.
@@ -90,6 +91,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 	}
 	defer res.Body.Close()
 	c.minClient = res.Header.Get("Vaquero-Min-Client")
+	c.serverVersion = res.Header.Get("Vaquero-Version")
 	data, err := io.ReadAll(res.Body)
 	if err != nil {
 		return err
@@ -109,17 +111,24 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 }
 
 // UpgradeNeeded reports whether this client is older than the server's
-// minimum, as of the last answer.
+// minimum, as of the last answer. A dev build is never told to upgrade.
 func (c *Client) UpgradeNeeded() (min string, need bool) {
-	if c.minClient == "" || c.Version == "" {
+	if c.minClient == "" || IsDev(c.Version) {
 		return c.minClient, false
 	}
-	return c.minClient, older(c.Version, c.minClient)
+	return c.minClient, Older(c.Version, c.minClient)
 }
 
-// older compares the major.minor.patch of two releases, ignoring any
+// ServerVersion is the server's release, as of the last answer.
+func (c *Client) ServerVersion() string { return c.serverVersion }
+
+// IsDev reports whether v is a development build rather than a release:
+// empty, or with a pre-release part ("0.0.0-dev", "0.3.0-rc.1").
+func IsDev(v string) bool { return v == "" || strings.Contains(v, "-") }
+
+// Older compares the major.minor.patch of two releases, ignoring any
 // "-suffix".
-func older(a, b string) bool {
+func Older(a, b string) bool {
 	pa, pb := semver(a), semver(b)
 	for i := range 3 {
 		if pa[i] != pb[i] {
