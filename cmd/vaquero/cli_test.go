@@ -240,3 +240,25 @@ func TestCLIVersionMustBePositive(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIAgentFlag(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "x")
+	mustCLI(t, "comment", "VAQ-1", "From the flag.", "--agent", "builder")
+	t.Setenv("VAQUERO_AGENT", "reviewer")
+	mustCLI(t, "comment", "VAQ-1", "From the environment.")
+	mustCLI(t, "comment", "VAQ-1", "The flag wins.", "--agent", "builder")
+	var tk struct {
+		Comments []struct{ Author, Body string }
+	}
+	if err := json.Unmarshal([]byte(mustCLI(t, "ticket", "show", "VAQ-1", "--json")), &tk); err != nil {
+		t.Fatal(err)
+	}
+	got := []string{}
+	for _, c := range tk.Comments {
+		got = append(got, c.Author)
+	}
+	if strings.Join(got, ",") != "builder,reviewer,builder" {
+		t.Fatalf("%v", got)
+	}
+}

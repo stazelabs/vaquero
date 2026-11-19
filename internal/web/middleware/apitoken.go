@@ -3,12 +3,14 @@ package middleware
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/apitoken"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/version"
@@ -41,7 +43,16 @@ type APIAuth struct {
 	Touch  Toucher      // writer, last-used only
 	Now    func() time.Time
 	Logger *slog.Logger
+	// Local is local mode: there, a request made with the owner's token
+	// (OwnerID) and a Vaquero-Agent header acts as that agent, made by
+	// Agent (core.EnsureAgent) on first use. Elsewhere the header is ignored.
+	Local   bool
+	OwnerID string
+	Agent   func(ctx context.Context, by, name string) (gen.Actor, error)
 }
+
+// AgentHeader names the agent a local request acts as.
+const AgentHeader = "Vaquero-Agent"
 
 type apiActorKey struct{}
 
@@ -87,6 +98,19 @@ func APIToken(a APIAuth) func(http.Handler) http.Handler {
 				a.Logger.ErrorContext(ctx, "api token actor", "err", err, "token_id", t.ID)
 				api.WriteFailure(w, api.Internal())
 				return
+			}
+			if name := r.Header.Get(AgentHeader); name != "" && a.Local && a.Agent != nil && actor.ID == a.OwnerID {
+				agent, err := a.Agent(ctx, actor.ID, name)
+				if inv, ok := errors.AsType[*core.Invalid](err); ok {
+					api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", inv.Fields["agent"]))
+					return
+				}
+				if err != nil {
+					a.Logger.ErrorContext(ctx, "api agent", "err", err)
+					api.WriteFailure(w, api.Internal())
+					return
+				}
+				actor = agent
 			}
 			now := a.Now()
 			if !t.LastUsedAt.Valid || t.LastUsedAt.String < timefmt.Format(now.Add(-apitoken.TouchEvery)) {

@@ -8,7 +8,7 @@ The `vaquero` program is also the command line. Commands other than `serve`, `ve
 
 ## Commands
 
-Every command that talks to a server takes `--profile NAME` and `--json`. Flags may come before or after the other arguments. `-` as a comment's text (or `--body -`, `--description -`) reads standard input.
+Every command that talks to a server takes `--profile NAME`, `--agent NAME` and `--json`. On this machine, `--agent` (or `VAQUERO_AGENT`) makes the command act as that agent instead of you; the agent is created the first time its name is used. Flags may come before or after the other arguments. `-` as a comment's text (or `--body -`, `--description -`) reads standard input.
 
 | Command | What it does |
 |---|---|

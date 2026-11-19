@@ -88,6 +88,8 @@ type Client struct {
 	t    testing.TB
 	http *http.Client
 	base string
+	// Agent, when set, is sent as Vaquero-Agent on API requests.
+	Agent string
 }
 
 // Client returns a new client with its own cookie jar (so a toast set on a
@@ -174,6 +176,9 @@ func (c *Client) API(method, path, token string, body any) *Response {
 	req := c.newRequest(method, path, rd)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if c.Agent != "" {
+		req.Header.Set("Vaquero-Agent", c.Agent)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")

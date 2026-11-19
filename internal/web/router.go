@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/stazelabs/vaquero/internal/config"
 
 	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
@@ -33,7 +35,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Handle("/static/*", http.StripPrefix("/static/", staticHandler()))
 	// The API: bearer tokens, JSON answers and errors, no cookies.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.APIHeaders, middleware.APIToken(middleware.APIAuth{R: d.R, Touch: d.Touch, Now: d.Now, Logger: d.Logger}))
+		r.Use(middleware.APIHeaders, middleware.APIToken(middleware.APIAuth{R: d.R, Touch: d.Touch, Now: d.Now, Logger: d.Logger,
+			Local: d.Cfg.Mode == config.ModeLocal, OwnerID: d.Actor.ID, Agent: d.Core.EnsureAgent}))
 		r.NotFound(handlers.APINotFound)
 		r.MethodNotAllowed(handlers.APIMethodNotAllowed)
 		r.Get("/me", handlers.APIMe(d))

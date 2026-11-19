@@ -51,16 +51,18 @@ type cmd struct {
 	fs             *flag.FlagSet
 	jsonOut        bool
 	profile        string
+	agent          string
 	usage          string
 	client         *client.Client
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
-// --profile and --json.
+// --profile, --agent and --json.
 func newCmd(stdout, stderr io.Writer, usage string) *cmd {
 	c := &cmd{stdout: stdout, stderr: stderr, usage: usage, fs: flag.NewFlagSet(usage, flag.ContinueOnError)}
 	c.fs.SetOutput(io.Discard)
 	c.fs.StringVar(&c.profile, "profile", "", "server profile")
+	c.fs.StringVar(&c.agent, "agent", "", "act as this agent (local mode; default $VAQUERO_AGENT)")
 	c.fs.BoolVar(&c.jsonOut, "json", false, "print JSON")
 	return c
 }
@@ -118,7 +120,11 @@ func (c *cmd) connect(ctx context.Context) error {
 		// written a new one after the old was revoked.
 		p.Token = client.LocalToken(p.DataDir)
 	}
-	c.client = &client.Client{BaseURL: p.URL, Token: p.Token, Agent: os.Getenv("VAQUERO_AGENT"), Version: version.Version}
+	agent := c.agent
+	if agent == "" {
+		agent = os.Getenv("VAQUERO_AGENT")
+	}
+	c.client = &client.Client{BaseURL: p.URL, Token: p.Token, Agent: agent, Version: version.Version}
 	return nil
 }
 
