@@ -56,6 +56,12 @@ const AgentHeader = "Vaquero-Agent"
 
 type apiActorKey struct{}
 
+// WithAPIActor is ctx acting as a: what APIToken sets, for the MCP
+// server's calls into the API.
+func WithAPIActor(ctx context.Context, a gen.Actor) context.Context {
+	return context.WithValue(ctx, apiActorKey{}, a)
+}
+
 // APIActor is the actor the request's token acts as.
 func APIActor(ctx context.Context) (gen.Actor, bool) {
 	a, ok := ctx.Value(apiActorKey{}).(gen.Actor)

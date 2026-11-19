@@ -8,6 +8,7 @@ import (
 
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/mcpserver"
 
 	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
@@ -33,39 +34,21 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.MethodNotAllowed(handlers.MethodNotAllowed(d))
 	r.Get("/healthz", handlers.Healthz(d))
 	r.Handle("/static/*", http.StripPrefix("/static/", staticHandler()))
-	// The API: bearer tokens, JSON answers and errors, no cookies.
+	// The API: bearer tokens, JSON answers and errors, no cookies. MCP is
+	// the same API as tools, behind the same token check, calling apiRoutes
+	// in-process as the request's actor.
+	auth := middleware.APIToken(middleware.APIAuth{R: d.R, Touch: d.Touch, Now: d.Now, Logger: d.Logger,
+		Local: d.Cfg.Mode == config.ModeLocal, OwnerID: d.Actor.ID, Agent: d.Core.EnsureAgent})
+	apiRoutes := chi.NewRouter()
+	apiRoutes.Route("/api/v1", func(r chi.Router) { mountAPI(r, d) })
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(middleware.APIHeaders, middleware.APIToken(middleware.APIAuth{R: d.R, Touch: d.Touch, Now: d.Now, Logger: d.Logger,
-			Local: d.Cfg.Mode == config.ModeLocal, OwnerID: d.Actor.ID, Agent: d.Core.EnsureAgent}))
-		r.NotFound(handlers.APINotFound)
+		r.Use(middleware.APIHeaders, auth)
+		mountAPI(r, d)
+	})
+	r.Route("/mcp", func(r chi.Router) {
+		r.Use(middleware.APIHeaders, auth)
 		r.MethodNotAllowed(handlers.APIMethodNotAllowed)
-		r.Get("/me", handlers.APIMe(d))
-		r.Get("/projects", handlers.APIProjects(d))
-		r.Get("/projects/{key}", handlers.APIProject(d))
-		r.Get("/projects/{key}/statuses", handlers.APIStatuses(d))
-		r.Get("/projects/{key}/milestones", handlers.APIMilestones(d))
-		r.Get("/projects/{key}/tickets", handlers.APITickets(d))
-		r.Get("/tickets/{ticket}", handlers.APITicket(d))
-		r.Get("/search", handlers.APISearch(d))
-		r.Get("/events", handlers.APIEvents(d))
-		r.Post("/projects", handlers.APIProjectCreate(d))
-		r.Patch("/projects/{key}", handlers.APIProjectUpdate(d))
-		r.Post("/projects/{key}/key", handlers.APIProjectKey(d))
-		r.Post("/projects/{key}/tickets", handlers.APITicketCreate(d))
-		r.Patch("/tickets/{ticket}", handlers.APITicketPatch(d))
-		r.Post("/tickets/{ticket}/move", handlers.APITicketMove(d))
-		r.Get("/ready", handlers.APIReady(d))
-		r.Post("/tickets/{ticket}/claim", handlers.APIClaim(d))
-		r.Post("/tickets/{ticket}/heartbeat", handlers.APIHeartbeat(d))
-		r.Post("/tickets/{ticket}/release", handlers.APIRelease(d))
-		r.Post("/tickets/{ticket}/comments", handlers.APICommentCreate(d))
-		r.Patch("/comments/{id}", handlers.APICommentUpdate(d))
-		r.Delete("/comments/{id}", handlers.APICommentDelete(d))
-		r.Post("/tickets/{ticket}/links", handlers.APILinkCreate(d))
-		r.Delete("/links/{id}", handlers.APILinkDelete(d))
-		r.Get("/tokens", handlers.APITokens(d))
-		r.Post("/tokens", handlers.APITokenCreate(d))
-		r.Post("/tokens/{prefix}/revoke", handlers.APITokenRevoke(d))
+		r.Post("/", mcpserver.Handler(apiRoutes, d.Logger).ServeHTTP)
 	})
 
 	r.Route("/admin", func(r chi.Router) {
@@ -118,4 +101,37 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Post("/links/{id}/delete", handlers.LinkDelete(d))
 	})
 	return r
+}
+
+// mountAPI adds the /api/v1 routes to r.
+func mountAPI(r chi.Router, d handlers.Deps) {
+	r.NotFound(handlers.APINotFound)
+	r.MethodNotAllowed(handlers.APIMethodNotAllowed)
+	r.Get("/me", handlers.APIMe(d))
+	r.Get("/projects", handlers.APIProjects(d))
+	r.Get("/projects/{key}", handlers.APIProject(d))
+	r.Get("/projects/{key}/statuses", handlers.APIStatuses(d))
+	r.Get("/projects/{key}/milestones", handlers.APIMilestones(d))
+	r.Get("/projects/{key}/tickets", handlers.APITickets(d))
+	r.Get("/tickets/{ticket}", handlers.APITicket(d))
+	r.Get("/search", handlers.APISearch(d))
+	r.Get("/events", handlers.APIEvents(d))
+	r.Post("/projects", handlers.APIProjectCreate(d))
+	r.Patch("/projects/{key}", handlers.APIProjectUpdate(d))
+	r.Post("/projects/{key}/key", handlers.APIProjectKey(d))
+	r.Post("/projects/{key}/tickets", handlers.APITicketCreate(d))
+	r.Patch("/tickets/{ticket}", handlers.APITicketPatch(d))
+	r.Post("/tickets/{ticket}/move", handlers.APITicketMove(d))
+	r.Get("/ready", handlers.APIReady(d))
+	r.Post("/tickets/{ticket}/claim", handlers.APIClaim(d))
+	r.Post("/tickets/{ticket}/heartbeat", handlers.APIHeartbeat(d))
+	r.Post("/tickets/{ticket}/release", handlers.APIRelease(d))
+	r.Post("/tickets/{ticket}/comments", handlers.APICommentCreate(d))
+	r.Patch("/comments/{id}", handlers.APICommentUpdate(d))
+	r.Delete("/comments/{id}", handlers.APICommentDelete(d))
+	r.Post("/tickets/{ticket}/links", handlers.APILinkCreate(d))
+	r.Delete("/links/{id}", handlers.APILinkDelete(d))
+	r.Get("/tokens", handlers.APITokens(d))
+	r.Post("/tokens", handlers.APITokenCreate(d))
+	r.Post("/tokens/{prefix}/revoke", handlers.APITokenRevoke(d))
 }
