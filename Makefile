@@ -1,8 +1,10 @@
 GO          ?= go
 BIN         := bin/vaquero
 PKG         := github.com/stazelabs/vaquero
-# VERSION is the newest v* tag without its "v", else 0.0.0-dev.
-VERSION     := $(or $(patsubst v%,%,$(shell git describe --tags --match 'v*' 2>/dev/null)),0.0.0-dev)
+# VERSION is the v* tag on HEAD itself, without its "v": a release. Any
+# other commit builds as 0.0.0-dev, which never claims to be a release (a
+# describe-style 0.1.0-3-gabc would sort below 0.1.0 though it is newer).
+VERSION     := $(or $(patsubst v%,%,$(shell git describe --tags --exact-match --match 'v*' 2>/dev/null)),0.0.0-dev)
 COMMIT      := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILD_DATE  := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(PKG)/internal/version.Version=$(VERSION) -X $(PKG)/internal/version.Commit=$(COMMIT) -X $(PKG)/internal/version.BuildDate=$(BUILD_DATE)

@@ -1,0 +1,58 @@
+# Cuts a release: run by hand from the Actions tab with the tag to create
+# (like v0.1.0). Never add push or pull_request triggers. Steps for the
+# person releasing are in docs/RELEASING.md.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to create, like v0.1.0"
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tag is a release number
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must look like v0.1.0, got $TAG"; exit 1; }
+      - name: The release's upgrade fixture is committed
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          test -f "testdata/upgrade/$TAG.sqlite" || { echo "missing testdata/upgrade/$TAG.sqlite: run make fixture VERSION=${TAG#v} and commit it"; exit 1; }
+  gate:
+    needs: check
+    uses: ./.github/workflows/quality-gate.yml
+  release:
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Create the tag
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Vaquero $TAG"
+          git push origin "$TAG"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

@@ -1,0 +1,63 @@
+# Release builds: run by .github/workflows/release.yml (by hand, never on
+# push). Check locally with: goreleaser check, and
+# goreleaser release --snapshot --clean --skip=publish
+version: 2
+
+project_name: vaquero
+
+builds:
+  - id: vaquero
+    main: ./cmd/vaquero
+    binary: vaquero
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/stazelabs/vaquero/internal/version.Version={{.Version}}
+      - -X github.com/stazelabs/vaquero/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/stazelabs/vaquero/internal/version.BuildDate={{.Date}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+
+brews:
+  - name: vaquero
+    repository:
+      owner: stazelabs
+      name: homebrew-vaquero
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/stazelabs/vaquero
+    description: Local-first ticket tracker with coordination for agents
+    license: Apache-2.0
+    install: |
+      bin.install "vaquero"
+    service: |
+      run [opt_bin/"vaquero", "serve"]
+      keep_alive true
+      log_path var/"log/vaquero.log"
+      error_log_path var/"log/vaquero.log"
+    test: |
+      assert_match version.to_s, shell_output("#{bin}/vaquero version")
+
+release:
+  github:
+    owner: stazelabs
+    name: vaquero
+  draft: false
+  prerelease: auto
+  name_template: "{{ .Tag }}"

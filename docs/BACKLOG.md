@@ -23,7 +23,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Deferred from the Phase 0 review
 
 - [x] Fix the stale migration-order line in `.claude/rules/database.md` (review #3) — Phase 1a
-- [ ] Make `VERSION` match its comment — `git describe` gives `0.1.0-3-gabc` on untagged commits; decide release-or-dev semantics with the Phase 3 release work (review #5)
+- [x] Make `VERSION` match its comment — the exact tag on HEAD, else 0.0.0-dev (Phase 3a); was: — `git describe` gives `0.1.0-3-gabc` on untagged commits; decide release-or-dev semantics with the Phase 3 release work (review #5)
 - [ ] Stop tightening an existing `VQ_DATA_DIR` to 0700 silently — `VQ_DATA_DIR=.` changes the working directory's permissions; decide refuse vs warn, and test it (review #6)
 - [ ] Reject loopback addresses outside the Host allowlist — `VQ_ADDR=127.0.0.2` boots, then every request gets 403 (review #7)
 - [ ] Validate the port (1–65535) and only say "is vaquero already running?" for address-in-use (review #8)
