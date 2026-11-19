@@ -1,9 +1,12 @@
 package client
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestOlderAndIsDev(t *testing.T) {
@@ -55,5 +58,21 @@ func TestDevBuildNeverNeedsUpgrade(t *testing.T) {
 	_ = c.Do(t.Context(), "GET", "/api/v1/me", nil, nil)
 	if _, need := c.UpgradeNeeded(); !need {
 		t.Fatal("a release older than the minimum wasn't told to upgrade")
+	}
+}
+
+// A server that stops while starting is reported at once, not after the
+// whole wait: the wait is long so a first boot can migrate a big database.
+func TestEnsureLocalReportsAStoppedServerAtOnce(t *testing.T) {
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	ln.Close()
+	start := time.Now()
+	err := EnsureLocal(t.Context(), "/usr/bin/false", "http://"+addr, t.TempDir(), 30*time.Second)
+	if err == nil || !strings.Contains(err.Error(), "stopped while starting") {
+		t.Fatalf("%v", err)
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("took %v to notice", took)
 	}
 }

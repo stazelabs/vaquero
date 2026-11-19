@@ -381,6 +381,19 @@ func DeleteBackup(dir, name string) error {
 	return nil
 }
 
+// SnapshotNext is Snapshot, taking the next free second's name when one is
+// taken (a snapshot a moment earlier: a restore, then a boot), up to five.
+func SnapshotNext(ctx context.Context, src *sql.DB, dir string, now time.Time) (BackupInfo, error) {
+	for range 5 {
+		info, err := Snapshot(ctx, src, dir, now)
+		if !errors.Is(err, ErrBackupExists) {
+			return info, err
+		}
+		now = now.Add(time.Second)
+	}
+	return BackupInfo{}, ErrBackupExists
+}
+
 // BackupKeep is how many snapshots are kept: those taken before a project
 // delete and those taken before a migration share the directory and the
 // count.

@@ -14,9 +14,15 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/stazelabs/vaquero/internal/lockfile"
 )
 
 type probeResult int
+
+// silentWait is how long a listener that isn't this data directory's
+// vaquero may take to answer before it counts as something else.
+const silentWait = 5 * time.Second
 
 const (
 	probeUp      probeResult = iota // vaquero answered /healthz
@@ -60,8 +66,15 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	addr := strings.TrimPrefix(strings.TrimPrefix(url, "http://"), "https://")
 	foreign := fmt.Errorf("something other than vaquero is using %s; stop it, or set VQ_ADDR to another address", addr)
 	deadline := time.Now().Add(wait)
+	// A listener that doesn't answer yet is given the whole wait only when a
+	// vaquero holds this data directory (one still migrating, started by
+	// another command); anything else gets a few seconds.
+	silentUntil := time.Now().Add(min(wait, silentWait))
+	if _, running, _ := lockfile.Holder(dataDir); running {
+		silentUntil = deadline
+	}
 	first := probe(ctx, url)
-	for first == probeSilent && time.Now().Before(deadline) {
+	for first == probeSilent && time.Now().Before(silentUntil) {
 		first = probe(ctx, url)
 	}
 	switch first {
@@ -107,8 +120,16 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 			}
 			return fmt.Errorf("vaquero didn't start on %s within %v; see %s", addr, wait, logPath)
 		case <-tick.C:
-			if probe(ctx, url) == probeUp {
+			switch probe(ctx, url) {
+			case probeUp:
 				return nil
+			case probeRefused:
+				// Ours stopped and nothing took the address: no server is
+				// coming (one that lost a race exits because the winner
+				// already listens).
+				if stopped {
+					return fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
+				}
 			}
 		}
 	}

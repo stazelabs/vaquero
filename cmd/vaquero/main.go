@@ -110,6 +110,11 @@ func openDB(ctx context.Context, path, backupDir string, now time.Time, logger *
 		_ = w.Close()
 		return nil, nil, err
 	}
+	// The database is current: a marker from a failed upgrade is done with,
+	// so the next upgrade from this version takes a fresh snapshot.
+	if err := os.Remove(filepath.Join(backupDir, premigrateMarker)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		logger.WarnContext(ctx, "clear the snapshot marker", "err", err)
+	}
 	r, err = appdb.OpenReader(path, 8)
 	if err != nil {
 		_ = w.Close()
@@ -126,7 +131,9 @@ func openDB(ctx context.Context, path, backupDir string, now time.Time, logger *
 // would snapshot it again; a client retrying would then fill the kept
 // snapshots with copies of one state and prune the older ones away. So the
 // snapshot taken for a version is remembered (premigrateMarker) and reused
-// while the database is still at that version.
+// while the database is still at that version; nothing can change it
+// meanwhile, since no server runs on it. A boot that finds the database
+// current, and a migration that succeeds, clear the marker (openDB).
 func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now time.Time, logger *slog.Logger) error {
 	applied, newest, err := appdb.Pending(w)
 	if err != nil {
@@ -142,7 +149,7 @@ func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now tim
 			return nil
 		}
 	}
-	info, err := appdb.Snapshot(ctx, w, backupDir, now)
+	info, err := appdb.SnapshotNext(ctx, w, backupDir, now)
 	if err != nil {
 		hint := "check that " + backupDir + " can be written"
 		if errors.Is(err, appdb.ErrLowSpace) {

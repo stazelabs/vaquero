@@ -169,3 +169,31 @@ func TestRestoreUnknownName(t *testing.T) {
 		t.Fatalf("%d %q", code, e)
 	}
 }
+
+// A damaged database is a reason to restore: it can't be snapshotted, so it
+// is moved aside instead, and the restore goes ahead.
+func TestRestoreOverDamagedDatabase(t *testing.T) {
+	dataDir := seedData(t)
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	name := snapshotNow(t, dataDir)
+	db := filepath.Join(dataDir, "vaquero.db")
+	os.Remove(db + "-wal")
+	os.Remove(db + "-shm")
+	if err := os.WriteFile(db, []byte("this is not a database"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, e := runCLI(t, "backup", "restore", name)
+	if code != 0 || !strings.Contains(out, "Restored "+name+".") || !strings.Contains(out, "couldn't be copied, so it was moved to ") {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	moved, _ := filepath.Glob(db + ".before-restore-*")
+	if len(moved) != 1 {
+		t.Fatalf("moved aside: %v", moved)
+	}
+	if b, _ := os.ReadFile(moved[0]); string(b) != "this is not a database" {
+		t.Fatalf("moved file holds %q", b)
+	}
+	if _, out, _ := runCLI(t, "projects"); !strings.Contains(out, "VAQ") {
+		t.Fatalf("restored database:\n%s", out)
+	}
+}

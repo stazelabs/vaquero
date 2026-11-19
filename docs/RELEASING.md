@@ -17,10 +17,15 @@ Releases are cut by hand from GitHub Actions; nothing runs on push. The workflow
        git push
 
 2. In Actions, run "release" with the tag `v0.1.0`.
+   The workflow runs only from `main`, and checks the fixture's schema matches the newest migration. If a migration landed after the fixture was made, delete the unreleased fixture's two files and run `make fixture` again.
 3. Check the release page has four archives and `checksums.txt`, and that `brew install stazelabs/vaquero/vaquero` (or `brew upgrade vaquero`) installs it and `vaquero version` prints `0.1.0`.
+
+## When a release fails
+
+The tag is pushed before goreleaser runs. If goreleaser fails (an expired `HOMEBREW_TAP_TOKEN` is the usual cause), fix the cause and run the workflow again with the same tag: it reuses a tag that points at the same commit. If a partial GitHub release was created, delete it on the releases page first (keep the tag). To give up on a version, delete both the release and the tag, and release the next number.
 
 ## Rules
 
-- Never edit or delete a fixture in `testdata/upgrade`; never edit a migration that shipped.
+- Never edit or delete a released version's fixture in `testdata/upgrade`; never edit a migration that shipped.
 - A schema change that removes something ships in two releases: the addition first, the removal later.
 - Check locally before a release with `goreleaser check` (it warns that `brews` is deprecated; that is known) and `goreleaser release --snapshot --clean --skip=publish`.

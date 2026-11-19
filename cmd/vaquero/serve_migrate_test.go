@@ -169,3 +169,51 @@ func TestSnapshotFailureNamesTheCause(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func markerPath(dir string) string { return filepath.Join(dir, "backups", premigrateMarker) }
+
+// A marker left by a failed upgrade must not outlive the version it was for:
+// a boot that finds the database current clears it, so a later upgrade from
+// the same version takes a fresh snapshot.
+func TestMarkerClearedWhenCurrent(t *testing.T) {
+	dir := t.TempDir()
+	serveBriefly(t, dir) // a current database
+	os.MkdirAll(filepath.Dir(markerPath(dir)), 0o700)
+	if err := os.WriteFile(markerPath(dir), []byte("5 vaquero-20261118-120000.sqlite\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	serveBriefly(t, dir)
+	if _, err := os.Stat(markerPath(dir)); err == nil {
+		t.Fatal("marker survived a boot on a current database")
+	}
+}
+
+func TestMarkerClearedAfterMigrating(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "127.0.0.1:0", dir)
+	stageDB(t, cfg.DBPath, 5)
+	serveBriefly(t, dir)
+	if _, err := os.Stat(markerPath(dir)); err == nil {
+		t.Fatal("marker survived a successful migration")
+	}
+}
+
+// A boot in the same second as another snapshot (just after a restore,
+// say) takes the next free name rather than failing.
+func TestPreMigrateSnapshotTakesNextFreeName(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, "127.0.0.1:0", dir)
+	stageDB(t, cfg.DBPath, 5)
+	at := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	old := bootNow
+	bootNow = func() time.Time { return at }
+	t.Cleanup(func() { bootNow = old })
+	os.MkdirAll(filepath.Join(dir, "backups"), 0o700)
+	if err := os.WriteFile(filepath.Join(dir, "backups", appdb.BackupName(at)), []byte("taken a moment ago"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	serveBriefly(t, dir)
+	if names := backupNames(t, dir); len(names) != 2 {
+		t.Fatalf("backups %v, want the earlier one and the new one", names)
+	}
+}

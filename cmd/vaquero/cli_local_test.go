@@ -8,6 +8,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stazelabs/vaquero/internal/lockfile"
 )
 
 // localEnv points the CLI at the built-in local profile: a fresh data
@@ -29,17 +31,15 @@ func localEnv(t *testing.T) (dataDir, addr string) {
 	return dataDir, addr
 }
 
-// killTestServer stops a background server started by a test.
+// killTestServer stops a background server started by a test: only a live
+// holder of the lock, so a pid this process left in the file (a restore
+// holds the lock too) is never signalled.
 func killTestServer(dataDir string) {
-	b, err := os.ReadFile(filepath.Join(dataDir, "vaquero.lock"))
-	if err != nil {
+	pid, running, err := lockfile.Holder(dataDir)
+	if err != nil || !running || pid <= 0 || pid == os.Getpid() {
 		return
 	}
-	var pid int
-	for _, c := range strings.TrimSpace(string(b)) {
-		pid = pid*10 + int(c-'0')
-	}
-	if p, err := os.FindProcess(pid); err == nil && pid > 0 {
+	if p, err := os.FindProcess(pid); err == nil {
 		_ = p.Signal(os.Interrupt)
 		time.Sleep(300 * time.Millisecond)
 	}

@@ -36,6 +36,9 @@ var (
 // serve runs the server until ctx is done, then drains, checkpoints the WAL
 // and returns. It binds the address before anything else, so a second
 // instance fails fast without opening the first one's database.
+// bootNow is the clock the boot's snapshot is named by; tests fix it.
+var bootNow = time.Now
+
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err error) {
 	ln, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
@@ -59,7 +62,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		return fmt.Errorf("data directory lock: %w", err)
 	}
 	defer release()
-	w, r, err := openDB(ctx, cfg.DBPath, filepath.Join(cfg.DataDir, "backups"), time.Now(), logger)
+	w, r, err := openDB(ctx, cfg.DBPath, filepath.Join(cfg.DataDir, "backups"), bootNow(), logger)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}

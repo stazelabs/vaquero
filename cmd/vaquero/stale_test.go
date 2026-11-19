@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -165,5 +167,54 @@ func TestStaleRestartUnderBrewServices(t *testing.T) {
 	}
 	if v := serverVersion(t); v != "0.2.0" {
 		t.Fatalf("server runs %q", v)
+	}
+}
+
+// Under brew services a command that finds no server waits for the service
+// manager instead of starting its own, which would hold the lock and leave
+// launchd's copy failing to start, again and again.
+func TestBrewServiceStartIsLeftToTheManager(t *testing.T) {
+	dataDir, addr := localEnv(t)
+	home, _ := os.UserHomeDir()
+	p := brewServiceFile(home, "darwin")
+	os.MkdirAll(filepath.Dir(p), 0o700)
+	os.WriteFile(p, nil, 0o600)
+	old := serviceOS
+	serviceOS = "darwin"
+	t.Cleanup(func() { serviceOS = old })
+	// The fake service manager starts its server, stamped so it can be
+	// told apart, a second late.
+	go func() {
+		time.Sleep(time.Second)
+		exe, _ := os.Executable()
+		cmd := exec.Command(exe, "serve")
+		cmd.Env = append(os.Environ(), "VQ_TEST_VERSION=9.9.9-svc", "VQ_DATA_DIR="+dataDir, "VQ_ADDR="+addr)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		_ = cmd.Start()
+	}()
+	var wg sync.WaitGroup
+	codes := make([]int, 2)
+	for i := range 2 {
+		wg.Go(func() { codes[i], _, _ = runCLI(t, "projects") })
+	}
+	wg.Wait()
+	if codes[0] != 0 || codes[1] != 0 {
+		t.Fatalf("exit codes %v", codes)
+	}
+	if v := serverVersion(t); v != "9.9.9-svc" {
+		t.Fatalf("the server running is %q, not the service manager's", v)
+	}
+}
+
+// The first boot after an upgrade snapshots and migrates before it serves,
+// which can take a while on a big database; the command waits for it.
+func TestStaleRestartWaitsForASlowStart(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	serverAt(t, dataDir, "0.1.0")
+	asRelease(t, "0.2.0")
+	t.Setenv("VQ_TEST_START_DELAY", "7s")
+	code, _, e := runCLI(t, "projects")
+	if code != 0 {
+		t.Fatalf("%d %q", code, e)
 	}
 }

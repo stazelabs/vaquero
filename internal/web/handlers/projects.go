@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -173,15 +172,8 @@ func ProjectKeyChange(d Deps) http.HandlerFunc {
 // snapshot saves a backup before a delete. Backups are named by the second,
 // so a second delete in the same second takes the next free name.
 func snapshot(r *http.Request, d Deps) error {
-	now := d.Now()
-	for range 5 {
-		_, err := appdb.Snapshot(r.Context(), d.RDB, d.BackupDir, now)
-		if !errors.Is(err, appdb.ErrBackupExists) {
-			return err
-		}
-		now = now.Add(time.Second)
-	}
-	return appdb.ErrBackupExists
+	_, err := appdb.SnapshotNext(r.Context(), d.RDB, d.BackupDir, d.Now())
+	return err
 }
 
 // backupFailMessage tells the person why a delete didn't happen.

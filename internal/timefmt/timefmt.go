@@ -43,6 +43,10 @@ func ParseStamp(s string) (time.Time, error) {
 	return time.Parse(dbStamp, s)
 }
 
+// FileStamp is an instant for a file name, in UTC to the second:
+// "20261120-120000".
+func FileStamp(t time.Time) string { return t.UTC().Format("20060102-150405") }
+
 // Duration renders a span for people, rounded down to its largest unit:
 // "4 seconds", "1 minute", "3 hours", "2 days". Negative spans read as
 // "0 seconds".

@@ -21,11 +21,20 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must look like v0.1.0, got $TAG"; exit 1; }
-      - name: The release's upgrade fixture is committed
+      - name: Released from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "releases are cut from main; this run is on ${GITHUB_REF}"
+          exit 1
+      - name: The release's upgrade fixture is committed, at this schema
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          test -f "testdata/upgrade/$TAG.sqlite" || { echo "missing testdata/upgrade/$TAG.sqlite: run make fixture VERSION=${TAG#v} and commit it"; exit 1; }
+          json="testdata/upgrade/$TAG.json"
+          test -f "testdata/upgrade/$TAG.sqlite" && test -f "$json" || { echo "missing testdata/upgrade/$TAG.sqlite: run make fixture VERSION=${TAG#v} and commit it"; exit 1; }
+          newest=$(ls internal/db/migrations | sed -n 's/^0*\([0-9][0-9]*\)_.*/\1/p' | sort -n | tail -1)
+          schema=$(sed -n 's/.*"schema": *\([0-9][0-9]*\).*/\1/p' "$json")
+          test "$schema" = "$newest" || { echo "$json is at schema $schema but this commit migrates to $newest: delete the unreleased fixture, run make fixture VERSION=${TAG#v} again and commit it"; exit 1; }
   gate:
     needs: check
     uses: ./.github/workflows/quality-gate.yml
@@ -41,14 +50,19 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Create the tag
+      - name: Create the tag (or reuse it, when re-running a failed release)
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$TAG" -m "Vaquero $TAG"
-          git push origin "$TAG"
+          if existing=$(git rev-parse -q --verify "refs/tags/$TAG^{commit}"); then
+            test "$existing" = "$(git rev-parse HEAD)" || { echo "$TAG already exists at another commit; pick a new version"; exit 1; }
+            echo "$TAG already points here; reusing it"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Vaquero $TAG"
+            git push origin "$TAG"
+          fi
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"

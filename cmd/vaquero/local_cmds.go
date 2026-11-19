@@ -204,18 +204,22 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 	}
 	defer src.Close()
 
-	var saved string
+	// Save the current database first, so the restore can be undone. One
+	// that can't be copied (damaged, which is often why a restore is wanted,
+	// or too big for the free space) is moved aside whole instead.
+	var saved, movedTo string
 	if _, err := os.Stat(cfg.DBPath); err == nil {
-		cur, err := appdb.Open(cfg.DBPath)
+		saved, err = snapshotFile(ctx, cfg.DBPath, dir)
 		if err != nil {
-			return err
+			movedTo = cfg.DBPath + ".before-restore-" + timefmt.FileStamp(localNow())
+			for _, ext := range []string{"", "-wal", "-shm"} {
+				if err := os.Rename(cfg.DBPath+ext, movedTo+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return fmt.Errorf("couldn't copy or move aside the current database, so nothing changed: %w", err)
+				}
+			}
 		}
-		info, err := appdb.Snapshot(ctx, cur, dir, localNow())
-		_ = cur.Close()
-		if err != nil {
-			return fmt.Errorf("couldn't save the current database before restoring, so nothing changed: %w", err)
-		}
-		saved = info.Name
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	tmp := cfg.DBPath + ".restore"
 	if err := copyFile(tmp, src); err != nil {
@@ -233,12 +237,27 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 		_ = os.Remove(tmp)
 		return err
 	}
-	if saved == "" {
-		fmt.Fprintf(c.stdout, "Restored %s.\n", name)
-	} else {
+	switch {
+	case saved != "":
 		fmt.Fprintf(c.stdout, "Restored %s. The database before it is saved as %s.\n", name, saved)
+	case movedTo != "":
+		fmt.Fprintf(c.stdout, "Restored %s. The database before it couldn't be copied, so it was moved to %s.\n", name, movedTo)
+	default:
+		fmt.Fprintf(c.stdout, "Restored %s.\n", name)
 	}
 	return nil
+}
+
+// snapshotFile saves the database at path as a snapshot in dir and returns
+// its name.
+func snapshotFile(ctx context.Context, path, dir string) (string, error) {
+	cur, err := appdb.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer cur.Close()
+	info, err := appdb.SnapshotNext(ctx, cur, dir, localNow())
+	return info.Name, err
 }
 
 // copyFile writes src to path (0600) and syncs it.

@@ -28,8 +28,11 @@ const (
 // stdin is where "-" arguments are read from; tests replace it.
 var stdin io.Reader
 
-// startWait is how long the CLI waits for a local server it started.
-const startWait = 5 * time.Second
+// startWait is how long the CLI waits for a local server it started. The
+// first boot of a new version snapshots and migrates the database before
+// it answers, which can take a while on a big one; a server that stops
+// while starting is reported at once (EnsureLocal), not after this.
+const startWait = 60 * time.Second
 
 // usageError is a command used wrongly: exit 2 with its usage line and,
 // when there is one, a hint.
@@ -116,7 +119,7 @@ func (c *cmd) connect(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
+		if err := startLocal(ctx, exe, p); err != nil {
 			return err
 		}
 		// Read the token now: the server may have just written it, or
@@ -127,7 +130,7 @@ func (c *cmd) connect(ctx context.Context) error {
 		}
 		p.Token = client.LocalToken(p.DataDir)
 		c.restartLocal = func(ctx context.Context) (string, error) {
-			if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
+			if err := startLocal(ctx, exe, p); err != nil {
 				return "", err
 			}
 			return client.LocalToken(p.DataDir), nil
@@ -166,8 +169,17 @@ func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) er
 	if _, err := stopLocal(ctx, p.DataDir, stopWait); err != nil {
 		return err
 	}
-	if brewService() {
-		return client.WaitUp(ctx, p.URL, brewRestartWait)
+	return startLocal(ctx, exe, p)
+}
+
+// startLocal makes sure the local server answers, starting it when nothing
+// listens. Under brew services the service manager starts it: a server
+// started here would hold the data directory, and the service's own would
+// fail and be retried every few seconds for as long as it ran. So wait for
+// the service first, and start one here only if it never comes.
+func startLocal(ctx context.Context, exe string, p client.Profile) error {
+	if brewService() && client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
+		return nil
 	}
 	return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
 }
