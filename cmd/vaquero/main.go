@@ -24,6 +24,8 @@ const usage = `usage: vaquero <command>
 server:
   serve      run the server (the commands below start it when needed)
   version    print the release, commit and build date
+  stop       stop the background server
+  backup     list the database snapshots, or restore one
 
 tickets:
   projects   list projects

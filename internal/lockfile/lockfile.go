@@ -43,3 +43,28 @@ func Acquire(dir string) (release func(), held int, err error) {
 		f.Close()
 	}, 0, nil
 }
+
+// Holder reports whether a process holds the lock on dir, and its pid. A
+// missing directory or lock file has no holder. It only probes: the file
+// is never created or written, so the holder's pid stays in it.
+func Holder(dir string) (pid int, running bool, err error) {
+	path := filepath.Join(dir, "vaquero.lock")
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("open lock: %w", err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			b, _ := os.ReadFile(path)
+			pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+			return pid, true, nil
+		}
+		return 0, false, fmt.Errorf("lock: %w", err)
+	}
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	return 0, false, nil
+}

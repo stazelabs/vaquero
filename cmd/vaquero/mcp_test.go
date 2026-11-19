@@ -149,7 +149,7 @@ func TestMCPBridgeRestartsLocalServer(t *testing.T) {
 	if a := read(); a.Error != nil {
 		t.Fatalf("%+v", a)
 	}
-	stopLocal(dataDir)
+	killTestServer(dataDir)
 	for range 50 {
 		c, err := net.Dial("tcp", addr)
 		if err != nil {

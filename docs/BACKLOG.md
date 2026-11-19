@@ -77,9 +77,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 ## Deferred from the footer, key and delete work
 
-- [ ] Restoring a pre-delete backup is manual (stop vaquero, copy `backups/vaquero-….sqlite` over `vaquero.db`); a `vaquero admin restore` command belongs with Phase 3's upgrade tooling
+- [x] Restoring a pre-delete backup is manual — `vaquero backup restore` (Phase 3a); was: (stop vaquero, copy `backups/vaquero-….sqlite` over `vaquero.db`); a `vaquero admin restore` command belongs with Phase 3's upgrade tooling
 - [ ] The footer's commit reads "dev" under `make dev` (air builds without ldflags); release builds stamp it
-- [ ] When restoring a backup by hand, remove `vaquero.db-wal` and `vaquero.db-shm` first, or a stale WAL is replayed onto the restored file
+- [x] (restore removes them, Phase 3a) When restoring a backup by hand, remove `vaquero.db-wal` and `vaquero.db-shm` first, or a stale WAL is replayed onto the restored file
 - [ ] Surviving tickets' history still names deleted or re-keyed tickets ("marked OTH-1 as blocking VAQ-1") with no "link removed" line (review fkd minor 2)
 - [ ] `TestDeleteConfirmation` should compare the whole snapshot (`maps.Equal`); extend the delete test with a parent/child pair, a soft-deleted comment, `PRAGMA foreign_key_check` and the other project's event count (review fkd minor 3)
 - [ ] Notice links for `/vN` module paths (chi v5, ulid v2, goose v3) 404 — link to pkg.go.dev instead (review fkd minor 4)
@@ -94,7 +94,8 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Per-token API rate limits (and on failed authentication) — with hosted mode, Phase 4
 - [ ] `vaquero tickets --milestone NAME` — the API filters milestones by internal id; accept a name
 - [ ] A JSON 500 for panics inside `/api/v1` (today Recover answers plain text)
-- [ ] `vaquero stop` (stop a background local server) and `vaquero logs`
+- [x] `vaquero stop` (Phase 3a)
+- [ ] `vaquero logs`
 - [ ] Refreshing the tokens page right after creating a token offers to resubmit the form, creating another token
 
 - [ ] Local mode trusts every process on the machine: any local program (another user's included) can reach the server and mint a token at `/admin/tokens`. Fine on a personal laptop; decide on a guard before shared machines or Phase 4 (review 2a, declined to judge)

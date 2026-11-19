@@ -25,12 +25,12 @@ func localEnv(t *testing.T) (dataDir, addr string) {
 	t.Setenv("VQ_DATA_DIR", dataDir)
 	t.Setenv("VQ_ADDR", addr)
 	t.Setenv("VQ_TEST_AS_VAQUERO", "1")
-	t.Cleanup(func() { stopLocal(dataDir) })
+	t.Cleanup(func() { killTestServer(dataDir) })
 	return dataDir, addr
 }
 
-// stopLocal stops a background server started by a test.
-func stopLocal(dataDir string) {
+// killTestServer stops a background server started by a test.
+func killTestServer(dataDir string) {
 	b, err := os.ReadFile(filepath.Join(dataDir, "vaquero.lock"))
 	if err != nil {
 		return
