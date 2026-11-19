@@ -170,9 +170,6 @@ func ProjectKeyChange(d Deps) http.HandlerFunc {
 	}
 }
 
-// backupKeep is how many pre-delete snapshots are kept.
-const backupKeep = 7
-
 // snapshot saves a backup before a delete. Backups are named by the second,
 // so a second delete in the same second takes the next free name.
 func snapshot(r *http.Request, d Deps) error {
@@ -215,7 +212,7 @@ func ProjectDelete(d Deps) http.HandlerFunc {
 			redirectWithFlash(w, r, flash.Error, backupFailMessage(err, d.BackupDir), settings)
 			return
 		}
-		if _, err := appdb.PruneBackups(d.BackupDir, backupKeep); err != nil {
+		if _, err := appdb.PruneBackups(d.BackupDir, appdb.BackupKeep); err != nil {
 			d.Logger.WarnContext(r.Context(), "prune backups", "err", err)
 		}
 		if err := d.Core.DeleteProject(r.Context(), d.Actor.ID, p.ID, confirm); err != nil {

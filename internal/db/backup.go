@@ -381,6 +381,11 @@ func DeleteBackup(dir, name string) error {
 	return nil
 }
 
+// BackupKeep is how many snapshots are kept: those taken before a project
+// delete and those taken before a migration share the directory and the
+// count.
+const BackupKeep = 7
+
 // PruneBackups removes the oldest snapshots until at most keep remain and
 // returns the names removed. keep below 1 removes nothing.
 func PruneBackups(dir string, keep int) ([]string, error) {

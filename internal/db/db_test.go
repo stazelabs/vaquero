@@ -82,3 +82,22 @@ func TestMigrateRefusesNewerDatabase(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestPendingReportsVersions(t *testing.T) {
+	d, err := appdb.Open(filepath.Join(t.TempDir(), "p.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := appdb.MigrateTo(d, 3); err != nil {
+		t.Fatal(err)
+	}
+	applied, newest, err := appdb.Pending(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := appdb.Newest()
+	if applied != 3 || newest != want {
+		t.Fatalf("got (%d, %d), want (3, %d)", applied, newest, want)
+	}
+}

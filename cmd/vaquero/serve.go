@@ -59,7 +59,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		return fmt.Errorf("data directory lock: %w", err)
 	}
 	defer release()
-	w, r, err := openDB(cfg.DBPath)
+	w, r, err := openDB(ctx, cfg.DBPath, filepath.Join(cfg.DataDir, "backups"), time.Now(), logger)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}

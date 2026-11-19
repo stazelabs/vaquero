@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
@@ -90,12 +91,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // openDB opens the writer (migrated) and a reader pool on path, creating
 // the directory as needed.
-func openDB(path string) (w, r *sql.DB, err error) {
+func openDB(ctx context.Context, path, backupDir string, now time.Time, logger *slog.Logger) (w, r *sql.DB, err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, nil, err
 	}
 	w, err = appdb.Open(path)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := snapshotIfPending(ctx, w, backupDir, now, logger); err != nil {
+		_ = w.Close()
 		return nil, nil, err
 	}
 	if err := appdb.Migrate(w); err != nil {
@@ -108,6 +113,28 @@ func openDB(path string) (w, r *sql.DB, err error) {
 		return nil, nil, err
 	}
 	return w, r, nil
+}
+
+// snapshotIfPending copies the database into backupDir before migrations
+// run on it, so an upgrade can always be undone. A fresh database and an
+// up-to-date one need none. When the copy fails, nothing is migrated.
+func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now time.Time, logger *slog.Logger) error {
+	applied, newest, err := appdb.Pending(w)
+	if err != nil {
+		return err
+	}
+	if applied == 0 || applied >= newest {
+		return nil
+	}
+	info, err := appdb.Snapshot(ctx, w, backupDir, now)
+	if err != nil {
+		return fmt.Errorf("the database needs migrating from version %d to %d, but the snapshot before it failed: %v; free some space in %s and start vaquero again", applied, newest, err, backupDir)
+	}
+	logger.InfoContext(ctx, "snapshot before migrating", "from", applied, "to", newest, "path", filepath.Join(backupDir, info.Name))
+	if _, err := appdb.PruneBackups(backupDir, appdb.BackupKeep); err != nil {
+		logger.WarnContext(ctx, "prune backups", "err", err)
+	}
+	return nil
 }
 
 // newLogger builds the process logger: JSON when cfg.LogFormat is "json",

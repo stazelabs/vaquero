@@ -94,3 +94,16 @@ func Newest() (int64, error) {
 	}
 	return newest, nil
 }
+
+// Pending reports the applied migration version and the newest embedded
+// one. applied below newest means Migrate has work to do; applied 0 is a
+// fresh database.
+func Pending(db *sql.DB) (applied, newest int64, err error) {
+	if newest, err = Newest(); err != nil {
+		return 0, 0, err
+	}
+	if applied, err = goose.GetDBVersion(db); err != nil {
+		return 0, 0, fmt.Errorf("goose version: %w", err)
+	}
+	return applied, newest, nil
+}
