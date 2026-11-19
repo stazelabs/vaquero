@@ -132,6 +132,8 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 - [ ] goreleaser's `brews` is deprecated (its replacement, casks, has no formula service block); move the formula when goreleaser removes it, or keep a hand-written formula in the tap
 - [ ] No test holds "never add push or pull_request triggers" for `.github/workflows`
+- [ ] Review 3a minors: `lockfile.Holder` briefly takes the lock, so a server starting at that instant can get `ErrLocked` (retry ~50 ms in `Acquire`), and `Acquire` writes the pid just after the flock (re-read before signalling); a theoretical double restart between the `/me` probe and `Holder`; the restart line repeats when the profile's address is served from another data directory; `brewService()` is a file check on HOME (it refuses `stop` for an unrelated instance and may miss `brew services run`); `vaquero stop` during a restore signals the restore; no directory fsync after the restore rename; workflow actions pinned by tag, not SHA
+- [ ] Seven project deletes after an upgrade can prune its pre-migration snapshot (shared keep count); pre-restore snapshots aren't pruned until the next prune
 
 ## Open questions
 
