@@ -197,6 +197,9 @@ func printTicket(w io.Writer, t apiTicket) {
 	if t.Assignee != "" {
 		fmt.Fprintf(w, "Assignee: %s\n", t.Assignee)
 	}
+	if t.ClaimedBy != "" {
+		fmt.Fprintf(w, "Claimed by %s until %s\n", t.ClaimedBy, untilWords(t.ClaimExpiresAt))
+	}
 	if t.Milestone != "" {
 		fmt.Fprintf(w, "Milestone: %s\n", t.Milestone)
 	}

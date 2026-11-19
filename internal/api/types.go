@@ -37,6 +37,9 @@ type TicketSummary struct {
 	Tags     []string `json:"tags"`
 	Ready    bool     `json:"ready"`
 	Version  int64    `json:"version"`
+	// ClaimedBy and ClaimExpiresAt are set while a claim is held.
+	ClaimedBy      string `json:"claimed_by,omitempty"`
+	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
 }
 
 type Ticket struct {

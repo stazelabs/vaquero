@@ -18,6 +18,7 @@ import (
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/lockfile"
+	"github.com/stazelabs/vaquero/internal/sweep"
 	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/handlers"
@@ -25,6 +26,12 @@ import (
 
 // drainTimeout is how long shutdown waits for in-flight requests.
 const drainTimeout = 30 * time.Second
+
+// sweepInterval and sweepOnTick let tests run the sweep fast and watch it.
+var (
+	sweepInterval = sweep.Every
+	sweepOnTick   func()
+)
 
 // serve runs the server until ctx is done, then drains, checkpoints the WAL
 // and returns. It binds the address before anything else, so a second
@@ -89,6 +96,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	srv.RegisterOnShutdown(func() { close(shutdown) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
+	// The sweep ends lapsed claims and prunes the MCP log. It stops before
+	// the drain, so nothing writes while the server winds down.
+	sweeper := &sweep.Sweeper{Core: c, DB: w, Logger: logger, Now: time.Now, Interval: sweepInterval, OnTick: sweepOnTick}
+	sweeper.Start()
+	defer sweeper.Stop()
 	logger.Info("vaquero is running", "url", "http://"+ln.Addr().String(), "data", cfg.DataDir, "version", version.Version)
 
 	select {
@@ -97,6 +109,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	case <-ctx.Done():
 	}
 	logger.Info("shutting down")
+	sweeper.Stop()
 	sctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
 	if err := srv.Shutdown(sctx); err != nil {

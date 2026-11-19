@@ -30,6 +30,10 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero search WORDS...` | Search titles, descriptions and comments |
 | `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ |
+| `vaquero ready [KEY] [--limit N]` | Tickets ready to be worked on, most urgent first; every project unless KEY |
+| `vaquero claim TICKET [--lease 30m]` | Claim a ticket for 1 minute to 2 hours (default 15 minutes); see [Agents and claims](/help/agents-and-claims) |
+| `vaquero heartbeat TICKET [--lease 30m]` | Extend your claim from now |
+| `vaquero release TICKET` | Give up your claim; the status and assignee stay |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
 | `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to |
 

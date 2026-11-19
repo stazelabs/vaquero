@@ -262,3 +262,37 @@ func TestCLIAgentFlag(t *testing.T) {
 		t.Fatalf("%v", got)
 	}
 }
+
+func TestCLIClaimFlow(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Ready work", "--priority", "high")
+	if out := mustCLI(t, "ready", "VAQ"); !strings.Contains(out, "VAQ-1") || !strings.Contains(out, "Ready work") {
+		t.Fatalf("ready: %s", out)
+	}
+	out := mustCLI(t, "claim", "VAQ-1", "--lease", "30m", "--agent", "builder")
+	if !strings.Contains(out, "VAQ-1") || !strings.Contains(out, "12:30 UTC") {
+		t.Fatalf("claim: %s", out)
+	}
+	if code, _, errOut := cli(t, "claim", "VAQ-1", "--agent", "reviewer"); code != 1 || !strings.Contains(errOut, "claimed by builder") {
+		t.Fatalf("second claim: %d %q", code, errOut)
+	}
+	var tk struct {
+		ClaimedBy      string `json:"claimed_by"`
+		ClaimExpiresAt string `json:"claim_expires_at"`
+	}
+	if err := json.Unmarshal([]byte(mustCLI(t, "heartbeat", "VAQ-1", "--lease", "1h", "--agent", "builder", "--json")), &tk); err != nil {
+		t.Fatal(err)
+	}
+	if tk.ClaimedBy != "builder" || tk.ClaimExpiresAt != "2026-11-18T13:00:00.000Z" {
+		t.Fatalf("%+v", tk)
+	}
+	if out := mustCLI(t, "ready", "VAQ", "--json"); strings.TrimSpace(out) != "[]" {
+		t.Fatalf("claimed ticket still ready: %s", out)
+	}
+	mustCLI(t, "release", "VAQ-1", "--agent", "builder")
+	for _, bad := range [][]string{{"claim", "VAQ-1", "--lease", "soon"}, {"claim"}, {"ready", "--limit", "0"}} {
+		if code, _, _ := cli(t, bad...); code != 2 {
+			t.Errorf("%v: exit %d", bad, code)
+		}
+	}
+}

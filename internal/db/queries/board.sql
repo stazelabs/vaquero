@@ -5,6 +5,8 @@
 SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
+       coalesce(ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,
+       coalesce(t.claim_expires_at, '') AS claim_expires_at,
        CAST(s.category = 'todo' AND t.assignee_id IS NULL AND t.claimed_by IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM ticket_links l
@@ -19,6 +21,7 @@ SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_ch
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors a ON a.id = t.assignee_id
+LEFT JOIN actors ca ON ca.id = t.claimed_by
 WHERE t.project_id = sqlc.arg(project_id)
   AND (sqlc.narg(assignee_id) IS NULL OR t.assignee_id = sqlc.narg(assignee_id))
   AND (sqlc.narg(assignee_kind) IS NULL OR a.kind = sqlc.narg(assignee_kind))

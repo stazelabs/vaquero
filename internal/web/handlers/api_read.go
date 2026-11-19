@@ -174,7 +174,8 @@ func summary(k board.Card, s gen.Status) api.TicketSummary {
 		tags = []string{}
 	}
 	return api.TicketSummary{Key: k.Key, Title: k.Title, Status: s.Name, Category: s.Category,
-		Priority: k.Priority, Assignee: k.Assignee, Tags: tags, Ready: k.Ready, Version: k.Version}
+		Priority: k.Priority, Assignee: k.Assignee, Tags: tags, Ready: k.Ready, Version: k.Version,
+		ClaimedBy: k.ClaimedBy, ClaimExpiresAt: k.ClaimExpiresAt}
 }
 
 // APITickets is GET /api/v1/projects/{key}/tickets: the board's filters,
@@ -292,6 +293,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	for _, row := range rows {
 		if row.ID == t.ID {
 			out.Ready = row.Ready
+			out.ClaimedBy, out.ClaimExpiresAt = row.ClaimantName, row.ClaimExpiresAt
 		}
 	}
 	subs, err := d.R.ListSubTickets(ctx, sqlNull(t.ID))

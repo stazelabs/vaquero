@@ -35,6 +35,12 @@ tickets:
   search     search tickets and comments
   activity   recent changes
 
+agents:
+  ready      list the tickets ready to be worked on
+  claim      claim a ticket, with a lease (--lease 30m)
+  heartbeat  extend your claim's lease
+  release    give up your claim
+
 setup:
   token      create, list or revoke API tokens
   profile    add, list, use or remove servers to talk to
@@ -42,7 +48,7 @@ setup:
 help:
   docs       list the help articles, or print one (vaquero docs cli)
 
-Commands that talk to a server take --profile NAME and --json.
+Commands that talk to a server take --profile NAME, --agent NAME and --json.
 Every command is in: vaquero docs cli
 `
 

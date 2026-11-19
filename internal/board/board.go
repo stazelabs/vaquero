@@ -22,6 +22,10 @@ type Card struct {
 	AssigneeIsAgent, Ready bool
 	Priority, Version      int64
 	Tags                   []string
+	// ClaimedBy is the claimant's name while a claim is held (it may have
+	// lapsed and not yet been swept); ClaimExpiresAt its lease's end, as stored.
+	ClaimedBy, ClaimExpiresAt string
+	ClaimantIsAgent           bool
 }
 
 // Column is one status and its cards, top to bottom.
@@ -132,6 +136,9 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 			Priority:        r.Priority,
 			Version:         r.Version,
 			Tags:            tags[r.ID],
+			ClaimedBy:       r.ClaimantName,
+			ClaimExpiresAt:  r.ClaimExpiresAt,
+			ClaimantIsAgent: r.ClaimantKind == "agent",
 		})
 	}
 	return cols, nil

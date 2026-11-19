@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/sweep"
 	_ "modernc.org/sqlite"
 )
 
@@ -184,4 +186,32 @@ func TestServeRefusesSharedDataDir(t *testing.T) {
 	}
 	cancel()
 	<-done
+}
+
+// The sweep runs while serving and is stopped before serve returns.
+func TestServeStopsSweeper(t *testing.T) {
+	var ticks atomic.Int64
+	sweepInterval = 10 * time.Millisecond
+	sweepOnTick = func() { ticks.Add(1) }
+	defer func() { sweepInterval, sweepOnTick = sweep.Every, nil }()
+	addr := freeAddr(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, testConfig(t, addr, t.TempDir()), slog.New(slog.DiscardHandler)) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for ticks.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if ticks.Load() < 2 {
+		t.Fatal("the sweep never ran")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	after := ticks.Load()
+	time.Sleep(50 * time.Millisecond)
+	if ticks.Load() != after {
+		t.Fatal("the sweep ran after serve returned")
+	}
 }
