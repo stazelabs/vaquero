@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -81,5 +82,21 @@ func TestBadAgentName400(t *testing.T) {
 	decode(t, r.Body, &f)
 	if r.Status != 400 || f.Error.Code != "bad_request" || f.Error.Message != core.AgentNameRule {
 		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+}
+
+func TestClaimedTicketNotReady(t *testing.T) {
+	e, tok := agentEnv(t)
+	c := e.Client()
+	if page := c.Get("/p/VAQ").Body; !strings.Contains(page, `data-card="VAQ-1" data-ready`) {
+		t.Fatalf("not ready before the claim:\n%s", page)
+	}
+	c.Agent = "builder"
+	if r := c.API("POST", "/api/v1/tickets/VAQ-1/claim", tok, nil); r.Status != 200 {
+		t.Fatal(r.Status)
+	}
+	page := c.Get("/p/VAQ").Body
+	if strings.Contains(page, `data-card="VAQ-1" data-ready`) || !strings.Contains(page, "data-claim-expires") {
+		t.Fatalf("%s", page)
 	}
 }

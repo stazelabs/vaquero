@@ -275,3 +275,27 @@ window.vqDragging = false;
   // A board refresh replaces the cards; start the focus over.
   document.body.addEventListener("htmx:afterSwap", function () { current = -1; });
 })();
+
+// Claim countdowns: every [data-claim-expires] (a lease's end, an ISO
+// instant) reads "12 min left", rewritten every 30 seconds and after each
+// swap. A lease that has run out reads "lapsing" until the sweep returns
+// the ticket and the live refresh redraws the card.
+(function () {
+  function words(ms) {
+    if (ms <= 0) { return "lapsing"; }
+    var min = Math.ceil(ms / 60000);
+    if (min < 60) { return min + " min left"; }
+    var h = Math.floor(min / 60), m = min % 60;
+    return h + " h " + (m ? m + " min " : "") + "left";
+  }
+  function tick() {
+    var now = Date.now();
+    document.querySelectorAll("[data-claim-expires]").forEach(function (el) {
+      var at = Date.parse(el.getAttribute("data-claim-expires"));
+      if (!isNaN(at)) { el.textContent = words(at - now); }
+    });
+  }
+  tick();
+  setInterval(tick, 30000);
+  document.body.addEventListener("htmx:afterSettle", tick);
+})();

@@ -1,7 +1,10 @@
 package templates
 
 import (
+	"time"
+
 	"github.com/stazelabs/vaquero/internal/board"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 func boolAttr(b bool) string {
@@ -78,3 +81,17 @@ func listEmpty(cols []board.Column) bool {
 	}
 	return true
 }
+
+// claimUntil is a lease's end before the page's script counts it down:
+// "until 12:15 UTC".
+func claimUntil(stamp string) string {
+	t, err := timefmt.Parse(stamp)
+	if err != nil {
+		return ""
+	}
+	return "until " + timefmt.DisplayClock(t, time.UTC)
+}
+
+// showAssignee reports whether a card shows its assignee apart from its
+// claim: the claimant is usually the assignee, and shows once.
+func showAssignee(k board.Card) bool { return k.Assignee != "" && k.Assignee != k.ClaimedBy }

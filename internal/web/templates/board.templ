@@ -185,7 +185,10 @@ templ card(k board.Card) {
 				for _, t := range k.Tags {
 					<span class="rounded-full bg-accent/10 px-1.5 text-[10px] text-ink/80">{ t }</span>
 				}
-				if k.Assignee != "" {
+				if k.ClaimedBy != "" {
+					@claimChip(k, "ml-auto inline-flex items-center gap-0.5 rounded-full border border-accent px-1.5 text-[10px] text-accent", "h-3 w-3 shrink-0")
+				}
+				if showAssignee(k) {
 					if k.AssigneeIsAgent {
 						<span class="ml-auto inline-flex items-center gap-0.5 rounded-full border border-accent px-1.5 text-[10px] text-accent">
 							@IconClass("agent", "h-3 w-3 shrink-0")
@@ -285,7 +288,10 @@ templ listRow(k board.Card) {
 		for _, t := range k.Tags {
 			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ t }</span>
 		}
-		if k.Assignee != "" {
+		if k.ClaimedBy != "" {
+			@claimChip(k, "inline-flex items-center gap-1 text-xs text-accent", "h-3.5 w-3.5 shrink-0")
+		}
+		if showAssignee(k) {
 			<span class="inline-flex items-center gap-1 text-xs text-muted">
 				if k.AssigneeIsAgent {
 					@IconClass("agent", "h-3.5 w-3.5 shrink-0")
@@ -296,4 +302,19 @@ templ listRow(k board.Card) {
 			</span>
 		}
 	</li>
+}
+
+// claimChip is who holds a card's claim and how long the lease has left;
+// app.js rewrites the [data-claim-expires] text as "12 min left".
+templ claimChip(k board.Card, class, glyph string) {
+	<span class={ class } title={ "Claimed by " + k.ClaimedBy }>
+		if k.ClaimantIsAgent {
+			@IconClass("agent", glyph)
+		} else {
+			@IconClass("person", glyph)
+		}
+		{ k.ClaimedBy }
+		@IconClass("lease", glyph)
+		<span data-claim-expires={ k.ClaimExpiresAt }>{ claimUntil(k.ClaimExpiresAt) }</span>
+	</span>
 }
