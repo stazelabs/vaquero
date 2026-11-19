@@ -40,6 +40,7 @@ agents:
   claim      claim a ticket, with a lease (--lease 30m)
   heartbeat  extend your claim's lease
   release    give up your claim
+  mcp        an MCP server on standard input and output, for agent clients
 
 setup:
   token      create, list or revoke API tokens

@@ -34,6 +34,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero claim TICKET [--lease 30m]` | Claim a ticket for 1 minute to 2 hours (default 15 minutes); see [Agents and claims](/help/agents-and-claims) |
 | `vaquero heartbeat TICKET [--lease 30m]` | Extend your claim from now |
 | `vaquero release TICKET` | Give up your claim; the status and assignee stay |
+| `vaquero mcp [--agent NAME]` | An MCP server on standard input and output, for agent clients that launch one; see [MCP](/help/mcp) |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
 | `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to |
 
