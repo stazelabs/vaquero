@@ -54,6 +54,9 @@ type cmd struct {
 	agent          string
 	usage          string
 	client         *client.Client
+	// restartLocal starts the local server again and returns its token;
+	// set by connect for the local profile (long-running commands use it).
+	restartLocal func(ctx context.Context) (string, error)
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
@@ -119,6 +122,12 @@ func (c *cmd) connect(ctx context.Context) error {
 		// Read the token now: the server may have just written it, or
 		// written a new one after the old was revoked.
 		p.Token = client.LocalToken(p.DataDir)
+		c.restartLocal = func(ctx context.Context) (string, error) {
+			if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
+				return "", err
+			}
+			return client.LocalToken(p.DataDir), nil
+		}
 	}
 	agent := c.agent
 	if agent == "" {

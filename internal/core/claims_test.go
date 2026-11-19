@@ -351,3 +351,67 @@ func TestLeaseBounds(t *testing.T) {
 		}
 	}
 }
+
+// Review fix 1: a person who takes over a claimed ticket keeps it: the
+// claim ends at the reassignment, and nothing lapses later.
+func TestReassignEndsClaim(t *testing.T) {
+	c, d, f := newFixture(t)
+	k := newClock(c)
+	a := agent(t, c, f.Owner, "builder")
+	claimed, _ := c.Claim(bg, a.ID, f.T1.ID, 0)
+	if _, err := c.PatchTicket(bg, f.Owner.ID, f.T1.ID, core.TicketPatch{AssigneeID: &f.Owner.ID}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if tk := ticket(t, d, f.T1.ID); tk.ClaimedBy.Valid || tk.ClaimExpiresAt.Valid {
+		t.Fatalf("claim kept after reassignment: %+v", tk)
+	}
+	if _, err := c.Heartbeat(bg, a.ID, f.T1.ID, 0); invalidMsg(err) == "" {
+		t.Fatal("the old claimant renewed a claim that ended")
+	}
+	k.add(time.Hour)
+	if n, _ := c.ExpireClaims(bg); n != 0 {
+		t.Fatalf("lapsed %d", n)
+	}
+	if tk := ticket(t, d, f.T1.ID); tk.StatusID != claimed.StatusID || tk.AssigneeID.String != f.Owner.ID {
+		t.Fatalf("%+v", tk)
+	}
+}
+
+// Review fix 2: a claimed ticket a person moved back to todo loses its dead
+// claimant when the claim lapses, so it is ready again.
+func TestLapseInTodoUnassigns(t *testing.T) {
+	c, d, f := newFixture(t)
+	k := newClock(c)
+	a := agent(t, c, f.Owner, "builder")
+	c.Claim(bg, a.ID, f.T1.ID, 0)
+	if _, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, f.Statuses[1].ID, "", ""); err != nil {
+		t.Fatal(err)
+	}
+	k.add(time.Hour)
+	if n, _ := c.ExpireClaims(bg); n != 1 {
+		t.Fatal(n)
+	}
+	tk := ticket(t, d, f.T1.ID)
+	if tk.StatusID != f.Statuses[1].ID || tk.AssigneeID.Valid {
+		t.Fatalf("%+v", tk)
+	}
+}
+
+// Review fix 3: claiming over a lapsed claim the sweep hasn't reached keeps
+// the status the ticket was first taken from.
+func TestClaimOverUnsweptLapseKeepsOrigin(t *testing.T) {
+	c, d, f := newFixture(t)
+	k := newClock(c)
+	a := agent(t, c, f.Owner, "first")
+	b := agent(t, c, f.Owner, "second")
+	c.Claim(bg, a.ID, f.T1.ID, 0)
+	k.add(16 * time.Minute)
+	if _, err := c.Claim(bg, b.ID, f.T1.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	k.add(16 * time.Minute)
+	c.ExpireClaims(bg)
+	if tk := ticket(t, d, f.T1.ID); tk.StatusID != f.T1.StatusID || tk.AssigneeID.Valid {
+		t.Fatalf("%+v", tk)
+	}
+}

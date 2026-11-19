@@ -20,6 +20,16 @@ BEGIN
 END;
 -- +goose StatementEnd
 
+-- Giving a claimed ticket to someone other than its claimant (or to no
+-- one) ends the claim: the new assignee owns it, and no lapse moves it.
+-- +goose StatementBegin
+CREATE TRIGGER tickets_claim_reassigned AFTER UPDATE OF assignee_id ON tickets
+WHEN NEW.claimed_by IS NOT NULL AND (NEW.assignee_id IS NULL OR NEW.assignee_id <> NEW.claimed_by)
+BEGIN
+    UPDATE tickets SET claimed_by = NULL, claim_expires_at = NULL, claim_prev_status_id = NULL WHERE id = NEW.id;
+END;
+-- +goose StatementEnd
+
 CREATE TABLE mcp_calls (
     id           TEXT PRIMARY KEY,
     at           TEXT NOT NULL,

@@ -118,8 +118,10 @@ func (c *Core) Claim(ctx context.Context, by, ticketID string, lease time.Durati
 			return claimRefused(fmt.Sprintf("%s is assigned to %s.", k.key, name))
 		}
 		renew := k.live(stamp)
+		// A claim already on the ticket, live or lapsed and not yet swept,
+		// keeps the status the ticket was first taken from.
 		prev := t.StatusID
-		if renew && t.ClaimPrevStatusID.Valid {
+		if t.ClaimedBy.Valid && t.ClaimPrevStatusID.Valid {
 			prev = t.ClaimPrevStatusID.String
 		}
 		statusID, position, changedAt := t.StatusID, t.Position, t.StatusChangedAt
@@ -220,9 +222,11 @@ func (c *Core) Release(ctx context.Context, by, ticketID string) (gen.Ticket, er
 // ExpireClaims ends every lapsed claim, one event each with the claimant
 // as actor, and returns how many. A ticket still in progress goes back to
 // the status it was claimed from (or the project's first todo status, if
-// that one was deleted), at the end of its column, and loses its assignee
-// if that is the claimant. A ticket the claimant had moved on (to review,
-// say) keeps its status and assignee.
+// that one was deleted), at the end of its column. A ticket in progress,
+// todo or backlog loses its assignee if that is the claimant, so it is
+// ready again. A ticket the claimant had moved on (to review, say) keeps
+// its status and assignee. (Reassigning a claimed ticket, or finishing it,
+// ends the claim at once: triggers in 0006_agents.sql.)
 func (c *Core) ExpireClaims(ctx context.Context) (int, error) {
 	n := 0
 	err := c.tx(ctx, func(q *gen.Queries) error {
@@ -251,6 +255,10 @@ func (c *Core) ExpireClaims(ctx context.Context) (int, error) {
 					statusID, position, changedAt = back.ID, max+positionStep, stamp
 				}
 				to = back.Name
+			}
+			// Work that hasn't reached review goes back to the queue: the
+			// claimant gives up its assignment.
+			if s.Category == "backlog" || s.Category == "todo" || s.Category == "in_progress" {
 				if assignee.String == t.ClaimedBy.String {
 					assignee = nullString("")
 				}

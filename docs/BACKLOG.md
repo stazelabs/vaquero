@@ -111,6 +111,14 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [x] Exit 3 keys on the `conflict` code, not on `current` being present
 - [x] `--version` below 1 is a usage error, not a skipped check
 
+## Phase 2b review minors
+
+- [ ] `Vaquero-Agent` requests open a writer transaction for `EnsureAgent` every time; look the agent up through the reader first
+- [ ] `vaquero mcp`: a stdin line over 4 MB ends the bridge without a JSON-RPC error; an in-flight request finishes before EOF is noticed
+- [ ] `/admin/mcp` filters by actor name, so an agent named "Owner" merges with the human Owner; agent names are case-sensitive
+- [ ] A `Vaquero-Agent` header on a non-owner token is ignored without a word (`vaquero mcp --agent` should say so)
+- [ ] Decide: claims are advisory for edits (anyone can update or move a claimed ticket); revisit if agents need hard locks
+
 ## Admin section (requested 2026-11-19)
 
 - [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +119,51 @@ func TestMCPBridgeServerDown(t *testing.T) {
 	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "gone")
 	if code != 1 || out != "" || !strings.Contains(errOut, "127.0.0.1:1") {
 		t.Fatalf("exit %d out %q err %q", code, out, errOut)
+	}
+}
+
+// Review fix: when the local server stops mid-session, the next message
+// starts it again instead of failing until the client restarts the bridge.
+func TestMCPBridgeRestartsLocalServer(t *testing.T) {
+	dataDir, addr := localEnv(t)
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	stdin = inR
+	defer func() { stdin = nil }()
+	done := make(chan int, 1)
+	var errOut bytes.Buffer
+	go func() { done <- run([]string{"mcp"}, outW, &errOut); outW.Close() }()
+	lines := bufio.NewReader(outR)
+	send := func(s string) {
+		go inW.Write([]byte(s + "\n"))
+	}
+	read := func() rpcAnswer {
+		t.Helper()
+		l, err := lines.ReadString('\n')
+		if err != nil {
+			t.Fatalf("%v; stderr %s", err, errOut.String())
+		}
+		return answers(t, l)[0]
+	}
+	send(initLine)
+	if a := read(); a.Error != nil {
+		t.Fatalf("%+v", a)
+	}
+	stopLocal(dataDir)
+	for range 50 {
+		c, err := net.Dial("tcp", addr)
+		if err != nil {
+			break
+		}
+		c.Close()
+		time.Sleep(100 * time.Millisecond)
+	}
+	send(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_projects","arguments":{}}}`)
+	if a := read(); a.Error != nil || strings.Contains(string(a.Result), `"isError":true`) {
+		t.Fatalf("after the server stopped: %+v %s; stderr %s", a.Error, a.Result, errOut.String())
+	}
+	inW.Close()
+	if code := <-done; code != 0 {
+		t.Fatalf("exit %d", code)
 	}
 }

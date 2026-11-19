@@ -51,7 +51,7 @@ func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	}
 	b := &mcpBridge{
 		url: strings.TrimRight(c.client.BaseURL, "/") + "/mcp", token: c.client.Token, agent: c.client.Agent,
-		http: &http.Client{Timeout: 2 * time.Minute}, out: stdout, log: stderr,
+		http: &http.Client{Timeout: 2 * time.Minute}, out: stdout, log: stderr, restart: c.restartLocal,
 	}
 	sc := bufio.NewScanner(in)
 	sc.Buffer(make([]byte, 64<<10), mcpLineMax)
@@ -74,6 +74,18 @@ type mcpBridge struct {
 	url, token, agent string
 	http              *http.Client
 	out, log          io.Writer
+	// restart, for the local profile, starts the server again when it
+	// stopped mid-session, and returns the token to use.
+	restart func(ctx context.Context) (string, error)
+	// mute drops answers while a notification is forwarded.
+	mute bool
+}
+
+// write sends one answer line, unless muted.
+func (b *mcpBridge) write(line []byte) {
+	if !b.mute {
+		_, _ = b.out.Write(line)
+	}
 }
 
 // forward sends one message and writes its answer, if it has one.
@@ -88,21 +100,20 @@ func (b *mcpBridge) forward(ctx context.Context, msg []byte) {
 	}
 	// A notification (a message with no id) never gets an answer.
 	if msg[0] == '{' && len(head.ID) == 0 {
-		b = &mcpBridge{url: b.url, token: b.token, agent: b.agent, http: b.http, out: io.Discard, log: b.log}
+		b.mute = true
+		defer func() { b.mute = false }()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.url, bytes.NewReader(msg))
-	if err != nil {
-		b.fail(head.ID, -32603, err.Error())
-		return
+	res, err := b.post(ctx, msg)
+	if err != nil && b.restart != nil {
+		// The local server may have stopped: start it once and retry.
+		fmt.Fprintf(b.log, "vaquero mcp: %v; starting the local server\n", err)
+		if tok, rerr := b.restart(ctx); rerr == nil {
+			b.token = tok
+			res, err = b.post(ctx, msg)
+		} else {
+			err = rerr
+		}
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json, text/event-stream")
-	req.Header.Set("Authorization", "Bearer "+b.token)
-	req.Header.Set("Vaquero-Client", version.Version)
-	if b.agent != "" {
-		req.Header.Set("Vaquero-Agent", b.agent)
-	}
-	res, err := b.http.Do(req)
 	if err != nil {
 		fmt.Fprintf(b.log, "vaquero mcp: %v\n", err)
 		b.fail(head.ID, -32603, "Vaquero couldn't be reached.")
@@ -125,7 +136,7 @@ func (b *mcpBridge) forward(ctx context.Context, msg []byte) {
 			return
 		}
 		line.WriteByte('\n')
-		_, _ = b.out.Write(line.Bytes())
+		b.write(line.Bytes())
 		return
 	}
 	// A refusal: the API's envelope, or the SDK's plain text.
@@ -141,6 +152,22 @@ func (b *mcpBridge) forward(ctx context.Context, msg []byte) {
 	b.fail(head.ID, -32600, msgText)
 }
 
+// post sends msg to /mcp.
+func (b *mcpBridge) post(ctx context.Context, msg []byte) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.url, bytes.NewReader(msg))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	req.Header.Set("Authorization", "Bearer "+b.token)
+	req.Header.Set("Vaquero-Client", version.Version)
+	if b.agent != "" {
+		req.Header.Set("Vaquero-Agent", b.agent)
+	}
+	return b.http.Do(req)
+}
+
 // fail writes a JSON-RPC error for id (null when it is unknown, as for a
 // line that isn't JSON or a batch).
 func (b *mcpBridge) fail(id json.RawMessage, code int, message string) {
@@ -151,5 +178,5 @@ func (b *mcpBridge) fail(id json.RawMessage, code int, message string) {
 		"jsonrpc": "2.0", "id": id,
 		"error": map[string]any{"code": code, "message": message},
 	})
-	_, _ = b.out.Write(append(line, '\n'))
+	b.write(append(line, '\n'))
 }
