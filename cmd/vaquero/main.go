@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -120,6 +121,12 @@ func openDB(ctx context.Context, path, backupDir string, now time.Time, logger *
 // snapshotIfPending copies the database into backupDir before migrations
 // run on it, so an upgrade can always be undone. A fresh database and an
 // up-to-date one need none. When the copy fails, nothing is migrated.
+//
+// A migration that fails leaves the database as it was, and the next boot
+// would snapshot it again; a client retrying would then fill the kept
+// snapshots with copies of one state and prune the older ones away. So the
+// snapshot taken for a version is remembered (premigrateMarker) and reused
+// while the database is still at that version.
 func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now time.Time, logger *slog.Logger) error {
 	applied, newest, err := appdb.Pending(w)
 	if err != nil {
@@ -128,15 +135,48 @@ func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now tim
 	if applied == 0 || applied >= newest {
 		return nil
 	}
+	marker := filepath.Join(backupDir, premigrateMarker)
+	if name, ok := premigrateSnapshot(marker, applied); ok {
+		if _, err := os.Stat(filepath.Join(backupDir, name)); err == nil {
+			logger.InfoContext(ctx, "snapshot before migrating already taken", "from", applied, "to", newest, "path", filepath.Join(backupDir, name))
+			return nil
+		}
+	}
 	info, err := appdb.Snapshot(ctx, w, backupDir, now)
 	if err != nil {
-		return fmt.Errorf("the database needs migrating from version %d to %d, but the snapshot before it failed: %v; free some space in %s and start vaquero again", applied, newest, err, backupDir)
+		hint := "check that " + backupDir + " can be written"
+		if errors.Is(err, appdb.ErrLowSpace) {
+			hint = "free some space in " + backupDir
+		}
+		return fmt.Errorf("the database needs migrating from version %d to %d, but the snapshot before it failed: %v; %s and start vaquero again", applied, newest, err, hint)
 	}
 	logger.InfoContext(ctx, "snapshot before migrating", "from", applied, "to", newest, "path", filepath.Join(backupDir, info.Name))
+	if err := os.WriteFile(marker, fmt.Appendf(nil, "%d %s\n", applied, info.Name), 0o600); err != nil {
+		logger.WarnContext(ctx, "remember the snapshot before migrating", "err", err)
+	}
 	if _, err := appdb.PruneBackups(backupDir, appdb.BackupKeep); err != nil {
 		logger.WarnContext(ctx, "prune backups", "err", err)
 	}
 	return nil
+}
+
+// premigrateMarker, in the backups directory, names the snapshot taken
+// before migrating from a version: "5 vaquero-20261120-120000.sqlite".
+const premigrateMarker = ".before-migrating"
+
+// premigrateSnapshot reads the marker: the snapshot's name when it was taken
+// at version applied.
+func premigrateSnapshot(path string, applied int64) (string, bool) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	var v int64
+	var name string
+	if _, err := fmt.Sscanf(string(b), "%d %s", &v, &name); err != nil || v != applied || !appdb.BackupNamePattern.MatchString(name) {
+		return "", false
+	}
+	return name, true
 }
 
 // newLogger builds the process logger: JSON when cfg.LogFormat is "json",

@@ -126,3 +126,46 @@ func TestServeRefusesMigrationWithoutSnapshot(t *testing.T) {
 		t.Fatalf("database at %d, want 5 (untouched)", v)
 	}
 }
+
+// brokenAt5 stages a version-5 database whose next migration fails (the
+// column 0006 adds is already there), as a half-applied upgrade might.
+func brokenAt5(t *testing.T, path string) {
+	t.Helper()
+	stageDB(t, path, 5)
+	d, err := appdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := d.Exec("ALTER TABLE tickets ADD COLUMN claimed_by TEXT"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestServeRetryReusesSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, freeAddr(t), dir)
+	brokenAt5(t, cfg.DBPath)
+	for i := range 3 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := serve(ctx, cfg, slog.New(slog.DiscardHandler))
+		cancel()
+		if err == nil || !strings.Contains(err.Error(), "goose up") {
+			t.Fatalf("attempt %d: want the migration's own error, got %v", i, err)
+		}
+	}
+	if names := backupNames(t, dir); len(names) != 1 {
+		t.Fatalf("backups %v, want the one snapshot from the first attempt", names)
+	}
+}
+
+func TestSnapshotFailureNamesTheCause(t *testing.T) {
+	dir := t.TempDir()
+	cfg := testConfig(t, freeAddr(t), dir)
+	stageDB(t, cfg.DBPath, 5)
+	os.WriteFile(filepath.Join(dir, "backups"), nil, 0o600)
+	err := serve(context.Background(), cfg, slog.New(slog.DiscardHandler))
+	if err == nil || strings.Contains(err.Error(), "free some space") || !strings.Contains(err.Error(), "check that "+filepath.Join(dir, "backups")+" can be written") {
+		t.Fatalf("%v", err)
+	}
+}
