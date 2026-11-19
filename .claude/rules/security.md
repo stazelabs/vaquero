@@ -21,7 +21,15 @@ CLAUDE.md "Hard invariants" is the authority.
 
 - `/api/v1` sits in its own chain: `APIHeaders` (no-store, `Vaquero-Version`, `Vaquero-Min-Client`) then `APIToken`. A token is a bearer credential; store only `apitoken.Hash` and the prefix, show the raw value once (the POST answer, never a redirect, URL or log).
 - Every refusal (no token, malformed, unknown, revoked) is the same 401 body and `WWW-Authenticate`; the reason is logged with the token id only. `TestAPIRefusesBadTokens` holds it.
-- The token middleware's last-used write (at most every 5 minutes) is the only write outside core, through `Deps.Touch`.
+- The token middleware's last-used write (at most every 5 minutes) and the MCP activity log (`Deps.MCPCalls`, the `mcp_calls` table) are the only writes outside core; neither touches a tracker table.
+- Agent identity: in local mode only, a request made with the owner's token and a `Vaquero-Agent` header acts as that agent (`core.EnsureAgent` creates it on first use; a bad name is a 400). Any other token keeps its own actor whatever the header says. Hosted mode will give agents their own tokens instead (Phase 4).
+
+## MCP
+
+- `POST /mcp` sits behind the same `APIHeaders` and `APIToken` as `/api/v1`, so the same token, the same 401 and the same agent rule apply. Other methods get the API's JSON 405.
+- Each tool is one `/api/v1` request served in-process as the request's actor: a tool can do exactly what its REST call can, no more.
+- Batches are refused before the SDK (one POST is one call); the body limit applies; a tool's panic is recovered into "Something went wrong." and logged.
+- The activity log keeps a tool's name, actor, token prefix (never the token), a summary of its arguments with every value cut to 80 characters, the outcome and the duration. It is pruned after 30 days by the sweep.
 - Per-token rate limits arrive with hosted mode (Phase 4); locally the only client is you.
 
 ## Browser protections

@@ -26,6 +26,11 @@ Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form
 - Tickets are addressed by key and other objects by name in requests; internal ids appear only for comments and links, which have no key.
 - The API is additive once released: add fields and endpoints, never rename or remove.
 
+## MCP tools
+
+- MCP tools mirror the API: each tool in `internal/mcpserver/tools.go` builds one `/api/v1` request, served in-process by the same routes (`mountAPI`) as the caller. Add the endpoint first, then the tool; never give a tool its own reads or writes.
+- Tool names are snake_case verbs; the list is frozen by `TestMCPToolList`, each tool needs its row in the `mcp` help article (`TestMCPToolsDocumented`), and `TestMCPToolsMatchTheAPI` holds read tools to their REST answers.
+
 ## Admin pages
 
 Operator pages live under `/admin`, rendered inside `templates.AdminShell`, listed in `templates.AdminPages`.

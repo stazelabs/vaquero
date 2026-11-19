@@ -10,7 +10,9 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [x] Phase 1: Core tracker
   - [x] Phase 1a: schema, `internal/core`, events, plain pages, activity feed
   - [x] Phase 1b: drag-and-drop board, list view with filters, search, live updates, keyboard shortcuts
-- [ ] Phase 2: API, CLI, MCP, coordination
+- [x] Phase 2: API, CLI, MCP, coordination
+  - [x] Phase 2a: REST API, tokens, the CLI as an API client, admin section
+  - [x] Phase 2b: agent identity, ready queue, claims with leases, MCP at `/mcp` and `vaquero mcp`, MCP activity — plan: docs/superpowers/plans/2026-11-19-phase-2b-agents.md
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
   - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
 - [ ] Phase 4: Hosted mode
@@ -102,7 +104,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 - [x] Lucide icons through the UI; in-app help at `/help` (with markdown for agents and `vaquero docs`) — plan: docs/superpowers/plans/2026-11-19-icons-and-help.md
 - [ ] Review (icons and help) minors: the icon generator should fail on an SVG element it can't parse rather than drop it; `TestUIGlyphsAreDrawingOnly` should assert the allowlist shape; `icon.templ` says icon-only buttons use `IconLg` but the toast close uses `Icon`; `TestIconOnlyButtonsLabelled` misses an icon wrapped in a span; a shortcut added to app.js but not to `templates.shortcuts` escapes the docs test; CLI subcommands and flags have no docs guard; the Activity empty state sits outside the live-swapped feed, so it stays after the first event
-- [ ] Help: search the articles from the header search box; an agents-and-claims and an MCP article arrive with Phase 2b
+- [ ] Help: search the articles from the header search box
 
 ## Folded into Phase 2b
 
@@ -112,7 +114,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Admin section (requested 2026-11-19)
 
 - [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
-- [ ] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
+- [x] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
 - [ ] Later: backups (list, prune, restore), API call log, users and roles (Phase 4), system details (disk space, uptime)
 
 ## Open questions

@@ -3,13 +3,14 @@ package help
 import (
 	"os"
 	"path/filepath"
-	"time"
-
-	"github.com/stazelabs/vaquero/internal/timefmt"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stazelabs/vaquero/internal/mcpserver"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 var firstArticles = []string{"welcome", "projects-and-tickets", "the-board", "editing-and-conflicts", "search",
@@ -130,5 +131,18 @@ func TestAPIErrorCodesDocumented(t *testing.T) {
 	}
 	if seen < 5 {
 		t.Fatalf("found %d codes", seen)
+	}
+}
+
+// Every MCP tool has its line in the mcp article.
+func TestMCPToolsDocumented(t *testing.T) {
+	a, ok := Get("mcp")
+	if !ok {
+		t.Fatal("no mcp article")
+	}
+	for _, name := range mcpserver.ToolNames() {
+		if !strings.Contains(a.Markdown, "| `"+name+"` |") {
+			t.Errorf("tool %s isn't in the mcp article", name)
+		}
 	}
 }

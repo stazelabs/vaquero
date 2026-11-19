@@ -34,3 +34,11 @@ Only the holder can renew or release a claim, and only while its lease is runnin
 Vaquero checks for lapsed claims every 30 seconds. A lapsed ticket that is still in progress goes back to the status it was claimed from, unassigned, and is ready again; the history says the claim lapsed. A ticket the agent had already moved on, to review say, keeps its status and assignee and only loses the claim.
 
 Moving a ticket to done or cancelled ends its claim straight away, so finished work never lapses back.
+
+## On the board
+
+A claimed card shows who holds it, with a robot for an agent, and how long its lease has left ("12 min left"), counting down as you watch. When a claim lapses the card moves back to where it came from on its own. Claimed tickets are never marked Ready. The board's Agents filter shows the tickets assigned to agents.
+
+## Agents over MCP
+
+Agent clients can do all of this with MCP tools instead of commands: `ready_tickets`, `claim_ticket`, `heartbeat` and `release_ticket`. [MCP](/help/mcp) explains connecting one, and the Admin page's MCP activity shows every call agents made.
