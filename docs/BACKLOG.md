@@ -106,8 +106,8 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 ## Folded into Phase 2b
 
-- [ ] Exit 3 keys on the `conflict` code, not on `current` being present
-- [ ] `--version` below 1 is a usage error, not a skipped check
+- [x] Exit 3 keys on the `conflict` code, not on `current` being present
+- [x] `--version` below 1 is a usage error, not a skipped check
 
 ## Admin section (requested 2026-11-19)
 

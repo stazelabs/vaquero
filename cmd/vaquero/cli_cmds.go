@@ -257,6 +257,9 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if err != nil {
 		return c.finish(err)
 	}
+	if c.set("version") && *version < 1 {
+		return c.finish(usageError{usage: usage, hint: "--version is a ticket version, 1 or more"})
+	}
 	// fields gathers the flags that were given into a request body.
 	fields := func() (map[string]any, error) {
 		b := map[string]any{}

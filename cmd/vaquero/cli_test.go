@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -206,5 +208,35 @@ func TestCLIProjectEditNeedsFlags(t *testing.T) {
 	mustCLI(t, "project", "edit", "VAQ", "--name", "New name")
 	if out := mustCLI(t, "project", "show", "VAQ"); !strings.Contains(out, "New name") {
 		t.Fatalf("%s", out)
+	}
+}
+
+// A 409 conflict exits 3 even when the answer carries no current object
+// (a project key change, say): scripts key on the code, not the body.
+func TestCLIConflictExitsThreeWithoutCurrent(t *testing.T) {
+	cliEnv(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":{"code":"conflict","message":"Someone else changed this."}}`))
+	}))
+	defer srv.Close()
+	cfg := client.Config{Profiles: []client.Profile{{Name: "fake", URL: srv.URL, Token: "vq_x"}}}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut := cli(t, "ticket", "edit", "VAQ-1", "--title", "x", "--profile", "fake")
+	if code != 3 || !strings.Contains(errOut, "Someone else changed this.") {
+		t.Fatalf("exit %d %q", code, errOut)
+	}
+}
+
+func TestCLIVersionMustBePositive(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "x")
+	for _, bad := range []string{"0", "-3"} {
+		if code, _, errOut := cli(t, "ticket", "edit", "VAQ-1", "--title", "y", "--version", bad); code != 2 || !strings.Contains(errOut, "usage") {
+			t.Errorf("--version %s: exit %d %q", bad, code, errOut)
+		}
 	}
 }

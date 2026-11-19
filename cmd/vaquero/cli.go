@@ -161,11 +161,13 @@ func (c *cmd) finish(err error) int {
 		return exitUsage
 	}
 	var apiErr *client.Error
-	if errors.As(err, &apiErr) && apiErr.Status == 409 && len(apiErr.Current) > 0 {
+	if errors.As(err, &apiErr) && apiErr.Code == "conflict" {
 		fmt.Fprintln(c.stderr, apiErr.Message)
-		if c.jsonOut {
+		switch {
+		case len(apiErr.Current) == 0:
+		case c.jsonOut:
 			fmt.Fprintln(c.stdout, string(apiErr.Current))
-		} else {
+		default:
 			var t apiTicket
 			if json.Unmarshal(apiErr.Current, &t) == nil {
 				printTicket(c.stdout, t)
