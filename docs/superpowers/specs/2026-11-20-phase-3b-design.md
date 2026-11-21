@@ -65,3 +65,15 @@ Everything in CLAUDE.md's hard invariants holds. In particular: only `core` writ
 - The export's exact JSON field names per table (snake case, matching the API where a table has an API type).
 - Whether export streams row by row or builds in memory (the database is small; streaming is preferred if it costs little).
 - The slug rule for tags and the clause-cutting details for titles, as long as the printed plan is what gets applied.
+
+## Open: attachments (raised 2026-11-20, paused)
+
+The owner wants to attach files to tickets, primarily screenshots for now. This design is not yet approved; attachments may join this phase, which would make the export a `.tar.gz` of the JSON plus the files.
+
+Proposed shape (not yet agreed): pasting or dropping an image into a description or comment uploads it and inserts a Markdown image at the cursor; a drop well (with a file picker) on the ticket page lists every attachment with name, size and a download link; non-images become links; 10 MB per file; an API route and `vaquero attach KEY FILE`; `get_ticket` lists attachments; no MCP upload tool until an agent needs one. SVG is served as a download, never inline.
+
+Storage, undecided:
+
+1. In the SQLite database, in its own table (recommended). One file stays the whole truth: every snapshot (pre-migrate, pre-delete, pre-restore) and `backup restore` include the screenshots for free. Cost: a bigger database and bigger backups (500 one-megabyte screenshots add about 500 MB to each of the seven kept).
+2. Files in `{data dir}/attachments/`. Small database and backups, but snapshot, restore and prune no longer capture everything until they learn the folder.
+3. Behind a storage interface (directory or S3-compatible, the parent spec's `blobs`), starting with option 1. Worth doing in Phase 4 when hosted mode needs it.
