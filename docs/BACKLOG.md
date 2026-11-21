@@ -16,7 +16,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
   - [x] Phase 3a: snapshot before migrating, `stop`, `backup list|restore`, upgrade fixtures, restart of a stale local server, goreleaser and the Homebrew formula from a manual workflow — plan: docs/superpowers/plans/2026-11-20-phase-3a-releases-upgrades.md
   - [ ] Phase 3b: export and import, attachments (open: where files are stored), move this backlog into vaquero; then the first release (docs/RELEASING.md). Design: docs/superpowers/specs/2026-11-20-phase-3b-design.md, not yet approved
-  - [ ] Linear importer — pick the format(s) to support when Phase 3 is planned; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
+  - [ ] Linear importer (deferred from 3b: its export is CSV only, by emailed link) — pick the format(s) to support; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
 - [ ] Phase 4: Hosted mode (and the container image, moved from Phase 3)
 - [ ] Phase 5: Git integration
 - [ ] Phase 6: Notifications and attachments
@@ -145,5 +145,4 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 
 ## Deferred from Phase 3b design (2026-11-20)
 
-- [ ] Linear importer (its export is CSV only, by emailed link)
 - [ ] stazelabs skills adapter (`trackers/vaquero.md` in agent-workflow), this repo's profile and audit packs, and the Vaquero additions they need (ticket `url`, MCP `whoami`, `list_tags`)
