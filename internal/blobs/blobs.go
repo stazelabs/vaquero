@@ -13,8 +13,9 @@
 // A List prefix is "" or a directory path (one trailing slash allowed) made
 // of the same segments.
 //
-// Deadline rule: PutDeadline is the longest a caller should let a Put run.
-// Callers wrap their own context with it; backends do not add a deadline.
+// Deadline rule: PutTimeout(size) is the longest a caller should let a Put
+// of size bytes run. Callers wrap their own context with it; backends do not
+// add a deadline.
 //
 // Orphans: a database row and its object are not written atomically, even
 // in the SQLite backend (its Put and core's row are separate transactions).
@@ -41,8 +42,17 @@ import (
 // ErrNotFound is returned by Get when the key is absent.
 var ErrNotFound = errors.New("blobs: not found")
 
-// PutDeadline is how long a caller should allow a Put.
-const PutDeadline = 10 * time.Second
+// PutTimeout is how long a caller should allow a Put of size bytes: 10
+// seconds plus one second per 256 KiB (50 seconds for the largest
+// attachment, 10 MB), so a slow uplink isn't cut off mid-upload.
+func PutTimeout(size int64) time.Duration {
+	const chunk = 256 << 10
+	d := 10 * time.Second
+	if size > 0 {
+		d += time.Duration((size+chunk-1)/chunk) * time.Second
+	}
+	return d
+}
 
 // MaxKeyLen is the longest valid key, in bytes.
 const MaxKeyLen = 200

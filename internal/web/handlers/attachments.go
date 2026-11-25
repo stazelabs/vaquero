@@ -106,7 +106,7 @@ func storeUpload(ctx context.Context, d Deps, by, ticketID string, part io.Reade
 	ctype := http.DetectContentType(b)
 	id := idgen.New()
 	key := attachKey(d.Instance, id)
-	pctx, cancel := context.WithTimeout(ctx, blobs.PutDeadline)
+	pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(int64(len(b))))
 	defer cancel()
 	if err := d.Blobs.Put(pctx, key, bytes.NewReader(b), int64(len(b)), ctype); err != nil {
 		return gen.Attachment{}, fmt.Errorf("store upload: %w", err)

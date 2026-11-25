@@ -228,7 +228,7 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader) (a
 		ctype, _ := a["content_type"].(string)
 		key := blobs.AttachmentKey(instance, id)
 		put = append(put, key) // before Put: a half-written object is deleted too
-		pctx, cancel := context.WithTimeout(ctx, blobs.PutDeadline)
+		pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(size))
 		err = store.Put(pctx, key, body, size, ctype)
 		cancel()
 		if body != nil {
