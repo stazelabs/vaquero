@@ -13,7 +13,7 @@ CLAUDE.md "Hard invariants" is the authority.
 ## Local mode
 
 - Local mode has no sign-in, so it must never be reachable from the network. `config.FromEnv` refuses a non-loopback `VQ_ADDR` in local mode; do not relax that.
-- `middleware.HostCheck` stays first after `Recover`. It refuses any Host other than `localhost`, `127.0.0.1` and `::1`, which is the defence against DNS rebinding (a foreign site pointing its hostname at 127.0.0.1).
+- `middleware.HostCheck` stays first after `Recover`. Its refusals are logged five a minute, then counted; logged paths are cut to 200 characters. It refuses any Host other than `localhost`, `127.0.0.1` and `::1`, which is the defence against DNS rebinding (a foreign site pointing its hostname at 127.0.0.1).
 - The data directory is mode 0700; it will hold the local API token.
 - `VQ_MODE=hosted` is refused until Phase 4 adds sign-in.
 
@@ -40,7 +40,7 @@ CLAUDE.md "Hard invariants" is the authority.
 
 ## Body limits
 
-`middleware.BodyLimit(MaxBody)`: 1 MiB for every request, except a POST to an upload route (`middleware.IsUpload`, its list in bodylimit.go), which gets `MaxUpload` (10 MB plus 64 KiB of multipart framing). An upload over the limit, declared or read, answers 413 in the API envelope with "Files can be at most 10 MB." (`middleware.TooLargeUpload`), never a bare 413. A declared body over the limit elsewhere answers the API envelope (`too_large`) on `/api/v1` and `/mcp`, and a small HTML page on every other route, never plain text.
+`middleware.BodyLimit(MaxBody, handlers.TooLarge(d))`: 1 MiB for every request, except a POST to an upload route (`middleware.IsUpload`, its list in bodylimit.go), which gets `MaxUpload` (10 MB plus 64 KiB of multipart framing). An upload over the limit, declared or read, answers 413 in the API envelope with "Files can be at most 10 MB." (`middleware.TooLargeUpload`), never a bare 413. A declared body over the limit elsewhere answers the API envelope (`too_large`) on `/api/v1` and `/mcp`, and the themed 413 page on every other route (a small plain page when none is passed), never plain text.
 
 ## Attachments
 

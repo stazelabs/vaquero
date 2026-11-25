@@ -9,7 +9,7 @@ All routes mount in internal/web/router.go. Handlers are `func Name(d Deps) http
 
 ## Writes go through internal/core
 
-Handlers never write directly: every change goes through `Deps.Core`, which writes its `events` row in the same transaction. `Deps` has no writer queries, and `TestHandlersNeverWriteDirectly` fails on `gen.New(`, `.Exec(`, `BeginTx(` or `d.DB.` in a handler (only /healthz pings `d.DB`). The web UI, and later the REST API and MCP, call the same core function, so they never disagree about what an operation does. Reads use `Deps.R`.
+Handlers never write directly: every change goes through `Deps.Core`, which writes its `events` row in the same transaction. `Deps` carries two writers outside core, `Touch` (a token's last use) and `MCPCalls` (the MCP log), for the token middleware and the MCP server only; `TestHandlersNeverWriteDirectly` fails on `gen.New(`, `.Exec(`, `BeginTx(`, `d.DB.`, `d.Touch.` or `d.MCPCalls.` in a handler (only /healthz pings `d.DB`). The web UI, and later the REST API and MCP, call the same core function, so they never disagree about what an operation does. Reads use `Deps.R`.
 
 Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form with 422 and its field messages; `core.ErrNotFound` goes home with "That no longer exists."; anything else is `serverError`. Small forms on a busy page (settings, comment edits) may instead redirect back with the message as an error toast.
 
@@ -37,9 +37,10 @@ Operator pages live under `/admin`, rendered inside `templates.AdminShell`, list
 
 ## Feedback
 
-- Redirect after every successful POST (303).
+- Redirect after every successful POST (303). The one exception is creating an API token: the POST answer itself shows the new token, once, since it must never be in a redirect, URL or log.
 - Success is a toast: `redirectWithFlash(w, r, flash.Success, msg, to)`.
 - A missing entity redirects with a toast, never a 404.
+- A web form body over the size limit gets the themed 413 page (`TooLarge`, passed to `middleware.BodyLimit`).
 - An id in a URL (status, milestone, comment, link) must belong to the project or ticket in the same URL.
 
 ## Logging

@@ -33,7 +33,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 
 ## Search indexes
 
-- `tickets_fts` and `comments_fts` are FTS5 external-content tables keyed on the tickets' and comments' implicit rowids, kept current by triggers (insert, update, soft delete, hard delete). Never `VACUUM` the live database in place: it can renumber rowids and attach hits to the wrong tickets. Snapshots and `vaquero backup compact` use `VACUUM INTO` a copy; compaction then rebuilds both indexes in the copy (`RebuildSearch`) before it is swapped in.
+- `tickets_fts` and `comments_fts` are FTS5 external-content tables keyed on the tickets' and comments' implicit rowids, kept current by triggers (insert, update, soft delete, hard delete). Never `VACUUM` the live database in place: it can renumber rowids and attach hits to the wrong tickets. Snapshots and `vaquero backup compact` use `VACUUM INTO` a copy; compaction then rebuilds both indexes in the copy (`RebuildSearch`) before it is swapped in, and a restore does the same in the snapshot's copy (`RebuildSearchFile`).
 - The search query is hand-written in `internal/db/search.go` because sqlc can't read FTS5 tables.
 
 ## Instants and IDs
