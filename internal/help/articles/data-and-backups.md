@@ -74,7 +74,7 @@ Import is all or nothing. It checks the whole file first, unpacking the attachme
 
 An export from a newer Vaquero is refused; upgrade Vaquero and import again. An export from an older one is read into the current layout.
 
-Attachment files go where `VQ_BLOB_STORE` says, in the shell you run `vaquero import` from (see [Attachments](/help/attachments#where-the-bytes-are-kept)), and the message names that storage. The server must start with the same setting. If Vaquero runs under `brew services`, its environment is the service's, not your shell's: if the two differ, the server refuses to start, names both, and changes nothing. Set them to the same storage and start it again.
+Attachment files go where `VQ_BLOB_STORE` says, in the shell you run `vaquero import` from (see [Attachments](/help/attachments#where-the-bytes-are-kept)), and the message names that storage. Before it reads the file, import writes and deletes a small test object there, so wrong credentials or a read-only bucket stop it at once, with nothing changed. The server must start with the same setting. If Vaquero runs under `brew services`, its environment is the service's, not your shell's: if the two differ, the server refuses to start, names both, and changes nothing. Set them to the same storage and start it again.
 
 Tokens are not part of an export. Import removes the `token` file, so the next start makes a new token for the imported owner, and the command line on this machine picks it up. Any other token for the old instance, such as one saved in a profile for another machine or an agent, stops working: make a new one with `vaquero token create`.
 

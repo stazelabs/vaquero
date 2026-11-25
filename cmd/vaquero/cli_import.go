@@ -22,6 +22,9 @@ import (
 
 func init() { cliCommands["import"] = cmdImport }
 
+// openBlobStore is blobs.Open, replaceable by a test.
+var openBlobStore = blobs.Open
+
 // importFile is the database an import builds beside the current one.
 const importFile = "vaquero.import.db"
 
@@ -112,13 +115,18 @@ func importArchive(ctx context.Context, cfg config.Config, file string) (importR
 	if err := checkEmpty(ctx, cfg.DBPath); err != nil {
 		return res, err
 	}
+	instance := strings.ToLower(idgen.New())
+	store, err := importStore(ctx, cfg, instance)
+	if err != nil {
+		return res, notImported{err}
+	}
 	removeSpools(cfg.DataDir)
 	rd, err := archive.Read(f, cfg.DataDir)
 	if err != nil {
 		return res, notImported{err}
 	}
 	defer rd.Close()
-	res.Previous, err = buildAndSwap(ctx, cfg, rd)
+	res.Previous, err = buildAndSwap(ctx, cfg, rd, store, instance)
 	if err != nil {
 		return res, notImported{err}
 	}
@@ -171,21 +179,43 @@ func removeDatabase(path string) {
 	}
 }
 
-// buildAndSwap builds the new database from rd and swaps it in, returning
-// where the database before it went. On any failure before the swap it
-// removes the new file and every object it put.
-func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader) (aside string, err error) {
-	newPath := filepath.Join(cfg.DataDir, importFile)
-	// The directory and S3 stores are opened before anything is written, so
-	// a bad setting stops the import at once. SQLite storage is the new file.
-	var store blobs.Store
-	if cfg.BlobBackend != "sqlite" {
-		if store, err = blobs.Open(cfg, nil, nil, time.Now); err != nil {
-			return "", fmt.Errorf("attachment store: %w", err)
-		}
+// importStore opens the directory or S3 store and checks it takes a write,
+// before the archive is read or anything written: bad credentials or a
+// read-only bucket stop the import at once, not at the first attachment. The
+// check puts and deletes attachments/{instance}/probe, an empty object. When
+// the delete fails the import stops, and the probe stays under an instance
+// id no database records (the error says the store refused the delete). For
+// SQLite storage, the new database file itself, it returns nil.
+func importStore(ctx context.Context, cfg config.Config, instance string) (blobs.Store, error) {
+	if cfg.BlobBackend == "sqlite" {
+		return nil, nil
 	}
+	store, err := openBlobStore(cfg, nil, nil, time.Now)
+	if err != nil {
+		return nil, fmt.Errorf("attachment store: %w", err)
+	}
+	key := blobs.AttachmentKey(instance, "probe")
+	pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(0))
+	defer cancel()
+	if err := store.Put(pctx, key, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
+		return nil, fmt.Errorf("attachment store: can't write to it (%w)", err)
+	}
+	if err := store.Delete(pctx, key); err != nil {
+		return nil, fmt.Errorf("attachment store: can't delete from it (%w)", err)
+	}
+	if cfg.BlobBackend == "dir" {
+		_ = os.Remove(filepath.Join(cfg.BlobDir, "attachments", instance)) // only when empty
+	}
+	return store, nil
+}
+
+// buildAndSwap builds the new database from rd and swaps it in, returning
+// where the database before it went. Attachment bytes go into store under
+// instance (store nil: into the new database). On any failure before the
+// swap it removes the new file and every object it put.
+func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, store blobs.Store, instance string) (aside string, err error) {
+	newPath := filepath.Join(cfg.DataDir, importFile)
 	removeDatabase(newPath) // left by an interrupted import; the lock is ours
-	instance := strings.ToLower(idgen.New())
 	var put []string // every key put, deleted again on failure
 	var w, r *sql.DB
 	closeDB := func() {

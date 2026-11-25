@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -474,6 +475,49 @@ func TestImportRefusesBadStore(t *testing.T) {
 	code, _, e := runCLI(t, "import", file)
 	if code != 1 || !strings.Contains(e, "attachment store") || !strings.Contains(e, "Nothing was imported.") {
 		t.Fatalf("%d %q", code, e)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "vaquero.db")); !os.IsNotExist(err) {
+		t.Fatalf("a database was created: %v", err)
+	}
+	if left := importLeftovers(t, dataDir); len(left) != 0 {
+		t.Fatalf("left %v", left)
+	}
+}
+
+// deniedStore is a bucket whose credentials are wrong: every call is refused,
+// as S3 answers AccessDenied. puts counts the Put calls.
+type deniedStore struct {
+	blobs.Store
+	puts int
+}
+
+func (d *deniedStore) Put(context.Context, string, io.Reader, int64, string) error {
+	d.puts++
+	return errors.New("s3 put: Access Denied.")
+}
+
+func (d *deniedStore) Delete(context.Context, string) error { return errors.New("s3 delete: Access Denied.") }
+
+// Bad S3 credentials stop the import at once, before the archive is unpacked
+// or a database built, rather than at the first attachment's Put.
+func TestImportChecksStoreAccessFirst(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "s3")
+	t.Setenv("VQ_S3_ENDPOINT", "s3.invalid")
+	t.Setenv("VQ_S3_BUCKET", "b")
+	t.Setenv("VQ_S3_ACCESS_KEY_ID", "wrong")
+	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "wrong")
+	denied := &deniedStore{}
+	saved := openBlobStore
+	openBlobStore = func(config.Config, *sql.DB, *sql.DB, func() time.Time) (blobs.Store, error) { return denied, nil }
+	t.Cleanup(func() { openBlobStore = saved })
+	file := seededArchive(t, importHeader(t, 0), nil)
+	code, _, e := runCLI(t, "import", file)
+	if code != 1 || !strings.Contains(e, "attachment store: can't write to it (s3 put: Access Denied.)") || !strings.Contains(e, "Nothing was imported.") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if denied.puts != 1 {
+		t.Fatalf("%d puts, want only the probe", denied.puts)
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "vaquero.db")); !os.IsNotExist(err) {
 		t.Fatalf("a database was created: %v", err)
