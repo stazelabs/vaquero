@@ -215,3 +215,145 @@ func TestServeStopsSweeper(t *testing.T) {
 		t.Fatal("the sweep ran after serve returned")
 	}
 }
+
+// bootOnce serves on dir with extra env, waits until healthy and stops it.
+func bootOnce(t *testing.T, dir string, env map[string]string) error {
+	t.Helper()
+	addr := freeAddr(t)
+	get := func(k string) string {
+		if k == "VQ_ADDR" {
+			return addr
+		}
+		if k == "VQ_DATA_DIR" {
+			return dir
+		}
+		return env[k]
+	}
+	cfg, err := config.FromEnv(get)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, cfg, slog.New(slog.DiscardHandler)) }()
+	for range 100 {
+		select {
+		case err := <-done:
+			cancel()
+			return err
+		default:
+		}
+		if resp, err := http.Get("http://" + addr + "/healthz"); err == nil {
+			resp.Body.Close()
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	cancel()
+	return <-done
+}
+
+func readSetting(t *testing.T, dir, key string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var v string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, key).Scan(&v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+func TestInstanceIDStable(t *testing.T) {
+	dir := t.TempDir()
+	if err := bootOnce(t, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	first := readSetting(t, dir, "instance_id")
+	if first == "" || first != strings.ToLower(first) {
+		t.Fatalf("instance id %q", first)
+	}
+	if err := bootOnce(t, dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if second := readSetting(t, dir, "instance_id"); second != first {
+		t.Fatalf("%q then %q", first, second)
+	}
+}
+
+// addAttachmentRow writes one attachments row straight into the database,
+// with foreign keys off (the test needs a row, not a ticket).
+func addAttachmentRow(t *testing.T, dir string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`INSERT INTO attachments (id, ticket_id, uploaded_by, name, content_type, size, blob_key, created_at)
+		VALUES ('a1', 't1', 'u1', 'x.png', 'image/png', 1, 'attachments/i/a1', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func settingsDump(t *testing.T, dir string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT key, value, updated_at FROM settings ORDER BY key`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var b strings.Builder
+	for rows.Next() {
+		var k, v, u string
+		if err := rows.Scan(&k, &v, &u); err != nil {
+			t.Fatal(err)
+		}
+		b.WriteString(k + "=" + v + "@" + u + "\n")
+	}
+	return b.String()
+}
+
+func TestServeRefusesBackendChange(t *testing.T) {
+	dir := t.TempDir()
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
+		t.Fatal(err)
+	}
+	addAttachmentRow(t, dir)
+	before := settingsDump(t, dir)
+	err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir"})
+	want := "Attachments are stored in sqlite; VQ_BLOB_STORE is dir. Set it back to sqlite."
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("%v", err)
+	}
+	if after := settingsDump(t, dir); after != before {
+		t.Fatalf("database changed:\n%s\n%s", before, after)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "attachments")); err == nil {
+		t.Fatal("the refused backend's directory was created")
+	}
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
+		t.Fatalf("the recorded backend must still boot: %v", err)
+	}
+}
+
+func TestServeAllowsBackendChangeWhenEmpty(t *testing.T) {
+	dir := t.TempDir()
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSetting(t, dir, "blob_store"); got != "dir" {
+		t.Fatalf("blob_store = %q", got)
+	}
+}

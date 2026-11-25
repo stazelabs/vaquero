@@ -87,3 +87,43 @@ func TestAllowedHosts(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestBlobConfigDefaults(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": "/d"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BlobBackend != "sqlite" || c.BlobDir != filepath.Join("/d", "attachments") || c.S3Region != "auto" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestBlobConfigS3Missing(t *testing.T) {
+	_, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": "/d", "VQ_BLOB_STORE": "s3"}))
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	for _, v := range []string{"VQ_S3_ENDPOINT", "VQ_S3_BUCKET", "VQ_S3_ACCESS_KEY_ID", "VQ_S3_SECRET_ACCESS_KEY"} {
+		if !strings.Contains(err.Error(), v) {
+			t.Fatalf("%q not named in %v", v, err)
+		}
+	}
+}
+
+func TestBlobConfigS3Complete(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": "/d", "VQ_BLOB_STORE": "S3",
+		"VQ_S3_ENDPOINT": "s3.example.com", "VQ_S3_BUCKET": "b", "VQ_S3_ACCESS_KEY_ID": "k", "VQ_S3_SECRET_ACCESS_KEY": "s"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.BlobBackend != "s3" || string(c.S3SecretAccessKey) != "s" || c.S3Region != "auto" {
+		t.Fatalf("%+v", c)
+	}
+}
+
+func TestBlobConfigUnknown(t *testing.T) {
+	_, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": "/d", "VQ_BLOB_STORE": "ftp"}))
+	if err == nil || !strings.Contains(err.Error(), "VQ_BLOB_STORE") {
+		t.Fatalf("%v", err)
+	}
+}

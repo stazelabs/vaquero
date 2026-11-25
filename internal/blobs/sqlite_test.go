@@ -11,18 +11,18 @@ import (
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 )
 
-var fixedNow = time.Now
+var now = time.Now
 
 func TestSQLite(t *testing.T) {
 	blobtest.Run(t, func(t *testing.T) blobs.Store {
 		d := dbtest.New(t)
-		return blobs.NewSQLite(d.W, d.R, fixedNow)
+		return blobs.NewSQLite(d.W, d.R, now)
 	})
 }
 
 func TestSQLiteRefusesSizeMismatch(t *testing.T) {
 	d := dbtest.New(t)
-	s := blobs.NewSQLite(d.W, d.R, fixedNow)
+	s := blobs.NewSQLite(d.W, d.R, now)
 	ctx := context.Background()
 	if err := s.Put(ctx, "a/b", strings.NewReader("abc"), 4, "text/plain"); err == nil {
 		t.Fatal("size mismatch accepted")
@@ -42,7 +42,7 @@ func TestSQLiteRefusesSizeMismatch(t *testing.T) {
 func TestSQLiteKeyValidated(t *testing.T) {
 	// A closed database makes any SQL fail differently from a key error.
 	d := dbtest.New(t)
-	s := blobs.NewSQLite(d.W, d.R, fixedNow)
+	s := blobs.NewSQLite(d.W, d.R, now)
 	d.W.Close()
 	d.R.Close()
 	ctx := context.Background()
@@ -60,7 +60,7 @@ func TestSQLiteKeyValidated(t *testing.T) {
 
 func TestSQLiteListOrdersByKey(t *testing.T) {
 	d := dbtest.New(t)
-	s := blobs.NewSQLite(d.W, d.R, fixedNow)
+	s := blobs.NewSQLite(d.W, d.R, now)
 	ctx := context.Background()
 	for _, k := range []string{"a/c", "a/a", "a/b", "ab/z"} {
 		if err := s.Put(ctx, k, strings.NewReader("x"), 1, "text/plain"); err != nil {

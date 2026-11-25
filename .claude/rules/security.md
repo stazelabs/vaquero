@@ -44,4 +44,4 @@ CLAUDE.md "Hard invariants" is the authority.
 
 ## Outbound network
 
-None. No telemetry. A later update-available check must be optional and documented.
+Local-first: everything works offline with the defaults; network services are optional and used only when the operator configures them (today, an S3 bucket for attachments via `VQ_S3_*`; the secret is never logged). No telemetry; Vaquero never downloads or checks for releases.

@@ -141,7 +141,7 @@ func (d *Dir) List(ctx context.Context, prefix string, fn func(key string, modif
 		return nil // nothing under that prefix
 	}
 	return filepath.WalkDir(start, func(p string, e fs.DirEntry, err error) error {
-		// An object deleted while the walk runs (a replaced avatar) is
+		// An object deleted while the walk runs (an attachment removed mid-walk) is
 		// simply no longer listed.
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil

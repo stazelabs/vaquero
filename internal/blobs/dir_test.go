@@ -168,7 +168,7 @@ func TestDirErrorPaths(t *testing.T) {
 }
 
 // TestDirListSkipsObjectsDeletedDuringTheWalk: an object removed while List
-// runs (an avatar replaced mid-reap) is skipped, not an error.
+// runs (an attachment removed mid-walk) is skipped, not an error.
 func TestDirListSkipsObjectsDeletedDuringTheWalk(t *testing.T) {
 	ctx := context.Background()
 	d, err := blobs.NewDir(t.TempDir())

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"unicode"
 
 	"github.com/joho/godotenv"
 )
@@ -34,6 +35,22 @@ type Config struct {
 	DBPath    string // always filepath.Join(DataDir, "vaquero.db")
 	LogFormat string // "text" (default) or "json"
 	LogLevel  string // default "info"
+
+	// BlobBackend is VQ_BLOB_STORE: "sqlite" (default), "dir" or "s3".
+	BlobBackend string
+	// BlobDir is VQ_BLOB_DIR, the dir backend's root; {data dir}/attachments
+	// when unset. Unused with the other backends.
+	BlobDir string
+	// S3Endpoint, S3Bucket, S3AccessKeyID, S3SecretAccessKey and S3Region
+	// are VQ_S3_ENDPOINT (host or host:port), VQ_S3_BUCKET,
+	// VQ_S3_ACCESS_KEY_ID, VQ_S3_SECRET_ACCESS_KEY and VQ_S3_REGION
+	// (default "auto"). The first four are required with s3. The secret is
+	// never logged.
+	S3Endpoint        string
+	S3Bucket          string
+	S3AccessKeyID     string
+	S3SecretAccessKey []byte
+	S3Region          string
 }
 
 // Load reads .env.local when present (best effort, for development), then
@@ -74,7 +91,51 @@ func FromEnv(get func(string) string) (Config, error) {
 		c.DataDir = dir
 	}
 	c.DBPath = filepath.Join(c.DataDir, "vaquero.db")
+	if err := readBlobs(&c, get); err != nil {
+		errs = append(errs, err)
+	}
 	return c, errors.Join(errs...)
+}
+
+// readBlobs fills the blob store settings. The S3 variables are read only
+// with the s3 backend; with the others they are ignored.
+func readBlobs(c *Config, get func(string) string) error {
+	c.BlobBackend = strings.ToLower(or(strings.TrimSpace(get("VQ_BLOB_STORE")), "sqlite"))
+	c.BlobDir = or(strings.TrimSpace(get("VQ_BLOB_DIR")), filepath.Join(c.DataDir, "attachments"))
+	c.S3Region = "auto"
+	switch c.BlobBackend {
+	case "sqlite", "dir":
+		return nil
+	case "s3":
+	default:
+		return fmt.Errorf("VQ_BLOB_STORE must be sqlite, dir or s3, got %q", c.BlobBackend)
+	}
+	c.S3Endpoint = strings.TrimSpace(get("VQ_S3_ENDPOINT"))
+	c.S3Bucket = strings.TrimSpace(get("VQ_S3_BUCKET"))
+	c.S3AccessKeyID = strings.TrimSpace(get("VQ_S3_ACCESS_KEY_ID"))
+	c.S3SecretAccessKey = []byte(strings.TrimSpace(get("VQ_S3_SECRET_ACCESS_KEY")))
+	c.S3Region = or(strings.TrimSpace(get("VQ_S3_REGION")), "auto")
+	var missing []string
+	for _, f := range []struct {
+		name string
+		ok   bool
+	}{
+		{"VQ_S3_ENDPOINT", c.S3Endpoint != ""},
+		{"VQ_S3_BUCKET", c.S3Bucket != ""},
+		{"VQ_S3_ACCESS_KEY_ID", c.S3AccessKeyID != ""},
+		{"VQ_S3_SECRET_ACCESS_KEY", len(c.S3SecretAccessKey) > 0},
+	} {
+		if !f.ok {
+			missing = append(missing, f.name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("VQ_BLOB_STORE=s3 needs VQ_S3_ENDPOINT, VQ_S3_BUCKET, VQ_S3_ACCESS_KEY_ID and VQ_S3_SECRET_ACCESS_KEY; missing: %s", strings.Join(missing, ", "))
+	}
+	if ep := c.S3Endpoint; strings.ContainsAny(ep, "/'\"") || strings.ContainsFunc(ep, unicode.IsSpace) {
+		return fmt.Errorf("VQ_S3_ENDPOINT must be a host with an optional port, with no https:// and no /bucket path (got %q)", ep)
+	}
+	return nil
 }
 
 // checkAddr rejects an unparseable address and, in local mode, any address
