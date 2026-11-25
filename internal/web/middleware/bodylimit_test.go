@@ -70,3 +70,25 @@ func TestUploadBodyLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestTooLargeAnswersByRoute(t *testing.T) {
+	h := BodyLimit(10)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	for _, p := range []string{"/api/v1/tickets", "/mcp"} {
+		req := httptest.NewRequest("POST", p, strings.NewReader("x"))
+		req.ContentLength = 11
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != 413 || rec.Header().Get("Content-Type") != "application/json" ||
+			!strings.Contains(rec.Body.String(), `"code": "too_large"`) {
+			t.Errorf("%s: %d %q %q", p, rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+	}
+	req := httptest.NewRequest("POST", "/t/VAQ-1/comments", strings.NewReader("x"))
+	req.ContentLength = 11
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if ct := rec.Header().Get("Content-Type"); rec.Code != 413 || !strings.HasPrefix(ct, "text/html") ||
+		!strings.Contains(rec.Body.String(), "<title>") || !strings.Contains(rec.Body.String(), "too large") {
+		t.Errorf("page: %d %q %q", rec.Code, ct, rec.Body.String())
+	}
+}

@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"io"
 	"net/http"
 	"path"
+	"strings"
 
 	"github.com/stazelabs/vaquero/internal/api"
 )
@@ -42,6 +44,24 @@ func IsUpload(r *http.Request) bool {
 	return false
 }
 
+// tooLarge writes the 413 for a body declared over the limit: the file
+// message on an upload route, the API envelope on /api/v1 and /mcp, and a
+// small page anywhere else.
+func tooLarge(w http.ResponseWriter, r *http.Request, upload bool) {
+	switch {
+	case upload:
+		api.WriteFailure(w, TooLargeUpload())
+	case r.URL.Path == "/mcp" || r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
+		api.WriteFailure(w, api.Fail(http.StatusRequestEntityTooLarge, "too_large", "The request body is too large."))
+	default:
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Request too large</title></head>`+
+			`<body><h1>Request too large</h1><p>That request is too large. Go back and send less.</p></body></html>`)
+	}
+}
+
 // BodyLimit refuses a body declared larger than limit with 413, and stops
 // reading any body at that limit. An upload route (IsUpload) gets MaxUpload
 // instead, and its 413 is TooLargeUpload.
@@ -53,11 +73,7 @@ func BodyLimit(limit int64) func(http.Handler) http.Handler {
 				n = MaxUpload
 			}
 			if r.ContentLength > n {
-				if upload {
-					api.WriteFailure(w, TooLargeUpload())
-				} else {
-					http.Error(w, "Request too large.", http.StatusRequestEntityTooLarge)
-				}
+				tooLarge(w, r, upload)
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, n)
