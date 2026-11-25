@@ -129,9 +129,9 @@ templ TokensPage(v TokensView) {
 // to older calls when there are more.
 type MCPView struct {
 	Calls       []gen.ListMCPCallsRow
-	Agents      []string
+	Agents      []gen.ListMCPCallActorsRow
 	Tools       []string
-	Agent, Tool string
+	Agent, Tool string // Agent is an actor id
 	Older       string
 	Now         time.Time
 }
@@ -151,12 +151,12 @@ templ MCPPage(v MCPView) {
 				>All agents</a>
 				for _, a := range v.Agents {
 					<a
-						href={ templ.SafeURL(mcpFilterHref(a, v.Tool)) }
-						class={ chipClass(v.Agent == a) }
-						if v.Agent == a {
+						href={ templ.SafeURL(mcpFilterHref(a.ID, v.Tool)) }
+						class={ chipClass(v.Agent == a.ID) }
+						if v.Agent == a.ID {
 							aria-current="true"
 						}
-					>{ a }</a>
+					>{ mcpActorLabel(a, v.Agents) }</a>
 				}
 			</div>
 			<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Tool">

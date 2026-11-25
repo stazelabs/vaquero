@@ -10,6 +10,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 )
@@ -149,6 +150,17 @@ func helpNavClass(current bool) string {
 		return "font-medium text-accent"
 	}
 	return "text-ink/80 hover:text-accent"
+}
+
+// mcpActorLabel is an actor's name for a filter chip, with its kind when
+// another actor in the log has the same name (an agent called "Owner").
+func mcpActorLabel(a gen.ListMCPCallActorsRow, all []gen.ListMCPCallActorsRow) string {
+	for _, o := range all {
+		if o.ID != a.ID && o.Name == a.Name {
+			return a.Name + " (" + a.Kind + ")"
+		}
+	}
+	return a.Name
 }
 
 // mcpFilterHref is the MCP activity page filtered by agent and tool.

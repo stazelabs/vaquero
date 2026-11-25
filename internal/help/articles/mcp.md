@@ -49,4 +49,4 @@ The server tells clients the working loop: take a ticket from `ready_tickets`, `
 
 ## The activity log
 
-Every tool call is recorded: when, which agent, which token (by its prefix), the tool, a short summary of its arguments, how it ended (`ok`, or the error such as `not_found`, `invalid`, `conflict`, `unknown_tool` or `bad_arguments`) and how long it took. Long text in arguments, like a comment's body, is cut short. Read it on the Admin page under MCP activity, filtered by agent or tool; it updates as calls arrive. Calls are kept for 30 days.
+Every tool call is recorded: when, which agent, which token (by its prefix), the tool, a short summary of its arguments, how it ended (`ok`, or the error such as `not_found`, `invalid`, `conflict`, `unknown_tool` or `bad_arguments`) and how long it took. Long text in arguments, like a comment's body, is cut short. Read it on the Admin page under MCP activity, filtered by agent or tool; it updates as calls arrive. Agent names are case-sensitive and an agent is never the person using Vaquero: an agent called `Owner` is listed apart from you, and its chip says `(agent)`. Calls are kept for 30 days.

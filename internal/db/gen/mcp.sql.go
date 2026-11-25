@@ -11,22 +11,28 @@ import (
 )
 
 const listMCPCallActors = `-- name: ListMCPCallActors :many
-SELECT DISTINCT a.name FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY a.name
+SELECT DISTINCT a.id, a.name, a.kind FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY a.name, a.kind, a.id
 `
 
-func (q *Queries) ListMCPCallActors(ctx context.Context) ([]string, error) {
+type ListMCPCallActorsRow struct {
+	ID   string
+	Name string
+	Kind string
+}
+
+func (q *Queries) ListMCPCallActors(ctx context.Context) ([]ListMCPCallActorsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMCPCallActors)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []ListMCPCallActorsRow{}
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var i ListMCPCallActorsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Kind); err != nil {
 			return nil, err
 		}
-		items = append(items, name)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -69,7 +75,7 @@ SELECT c.id, c.at, c.token_prefix, c.tool, c.args, c.outcome, c.message, c.durat
        coalesce(a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
 FROM mcp_calls c
 LEFT JOIN actors a ON a.id = c.actor_id
-WHERE (?1 IS NULL OR a.name = ?1)
+WHERE (?1 IS NULL OR a.id = ?1)
   AND (?2 IS NULL OR c.tool = ?2)
   AND (?3 IS NULL OR c.id < ?3)
 ORDER BY c.id DESC
@@ -96,7 +102,7 @@ type ListMCPCallsRow struct {
 	ActorKind   string
 }
 
-// Newest first, optionally one agent (by name) and one tool, older than
+// Newest first, optionally one actor (by id) and one tool, older than
 // the call with id before (ULIDs sort by time).
 func (q *Queries) ListMCPCalls(ctx context.Context, arg ListMCPCallsParams) ([]ListMCPCallsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listMCPCalls,

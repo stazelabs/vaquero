@@ -612,9 +612,9 @@ func TokensPage(v TokensView) templ.Component {
 // to older calls when there are more.
 type MCPView struct {
 	Calls       []gen.ListMCPCallsRow
-	Agents      []string
+	Agents      []gen.ListMCPCallActorsRow
 	Tools       []string
-	Agent, Tool string
+	Agent, Tool string // Agent is an actor id
 	Older       string
 	Now         time.Time
 }
@@ -706,7 +706,7 @@ func MCPPage(v MCPView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			for _, a := range v.Agents {
-				var templ_7745c5c3_Var42 = []any{chipClass(v.Agent == a)}
+				var templ_7745c5c3_Var42 = []any{chipClass(v.Agent == a.ID)}
 				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var42...)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -716,9 +716,9 @@ func MCPPage(v MCPView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var43 templ.SafeURL
-				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(mcpFilterHref(a, v.Tool)))
+				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(mcpFilterHref(a.ID, v.Tool)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/admin.templ`, Line: 154, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/admin.templ`, Line: 154, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 				if templ_7745c5c3_Err != nil {
@@ -741,7 +741,7 @@ func MCPPage(v MCPView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if v.Agent == a {
+				if v.Agent == a.ID {
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, " aria-current=\"true\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -752,9 +752,9 @@ func MCPPage(v MCPView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var45 string
-				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(a)
+				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(mcpActorLabel(a, v.Agents))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/admin.templ`, Line: 159, Col: 9}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/admin.templ`, Line: 159, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {

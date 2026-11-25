@@ -58,12 +58,19 @@ func TestAdminMCPPage(t *testing.T) {
 	c := e.Client()
 	page := c.Get("/admin/mcp").Body
 	for _, want := range []string{"MCP activity", "ready_tickets", "get_ticket", "builder", "reviewer", "not_found", "No ticket VAQ-99.",
-		`data-live-mcp`, `hx-trigger="vq:mcp"`, `href="/admin/mcp"`, `data-icon="agent"`, `?agent=builder`, `?tool=get_ticket`} {
+		`data-live-mcp`, `hx-trigger="vq:mcp"`, `href="/admin/mcp"`, `data-icon="agent"`, `?tool=get_ticket`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("page lacks %q", want)
 		}
 	}
-	filtered := c.Get("/admin/mcp?agent=reviewer").Body
+	rev, err := e.Deps.Core.EnsureAgent(bg, e.Deps.Actor.ID, "reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, "?agent="+rev.ID) {
+		t.Error("the chip filters by actor id")
+	}
+	filtered := c.Get("/admin/mcp?agent=" + rev.ID).Body
 	if strings.Contains(filtered, "<td class=\"font-mono text-xs\">ready_tickets") || !strings.Contains(filtered, "No ticket VAQ-99.") {
 		t.Errorf("agent filter:\n%s", filtered)
 	}
@@ -73,3 +80,33 @@ func TestAdminMCPPage(t *testing.T) {
 }
 
 func mcpListAll() gen.ListMCPCallsParams { return gen.ListMCPCallsParams{Lim: 1000} }
+
+// VAQ-66: the filter is by actor id, so an agent called "Owner" is not the
+// human Owner, and the two chips are told apart.
+func TestAdminMCPFilterByActorNotName(t *testing.T) {
+	e, tok := agentEnv(t)
+	imp := mcpConnect(t, e, tok, "Owner")
+	mcpCall(t, imp, "ready_tickets", map[string]any{})
+	human := mcpConnect(t, e, tok, "")
+	mcpCall(t, human, "get_ticket", map[string]any{"key": "VAQ-1"})
+	agent, err := e.Deps.Core.EnsureAgent(bg, e.Deps.Actor.ID, "Owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if agent.ID == e.Deps.Actor.ID {
+		t.Fatal("an agent named Owner is the human Owner")
+	}
+	c := e.Client()
+	page := c.Get("/admin/mcp").Body
+	if !strings.Contains(page, "Owner (agent)") || !strings.Contains(page, "Owner (human)") {
+		t.Errorf("chips not told apart:\n%s", page)
+	}
+	byAgent := c.Get("/admin/mcp?agent=" + agent.ID).Body
+	if !strings.Contains(byAgent, "ready_tickets</td>") || strings.Contains(byAgent, "get_ticket</td>") {
+		t.Errorf("agent filter:\n%s", byAgent)
+	}
+	byHuman := c.Get("/admin/mcp?agent=" + e.Deps.Actor.ID).Body
+	if strings.Contains(byHuman, "ready_tickets</td>") || !strings.Contains(byHuman, "get_ticket</td>") {
+		t.Errorf("human filter:\n%s", byHuman)
+	}
+}
