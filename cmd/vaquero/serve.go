@@ -79,17 +79,10 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	}()
 
 	c := core.New(w, time.Now)
-	owner, err := c.EnsureOwner(ctx)
-	if err != nil {
-		return fmt.Errorf("owner: %w", err)
-	}
-	if err := ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir); err != nil {
-		return fmt.Errorf("local token: %w", err)
-	}
+	c.BlobStore = cfg.BlobBackend
 	// The instance id names blob keys; the backend lock keeps existing
-	// attachments from being stranded by a changed VQ_BLOB_STORE. The
-	// refusal comes before the backend is opened, so a refused one creates
-	// nothing.
+	// attachments from being stranded by a changed VQ_BLOB_STORE. Both come
+	// before anything else is written, so a refused boot changes nothing.
 	if _, err := ensureInstance(ctx, w, time.Now()); err != nil {
 		return fmt.Errorf("instance id: %w", err)
 	}
@@ -100,9 +93,18 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		return fmt.Errorf("blob store setting: %w", err)
 	}
 	// Opening checks the configuration now, so a bad directory or S3 setting
-	// stops the boot instead of the first upload. Nothing uses the store yet.
-	if _, err := blobs.Open(cfg, w, r, time.Now); err != nil {
+	// stops the boot instead of the first upload.
+	store, err := blobs.Open(cfg, w, r, time.Now)
+	if err != nil {
 		return fmt.Errorf("attachment store: %w", err)
+	}
+	_ = store // Task 4 hands it to the handlers
+	owner, err := c.EnsureOwner(ctx)
+	if err != nil {
+		return fmt.Errorf("owner: %w", err)
+	}
+	if err := ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir); err != nil {
+		return fmt.Errorf("local token: %w", err)
 	}
 	shutdown := make(chan struct{})
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown, Touch: gen.New(w), MCPCalls: gen.New(w),

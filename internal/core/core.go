@@ -23,6 +23,10 @@ import (
 type Core struct {
 	DB  *sql.DB          // the writer pool
 	Now func() time.Time // injected so tests control time
+
+	// BlobStore names the attachment backend ("sqlite", "dir" or "s3"). The
+	// first attachment records it in settings when nothing has yet.
+	BlobStore string
 }
 
 // New returns a Core writing through db.

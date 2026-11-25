@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -322,13 +323,38 @@ func settingsDump(t *testing.T, dir string) string {
 	return b.String()
 }
 
+// tableCounts is "table=rows ..." for the named tables.
+func tableCounts(t *testing.T, dir string, tables ...string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var b strings.Builder
+	for _, tbl := range tables {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM ` + tbl).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&b, "%s=%d ", tbl, n)
+	}
+	return b.String()
+}
+
 func TestServeRefusesBackendChange(t *testing.T) {
 	dir := t.TempDir()
 	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
 		t.Fatal(err)
 	}
 	addAttachmentRow(t, dir)
+	// A refused boot writes nothing: not the owner, not a token.
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.Remove(tokenFile); err != nil {
+		t.Fatal(err)
+	}
 	before := settingsDump(t, dir)
+	rowsBefore := tableCounts(t, dir, "actors", "api_tokens", "events")
 	err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir"})
 	want := "Attachments are stored in sqlite; VQ_BLOB_STORE is dir. Set it back to sqlite."
 	if err == nil || !strings.Contains(err.Error(), want) {
@@ -339,6 +365,12 @@ func TestServeRefusesBackendChange(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "attachments")); err == nil {
 		t.Fatal("the refused backend's directory was created")
+	}
+	if _, err := os.Stat(tokenFile); err == nil {
+		t.Fatal("the refused boot wrote the token file")
+	}
+	if rowsAfter := tableCounts(t, dir, "actors", "api_tokens", "events"); rowsAfter != rowsBefore {
+		t.Fatalf("the refused boot wrote rows: %s then %s", rowsBefore, rowsAfter)
 	}
 	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
 		t.Fatalf("the recorded backend must still boot: %v", err)

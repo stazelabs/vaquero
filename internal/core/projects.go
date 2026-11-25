@@ -173,6 +173,7 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 		}{
 			{"ticket tags", q.DeleteProjectTicketTags},
 			{"comments", q.DeleteProjectComments},
+			{"attachments", q.DeleteProjectAttachments},
 			{"links", q.DeleteProjectLinks},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))

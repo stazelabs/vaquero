@@ -82,6 +82,10 @@ func EventSentence(e EventView) string {
 		return "edited a comment on " + e.TicketKey
 	case core.EvCommentDeleted:
 		return "deleted a comment on " + e.TicketKey
+	case core.EvAttachmentAdded:
+		return "attached " + s("name")
+	case core.EvAttachmentDeleted:
+		return "removed the attachment " + s("name")
 	case core.EvLinkCreated:
 		switch s("kind") {
 		case "blocks":
@@ -179,7 +183,7 @@ var eventIcons = map[string]string{
 // prefixIcons are the glyphs for each kind's first word.
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
-	"comment": "comment", "link": "link", "token": "token",
+	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token",
 }
 
 // EventIcon is the glyph an activity line starts with.

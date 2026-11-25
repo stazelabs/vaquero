@@ -62,6 +62,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 	d := dbtest.New(t)
 	now := func() time.Time { return Start }
 	c := core.New(d.W, now)
+	c.BlobStore = "sqlite"
 	owner, err := c.EnsureOwner(context.Background())
 	if err != nil {
 		t.Fatalf("webtest: owner: %v", err)

@@ -37,8 +37,17 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 	if _, err := c.AddComment(bg, f.Owner.ID, f.T1.ID, "zanzibar"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := attach(c, f.Owner.ID, f.T1.ID, "gone.png"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := attach(c, f.Owner.ID, f.O1.ID, "stays.png"); err != nil {
+		t.Fatal(err)
+	}
 	if err := c.DeleteProject(bg, f.Owner.ID, f.Project.ID, "vaq"); err != nil {
 		t.Fatal(err)
+	}
+	if n := count(t, d, `SELECT count(*) FROM attachments`); n != 1 {
+		t.Errorf("attachments left: %d, want the other project's one", n)
 	}
 	for q, want := range map[string]int{
 		`SELECT count(*) FROM projects WHERE id = ?`:           0,

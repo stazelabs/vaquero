@@ -19,6 +19,7 @@ import (
 //   - status.deleted: {"name"}.
 //   - project.deleted: {"key", "name"}, with no project id (it is gone).
 //   - comment.*: {"comment_id"}.
+//   - attachment.added, attachment.deleted: {"attachment_id", "name"}.
 //   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
@@ -49,6 +50,8 @@ const (
 	EvCommentCreated    = "comment.created"
 	EvCommentUpdated    = "comment.updated"
 	EvCommentDeleted    = "comment.deleted"
+	EvAttachmentAdded   = "attachment.added"
+	EvAttachmentDeleted = "attachment.deleted"
 	EvLinkCreated       = "link.created"
 	EvLinkDeleted       = "link.deleted"
 	EvActorCreated      = "actor.created"
@@ -106,6 +109,7 @@ func EventKinds() []string {
 		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
 		EvTicketCreated, EvTicketUpdated, EvTicketReordered,
 		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
+		EvAttachmentAdded, EvAttachmentDeleted,
 		EvLinkCreated, EvLinkDeleted,
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
