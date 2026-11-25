@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -28,8 +30,11 @@ func (c *Core) MoveTicket(ctx context.Context, by, ticketID, statusID, beforeID,
 			return notFound(err, "get ticket")
 		}
 		to, err := q.GetStatus(ctx, statusID)
-		if err != nil || to.ProjectID != t.ProjectID {
+		switch {
+		case errors.Is(err, sql.ErrNoRows) || err == nil && to.ProjectID != t.ProjectID:
 			return invalid("status", "Choose a status from this project.")
+		case err != nil:
+			return fmt.Errorf("get status: %w", err)
 		}
 		col, err := q.ListColumn(ctx, statusID)
 		if err != nil {

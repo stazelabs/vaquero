@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -178,5 +179,22 @@ func TestMoveInPlaceWritesNothing(t *testing.T) {
 	}
 	if eventCount(t, d) != before {
 		t.Fatal("a drop in place wrote an event")
+	}
+}
+
+// A failed status lookup that isn't "no such status" is a server error, not
+// a field error telling the user to choose another status.
+func TestMoveTicketStatusLookupFailureIsNotAFieldError(t *testing.T) {
+	c, d, f := newFixture(t)
+	if _, err := d.W.Exec(`ALTER TABLE statuses RENAME TO statuses_gone`); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, f.Statuses[2].ID, "", "")
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	var inv *core.Invalid
+	if errors.As(err, &inv) {
+		t.Fatalf("a database failure was reported as a field error: %v", err)
 	}
 }
