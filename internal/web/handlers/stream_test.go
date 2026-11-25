@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -230,4 +231,16 @@ func TestStreamHonoursLastEventID(t *testing.T) {
 	same, _ := openStreamAt(t, e.Server.URL, "/events/stream?since="+before, now)
 	waitFor(t, same, "id: "+now, 200*time.Millisecond)
 	quiet(t, same, "event: change", 200*time.Millisecond)
+}
+
+// Pages and re-rendered forms carry the sequence; a redirecting POST and
+// an htmx swap don't need it and aren't given it.
+func TestPageSequenceOnlyOnPages(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	contains(t, c.Get("/p/VAQ/settings").Body, "data-event-seq=")
+	contains(t, c.Post("/p/VAQ/statuses", url.Values{"name": {"todo"}, "category": {"todo"}}).Body, "data-event-seq=")
+	contains(t, c.Post("/admin/tokens", url.Values{"name": {"ci"}}).Body, "data-event-seq=")
+	lacks(t, c.GetHX("/p/VAQ/list").Body, "data-event-seq=")
 }

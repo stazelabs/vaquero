@@ -118,12 +118,23 @@ func streamSince(r *http.Request) (seq int64, known bool) {
 
 // PageSeq records the newest event sequence before a page handler reads
 // anything (templates.WithEventSeq), so the page's live stream can catch up
-// on changes made after this point. htmx requests swap parts of a page that
-// already has it, and are left alone.
+// on changes made after this point. It acts on GET and HEAD requests that
+// render a whole page; htmx requests swap parts of a page that already has
+// it. FormSeq is the same for a POST whose refusal re-renders its page.
 func PageSeq(d Deps) func(http.Handler) http.Handler {
+	return withSeq(d, func(r *http.Request) bool { return r.Method == http.MethodGet || r.Method == http.MethodHead })
+}
+
+// FormSeq is PageSeq for a form POST that may answer with a page (a 422,
+// or the new-token page).
+func FormSeq(d Deps) func(http.Handler) http.Handler {
+	return withSeq(d, func(r *http.Request) bool { return r.Method == http.MethodPost })
+}
+
+func withSeq(d Deps, applies func(*http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Header.Get("HX-Request") != "true" {
+			if applies(r) && r.Header.Get("HX-Request") != "true" {
 				if seq, err := d.R.MaxEventSeq(r.Context()); err == nil {
 					r = r.WithContext(templates.WithEventSeq(r.Context(), seq))
 				}
