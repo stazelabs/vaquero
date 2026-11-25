@@ -251,6 +251,12 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 		_ = os.Remove(tmp)
 		return err
 	}
+	// A snapshot is a VACUUM INTO copy, which may renumber the rowids the
+	// search indexes are keyed on.
+	if err := appdb.RebuildSearchFile(ctx, tmp); err != nil {
+		removeDatabase(tmp)
+		return fmt.Errorf("couldn't rebuild search in %s, so nothing changed: %w", name, err)
+	}
 	aside, err := swapDatabase(ctx, cfg, tmp)
 	if err != nil {
 		_ = os.Remove(tmp)

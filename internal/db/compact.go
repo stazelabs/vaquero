@@ -9,7 +9,8 @@ import (
 
 // RebuildSearch rebuilds both search indexes from the tickets and comments
 // they index, leaving deleted comments out as the triggers do. An import
-// runs it after loading, and CompactInto in its copy.
+// runs it after loading, CompactInto in its copy, and a restore in the
+// snapshot's copy (RebuildSearchFile).
 func RebuildSearch(ctx context.Context, tx *sql.Tx) error {
 	for _, q := range []string{
 		"INSERT INTO tickets_fts (tickets_fts) VALUES ('rebuild')",
@@ -54,7 +55,15 @@ func CompactInto(ctx context.Context, src *sql.DB, dest string) (err error) {
 	if err := vacuumInto(ctx, path, dest); err != nil {
 		return err
 	}
-	c, err := openCopyConn(dest)
+	return RebuildSearchFile(ctx, dest)
+}
+
+// RebuildSearchFile runs RebuildSearch in the closed database file at path,
+// on a connection of its own. A restore runs it in the snapshot's copy
+// before the swap: a snapshot is a VACUUM INTO copy, so its rowids may have
+// moved under its indexes.
+func RebuildSearchFile(ctx context.Context, path string) error {
+	c, err := openCopyConn(path)
 	if err != nil {
 		return err
 	}

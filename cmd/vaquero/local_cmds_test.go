@@ -395,3 +395,33 @@ func TestSyncDir(t *testing.T) {
 		t.Fatal("a missing directory synced")
 	}
 }
+
+// A snapshot is a VACUUM INTO copy, which may renumber the rowids the search
+// indexes are keyed on, so a restore rebuilds both before the swap.
+func TestRestoreRebuildsSearch(t *testing.T) {
+	dataDir := seedData(t)
+	runCLI(t, "projects")
+	if code, _, e := runCLI(t, "ticket", "new", "VAQ", "Rope the lasso"); code != 0 {
+		t.Fatalf("ticket new: %s", e)
+	}
+	runCLI(t, "stop")
+	path := filepath.Join(dataDir, "vaquero.db")
+	dropFromSearch(t, path) // the snapshot carries a stale index
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	name := snapshotNow(t, dataDir)
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 5, 0, time.UTC))
+	if code, out, e := runCLI(t, "backup", "restore", name); code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if left, _ := filepath.Glob(path + ".restore*"); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+	d, err := appdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); err != nil || len(hits) != 1 {
+		t.Fatalf("search after restoring: %d hits, %v", len(hits), err)
+	}
+}

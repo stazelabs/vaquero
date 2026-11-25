@@ -195,3 +195,34 @@ func TestCompactWithoutDatabase(t *testing.T) {
 		t.Fatalf("%d %q", code, e)
 	}
 }
+
+// rowCounts leaves out only the search indexes' tables: an underscore in a
+// LIKE pattern is a wildcard, so "gifts" must not read as "_fts".
+func TestRowCountsSkipsOnlySearchTables(t *testing.T) {
+	d, err := appdb.Open(filepath.Join(t.TempDir(), "x.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	for _, q := range []string{
+		`CREATE TABLE gifts (id INTEGER)`,
+		`INSERT INTO gifts VALUES (1), (2)`,
+		`CREATE VIRTUAL TABLE tickets_fts USING fts5(title)`,
+	} {
+		if _, err := d.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := rowCounts(t.Context(), d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["gifts"] != 2 {
+		t.Fatalf("gifts left out: %v", got)
+	}
+	for name := range got {
+		if strings.Contains(name, "_fts") {
+			t.Fatalf("%s counted: %v", name, got)
+		}
+	}
+}

@@ -39,7 +39,7 @@ var verifyCompacted = func(ctx context.Context, w *sql.DB, want map[string]int64
 // rowCounts is the row count of every table but the search indexes',
 // which the copy rebuilds.
 func rowCounts(ctx context.Context, d *sql.DB) (map[string]int64, error) {
-	rows, err := d.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%_fts%'`)
+	rows, err := d.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '*_fts*'`)
 	if err != nil {
 		return nil, err
 	}
