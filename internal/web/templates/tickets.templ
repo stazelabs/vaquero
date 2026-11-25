@@ -4,6 +4,7 @@ import (
 	"html/template"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/web/flash"
 )
 
 // TicketForm is the new-ticket and edit-ticket form.
@@ -38,6 +39,12 @@ type CommentRow struct {
 	Edited               bool
 }
 
+// AttachmentRow is one file on the ticket page.
+type AttachmentRow struct {
+	ID, Name, URL, Size, By, Ago string
+	CanDelete                    bool
+}
+
 // TicketView is the ticket page.
 type TicketView struct {
 	Project                    gen.Project
@@ -52,6 +59,7 @@ type TicketView struct {
 	Subs                       []TicketRef
 	Links                      []LinkGroup
 	Comments                   []CommentRow
+	Attachments                []AttachmentRow
 	Events                     []EventView
 	LinkKind, LinkTo, LinkErr  string
 	CommentBody, CommentErr    string
@@ -73,13 +81,21 @@ templ TicketFormPage(f TicketForm) {
 				@helpLink("editing-and-conflicts", "About conflicts")
 			</div>
 		}
+		if f.TicketKey != "" {
+			@attachSupport()
+		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
 			if f.Version != "" {
 				<input type="hidden" name="version" value={ f.Version }/>
 			}
 			<div class="space-y-4 lg:col-span-2">
 				@TextInput(InputProps{Name: "title", Label: "Title", Value: f.Title, Required: true, Error: f.Errors["title"]})
-				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"]})
+				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey)})
+				if f.TicketKey == "" {
+					<p class="text-sm text-muted">Attach files after creating the ticket.</p>
+				} else {
+					<p class="text-sm text-muted">Paste or drop files into the description to attach them.</p>
+				}
 			</div>
 			<div class="space-y-4">
 				@Select(SelectProps{Name: "status", Label: "Status", Selected: f.StatusID, Options: f.Statuses, Error: f.Errors["status"]})
@@ -108,6 +124,7 @@ templ TicketFormPage(f TicketForm) {
 templ TicketPage(v TicketView) {
 	@Shell(v.Key + " " + v.Ticket.Title) {
 		<span hidden data-project={ v.Project.Key }></span>
+		@attachSupport()
 		<p class="font-mono text-sm text-muted">
 			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
 		</p>
@@ -181,6 +198,40 @@ templ TicketPage(v TicketView) {
 						<button type="submit" class={ btnSecondary }>Add link</button>
 					</form>
 				</section>
+				<section id="attachments" hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#attachments" hx-swap="outerHTML" data-live>
+					<h2 class={ h2IconClass }>
+						@Icon("attachment")
+						Attachments
+					</h2>
+					if len(v.Attachments) == 0 {
+						<p class="mt-2 text-sm text-muted">No attachments.</p>
+					}
+					<ul class="mt-2 space-y-1">
+						for _, a := range v.Attachments {
+							<li class="flex flex-wrap items-center gap-x-3 text-sm">
+								<a href={ templ.SafeURL(a.URL) } class="break-all text-accent hover:underline">{ a.Name }</a>
+								<span class="text-xs text-muted">{ a.Size } · { a.By } · { a.Ago }</span>
+								if a.CanDelete {
+									<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") }>
+										<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
+									</form>
+								}
+							</li>
+						}
+					</ul>
+					<div
+						data-attach-well
+						{ attachAttrs(v.Key)... }
+						class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted data-[over]:border-accent data-[over]:bg-accent/10"
+					>
+						<span>Drop files here, paste into a text box, or</span>
+						<input type="file" multiple hidden data-attach-input tabindex="-1" aria-label="Files to attach"/>
+						<button type="button" data-attach-choose class={ btnSecondary + " gap-1.5" }>
+							@Icon("attachment")
+							Choose files
+						</button>
+					</div>
+				</section>
 				<section id="comments">
 					<h2 class={ h2IconClass }>
 						@Icon("comment")
@@ -195,7 +246,7 @@ templ TicketPage(v TicketView) {
 						}
 					</ul>
 					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/comments") } class="mt-4 space-y-3">
-						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr})
+						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key)})
 						<button type="submit" class={ btnPrimary }>Add comment</button>
 					</form>
 				</section>
@@ -314,4 +365,12 @@ templ EventLine(e EventView) {
 		<span class="font-medium text-ink">{ e.Actor }</span> { EventSentence(e) }
 		<span class="text-xs text-muted">· { e.Ago }</span>
 	</li>
+}
+
+// attachSupport carries what app.js needs to report an upload client-side:
+// the error toast's markup, inert until it is cloned.
+templ attachSupport() {
+	<template id="vq-toast-template">
+		@toast(flash.Flash{Kind: flash.Error})
+	</template>
 }

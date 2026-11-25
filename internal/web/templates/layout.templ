@@ -93,7 +93,7 @@ templ toast(f flash.Flash) {
 			} else {
 				@Icon("success")
 			}
-			<span class="min-w-0">{ f.Message }</span>
+			<span class="min-w-0" data-toast-message>{ f.Message }</span>
 		</span>
 		<button type="button" data-toast-close aria-label="Dismiss" class="shrink-0 rounded-md p-1 opacity-80 hover:opacity-100">
 			@Icon("close")

@@ -307,3 +307,141 @@ window.vqDragging = false;
   setInterval(tick, 30000);
   document.body.addEventListener("htmx:afterSettle", tick);
 })();
+
+// Attachments: paste or drop files on a [data-attach-url] text box, or drop
+// or choose them on the well, and each is uploaded to that address. In a
+// text box the file's place is held by "Uploading {name}…" at the cursor,
+// then swapped for the Markdown the server answers with (or removed, and
+// the refusal shown as a toast). Handlers sit on the document so they
+// survive the live refresh that replaces the attachments section.
+(function () {
+  function toast(message) {
+    var tpl = document.getElementById("vq-toast-template");
+    if (!tpl) { return; }
+    var old = document.getElementById("vq-toast");
+    if (old) { old.remove(); }
+    var el = tpl.content.firstElementChild.cloneNode(true);
+    el.querySelector("[data-toast-message]").textContent = message;
+    var btn = el.querySelector("[data-toast-close]");
+    if (btn) {
+      btn.addEventListener("click", function () { el.remove(); });
+    }
+    document.body.appendChild(el);
+  }
+
+  function hasFiles(ev) {
+    var dt = ev.dataTransfer;
+    return !!dt && Array.prototype.indexOf.call(dt.types || [], "Files") >= 0;
+  }
+
+  // The placeholder goes at the cursor, and the cursor moves past it.
+  function insertAtCursor(box, text) {
+    var start = box.selectionStart, end = box.selectionEnd;
+    if (typeof start !== "number") { start = end = box.value.length; }
+    box.value = box.value.slice(0, start) + text + box.value.slice(end);
+    box.selectionStart = box.selectionEnd = start + text.length;
+  }
+
+  function swapPlaceholder(box, placeholder, text) {
+    var at = box.value.indexOf(placeholder);
+    if (at < 0) { return; }
+    var cursor = box.selectionStart;
+    box.value = box.value.slice(0, at) + text + box.value.slice(at + placeholder.length);
+    var delta = text.length - placeholder.length;
+    if (cursor > at) { cursor += delta; }
+    box.selectionStart = box.selectionEnd = cursor;
+  }
+
+  function refreshList() {
+    if (!window.htmx) { return; }
+    document.querySelectorAll("#attachments[data-live]").forEach(function (el) {
+      window.htmx.trigger(el, "vq:change");
+    });
+  }
+
+  function upload(url, max, file, box) {
+    var name = file.name || "file";
+    if (max > 0 && file.size > max) {
+      toast("Files can be at most " + Math.round(max / 1048576) + " MB.");
+      return Promise.resolve();
+    }
+    var placeholder = "Uploading " + name + "…";
+    if (box) { insertAtCursor(box, placeholder); }
+    var form = new FormData();
+    form.append("file", file, name);
+    return fetch(url, { method: "POST", body: form, credentials: "same-origin" })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          if (res.ok && body.markdown) {
+            if (box) { swapPlaceholder(box, placeholder, body.markdown); }
+            return;
+          }
+          if (box) { swapPlaceholder(box, placeholder, ""); }
+          toast((body.error && body.error.message) || "The upload failed. Try again.");
+        });
+      })
+      .catch(function () {
+        if (box) { swapPlaceholder(box, placeholder, ""); }
+        toast("The upload failed. Try again.");
+      });
+  }
+
+  function uploadAll(target, files, box) {
+    var url = target.getAttribute("data-attach-url");
+    var max = parseInt(target.getAttribute("data-max-bytes") || "0", 10);
+    var list = Array.prototype.slice.call(files);
+    // One at a time, so the placeholders land in the order the files came.
+    list.reduce(function (p, f) {
+      return p.then(function () { return upload(url, max, f, box); });
+    }, Promise.resolve()).then(refreshList);
+  }
+
+  function boxOf(ev) {
+    return ev.target.closest ? ev.target.closest("textarea[data-attach-url]") : null;
+  }
+  function wellOf(ev) {
+    return ev.target.closest ? ev.target.closest("[data-attach-well]") : null;
+  }
+
+  document.addEventListener("paste", function (ev) {
+    var box = boxOf(ev);
+    var files = ev.clipboardData && ev.clipboardData.files;
+    if (!box || !files || files.length === 0) { return; }
+    ev.preventDefault();
+    uploadAll(box, files, box);
+  });
+
+  document.addEventListener("dragover", function (ev) {
+    var t = boxOf(ev) || wellOf(ev);
+    if (!t || !hasFiles(ev)) { return; }
+    ev.preventDefault();
+    var well = wellOf(ev);
+    if (well) { well.setAttribute("data-over", ""); }
+  });
+  document.addEventListener("dragleave", function (ev) {
+    var well = wellOf(ev);
+    if (well && !well.contains(ev.relatedTarget)) { well.removeAttribute("data-over"); }
+  });
+  document.addEventListener("drop", function (ev) {
+    var box = boxOf(ev), well = wellOf(ev);
+    if (well) { well.removeAttribute("data-over"); }
+    if (!(box || well) || !hasFiles(ev)) { return; }
+    ev.preventDefault();
+    uploadAll(box || well, ev.dataTransfer.files, box);
+  });
+
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest ? ev.target.closest("[data-attach-choose]") : null;
+    if (!btn) { return; }
+    var well = btn.closest("[data-attach-well]");
+    var input = well && well.querySelector("[data-attach-input]");
+    if (input) { input.click(); }
+  });
+  document.addEventListener("change", function (ev) {
+    var input = ev.target;
+    if (!input.matches || !input.matches("[data-attach-input]")) { return; }
+    var well = input.closest("[data-attach-well]");
+    if (well && input.files.length > 0) { uploadAll(well, input.files, null); }
+    input.value = "";
+  });
+})();

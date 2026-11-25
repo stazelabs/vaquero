@@ -14,6 +14,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/markdown"
 	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/units"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
@@ -327,6 +328,18 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			ID: c.ID, Author: c.AuthorName, Raw: c.Body, Body: markdown.Render(c.Body),
 			Ago: timefmt.Ago(at, now, nil), Mine: c.AuthorID == d.Actor.ID,
 			Editing: c.ID == editing && c.AuthorID == d.Actor.ID, Edited: c.UpdatedAt != c.CreatedAt,
+		})
+	}
+	atts, err := d.R.ListTicketAttachments(ctx, t.ID)
+	if err != nil {
+		return v, err
+	}
+	owner := d.Actor.Kind == "human" && d.Actor.Name == core.OwnerName
+	for _, a := range atts {
+		at, _ := timefmt.Parse(a.CreatedAt)
+		v.Attachments = append(v.Attachments, templates.AttachmentRow{
+			ID: a.ID, Name: a.Name, URL: attachmentURL(gen.Attachment{ID: a.ID, Name: a.Name}), Size: units.SizeWords(a.Size),
+			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: owner || a.UploadedBy == d.Actor.ID,
 		})
 	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))

@@ -15,6 +15,7 @@ import (
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/lockfile"
 	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/units"
 )
 
 // The commands here work on this machine's data directory without a
@@ -159,22 +160,10 @@ func backupList(c *cmd, dir string) error {
 	}
 	var rows [][]string
 	for _, b := range all {
-		rows = append(rows, []string{b.Name, sizeWords(b.Size), timefmt.DisplayUTC(b.ModTime)})
+		rows = append(rows, []string{b.Name, units.SizeWords(b.Size), timefmt.DisplayUTC(b.ModTime)})
 	}
 	c.table(rows)
 	return nil
-}
-
-// sizeWords is a byte count for people: "812 KB", "3.4 MB".
-func sizeWords(n int64) string {
-	switch {
-	case n >= 1<<30:
-		return fmt.Sprintf("%.1f GB", float64(n)/(1<<30))
-	case n >= 1<<20:
-		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
-	default:
-		return fmt.Sprintf("%d KB", (n+1023)/1024)
-	}
 }
 
 // backupRestore puts the backup called name in place of the database,

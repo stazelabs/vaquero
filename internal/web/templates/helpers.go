@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 )
@@ -172,4 +173,16 @@ func utcOf(stamp string) string {
 		return stamp
 	}
 	return timefmt.DisplayUTC(t)
+}
+
+// attachAttrs makes an element a paste and drop target for uploads to the
+// ticket with this key; app.js reads the address and the size limit.
+func attachAttrs(ticketKey string) templ.Attributes {
+	if ticketKey == "" {
+		return nil
+	}
+	return templ.Attributes{
+		"data-attach-url": "/t/" + ticketKey + "/attachments",
+		"data-max-bytes":  strconv.Itoa(core.MaxAttachment),
+	}
 }
