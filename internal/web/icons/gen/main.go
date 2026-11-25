@@ -25,8 +25,8 @@ func main() { genUI("internal/web/icons") }
 // uiElem matches one Lucide drawing element and its attributes; uiAttr one
 // attribute. Only the elements and attributes in uiAllowed reach the page.
 var (
-	uiElem    = regexp.MustCompile(`<([a-z]+)((?:\s+[a-z0-9-]+="[^"]*")*)\s*/?>`)
-	uiAttr    = regexp.MustCompile(`([a-z0-9-]+)="([^"]*)"`)
+	uiElem    = regexp.MustCompile(`<([a-z]+)((?:\s+[A-Za-z0-9:-]+="[^"]*")*)\s*/?>`)
+	uiAttr    = regexp.MustCompile(`([A-Za-z0-9:-]+)="([^"]*)"`)
 	uiAllowed = map[string][]string{
 		"path":     {"d"},
 		"circle":   {"cx", "cy", "r"},
@@ -60,7 +60,11 @@ func genUI(dir string) {
 		if err != nil {
 			log.Fatalf("ui icon %q (%s): %v (run npm install)", name, src, err)
 		}
-		fmt.Fprintf(&out, "\t%q: %q,\n", name, uiInner(name, string(svg)))
+		inner, err := uiInner(name, string(svg))
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Fprintf(&out, "\t%q: %q,\n", name, inner)
 	}
 	out.WriteString("}\n")
 	formatted, err := format.Source(out.Bytes())
@@ -72,18 +76,25 @@ func genUI(dir string) {
 	}
 }
 
-// uiInner rebuilds an icon's drawing elements from the allowlist, refusing
-// anything else inside the <svg>.
-func uiInner(name, svg string) string {
+// uiComment matches an XML comment (Lucide's files start with a licence one).
+var uiComment = regexp.MustCompile(`(?s)<!--.*?-->`)
+
+// uiInner rebuilds an icon's drawing elements from the allowlist. Anything
+// it can't parse (an element or attribute it doesn't recognise, markup in a
+// shape the matcher skips) is an error, never silently dropped.
+func uiInner(name, svg string) (string, error) {
+	svg = uiComment.ReplaceAllString(svg, "")
 	var inner strings.Builder
+	rest := svg
 	for _, e := range uiElem.FindAllStringSubmatch(svg, -1) {
+		rest = strings.Replace(rest, e[0], "", 1)
 		tag := e[1]
 		if tag == "svg" {
 			continue
 		}
 		keep, ok := uiAllowed[tag]
 		if !ok {
-			log.Fatalf("ui icon %q: element <%s> isn't allowed", name, tag)
+			return "", fmt.Errorf("ui icon %q: element <%s> isn't allowed", name, tag)
 		}
 		attrs := map[string]string{}
 		for _, a := range uiAttr.FindAllStringSubmatch(e[2], -1) {
@@ -92,7 +103,7 @@ func uiInner(name, svg string) string {
 				continue
 			}
 			if !slices.Contains(keep, a[1]) || !pathData.MatchString(a[2]) {
-				log.Fatalf("ui icon %q: <%s %s=%q> isn't allowed", name, tag, a[1], a[2])
+				return "", fmt.Errorf("ui icon %q: <%s %s=%q> isn't allowed", name, tag, a[1], a[2])
 			}
 			attrs[a[1]] = a[2]
 		}
@@ -104,8 +115,12 @@ func uiInner(name, svg string) string {
 		}
 		inner.WriteString("></" + tag + ">")
 	}
-	if inner.Len() == 0 {
-		log.Fatalf("ui icon %q: nothing to draw", name)
+	// What the matcher didn't take: the closing </svg> and whitespace only.
+	if left := strings.TrimSpace(strings.ReplaceAll(rest, "</svg>", "")); left != "" {
+		return "", fmt.Errorf("ui icon %q: can't parse %.60q", name, left)
 	}
-	return inner.String()
+	if inner.Len() == 0 {
+		return "", fmt.Errorf("ui icon %q: nothing to draw", name)
+	}
+	return inner.String(), nil
 }

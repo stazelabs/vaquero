@@ -12,9 +12,11 @@ import "github.com/stazelabs/vaquero/internal/web/icons"
 
 // Icon is a 16px UI glyph (internal/web/icons, Lucide) beside the text it
 // belongs to: hidden from screen readers and drawn in the text colour. It is
-// never the only label of a link or button; an icon-only button uses IconLg
-// and carries aria-label. An unknown name renders nothing (and
-// TestEveryIconNameKnown fails).
+// never the only label of a link or button: an icon-only link or button
+// carries aria-label (TestIconOnlyButtonsLabelled), and uses IconLg where
+// there is room for the larger size (the toast's close button is small, so
+// it uses Icon). An unknown name renders nothing (and TestEveryIconNameKnown
+// fails).
 func Icon(name string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -123,7 +125,7 @@ func IconClass(name, class string) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/icon.templ`, Line: 23, Col: 196}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/icon.templ`, Line: 25, Col: 196}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 			if templ_7745c5c3_Err != nil {

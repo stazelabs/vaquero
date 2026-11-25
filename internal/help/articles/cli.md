@@ -28,7 +28,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]` | List tickets; done and cancelled are left out unless `--status` or `--all` |
 | `vaquero ticket show TICKET` | A ticket with its sub-tickets, links and comments |
 | `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME]` | Create a ticket; prints its key |
-| `vaquero ticket edit TICKET [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given |
+| `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
 | `vaquero comment TICKET TEXT` | Add a comment |
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |

@@ -4,9 +4,11 @@ import "github.com/stazelabs/vaquero/internal/web/icons"
 
 // Icon is a 16px UI glyph (internal/web/icons, Lucide) beside the text it
 // belongs to: hidden from screen readers and drawn in the text colour. It is
-// never the only label of a link or button; an icon-only button uses IconLg
-// and carries aria-label. An unknown name renders nothing (and
-// TestEveryIconNameKnown fails).
+// never the only label of a link or button: an icon-only link or button
+// carries aria-label (TestIconOnlyButtonsLabelled), and uses IconLg where
+// there is room for the larger size (the toast's close button is small, so
+// it uses Icon). An unknown name renders nothing (and TestEveryIconNameKnown
+// fails).
 templ Icon(name string) {
 	@IconClass(name, "h-4 w-4 shrink-0")
 }

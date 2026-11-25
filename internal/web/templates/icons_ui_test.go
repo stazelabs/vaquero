@@ -89,7 +89,8 @@ func TestEveryEventKindHasIcon(t *testing.T) {
 }
 
 // An icon-only link or button carries aria-label.
-var iconOnly = regexp.MustCompile(`(?s)<(a|button)\b([^>]*)>\s*@Icon(?:Lg|Class)?\([^)]*\)\s*</(?:a|button)>`)
+// The icon may sit in a span (or a few) inside it.
+var iconOnly = regexp.MustCompile(`(?s)<(a|button)\b([^>]*)>\s*(?:<span\b[^>]*>\s*)*@Icon(?:Lg|Class)?\([^)]*\)\s*(?:</span>\s*)*</(?:a|button)>`)
 
 func TestIconOnlyButtonsLabelled(t *testing.T) {
 	files, _ := filepath.Glob("*.templ")
@@ -113,5 +114,55 @@ func TestShortcutsDocumented(t *testing.T) {
 		if !strings.Contains(a.Markdown, "`"+s[0]+"`") {
 			t.Errorf("shortcut %q isn't documented", s[0])
 		}
+	}
+}
+
+// A key app.js handles is in the shortcuts list (and so, by
+// TestShortcutsDocumented, in the article): adding a case to the keydown
+// handler without listing it fails here.
+func TestEveryHandledKeyIsListed(t *testing.T) {
+	b, err := os.ReadFile("../static/js/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(b)
+	start := strings.Index(src, `addEventListener("keydown"`)
+	if start < 0 {
+		t.Fatal("no keydown handler in app.js")
+	}
+	end := strings.Index(src[start:], "\n  });")
+	handler := src[start : start+end]
+	listed := map[string]bool{}
+	for _, s := range shortcuts {
+		for _, k := range strings.FieldsFunc(s[0], func(r rune) bool { return r == ' ' || r == '/' && len(s[0]) > 1 }) {
+			listed[k] = true
+		}
+	}
+	keys := regexp.MustCompile(`case "(.)":|\bk === "(.)"`)
+	seen := 0
+	for _, m := range keys.FindAllStringSubmatch(handler, -1) {
+		k := m[1] + m[2]
+		seen++
+		if !listed[k] {
+			t.Errorf("app.js handles %q, which the shortcuts list lacks", k)
+		}
+	}
+	if seen < 6 {
+		t.Fatalf("found %d keys in the handler; the scan needs updating", seen)
+	}
+}
+
+// The icon-only scan sees an icon wrapped in a span.
+func TestIconOnlyScanSeesWrappedIcons(t *testing.T) {
+	for _, src := range []string{
+		`<button type="button"><span class="x">@Icon("close")</span></button>`,
+		`<a href="/x">@IconLg("close")</a>`,
+	} {
+		if !iconOnly.MatchString(src) {
+			t.Errorf("not seen: %s", src)
+		}
+	}
+	if iconOnly.MatchString(`<a href="/x">@Icon("close") Close</a>`) {
+		t.Error("an icon beside text counts as icon-only")
 	}
 }
