@@ -24,6 +24,7 @@ import (
 // that doesn't parse or doesn't exist goes home with a toast. ok is false
 // when the response is already written.
 func ticketFromURL(w http.ResponseWriter, r *http.Request, d Deps) (t gen.Ticket, p gen.Project, ok bool) {
+	templates.LoadEventSeq(r.Context()) // before the ticket is read
 	raw := chi.URLParam(r, "ticket")
 	k, parsed := core.ParseTicketKey(raw)
 	if !parsed {

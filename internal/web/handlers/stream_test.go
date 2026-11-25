@@ -295,10 +295,14 @@ func TestFormRerenderReadsSequenceBeforeData(t *testing.T) {
 		if _, err := e.Deps.Core.AddComment(bg, e.Deps.Actor.ID, tk.ID, "Added between"); err != nil {
 			t.Error(err)
 		}
+		title := "Renamed between"
+		if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Title: &title}, 0); err != nil {
+			t.Error(err)
+		}
 	})
 	r := c.Post("/t/VAQ-1/links", url.Values{"kind": {"blocks"}, "to": {"nonsense"}})
 	if r.Status != http.StatusUnprocessableEntity {
 		t.Fatalf("refusal: %d", r.Status)
 	}
-	contains(t, r.Body, "Added between", `data-event-seq="`+strconv.FormatInt(before, 10)+`"`)
+	contains(t, r.Body, "Added between", "Renamed between", `data-event-seq="`+strconv.FormatInt(before, 10)+`"`)
 }
