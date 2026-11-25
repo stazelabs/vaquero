@@ -29,7 +29,8 @@ const importFile = "vaquero.import.db"
 // instance, with the server stopped. It is the one writer of the tracker
 // tables outside core, and runs offline.
 //
-// All or nothing: the archive is read and checked, a new database is built
+// All or nothing: the archive is read and checked (its attachment bytes
+// spooled into {data dir}/import-spool-…, removed on every way out), a new database is built
 // at {data dir}/vaquero.import.db (attachment bytes put into the configured
 // store first, under a fresh instance id), checked, and only then swapped
 // in by swapDatabase. Until the swap, any failure deletes the new file and
@@ -111,7 +112,8 @@ func importArchive(ctx context.Context, cfg config.Config, file string) (importR
 	if err := checkEmpty(ctx, cfg.DBPath); err != nil {
 		return res, err
 	}
-	rd, err := archive.Read(f)
+	removeSpools(cfg.DataDir)
+	rd, err := archive.Read(f, cfg.DataDir)
 	if err != nil {
 		return res, notImported{err}
 	}
@@ -151,6 +153,15 @@ func checkEmpty(ctx context.Context, path string) error {
 		return message(fmt.Sprintf("Import needs an empty instance; this one has %s and %s.", count(projects, "project"), count(tickets, "ticket")))
 	}
 	return nil
+}
+
+// removeSpools deletes the attachment spools an interrupted import left in
+// dataDir; the caller holds its lock, so none is in use.
+func removeSpools(dataDir string) {
+	left, _ := filepath.Glob(filepath.Join(dataDir, archive.SpoolPrefix+"*"))
+	for _, p := range left {
+		_ = os.RemoveAll(p)
+	}
 }
 
 // removeDatabase deletes a database file and its WAL and shared memory.

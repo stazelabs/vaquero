@@ -117,7 +117,8 @@ func rewriteEntry(t *testing.T, b []byte, edit func(name string, data []byte) []
 func importLeftovers(t *testing.T, dataDir string) []string {
 	t.Helper()
 	got, _ := filepath.Glob(filepath.Join(dataDir, "vaquero.import.db*"))
-	return got
+	spools, _ := filepath.Glob(filepath.Join(dataDir, "import-spool-*"))
+	return append(got, spools...)
 }
 
 // dirObjects counts the objects in a dir store's root.
@@ -142,6 +143,17 @@ func TestRoundTrip(t *testing.T) {
 			t.Setenv("VQ_BLOB_STORE", backend)
 			h := importHeader(t, 0)
 			file := seededArchive(t, h, nil)
+			// The spool goes under the data directory, never the system's
+			// temporary one (often a small tmpfs); one an interrupted
+			// import left is removed.
+			t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+			stale := filepath.Join(dataDir, "import-spool-123", "0")
+			if err := os.MkdirAll(filepath.Dir(stale), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+				t.Fatal(err)
+			}
 			code, out, e := runCLI(t, "import", file)
 			if code != 0 {
 				t.Fatalf("%d %q", code, e)

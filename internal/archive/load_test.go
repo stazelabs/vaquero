@@ -4,8 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -50,11 +52,16 @@ func edited(t *testing.T, edit func(string) string) []byte {
 	return repack(t, entries)
 }
 
+// read reads b, spooling into a fresh directory; a refused read must leave
+// that directory empty.
 func read(t *testing.T, b []byte) (*archive.Reader, error) {
 	t.Helper()
-	rd, err := archive.Read(bytes.NewReader(b))
+	dir := t.TempDir()
+	rd, err := archive.Read(bytes.NewReader(b), dir)
 	if err == nil {
 		t.Cleanup(func() { rd.Close() })
+	} else if left, _ := os.ReadDir(dir); len(left) != 0 {
+		t.Fatalf("a refused read left %v behind", left)
 	}
 	return rd, err
 }
@@ -98,8 +105,12 @@ func TestReadExport(t *testing.T) {
 	if _, _, ok := rd.Blob("nope"); ok {
 		t.Fatal("a blob for an unknown id")
 	}
-	// Close removes the spooled files.
+	// The spool is a directory of its own under the one Read was given (the
+	// data directory, for an import), and Close removes it.
 	dir := rd.SpoolDir()
+	if !strings.HasPrefix(filepath.Base(dir), "import-spool-") {
+		t.Fatalf("spool dir %s", dir)
+	}
 	if err := rd.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -157,28 +168,41 @@ func TestReadRefuses(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			before, _ := os.ReadDir(os.TempDir())
+			// read fails the test if a refused read leaves its spool behind.
 			_, err := read(t, tc.file)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("got %v, want %q", err, tc.want)
-			}
-			// A refused read leaves no spool directory behind.
-			after, _ := os.ReadDir(os.TempDir())
-			if spools(after) > spools(before) {
-				t.Fatal("a spool directory was left behind")
 			}
 		})
 	}
 }
 
-func spools(es []os.DirEntry) int {
-	n := 0
-	for _, e := range es {
-		if strings.HasPrefix(e.Name(), "vaquero-import-") {
-			n++
-		}
+// The free space where the spool goes is checked against the attachments'
+// total size before a byte is spooled.
+func TestReadChecksFreeSpace(t *testing.T) {
+	d, store := seeded(t)
+	file := export(t, d, store)
+	var total int64
+	if err := d.R.QueryRowContext(bg, "SELECT sum(size) FROM attachments").Scan(&total); err != nil {
+		t.Fatal(err)
 	}
-	return n
+	var asked string
+	archive.SetFreeBytes(t, func(path string) (int64, error) { asked = path; return total - 1, nil })
+	dir := t.TempDir()
+	_, err := archive.Read(bytes.NewReader(file), dir)
+	var refused *archive.Refused
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "needs 1 KB free in "+dir+", and 1 KB is free") || asked != dir {
+		t.Fatalf("%v (asked about %q)", err, asked)
+	}
+	if left, _ := os.ReadDir(dir); len(left) != 0 {
+		t.Fatalf("left %v", left)
+	}
+	archive.SetFreeBytes(t, func(string) (int64, error) { return total, nil })
+	rd, err := archive.Read(bytes.NewReader(file), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd.Close()
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
@@ -364,14 +388,9 @@ func TestReadRefusesHardening(t *testing.T) {
 		}), "twice"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before, _ := os.ReadDir(os.TempDir())
 			_, err := read(t, tc.file)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("got %v, want %q", err, tc.want)
-			}
-			after, _ := os.ReadDir(os.TempDir())
-			if spools(after) > spools(before) {
-				t.Fatal("a spool directory was left behind")
 			}
 		})
 	}
