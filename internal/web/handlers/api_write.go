@@ -35,15 +35,26 @@ type names struct {
 	d      Deps
 	p      gen.Project
 	fields map[string]string
+	err    error // a database error: the answer is a 500, not a field message
+}
+
+// lookup records a failed read: a database error as n.err, so it isn't
+// reported as a name that matches nothing.
+func (n *names) lookup(err error) bool {
+	if err != nil && n.err == nil {
+		n.err = err
+	}
+	return err == nil
 }
 
 func (n *names) status(name string) string {
 	ss, err := n.d.R.ListStatuses(n.ctx, n.p.ID)
-	if err == nil {
-		for _, s := range ss {
-			if strings.EqualFold(s.Name, strings.TrimSpace(name)) {
-				return s.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, s := range ss {
+		if strings.EqualFold(s.Name, strings.TrimSpace(name)) {
+			return s.ID
 		}
 	}
 	n.fields["status"] = "No status " + name + " in " + n.p.Key + "."
@@ -55,11 +66,12 @@ func (n *names) assignee(name string) string {
 		return ""
 	}
 	as, err := n.d.R.ListActors(n.ctx)
-	if err == nil {
-		for _, a := range as {
-			if strings.EqualFold(a.Name, strings.TrimSpace(name)) {
-				return a.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, a := range as {
+		if strings.EqualFold(a.Name, strings.TrimSpace(name)) {
+			return a.ID
 		}
 	}
 	n.fields["assignee"] = "No one is called " + name + "."
@@ -71,35 +83,48 @@ func (n *names) milestone(name string) string {
 		return ""
 	}
 	ms, err := n.d.R.ListMilestones(n.ctx, n.p.ID)
-	if err == nil {
-		for _, m := range ms {
-			if strings.EqualFold(m.Name, strings.TrimSpace(name)) {
-				return m.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, m := range ms {
+		if strings.EqualFold(m.Name, strings.TrimSpace(name)) {
+			return m.ID
 		}
 	}
 	n.fields["milestone"] = "No milestone " + name + " in " + n.p.Key + "."
 	return ""
 }
 
-func (n *names) parent(key string) string {
+func (n *names) parent(key string) string { return n.ticket("parent", key) }
+
+// ticket resolves the ticket key in field ("" is none).
+func (n *names) ticket(field, key string) string {
 	if strings.TrimSpace(key) == "" {
 		return ""
 	}
 	k, ok := core.ParseTicketKey(key)
 	if !ok {
-		n.fields["parent"] = "That isn't a ticket key."
+		n.fields[field] = "That isn't a ticket key."
 		return ""
 	}
 	t, _, err := n.d.Core.ResolveTicket(n.ctx, n.d.R, k)
-	if err != nil {
-		n.fields["parent"] = "No ticket " + k.String() + "."
+	if errors.Is(err, core.ErrNotFound) {
+		n.fields[field] = "No ticket " + k.String() + "."
+		return ""
+	}
+	if !n.lookup(err) {
 		return ""
 	}
 	return t.ID
 }
 
-func (n *names) fail(w http.ResponseWriter) bool {
+// fail answers the lookups' failure, if any: a database error as a 500,
+// names that match nothing as a 422 with a message per field.
+func (n *names) fail(w http.ResponseWriter, r *http.Request) bool {
+	if n.err != nil {
+		apiFail(w, r, n.d, api.Internal(), n.err)
+		return true
+	}
 	if len(n.fields) == 0 {
 		return false
 	}
@@ -156,7 +181,7 @@ func APIProjectUpdate(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, projectDTO(np, 0))
+		writeProject(w, r, d, np, http.StatusOK)
 	}
 }
 
@@ -177,7 +202,7 @@ func APIProjectKey(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, projectDTO(np, 0))
+		writeProject(w, r, d, np, http.StatusOK)
 	}
 }
 
@@ -231,7 +256,7 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		pt := in.patch(n)
-		if n.fail(w) {
+		if n.fail(w, r) {
 			return
 		}
 		input := core.TicketInput{}
@@ -278,7 +303,7 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		pt := in.patch(n)
-		if n.fail(w) {
+		if n.fail(w, r) {
 			return
 		}
 		nt, err := d.Core.PatchTicket(r.Context(), apiActor(r).ID, t.ID, pt, in.Version)
@@ -300,17 +325,6 @@ func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p
 }
 
 // keyID resolves a ticket key to its id, "" when it doesn't name one.
-func keyID(r *http.Request, d Deps, key string) string {
-	k, ok := core.ParseTicketKey(key)
-	if !ok {
-		return ""
-	}
-	t, _, err := d.Core.ResolveTicket(r.Context(), d.R, k)
-	if err != nil {
-		return ""
-	}
-	return t.ID
-}
 
 // APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?, after?}.
 func APITicketMove(d Deps) http.HandlerFunc {
@@ -326,10 +340,11 @@ func APITicketMove(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		status := n.status(in.Status)
-		if n.fail(w) {
+		before, after := n.ticket("before", in.Before), n.ticket("after", in.After)
+		if n.fail(w, r) {
 			return
 		}
-		nt, err := d.Core.MoveTicket(r.Context(), apiActor(r).ID, t.ID, status, keyID(r, d, in.Before), keyID(r, d, in.After))
+		nt, err := d.Core.MoveTicket(r.Context(), apiActor(r).ID, t.ID, status, before, after)
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
 			return

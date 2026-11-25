@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cmp"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -104,19 +105,25 @@ func APIProject(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		rows, err := d.R.ListProjects(r.Context())
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		var open int64
-		for _, row := range rows {
-			if row.ID == p.ID {
-				open = row.OpenCount
-			}
-		}
-		api.WriteJSON(w, http.StatusOK, projectDTO(p, open))
+		writeProject(w, r, d, p, http.StatusOK)
 	}
+}
+
+// writeProject answers p with its open ticket count, as a read or after a
+// write.
+func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, status int) {
+	rows, err := d.R.ListProjects(r.Context())
+	if err != nil {
+		apiFail(w, r, d, api.Internal(), err)
+		return
+	}
+	var open int64
+	for _, row := range rows {
+		if row.ID == p.ID {
+			open = row.OpenCount
+		}
+	}
+	api.WriteJSON(w, status, projectDTO(p, open))
 }
 
 // APIStatuses is GET /api/v1/projects/{key}/statuses.
@@ -204,7 +211,7 @@ func APITickets(d Deps) http.HandlerFunc {
 		if c := q.Get("category"); c != "" && !slices.Contains(core.Categories, c) {
 			n.fields["category"] = "No category " + c + ". Use " + orList(core.Categories) + "."
 		}
-		if n.fail(w) {
+		if n.fail(w, r) {
 			return
 		}
 		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
@@ -291,24 +298,34 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	for _, g := range tags {
 		out.Tags = append(out.Tags, g.Name)
 	}
-	// Ready matches the board: read it from the board query's row.
-	rows, err := d.R.ListBoardTickets(ctx, gen.ListBoardTicketsParams{ProjectID: p.ID})
+	// Ready and the claim match the board: read them from the board
+	// query's row, narrowed to this ticket; the sub-tickets are its rows
+	// too, so they are the same summaries as the list's.
+	rows, err := d.R.ListBoardTickets(ctx, gen.ListBoardTicketsParams{ProjectID: p.ID, TicketID: sqlNull(t.ID)})
 	if err != nil {
 		return out, err
 	}
 	for _, row := range rows {
-		if row.ID == t.ID {
-			out.Ready = row.Ready
-			out.ClaimedBy, out.ClaimExpiresAt = row.ClaimantName, row.ClaimExpiresAt
-		}
+		out.Ready = row.Ready
+		out.ClaimedBy, out.ClaimExpiresAt = row.ClaimantName, row.ClaimExpiresAt
 	}
-	subs, err := d.R.ListSubTickets(ctx, sqlNull(t.ID))
+	subs, err := d.R.ListBoardTickets(ctx, gen.ListBoardTicketsParams{ProjectID: p.ID, ParentID: sqlNull(t.ID)})
 	if err != nil {
 		return out, err
 	}
+	slices.SortFunc(subs, func(a, b gen.ListBoardTicketsRow) int { return cmp.Compare(a.Number, b.Number) })
 	for _, s := range subs {
+		subTags, err := d.R.ListTicketTags(ctx, s.ID)
+		if err != nil {
+			return out, err
+		}
+		names := make([]string, 0, len(subTags))
+		for _, g := range subTags {
+			names = append(names, g.Name)
+		}
 		out.SubTickets = append(out.SubTickets, api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
-			Category: s.StatusCategory, Priority: s.Priority, Tags: []string{}, Version: s.Version})
+			Category: s.StatusCategory, Priority: s.Priority, Assignee: s.AssigneeName, Tags: names, Ready: s.Ready, Version: s.Version,
+			ClaimedBy: s.ClaimantName, ClaimExpiresAt: s.ClaimExpiresAt})
 	}
 	from, err := d.R.ListLinksFrom(ctx, t.ID)
 	if err != nil {
