@@ -83,6 +83,15 @@ func TestProjectKeyCaseRedirect(t *testing.T) {
 	}
 }
 
+func TestProjectKeyCaseRedirectKeepsQuery(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	r := e.Client().Get("/p/vaq/new?parent=VAQ-1")
+	if r.Status != 301 || r.Location != "/p/VAQ/new?parent=VAQ-1" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+}
+
 func TestUnknownProjectRedirects(t *testing.T) {
 	c := webtest.New(t).Client()
 	r := c.Get("/p/NOPE")

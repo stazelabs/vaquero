@@ -16,13 +16,17 @@ import (
 )
 
 // projectFromURL loads the {key} project. A GET with a non-canonical key
-// (lowercase) is redirected 301 to the canonical path; an unknown key goes
+// (lowercase) is redirected 301 to the canonical path, query kept; an unknown key goes
 // home with a toast. ok is false when the response is already written.
 func projectFromURL(w http.ResponseWriter, r *http.Request, d Deps) (p gen.Project, ok bool) {
 	key := chi.URLParam(r, "key")
 	upper := strings.ToUpper(key)
 	if key != upper && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		http.Redirect(w, r, strings.Replace(r.URL.Path, "/p/"+key, "/p/"+upper, 1), http.StatusMovedPermanently)
+		to := strings.Replace(r.URL.Path, "/p/"+key, "/p/"+upper, 1)
+		if r.URL.RawQuery != "" {
+			to += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, to, http.StatusMovedPermanently)
 		return p, false
 	}
 	p, err := d.R.GetProjectByKey(r.Context(), upper)
