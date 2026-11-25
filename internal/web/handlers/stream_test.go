@@ -14,6 +14,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/web"
+	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -243,4 +244,32 @@ func TestPageSequenceOnlyOnPages(t *testing.T) {
 	contains(t, c.Post("/p/VAQ/statuses", url.Values{"name": {"todo"}, "category": {"todo"}}).Body, "data-event-seq=")
 	contains(t, c.Post("/admin/tokens", url.Values{"name": {"ci"}}).Body, "data-event-seq=")
 	lacks(t, c.GetHX("/p/VAQ/list").Body, "data-event-seq=")
+}
+
+// A form POST reads the event sequence only when it re-renders its page:
+// a save that redirects never needs it.
+func TestFormSequenceReadOnlyOnRerender(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	reads := handlers.CountSeqReads(t)
+	if r := c.Post("/p/VAQ/statuses", url.Values{"name": {"Waiting"}, "category": {"todo"}}); r.Status != http.StatusSeeOther {
+		t.Fatalf("save: %d", r.Status)
+	}
+	if n := reads.Load(); n != 0 {
+		t.Fatalf("a redirecting save read the sequence %d times", n)
+	}
+	r := c.Post("/p/VAQ/statuses", url.Values{"name": {"todo"}, "category": {"todo"}})
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal: %d", r.Status)
+	}
+	contains(t, r.Body, `data-event-seq="`+strconv.FormatInt(seqNow(t, e), 10)+`"`)
+	if n := reads.Load(); n != 1 {
+		t.Fatalf("a re-rendered form read the sequence %d times, want 1", n)
+	}
+	reads.Store(0)
+	contains(t, c.Get("/p/VAQ/settings").Body, "data-event-seq=")
+	if n := reads.Load(); n != 1 {
+		t.Fatalf("a page read the sequence %d times, want 1", n)
+	}
 }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -126,16 +127,35 @@ func PageSeq(d Deps) func(http.Handler) http.Handler {
 }
 
 // FormSeq is PageSeq for a form POST that may answer with a page (a 422,
-// or the new-token page).
+// or the new-token page), read lazily: a POST that redirects never reads it,
+// and one that re-renders reads it when invalidOrError is about to re-read
+// the page (templates.LoadEventSeq), or else when the page renders.
 func FormSeq(d Deps) func(http.Handler) http.Handler {
-	return withSeq(d, func(r *http.Request) bool { return r.Method == http.MethodPost })
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.Header.Get("HX-Request") != "true" {
+				ctx := r.Context()
+				// The request's context, not one detached from it: the read
+				// happens while the handler still runs.
+				r = r.WithContext(templates.WithEventSeqFunc(ctx, func() (int64, bool) {
+					seq, err := readEventSeq(ctx, d)
+					return seq, err == nil
+				}))
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
+
+// readEventSeq reads the newest event sequence; a test counts the reads.
+var readEventSeq = func(ctx context.Context, d Deps) (int64, error) { return d.R.MaxEventSeq(ctx) }
 
 func withSeq(d Deps, applies func(*http.Request) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if applies(r) && r.Header.Get("HX-Request") != "true" {
-				if seq, err := d.R.MaxEventSeq(r.Context()); err == nil {
+				// A page reads it first, before anything it shows.
+				if seq, err := readEventSeq(r.Context(), d); err == nil {
 					r = r.WithContext(templates.WithEventSeq(r.Context(), seq))
 				}
 			}

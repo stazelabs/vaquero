@@ -188,3 +188,35 @@ func TestTagFilterFoldsUnicode(t *testing.T) {
 		}
 	}
 }
+
+// A tag filter naming a tag that doesn't exist shows nothing, never
+// everything: not on the board's columns or rails, not in the list.
+func TestUnknownTagFilterShowsNothing(t *testing.T) {
+	e := newEnv(t)
+	e.ticket(t, core.TicketInput{Title: "tagged", Tags: []string{"ui"}})
+	e.ticket(t, core.TicketInput{Title: "plain"})
+	e.ticket(t, core.TicketInput{Title: "later", StatusID: e.st["Backlog"].ID})
+	e.ticket(t, core.TicketInput{Title: "dropped", StatusID: e.st["Cancelled"].ID})
+	count := func(cols []board.Column) int {
+		n := 0
+		for _, c := range cols {
+			n += len(c.Cards)
+		}
+		return n
+	}
+	if b := e.load(t, any_()); count(b.Active)+count(b.Rails) != 4 {
+		t.Fatalf("unfiltered: %d active, %d on rails", count(b.Active), count(b.Rails))
+	}
+	f := any_().With("tag", "no-such-tag")
+	b := e.load(t, f)
+	if n, r := count(b.Active), count(b.Rails); n != 0 || r != 0 {
+		t.Fatalf("board: %d active, %d on rails", n, r)
+	}
+	list, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := count(list); n != 0 {
+		t.Fatalf("list: %d cards", n)
+	}
+}

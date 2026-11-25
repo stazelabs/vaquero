@@ -48,6 +48,7 @@ func invalidOrError(w http.ResponseWriter, r *http.Request, d Deps, err error, r
 	var inv *core.Invalid
 	switch {
 	case errors.As(err, &inv):
+		templates.LoadEventSeq(r.Context()) // before rerender reads the page again
 		rerender(inv.Fields)
 	case errors.Is(err, core.ErrNotFound):
 		redirectWithFlash(w, r, flash.Error, "That no longer exists.", "/")
