@@ -9,6 +9,30 @@ import (
 	"context"
 )
 
+const blocksReach = `-- name: BlocksReach :one
+WITH RECURSIVE reach(id) AS (
+    SELECT CAST(?2 AS TEXT)
+    UNION
+    SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id = r.id WHERE l.kind = 'blocks'
+)
+SELECT CAST(EXISTS (SELECT 1 FROM reach WHERE id = ?1) AS BOOLEAN)
+`
+
+type BlocksReachParams struct {
+	Target string
+	Start  string
+}
+
+// Whether start blocks target, directly or through a chain of "blocks"
+// links: the loop check's decision, with no cap (UNION visits each ticket
+// once).
+func (q *Queries) BlocksReach(ctx context.Context, arg BlocksReachParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, blocksReach, arg.Target, arg.Start)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createLink = `-- name: CreateLink :one
 INSERT INTO ticket_links (id, from_id, to_id, kind, created_at) VALUES (?, ?, ?, ?, ?) RETURNING id, from_id, to_id, kind, created_at
 `

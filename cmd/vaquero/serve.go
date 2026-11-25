@@ -71,7 +71,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	// last, after the WAL checkpoint (defers run in reverse).
 	release, held, err := lockfile.Acquire(cfg.DataDir)
 	if errors.Is(err, lockfile.ErrLocked) {
-		return fmt.Errorf("another vaquero is using %s (pid %d)", cfg.DataDir, held)
+		return inUse(cfg.DataDir, held)
 	}
 	if err != nil {
 		return fmt.Errorf("data directory lock: %w", err)
@@ -196,6 +196,15 @@ func prepareDataDir(dir string, logger *slog.Logger) error {
 		logger.Warn("the data directory is open to other users, and it holds the API token; run chmod 700 "+dir, "path", dir, "mode", fmt.Sprintf("%04o", perm))
 	}
 	return nil
+}
+
+// inUse is the refusal of a second server on dir, whose lock pid holds (0:
+// a pid that couldn't be read, left out).
+func inUse(dir string, pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("another vaquero is using %s", dir)
+	}
+	return fmt.Errorf("another vaquero is using %s (pid %d)", dir, pid)
 }
 
 // Settings keys written by serve.

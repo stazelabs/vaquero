@@ -468,3 +468,13 @@ func TestBlobLocationRefusals(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// VAQ-61: a holder whose pid couldn't be read isn't "(pid 0)".
+func TestInUseMessage(t *testing.T) {
+	if got := inUse("/d", 42).Error(); got != "another vaquero is using /d (pid 42)" {
+		t.Errorf("%q", got)
+	}
+	if got := inUse("/d", 0).Error(); got != "another vaquero is using /d" {
+		t.Errorf("%q", got)
+	}
+}

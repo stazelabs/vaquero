@@ -35,3 +35,14 @@ WHERE l.from_id = ? AND l.kind = 'blocks';
 
 -- name: LinkExists :one
 SELECT count(*) FROM ticket_links WHERE from_id = ? AND to_id = ? AND kind = ?;
+
+-- name: BlocksReach :one
+-- Whether start blocks target, directly or through a chain of "blocks"
+-- links: the loop check's decision, with no cap (UNION visits each ticket
+-- once).
+WITH RECURSIVE reach(id) AS (
+    SELECT CAST(sqlc.arg(start) AS TEXT)
+    UNION
+    SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id = r.id WHERE l.kind = 'blocks'
+)
+SELECT CAST(EXISTS (SELECT 1 FROM reach WHERE id = sqlc.arg(target)) AS BOOLEAN);

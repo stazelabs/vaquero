@@ -96,8 +96,9 @@ func (c *Core) RemoveLink(ctx context.Context, by, linkID string) error {
 	})
 }
 
-// maxLoopWalk bounds the blocking-chain walk.
-const maxLoopWalk = 1000
+// maxLoopWalk bounds the walk that names a loop's chain in its message.
+// The decision itself (BlocksReach) has no cap.
+var maxLoopWalk = 1000
 
 // checkLoop refuses a link that would close a loop: from blocking target
 // when target already blocks from (directly or through a chain), or from
@@ -118,7 +119,15 @@ func (c *Core) checkLoop(ctx context.Context, q *gen.Queries, from, target gen.T
 			return invalid("to", keyOf(p.Key, target.Number)+" already duplicates this ticket.")
 		}
 	case "blocks":
-		// Walk outward from target along "blocks"; reaching from is a loop.
+		// A loop when target already blocks from, however long the chain.
+		loop, err := q.BlocksReach(ctx, gen.BlocksReachParams{Start: target.ID, Target: from.ID})
+		if err != nil {
+			return fmt.Errorf("check blocks: %w", err)
+		}
+		if !loop {
+			return nil
+		}
+		// Walk outward from target along "blocks" to name the chain.
 		type step struct {
 			id, key string
 			prev    int
@@ -153,6 +162,7 @@ func (c *Core) checkLoop(ctx context.Context, q *gen.Queries, from, target gen.T
 				}
 			}
 		}
+		return invalid("to", "That would make a loop: "+queue[0].key+" blocks this ticket through a chain of blocking tickets.")
 	}
 	return nil
 }
