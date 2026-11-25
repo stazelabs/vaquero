@@ -59,15 +59,24 @@ window.vqToast = function (message) {
 // answer: a board that arrives mid-drag isn't swapped in under the card;
 // when that drag ends without a move the board is fetched afresh, and when
 // it ends in a move that drop's answer is the latest. A drop that fails
-// (an error answer, or no answer) puts the card back, says so and fetches
-// the board again.
+// (an error answer, or no answer) puts its own card back, says so and
+// fetches the board again. Each drop's request carries a number in a
+// Vaquero-Drop header, and where its card came from is remembered under that
+// number, so when two drops overlap the failed one's card is the one put
+// back.
 window.vqDragging = false;
 (function () {
   function key(el) {
     return el && el.dataset ? el.dataset.card || "" : "";
   }
   var deferred = false; // a board answer was held back mid-drag
-  var lastDrop = null; // {item, from, index}: where the dropped card came from
+  var drops = {}; // drop number → {item, from, index}: where its card came from
+  var dropSeq = 0;
+  function dropOf(ev) {
+    var cfg = ev.detail && ev.detail.requestConfig;
+    var n = cfg && cfg.headers ? Number(cfg.headers["Vaquero-Drop"]) : NaN;
+    return isNaN(n) ? 0 : n;
+  }
   function refreshBoard() {
     var board = document.getElementById("board");
     if (board && window.htmx) {
@@ -89,8 +98,9 @@ window.vqDragging = false;
     if (!isDrop(ev)) {
       return;
     }
-    var d = lastDrop;
-    lastDrop = null;
+    var n = dropOf(ev);
+    var d = drops[n];
+    delete drops[n];
     if (d && d.item.isConnected && !window.vqDragging) {
       // Out first, so the index counts the list as it was before the drag
       // (an upward move in one column would otherwise land one too low).
@@ -102,6 +112,19 @@ window.vqDragging = false;
   }
   document.body.addEventListener("htmx:responseError", dropFailed);
   document.body.addEventListener("htmx:sendError", dropFailed);
+  // A drop that succeeded answers with the whole board, so it and every
+  // earlier drop (including one htmx dropped from its queue) are settled.
+  document.body.addEventListener("htmx:afterRequest", function (ev) {
+    if (!isDrop(ev) || !ev.detail.successful) {
+      return;
+    }
+    var n = dropOf(ev);
+    Object.keys(drops).forEach(function (k) {
+      if (Number(k) <= n) {
+        delete drops[k];
+      }
+    });
+  });
   function init(root) {
     if (!window.Sortable || !window.htmx) {
       return;
@@ -132,11 +155,13 @@ window.vqDragging = false;
             return;
           }
           deferred = false; // this drop's answer will be the latest board
-          lastDrop = { item: ev.item, from: ev.from, index: ev.oldIndex };
+          dropSeq += 1;
+          drops[dropSeq] = { item: ev.item, from: ev.from, index: ev.oldIndex };
           var board = document.getElementById("board");
           window.htmx.ajax("POST", "/t/" + key(ev.item) + "/move", {
             target: "#board",
             swap: "outerHTML",
+            headers: { "Vaquero-Drop": String(dropSeq) },
             values: {
               status: ev.to.dataset.status,
               before: key(ev.item.previousElementSibling),
