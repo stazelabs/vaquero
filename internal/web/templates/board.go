@@ -7,13 +7,6 @@ import (
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
-func boolAttr(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
-}
-
 func chipClass(on bool) string {
 	base := "rounded-full border px-3 py-0.5 text-xs "
 	if on {
