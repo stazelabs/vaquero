@@ -80,7 +80,18 @@ jobs:
         run: |
           go run ./scripts/formula -version "$TAG" -checksums dist/checksums.txt -o dist/vaquero.rb
           path=repos/stazelabs/homebrew-vaquero/contents/Formula/vaquero.rb
-          sha=$(gh api "$path" --jq .sha 2>/dev/null || true)
+          # The file's blob sha, empty when it doesn't exist yet. On an error gh
+          # prints the error body to stdout (skipping --jq), so only a real 404
+          # counts as missing; any other error stops here.
+          err=$(mktemp)
+          if out=$(gh api "$path" --jq .sha 2>"$err"); then
+            sha=$out
+          elif grep -q 'HTTP 404' "$err"; then
+            sha=
+          else
+            cat "$err" >&2
+            exit 1
+          fi
           if [ "$sha" = "$(git hash-object dist/vaquero.rb)" ]; then
             echo "Formula/vaquero.rb is already the $TAG formula"
             exit 0

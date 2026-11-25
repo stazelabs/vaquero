@@ -104,8 +104,12 @@ func TestBrewManaged(t *testing.T) {
 	}
 	for _, goos := range []string{"darwin", "linux"} {
 		p := brewServiceFile(home, goos)
-		os.MkdirAll(filepath.Dir(p), 0o700)
-		os.WriteFile(p, nil, 0o600)
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for name, c := range map[string]struct {
 		goos, dir string
@@ -137,10 +141,16 @@ func TestBrewManagedSymlink(t *testing.T) {
 		return ""
 	}
 	p := brewServiceFile(home, "darwin")
-	os.MkdirAll(filepath.Dir(p), 0o700)
-	os.WriteFile(p, nil, 0o600)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	def := filepath.Join(home, "Library", "Application Support", "vaquero")
-	os.MkdirAll(def, 0o700)
+	if err := os.MkdirAll(def, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(home, "link")
 	if err := os.Symlink(def, link); err != nil {
 		t.Fatal(err)
