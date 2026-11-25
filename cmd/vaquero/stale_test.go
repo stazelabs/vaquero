@@ -218,3 +218,64 @@ func TestStaleRestartWaitsForASlowStart(t *testing.T) {
 		t.Fatalf("%d %q", code, e)
 	}
 }
+
+// A server for this address that runs from another data directory isn't
+// this CLI's to restart: nothing is stopped, and the restart line isn't
+// printed on every command.
+func TestStaleServerFromAnotherDataDirIsLeftAlone(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	before := serverAt(t, dataDir, "0.1.0")
+	other := filepath.Join(t.TempDir(), "other")
+	if err := os.MkdirAll(other, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := os.ReadFile(filepath.Join(dataDir, "token"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other, "token"), tok, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VQ_DATA_DIR", other)
+	asRelease(t, "0.2.0")
+	for range 2 {
+		_, _, e := runCLI(t, "projects")
+		if strings.Contains(e, "restarting") {
+			t.Fatalf("restart line for a server this data directory doesn't hold: %q", e)
+		}
+	}
+	if pid, running, _ := lockfile.Holder(dataDir); !running || pid != before {
+		t.Fatal("the other data directory's server was stopped")
+	}
+}
+
+// stop doesn't signal a restore or import: it holds the lock, with a role
+// that says so.
+func TestStopLeavesAMaintenanceHolderAlone(t *testing.T) {
+	dir := t.TempDir()
+	release, _, err := lockfile.AcquireRole(dir, lockfile.RoleMaintenance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	// The holder is this process: a signal would end the test.
+	stopped, err := stopLocal(t.Context(), dir, time.Second, 0)
+	if stopped || err == nil || !strings.Contains(err.Error(), "restore or import") {
+		t.Fatalf("stopped %v, err %v", stopped, err)
+	}
+}
+
+// A server another command already replaced isn't stopped again: the pid
+// the probe was answered by is no longer the holder.
+func TestStopLocalOnlyStopsTheServerItWasAskedAbout(t *testing.T) {
+	dir := t.TempDir()
+	release, _, err := lockfile.Acquire(dir) // this process holds it
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	stopped, err := stopLocal(t.Context(), dir, time.Second, os.Getpid()+1)
+	if stopped || err != nil {
+		t.Fatalf("stopped %v, err %v", stopped, err)
+	}
+}

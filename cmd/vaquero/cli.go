@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/client"
+	"github.com/stazelabs/vaquero/internal/lockfile"
 	"github.com/stazelabs/vaquero/internal/version"
 )
 
@@ -157,6 +158,13 @@ func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) er
 	if client.IsDev(own) {
 		return nil
 	}
+	// Only a server this data directory's lock names is ours to replace; one
+	// from another data directory (same address) is left alone, and the pid
+	// pins the stop to the server the probe is about to be answered by.
+	pid, held, _ := lockfile.Holder(p.DataDir)
+	if !held {
+		return nil
+	}
 	probe := &client.Client{BaseURL: p.URL, Token: p.Token, Version: own}
 	if err := probe.Do(ctx, "GET", "/api/v1/me", nil, nil); err != nil {
 		return nil // the command's own request reports any problem
@@ -166,8 +174,8 @@ func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) er
 		return nil
 	}
 	fmt.Fprintf(c.stderr, "vaquero: restarting the local server to run %s (it was running %s)\n", own, running)
-	if _, err := stopLocal(ctx, p.DataDir, stopWait); err != nil {
-		return err
+	if stopped, err := stopLocal(ctx, p.DataDir, stopWait, pid); err != nil || !stopped {
+		return err // not stopped: another command already replaced it
 	}
 	return startLocal(ctx, exe, p)
 }

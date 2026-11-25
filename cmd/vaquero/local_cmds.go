@@ -77,10 +77,21 @@ var errBrewServices = message("Vaquero runs under brew services; run brew servic
 // drains like Ctrl-C) and waits until it lets go. stopped is false when
 // nothing was running. A different server taking the lock meanwhile (a
 // service manager's restart, or another command's) also ends the wait.
-func stopLocal(ctx context.Context, dataDir string, wait time.Duration) (stopped bool, err error) {
-	pid, running, err := lockfile.Holder(dataDir)
+//
+// expect, when not 0, is the pid of the server the caller meant to stop (the
+// one that answered its probe): if another holds the lock by now, it was
+// already replaced and nothing is stopped. A restore or import holds the
+// lock too, and is never signalled.
+func stopLocal(ctx context.Context, dataDir string, wait time.Duration, expect int) (stopped bool, err error) {
+	pid, role, running, err := lockfile.HolderRole(dataDir)
 	if err != nil || !running {
 		return false, err
+	}
+	if role == lockfile.RoleMaintenance {
+		return false, message("A restore or import is replacing the database in " + dataDir + "; wait for it to finish.")
+	}
+	if expect != 0 && pid != expect {
+		return false, nil
 	}
 	if pid <= 0 {
 		return false, fmt.Errorf("vaquero is running on %s, but its process id couldn't be read", dataDir)
@@ -117,7 +128,7 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	if brewService() {
 		return c.finish(errBrewServices)
 	}
-	stopped, err := stopLocal(ctx, cfg.DataDir, stopWait)
+	stopped, err := stopLocal(ctx, cfg.DataDir, stopWait, 0)
 	if err != nil {
 		return c.finish(err)
 	}
@@ -172,7 +183,7 @@ func backupList(c *cmd, dir string) error {
 // lockStopped takes the data directory's lock, which a running server
 // holds: the commands that replace the database need it stopped.
 func lockStopped(dataDir string) (release func(), err error) {
-	release, _, err = lockfile.Acquire(dataDir)
+	release, _, err = lockfile.AcquireRole(dataDir, lockfile.RoleMaintenance)
 	if errors.Is(err, lockfile.ErrLocked) {
 		if brewService() {
 			return nil, message("Stop vaquero first: brew services stop vaquero")
@@ -269,7 +280,20 @@ func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside
 	if err := os.Rename(newPath, cfg.DBPath); err != nil {
 		return fail(err)
 	}
+	// Make the rename itself durable; the swap has happened either way, so
+	// a failure here isn't one.
+	_ = syncDir(filepath.Dir(cfg.DBPath))
 	return aside, nil
+}
+
+// syncDir flushes a directory's entries (a rename in it) to disk.
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 // moveDatabase renames the database at from, with its WAL and shared

@@ -254,3 +254,12 @@ func TestServerOnlySettingsStopOnlyServeAndImport(t *testing.T) {
 		t.Fatalf("import: %d %q", code, e)
 	}
 }
+
+func TestSyncDir(t *testing.T) {
+	if err := syncDir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncDir(filepath.Join(t.TempDir(), "absent")); err == nil {
+		t.Fatal("a missing directory synced")
+	}
+}
