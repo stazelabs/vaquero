@@ -122,3 +122,14 @@ func TestCrossOriginRefusesCrossSitePost(t *testing.T) {
 		t.Fatal("a same-origin POST must pass")
 	}
 }
+
+// VAQ-16: a response with no write is logged as the 200 the client sees.
+func TestLoggerLogsStatus200ForEmptyResponse(t *testing.T) {
+	var logs strings.Builder
+	h := Logger(slog.New(slog.NewTextHandler(&logs, nil)))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != 200 || !strings.Contains(logs.String(), "status=200") {
+		t.Fatalf("%d %s", rec.Code, logs.String())
+	}
+}

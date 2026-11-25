@@ -5,7 +5,6 @@ package dbtest
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,47 +21,59 @@ type DB struct {
 }
 
 var (
-	once    sync.Once
-	tplPath string
-	tplErr  error
+	once   sync.Once
+	tplDB  []byte
+	tplErr error
+	// tplDir is where the template was built; it is gone once built.
+	tplDir string
 )
 
-func template() (string, error) {
+// template returns the migrated database's bytes. The file it was built in
+// is read into memory and its directory removed, so a test run leaves
+// nothing in the temp directory.
+func template() ([]byte, error) {
 	once.Do(func() {
 		dir, err := os.MkdirTemp("", "vaquero-db-template-")
 		if err != nil {
 			tplErr = err
 			return
 		}
+		tplDir = dir
+		defer os.RemoveAll(dir)
 		p := filepath.Join(dir, "template.db")
 		w, err := appdb.Open(p)
 		if err != nil {
 			tplErr = err
 			return
 		}
-		defer w.Close()
 		if err := appdb.Migrate(w); err != nil {
+			w.Close()
 			tplErr = fmt.Errorf("migrate template: %w", err)
 			return
 		}
 		if err := appdb.Checkpoint(w); err != nil {
+			w.Close()
 			tplErr = err
 			return
 		}
-		tplPath = p
+		if err := w.Close(); err != nil {
+			tplErr = err
+			return
+		}
+		tplDB, tplErr = os.ReadFile(p)
 	})
-	return tplPath, tplErr
+	return tplDB, tplErr
 }
 
 // New returns a fresh migrated database unique to t.
 func New(t testing.TB) DB {
 	t.Helper()
-	src, err := template()
+	tpl, err := template()
 	if err != nil {
 		t.Fatalf("dbtest: %v", err)
 	}
 	dst := filepath.Join(t.TempDir(), "test.db")
-	if err := copyFile(src, dst); err != nil {
+	if err := os.WriteFile(dst, tpl, 0o600); err != nil {
 		t.Fatalf("dbtest: copy: %v", err)
 	}
 	w, err := appdb.Open(dst)
@@ -76,21 +87,4 @@ func New(t testing.TB) DB {
 	}
 	t.Cleanup(func() { r.Close(); w.Close() })
 	return DB{W: w, R: r, Q: gen.New(w), RQ: gen.New(r)}
-}
-
-func copyFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	return out.Close()
 }

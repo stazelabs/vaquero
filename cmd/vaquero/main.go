@@ -113,12 +113,9 @@ func shutdownContext() (context.Context, context.CancelFunc) {
 	return ctx, stop
 }
 
-// openDB opens the writer (migrated) and a reader pool on path, creating
-// the directory as needed.
+// openDB opens the writer (migrated) and a reader pool on path, whose
+// directory exists (serve makes it).
 func openDB(ctx context.Context, path, backupDir string, now time.Time, logger *slog.Logger) (w, r *sql.DB, err error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, nil, err
-	}
 	w, err = appdb.Open(path)
 	if err != nil {
 		return nil, nil, err

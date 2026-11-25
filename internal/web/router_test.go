@@ -123,3 +123,14 @@ func TestAPIRoutesDocumented(t *testing.T) {
 		t.Fatalf("walked %d API routes", n)
 	}
 }
+
+// VAQ-16: the stylesheet's source stays in the repo; only the built file ships.
+func TestStaticDoesNotServeCSSSource(t *testing.T) {
+	c := webtest.New(t).Client()
+	if r := c.Get("/static/css/input.css"); r.Status != 404 {
+		t.Fatalf("input.css: %d", r.Status)
+	}
+	if r := c.Get(static.URL("css/tailwind.css")); r.Status != 200 {
+		t.Fatalf("tailwind.css: %d", r.Status)
+	}
+}

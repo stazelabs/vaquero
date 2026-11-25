@@ -36,6 +36,9 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 			start := time.Now()
 			sw := &statusWriter{ResponseWriter: w}
 			next.ServeHTTP(sw, r)
+			if sw.status == 0 { // nothing was written: net/http sends 200
+				sw.status = http.StatusOK
+			}
 			level := slog.LevelInfo
 			if r.URL.Path == "/healthz" || strings.HasPrefix(r.URL.Path, "/static/") {
 				level = slog.LevelDebug

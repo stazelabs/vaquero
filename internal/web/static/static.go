@@ -10,10 +10,10 @@ import (
 	"sync"
 )
 
-// FS is the embedded tree: css/ (input.css and the generated tailwind.css),
+// FS is the embedded tree: css/tailwind.css (built from css/input.css, which stays out),
 // js/app.js, vendor/ (htmx, SortableJS), favicon.svg and logo.svg (the cowboy hat).
 //
-//go:embed css js vendor favicon.svg logo.svg
+//go:embed css/tailwind.css js vendor favicon.svg logo.svg
 var FS embed.FS
 
 var hashes = sync.OnceValue(func() map[string]string {
