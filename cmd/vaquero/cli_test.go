@@ -141,6 +141,39 @@ func TestCLIProfileCommands(t *testing.T) {
 	}
 }
 
+// VAQ-61: profile add reads the token from standard input for "-", so it
+// stays out of the shell's history and the process list, and refuses a URL
+// that isn't an http or https server address.
+func TestCLIProfileAddTokenFromStdinAndURLCheck(t *testing.T) {
+	cliEnv(t)
+	old := stdin
+	stdin = strings.NewReader("vq_fromstdin\n")
+	t.Cleanup(func() { stdin = old })
+	mustCLI(t, "profile", "add", "team", "https://vq.example/", "-")
+	cfg, err := client.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var team client.Profile
+	for _, p := range cfg.Profiles {
+		if p.Name == "team" {
+			team = p
+		}
+	}
+	if team.Token != "vq_fromstdin" || team.URL != "https://vq.example" {
+		t.Fatalf("%+v", cfg.Profiles)
+	}
+	for _, bad := range []string{"vq.example", "ftp://vq.example", "https://", "https://vq.example/?x=1", "https://vq.example/#top"} {
+		if code, _, errOut := cli(t, "profile", "add", "other", bad, "vq_x"); code != 1 || !strings.Contains(errOut, "isn't a server address") {
+			t.Errorf("%s: exit %d %q", bad, code, errOut)
+		}
+	}
+	stdin = strings.NewReader("")
+	if code, _, errOut := cli(t, "profile", "add", "other", "https://vq.example", "-"); code != 1 || !strings.Contains(errOut, "No token on standard input.") {
+		t.Errorf("empty stdin: exit %d %q", code, errOut)
+	}
+}
+
 func TestCLITokens(t *testing.T) {
 	cliEnv(t)
 	out := mustCLI(t, "token", "create", "ci")

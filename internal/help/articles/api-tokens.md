@@ -12,7 +12,7 @@ On the Admin page, open API tokens, give the token a name that says where it wil
 
 ## Using it
 
-Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/api). For the command line on another machine, save it in a profile: `vaquero profile add NAME URL TOKEN`.
+Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/api). For the command line on another machine, save it in a profile: `vaquero profile add NAME URL TOKEN`, or `vaquero profile add NAME URL -` to paste it on standard input instead.
 
 ## The local token
 

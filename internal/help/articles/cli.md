@@ -45,7 +45,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero release TICKET` | Give up your claim; the status and assignee stay |
 | `vaquero mcp [--agent NAME]` | An MCP server on standard input and output, for agent clients that launch one; see [MCP](/help/mcp) |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
-| `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to |
+| `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to; `-` as the token reads it from standard input, keeping it out of your shell history |
 
 Priorities are `none`, `urgent`, `high`, `medium` and `low`. Statuses, assignees and milestones are given by name, in any case.
 

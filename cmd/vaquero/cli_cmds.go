@@ -569,7 +569,7 @@ func cmdToken(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 
 // cmdProfile manages saved profiles; it never talks to a server.
 func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero profile add NAME URL TOKEN | list | use NAME | remove NAME"
+	const usage = "vaquero profile add NAME URL TOKEN|- | list | use NAME | remove NAME"
 	c := newCmd(stdout, stderr, usage)
 	pos, err := c.parse(args, 1, 4)
 	if err != nil {
@@ -592,7 +592,20 @@ func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int 
 		if pos[1] == "local" {
 			return c.finish(fmt.Errorf("local is built in; pick another name"))
 		}
-		p := client.Profile{Name: pos[1], URL: strings.TrimRight(pos[2], "/"), Token: pos[3]}
+		addr := strings.TrimRight(pos[2], "/")
+		if u, err := url.Parse(addr); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || strings.ContainsAny(addr, "?#") {
+			return c.finish(fmt.Errorf("%s isn't a server address; give one like https://vaquero.example.com", pos[2]))
+		}
+		// "-" reads the token from standard input, keeping it out of the
+		// shell's history and the process list.
+		token, err := text(pos[3])
+		if err != nil {
+			return c.finish(err)
+		}
+		if token = strings.TrimSpace(token); token == "" {
+			return c.finish(message("No token on standard input."))
+		}
+		p := client.Profile{Name: pos[1], URL: addr, Token: token}
 		if i := find(p.Name); i >= 0 {
 			cfg.Profiles[i] = p
 		} else {
