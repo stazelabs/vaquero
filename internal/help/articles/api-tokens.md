@@ -16,7 +16,7 @@ Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/
 
 ## The local token
 
-On this machine you don't need to make one for the command line. The server keeps a token called "local" in the data directory's `token` file (readable only by you), and the command line reads it from there. If that token is revoked, the server writes a new one, and the command line picks it up on its next command.
+On this machine you don't need to make one for the command line. The server keeps a token called "local" in the data directory's `token` file (readable only by you), and the command line reads it from there. If that token is revoked, the server writes a new one, and the command line picks it up on its next command. Making a new local token revokes any other token of yours named "local", so give tokens you make yourself another name.
 
 ## Seeing and revoking tokens
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -423,5 +424,41 @@ func TestRestoreRebuildsSearch(t *testing.T) {
 	defer d.Close()
 	if hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); err != nil || len(hits) != 1 {
 		t.Fatalf("search after restoring: %d hits, %v", len(hits), err)
+	}
+}
+
+// A snapshot whose search can't be rebuilt isn't restored: the database
+// stays the very file it was, and the copy is removed.
+func TestRestoreRebuildFailureChangesNothing(t *testing.T) {
+	dataDir := seedData(t)
+	name := appdb.BackupNameKind(appdb.KindPreDelete, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	if err := os.MkdirAll(filepath.Join(dataDir, "backups"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	bad, err := sql.Open("sqlite", filepath.Join(dataDir, "backups", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.Exec(`CREATE TABLE x (y)`); err != nil { // no search tables
+		t.Fatal(err)
+	}
+	bad.Close()
+	path := filepath.Join(dataDir, "vaquero.db")
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, e := runCLI(t, "backup", "restore", name)
+	if code != 1 || !strings.Contains(e, "couldn't rebuild search in "+name+", so nothing changed") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, err := os.Stat(path); err != nil || !os.SameFile(st, now) {
+		t.Fatalf("the database file was replaced (%v)", err)
+	}
+	if left, _ := filepath.Glob(path + ".restore*"); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+	if _, out, _ := runCLI(t, "projects"); !strings.Contains(out, "VAQ") {
+		t.Fatalf("projects:\n%s", out)
 	}
 }
