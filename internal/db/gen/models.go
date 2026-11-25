@@ -26,6 +26,25 @@ type ApiToken struct {
 	RevokedAt  sql.NullString
 }
 
+type Attachment struct {
+	ID          string
+	TicketID    string
+	UploadedBy  string
+	Name        string
+	ContentType string
+	Size        int64
+	BlobKey     string
+	CreatedAt   string
+}
+
+type Blob struct {
+	Key         string
+	Bytes       []byte
+	ContentType string
+	Size        int64
+	Modified    string
+}
+
 type Comment struct {
 	ID        string
 	TicketID  string
