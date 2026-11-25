@@ -118,12 +118,12 @@ func importArchive(ctx context.Context, cfg config.Config, file string) (importR
 		return res, err
 	}
 	instance := strings.ToLower(idgen.New())
-	store, err := importStore(ctx, cfg, instance)
+	store, err := importStore(ctx, cfg)
 	if err != nil {
 		return res, notImported{err}
 	}
 	removeSpools(cfg.DataDir)
-	rd, err := archive.Read(f, cfg.DataDir)
+	rd, err := archive.Read(f, cfg.DataDir, importCopies(cfg))
 	if err != nil {
 		return res, notImported{err}
 	}
@@ -181,14 +181,36 @@ func removeDatabase(path string) {
 	}
 }
 
+// sameFilesystem is appdb.SameFilesystem, replaceable by a test.
+var sameFilesystem = appdb.SameFilesystem
+
+// importCopies is how many times an import puts the attachment bytes on the
+// data directory's volume: the spool, then the new database (SQLite
+// storage) or the store directory when it is on the same volume.
+func importCopies(cfg config.Config) int {
+	switch cfg.BlobBackend {
+	case "sqlite":
+		return 2
+	case "dir":
+		if same, err := sameFilesystem(cfg.DataDir, cfg.BlobDir); err != nil || same {
+			return 2 // when in doubt, ask for the room
+		}
+	}
+	return 1
+}
+
+// importProbeKey is the empty object importStore puts and deletes. One
+// fixed key, outside every instance, so a store that refuses the delete
+// keeps one probe however often the import is retried.
+const importProbeKey = "attachments/import-probe"
+
 // importStore opens the directory or S3 store and checks it takes a write,
 // before the archive is read or anything written: bad credentials or a
 // read-only bucket stop the import at once, not at the first attachment. The
-// check puts and deletes attachments/{instance}/probe, an empty object. When
-// the delete fails the import stops, and the probe stays under an instance
-// id no database records (the error says the store refused the delete). For
-// SQLite storage, the new database file itself, it returns nil.
-func importStore(ctx context.Context, cfg config.Config, instance string) (blobs.Store, error) {
+// check puts and deletes importProbeKey. When the delete fails the import
+// stops and the error names the key to remove by hand. For SQLite storage,
+// the new database file itself, it returns nil.
+func importStore(ctx context.Context, cfg config.Config) (blobs.Store, error) {
 	if cfg.BlobBackend == "sqlite" {
 		return nil, nil
 	}
@@ -196,17 +218,13 @@ func importStore(ctx context.Context, cfg config.Config, instance string) (blobs
 	if err != nil {
 		return nil, fmt.Errorf("attachment store: %w", err)
 	}
-	key := blobs.AttachmentKey(instance, "probe")
 	pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(0))
 	defer cancel()
-	if err := store.Put(pctx, key, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
+	if err := store.Put(pctx, importProbeKey, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
 		return nil, fmt.Errorf("attachment store: can't write to it (%w)", err)
 	}
-	if err := store.Delete(pctx, key); err != nil {
-		return nil, fmt.Errorf("attachment store: can't delete from it (%w)", err)
-	}
-	if cfg.BlobBackend == "dir" {
-		_ = os.Remove(filepath.Join(cfg.BlobDir, "attachments", instance)) // only when empty
+	if err := store.Delete(pctx, importProbeKey); err != nil {
+		return nil, fmt.Errorf("attachment store: can't delete from it (%w); remove %s from it by hand", err, importProbeKey)
 	}
 	return store, nil
 }

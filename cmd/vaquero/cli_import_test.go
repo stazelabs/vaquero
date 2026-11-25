@@ -581,3 +581,73 @@ func TestSwapFailureNamesTheOldDatabase(t *testing.T) {
 		})
 	}
 }
+
+// undeletableStore takes a Put and refuses every Delete; keys records what
+// was put.
+type undeletableStore struct {
+	blobs.Store
+	keys []string
+}
+
+func (u *undeletableStore) Put(_ context.Context, key string, _ io.Reader, _ int64, _ string) error {
+	u.keys = append(u.keys, key)
+	return nil
+}
+
+func (u *undeletableStore) Delete(context.Context, string) error {
+	return errors.New("s3 delete: Access Denied.")
+}
+
+// VAQ-108: a store that takes the probe but refuses its delete stops the
+// import naming the object to remove, and a retry puts the same key, not
+// another under a fresh instance.
+func TestImportProbeLeftNamesItsKey(t *testing.T) {
+	localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "s3")
+	t.Setenv("VQ_S3_ENDPOINT", "s3.invalid")
+	t.Setenv("VQ_S3_BUCKET", "b")
+	t.Setenv("VQ_S3_ACCESS_KEY_ID", "k")
+	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "s")
+	store := &undeletableStore{}
+	saved := openBlobStore
+	openBlobStore = func(config.Config, *sql.DB, *sql.DB, func() time.Time) (blobs.Store, error) { return store, nil }
+	t.Cleanup(func() { openBlobStore = saved })
+	file := seededArchive(t, importHeader(t, 0), nil)
+	for range 2 {
+		code, _, e := runCLI(t, "import", file)
+		if code != 1 || !strings.Contains(e, "can't delete from it (s3 delete: Access Denied.)") ||
+			!strings.Contains(e, "remove "+importProbeKey+" from it by hand") {
+			t.Fatalf("%d %q", code, e)
+		}
+	}
+	if len(store.keys) != 2 || store.keys[0] != importProbeKey || store.keys[1] != importProbeKey {
+		t.Fatalf("probes put %v, want %s twice", store.keys, importProbeKey)
+	}
+}
+
+// VAQ-108: the bytes an import stores land on the data directory's volume
+// twice (the spool, then the new database or a store directory on the same
+// volume), and the rows export.json holds become the new database: the
+// free-space check counts all of it up front.
+func TestImportCopies(t *testing.T) {
+	dataDir := t.TempDir()
+	for _, tc := range []struct {
+		backend, blobDir string
+		want             int
+	}{
+		{"sqlite", "", 2},
+		{"dir", filepath.Join(dataDir, "attachments"), 2},
+		{"s3", "", 1},
+	} {
+		cfg := config.Config{DataDir: dataDir, BlobBackend: tc.backend, BlobDir: tc.blobDir}
+		if got := importCopies(cfg); got != tc.want {
+			t.Errorf("%s: %d copies, want %d", tc.backend, got, tc.want)
+		}
+	}
+	old := sameFilesystem
+	sameFilesystem = func(a, b string) (bool, error) { return false, nil }
+	t.Cleanup(func() { sameFilesystem = old })
+	if got := importCopies(config.Config{DataDir: dataDir, BlobBackend: "dir", BlobDir: "/elsewhere"}); got != 1 {
+		t.Errorf("dir on another volume: %d copies, want 1", got)
+	}
+}

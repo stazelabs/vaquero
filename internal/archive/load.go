@@ -92,7 +92,9 @@ func (rd *Reader) Close() error {
 // Read reads an export written by Write, spooling the attachment bytes into a
 // new directory under dir (SpoolPrefix and a random suffix), removed again
 // when Read fails or the Reader closes. Before spooling it checks that dir's
-// filesystem has room for every attachment. It refuses, with a *Refused, a file
+// filesystem has room for copies copies of every attachment (the spool, and
+// the store when it shares the volume) and for export.json's size again,
+// for the rows it becomes. It refuses, with a *Refused, a file
 // that isn't an export, an export.json over MaxDocument, a format version
 // other than FormatVersion, a schema newer than this build's, a table this
 // build doesn't know, an attachment whose id isn't a ULID (or equals
@@ -101,7 +103,7 @@ func (rd *Reader) Close() error {
 // its record or of another size than its record says, any other entry, more
 // than MaxTrailing bytes after the tar's end, and a stream whose gzip
 // checksum fails (read to the end to check it).
-func Read(r io.Reader, dir string) (_ *Reader, err error) {
+func Read(r io.Reader, dir string, copies int) (_ *Reader, err error) {
 	zr, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, errNotExport
@@ -149,8 +151,8 @@ func Read(r io.Reader, dir string) (_ *Reader, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("free space in %s: %w", dir, err)
 	}
-	if free < total {
-		return nil, refuse("Unpacking the export's attachments needs %s free in %s, and %s is free.", units.SizeWords(total), dir, units.SizeWords(free))
+	if need := total*int64(max(copies, 1)) + h.Size; free < need {
+		return nil, refuse("Importing the export needs %s free in %s, and %s is free.", units.SizeWords(need), dir, units.SizeWords(free))
 	}
 	if rd.dir, err = os.MkdirTemp(dir, SpoolPrefix); err != nil {
 		return nil, err

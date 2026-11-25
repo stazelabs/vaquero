@@ -17,6 +17,7 @@ import (
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/search"
+	"github.com/stazelabs/vaquero/internal/units"
 )
 
 // repack builds a .tar.gz from entries, as Write lays them out.
@@ -58,7 +59,7 @@ func edited(t *testing.T, edit func(string) string) []byte {
 func read(t *testing.T, b []byte) (*archive.Reader, error) {
 	t.Helper()
 	dir := t.TempDir()
-	rd, err := archive.Read(bytes.NewReader(b), dir)
+	rd, err := archive.Read(bytes.NewReader(b), dir, 1)
 	if err == nil {
 		t.Cleanup(func() { rd.Close() })
 	} else if left, _ := os.ReadDir(dir); len(left) != 0 {
@@ -190,20 +191,46 @@ func TestReadChecksFreeSpace(t *testing.T) {
 	var asked string
 	archive.SetFreeBytes(t, func(path string) (int64, error) { asked = path; return total - 1, nil })
 	dir := t.TempDir()
-	_, err := archive.Read(bytes.NewReader(file), dir)
+	_, err := archive.Read(bytes.NewReader(file), dir, 1)
 	var refused *archive.Refused
-	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "needs 1 KB free in "+dir+", and 1 KB is free") || asked != dir {
+	if !errors.As(err, &refused) || !strings.Contains(err.Error(), "needs "+units.SizeWords(total+docSize(t, file))+" free in "+dir+", and 1 KB is free") || asked != dir {
 		t.Fatalf("%v (asked about %q)", err, asked)
 	}
 	if left, _ := os.ReadDir(dir); len(left) != 0 {
 		t.Fatalf("left %v", left)
 	}
-	archive.SetFreeBytes(t, func(string) (int64, error) { return total, nil })
-	rd, err := archive.Read(bytes.NewReader(file), dir)
+	doc := docSize(t, file)
+	archive.SetFreeBytes(t, func(string) (int64, error) { return total + doc, nil })
+	rd, err := archive.Read(bytes.NewReader(file), dir, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rd.Close()
+	// VAQ-108: two copies of the bytes, and export.json's rows.
+	archive.SetFreeBytes(t, func(string) (int64, error) { return 2*total + doc - 1, nil })
+	if _, err := archive.Read(bytes.NewReader(file), dir, 2); !errors.As(err, &refused) {
+		t.Fatalf("two copies in %d bytes: %v", 2*total+doc-1, err)
+	}
+	archive.SetFreeBytes(t, func(string) (int64, error) { return 2*total + doc, nil })
+	rd, err = archive.Read(bytes.NewReader(file), dir, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rd.Close()
+}
+
+// docSize is the size of an archive's export.json.
+func docSize(t *testing.T, file []byte) int64 {
+	t.Helper()
+	zr, err := gzip.NewReader(bytes.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := tar.NewReader(zr).Next()
+	if err != nil || h.Name != "export.json" {
+		t.Fatalf("%v %v", h, err)
+	}
+	return h.Size
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }

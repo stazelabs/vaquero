@@ -279,6 +279,39 @@ func FreeBytes(path string) (int64, error) {
 	}
 }
 
+// SameFilesystem reports whether paths a and b are on one filesystem. A
+// path that doesn't exist yet is placed by its nearest existing parent.
+func SameFilesystem(a, b string) (bool, error) {
+	da, err := device(a)
+	if err != nil {
+		return false, err
+	}
+	db, err := device(b)
+	if err != nil {
+		return false, err
+	}
+	return da == db, nil
+}
+
+func device(path string) (uint64, error) {
+	p, err := filepath.Abs(path)
+	if err != nil {
+		return 0, err
+	}
+	for {
+		var st syscall.Stat_t
+		err := syscall.Stat(p, &st)
+		if err == nil {
+			return uint64(st.Dev), nil //nolint:gosec,unconvert // int32 on macOS, uint64 on Linux
+		}
+		parent := filepath.Dir(p)
+		if !errors.Is(err, syscall.ENOENT) || parent == p {
+			return 0, err
+		}
+		p = parent
+	}
+}
+
 // ListBackups returns the snapshots in dir, newest first (by the instant in
 // the name, whatever the kind). A missing dir is an empty list. Anything
 // that isn't a regular file with a snapshot's name (symlinks, directories,
