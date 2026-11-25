@@ -285,9 +285,20 @@ func add[In any](s *mcp.Server, c *caller, name, title string, readOnly bool, de
 			// SDK would add a second text copy of a list.
 			return &mcp.CallToolResult{
 				Content:           []mcp.Content{&mcp.TextContent{Text: string(body)}},
-				StructuredContent: json.RawMessage(bytes.TrimSpace(body)),
+				StructuredContent: structured(body),
 			}, nil, nil
 		})
+}
+
+// structured is a tool's REST answer as MCP structured content, which must
+// be a JSON object: a list answer is wrapped as {"items": [...]}. The text
+// content stays the REST answer exactly.
+func structured(body []byte) json.RawMessage {
+	b := bytes.TrimSpace(body)
+	if len(b) > 0 && b[0] == '[' {
+		return json.RawMessage(append(append([]byte(`{"items":`), b...), '}'))
+	}
+	return json.RawMessage(b)
 }
 
 // toolError is a refusal from the API, as the tool's error: its text is

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -211,9 +212,36 @@ func TestMCPToolsMatchTheAPI(t *testing.T) {
 		if want := c.API("GET", tc.path, tok, nil).Body; text != want {
 			t.Errorf("%s:\n got %s\nwant %s", tc.tool, text, want)
 		}
-		if res.StructuredContent == nil {
-			t.Errorf("%s: no structured content", tc.tool)
-		}
+		checkStructured(t, tc.tool, res, text)
+	}
+}
+
+// checkStructured holds a result to the MCP schema: structuredContent is a
+// JSON object (VAQ-95: a bare list failed in strict clients). It is the REST
+// body, or {"items": body} when the body is a list.
+func checkStructured(t *testing.T, tool string, res *mcp.CallToolResult, text string) {
+	t.Helper()
+	if res.StructuredContent == nil {
+		t.Errorf("%s: no structured content", tool)
+		return
+	}
+	got, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatalf("%s: %v", tool, err)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(got, &obj); err != nil {
+		t.Errorf("%s: structured content is not an object: %.80s", tool, got)
+		return
+	}
+	want := text
+	if strings.HasPrefix(strings.TrimSpace(text), "[") {
+		want = `{"items":` + text + `}`
+	}
+	var a, b any
+	_ = json.Unmarshal(got, &a)
+	if err := json.Unmarshal([]byte(want), &b); err != nil || !reflect.DeepEqual(a, b) {
+		t.Errorf("%s: structured content %.120s, want %.120s", tool, got, want)
 	}
 }
 
