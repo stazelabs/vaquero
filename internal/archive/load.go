@@ -42,7 +42,6 @@ type Reader struct {
 	Tables map[string][]map[string]any
 	dir    string
 	files  map[string]spooled // attachment id → its bytes on disk
-	open   []*os.File
 }
 
 type spooled struct {
@@ -50,8 +49,8 @@ type spooled struct {
 	size int64
 }
 
-// Blob opens attachment id's bytes. Close closes every one opened.
-func (rd *Reader) Blob(id string) (io.Reader, int64, bool) {
+// Blob opens attachment id's bytes; the caller closes them.
+func (rd *Reader) Blob(id string) (io.ReadCloser, int64, bool) {
 	s, ok := rd.files[id]
 	if !ok {
 		return nil, 0, false
@@ -60,19 +59,14 @@ func (rd *Reader) Blob(id string) (io.Reader, int64, bool) {
 	if err != nil {
 		return nil, 0, false
 	}
-	rd.open = append(rd.open, f)
 	return f, s.size, true
 }
 
 // SpoolDir is the temporary directory holding the attachment bytes.
 func (rd *Reader) SpoolDir() string { return rd.dir }
 
-// Close closes the opened blobs and removes the spool directory.
+// Close removes the spool directory.
 func (rd *Reader) Close() error {
-	for _, f := range rd.open {
-		f.Close()
-	}
-	rd.open = nil
 	if rd.dir == "" {
 		return nil
 	}

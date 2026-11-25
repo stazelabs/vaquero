@@ -32,10 +32,10 @@ func TestJoinAnd(t *testing.T) {
 
 func TestAttachmentWording(t *testing.T) {
 	p := map[string]any{"name": "shot.png"}
-	if got := EventSentence(EventView{Kind: core.EvAttachmentAdded, Payload: p}); got != "attached shot.png" {
+	if got := EventSentence(EventView{Kind: core.EvAttachmentAdded, TicketKey: "VAQ-3", Payload: p}); got != "attached shot.png to VAQ-3" {
 		t.Fatal(got)
 	}
-	if got := EventSentence(EventView{Kind: core.EvAttachmentDeleted, Payload: p}); got != "removed the attachment shot.png" {
+	if got := EventSentence(EventView{Kind: core.EvAttachmentDeleted, TicketKey: "VAQ-3", Payload: p}); got != "removed the attachment shot.png from VAQ-3" {
 		t.Fatal(got)
 	}
 	if EventIcon(core.EvAttachmentAdded) != "attachment" || EventIcon(core.EvAttachmentDeleted) != "attachment" {

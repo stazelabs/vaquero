@@ -127,3 +127,13 @@ func TestBlobConfigUnknown(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestBlobDirMadeAbsolute(t *testing.T) {
+	c, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": "/d", "VQ_BLOB_DIR": "rel/blobs"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(c.BlobDir) || !strings.HasSuffix(c.BlobDir, filepath.Join("rel", "blobs")) {
+		t.Fatalf("BlobDir %q", c.BlobDir)
+	}
+}

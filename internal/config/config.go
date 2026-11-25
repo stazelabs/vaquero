@@ -102,6 +102,11 @@ func FromEnv(get func(string) string) (Config, error) {
 func readBlobs(c *Config, get func(string) string) error {
 	c.BlobBackend = strings.ToLower(or(strings.TrimSpace(get("VQ_BLOB_STORE")), "sqlite"))
 	c.BlobDir = or(strings.TrimSpace(get("VQ_BLOB_DIR")), filepath.Join(c.DataDir, "attachments"))
+	abs, err := filepath.Abs(c.BlobDir)
+	if err != nil {
+		return fmt.Errorf("VQ_BLOB_DIR: %w", err)
+	}
+	c.BlobDir = abs
 	c.S3Region = "auto"
 	switch c.BlobBackend {
 	case "sqlite", "dir":

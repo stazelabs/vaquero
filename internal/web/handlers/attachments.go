@@ -115,7 +115,9 @@ func storeUpload(ctx context.Context, d Deps, by, ticketID string, part io.Reade
 		ID: id, TicketID: ticketID, Name: filename, ContentType: ctype, BlobKey: key, Size: int64(len(b)),
 	})
 	if err != nil {
-		if derr := d.Blobs.Delete(context.WithoutCancel(ctx), key); derr != nil {
+		dctx, dcancel := context.WithTimeout(context.WithoutCancel(ctx), blobDeadline)
+		defer dcancel()
+		if derr := d.Blobs.Delete(dctx, key); derr != nil {
 			d.Logger.ErrorContext(ctx, "delete refused upload", "err", derr, "key", key)
 		}
 		return gen.Attachment{}, err

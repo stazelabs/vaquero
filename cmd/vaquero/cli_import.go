@@ -231,6 +231,9 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader) (a
 		pctx, cancel := context.WithTimeout(ctx, blobs.PutDeadline)
 		err = store.Put(pctx, key, body, size, ctype)
 		cancel()
+		if body != nil {
+			body.Close()
+		}
 		if err != nil {
 			return "", fmt.Errorf("store attachment %s: %w", id, err)
 		}

@@ -83,9 +83,9 @@ func EventSentence(e EventView) string {
 	case core.EvCommentDeleted:
 		return "deleted a comment on " + e.TicketKey
 	case core.EvAttachmentAdded:
-		return "attached " + s("name")
+		return "attached " + s("name") + " to " + e.TicketKey
 	case core.EvAttachmentDeleted:
-		return "removed the attachment " + s("name")
+		return "removed the attachment " + s("name") + " from " + e.TicketKey
 	case core.EvLinkCreated:
 		switch s("kind") {
 		case "blocks":

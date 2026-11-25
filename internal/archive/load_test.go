@@ -90,6 +90,7 @@ func TestReadExport(t *testing.T) {
 			t.Fatalf("no blob for %v", a["id"])
 		}
 		got, _ := io.ReadAll(r)
+		r.Close()
 		if !bytes.Equal(got, entries[i+1].data) || size != int64(len(got)) {
 			t.Fatalf("blob %d differs", i)
 		}
@@ -352,5 +353,35 @@ func TestReadRefusesHardening(t *testing.T) {
 				t.Fatal("a spool directory was left behind")
 			}
 		})
+	}
+}
+
+// fdCount is the number of file descriptors this process holds.
+func fdCount(t *testing.T) int {
+	t.Helper()
+	es, err := os.ReadDir("/dev/fd")
+	if err != nil {
+		t.Skip("no /dev/fd")
+	}
+	return len(es)
+}
+
+func TestBlobClosesWhenCallerDoes(t *testing.T) {
+	d, store := seeded(t)
+	rd, err := read(t, repack(t, unpack(t, export(t, d, store))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := rd.Tables["attachments"][0]["id"].(string)
+	before := fdCount(t)
+	for range 300 {
+		r, _, ok := rd.Blob(id)
+		if !ok {
+			t.Fatal("no blob")
+		}
+		r.Close()
+	}
+	if after := fdCount(t); after > before+2 {
+		t.Fatalf("descriptors rose from %d to %d: opened blobs stay open", before, after)
 	}
 }
