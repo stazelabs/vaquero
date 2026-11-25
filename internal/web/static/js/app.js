@@ -339,8 +339,10 @@ window.vqDragging = false;
   function insertAtCursor(box, text) {
     var start = box.selectionStart, end = box.selectionEnd;
     if (typeof start !== "number") { start = end = box.value.length; }
-    box.value = box.value.slice(0, start) + text + box.value.slice(end);
-    box.selectionStart = box.selectionEnd = start + text.length;
+    // Each file starts its own line; the break stays outside the placeholder.
+    var lead = start > 0 && box.value.charAt(start - 1) !== "\n" ? "\n" : "";
+    box.value = box.value.slice(0, start) + lead + text + box.value.slice(end);
+    box.selectionStart = box.selectionEnd = start + lead.length + text.length;
   }
 
   function swapPlaceholder(box, placeholder, text) {
@@ -415,8 +417,9 @@ window.vqDragging = false;
     var box = boxOf(ev);
     var files = ev.clipboardData && ev.clipboardData.files;
     if (!box || !files || files.length === 0) { return; }
-    // A paste that carries text (a copied cell, say) keeps its default.
-    if (ev.clipboardData.getData("text/plain")) { return; }
+    // A paste that carries HTML (a copied document or cell) keeps its
+    // default; a file copied in the file manager has a name as text only.
+    if (ev.clipboardData.getData("text/html")) { return; }
     ev.preventDefault();
     uploadAll(box, files, box);
   });
