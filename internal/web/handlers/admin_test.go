@@ -56,3 +56,15 @@ func TestTokenRevokeStopsAPI(t *testing.T) {
 		t.Fatalf("%d", r.Status)
 	}
 }
+
+// The page that shows a new token marks itself so app.js replaces the POST
+// history entry with GET /admin/tokens: a refresh then reloads the list
+// instead of offering to resubmit the form (VAQ-59, ruling R3).
+func TestTokenCreatedPageReplacesHistory(t *testing.T) {
+	c := webtest.New(t).Client()
+	r := c.Post("/admin/tokens", url.Values{"name": {"ci runner"}})
+	contains(t, r.Body, `data-replace-url="/admin/tokens"`)
+	if strings.Contains(c.Get("/admin/tokens").Body, "data-replace-url") {
+		t.Fatal("the list page marks itself too")
+	}
+}

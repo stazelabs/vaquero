@@ -21,6 +21,16 @@
   }
 })();
 
+// A page that answers a POST it must never repeat (the one showing a new
+// API token) carries data-replace-url: its history entry becomes a GET of
+// that address, so a refresh or a return to it doesn't offer to resubmit.
+(function () {
+  var el = document.querySelector("[data-replace-url]");
+  if (el && window.history && window.history.replaceState) {
+    window.history.replaceState(null, "", el.getAttribute("data-replace-url"));
+  }
+})();
+
 // vqToast shows an error toast for a failure the page sees itself (an
 // upload, a board drop), cloned from the Shell's #vq-toast-template.
 window.vqToast = function (message) {

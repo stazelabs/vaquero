@@ -83,7 +83,9 @@ templ TokensPage(v TokensView) {
 		@titleWithHelp("API tokens", "api-tokens", "About tokens")
 		<p class="mt-2 max-w-xl text-sm text-muted">A token lets the CLI, a script or an agent use Vaquero's API as you. The local token is kept in the data directory for the CLI; if you revoke it, a new one is written straight away.</p>
 		if v.Created != "" {
-			<div class="mt-6 max-w-xl rounded-md border border-accent/40 bg-accent/10 p-4" role="status">
+			// data-replace-url: app.js makes this POST answer's history entry
+			// GET /admin/tokens, so a refresh never creates another token.
+			<div class="mt-6 max-w-xl rounded-md border border-accent/40 bg-accent/10 p-4" role="status" data-replace-url="/admin/tokens">
 				<label for="new-token" class="text-sm font-medium text-ink">Copy this token now. It won't be shown again.</label>
 				<input id="new-token" readonly value={ v.Created } class={ inputClass + " mt-2 font-mono" }/>
 			</div>
