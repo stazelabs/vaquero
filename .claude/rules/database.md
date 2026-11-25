@@ -20,7 +20,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 ## Reader and writer pools (internal/db/sqlite.go)
 
 - The reader pool (`Deps.R`) is opened with `query_only(true)`. Never write through it; a stray write fails loudly. Reads go through `Deps.R`.
-- The writer pool has exactly one connection (`Deps.Q` / `Deps.DB`). Inside a transaction use `gen.New(tx)`, never `Deps.Q`: using `Deps.Q` inside a tx deadlocks.
+- The writer pool has exactly one connection (`Deps.DB`, which only /healthz uses; `Core` owns the writes). Inside a transaction use `gen.New(tx)`, never the pool: using the pool inside a tx deadlocks.
 - Do reads that decide a write inside the same transaction.
 
 ## Migrations (goose, internal/db/migrations)
