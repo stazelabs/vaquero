@@ -80,8 +80,6 @@ templ TicketFormPage(f TicketForm) {
 				@helpLink("editing-and-conflicts", "About conflicts")
 			</div>
 		}
-		if f.TicketKey != "" {
-		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
 			if f.Version != "" {
 				<input type="hidden" name="version" value={ f.Version }/>
