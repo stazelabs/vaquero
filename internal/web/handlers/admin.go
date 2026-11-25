@@ -50,6 +50,7 @@ func humanBytes(n int64) string {
 }
 
 func tokensPage(w http.ResponseWriter, r *http.Request, d Deps, status int, v templates.TokensView) {
+	templates.LoadEventSeq(r.Context()) // before the page data is read
 	toks, err := d.R.ListTokens(r.Context())
 	if err != nil {
 		serverError(w, r, d, err)

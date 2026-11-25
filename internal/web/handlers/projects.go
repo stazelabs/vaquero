@@ -91,6 +91,7 @@ func ProjectCreate(d Deps) http.HandlerFunc {
 // settingsPage renders the settings page with form f and status; set, if
 // given, fills in a refused smaller form.
 func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f templates.ProjectForm, status int, set ...func(*templates.SettingsView)) {
+	templates.LoadEventSeq(r.Context()) // before the page data is read
 	ctx := r.Context()
 	statuses, err := d.R.ListStatuses(ctx, p.ID)
 	if err != nil {

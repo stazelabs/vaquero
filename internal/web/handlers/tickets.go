@@ -124,6 +124,7 @@ func readTicketForm(r *http.Request, d Deps, p gen.Project, f *templates.TicketF
 
 // formPage renders the ticket form with status.
 func formPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f templates.TicketForm, keepMilestone string, status int) {
+	templates.LoadEventSeq(r.Context()) // before the page data is read
 	if err := formChoices(r.Context(), d, p, &f, keepMilestone); err != nil {
 		serverError(w, r, d, err)
 		return
@@ -261,6 +262,7 @@ func TicketShow(d Deps) http.HandlerFunc {
 // ticketPage builds and renders the ticket page; adjust sets form state
 // (a refused comment or link) before rendering.
 func ticketPage(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p gen.Project, status int, adjust func(*templates.TicketView)) {
+	templates.LoadEventSeq(r.Context()) // before the page data is read
 	v, err := ticketView(r, d, t, p)
 	if err != nil {
 		serverError(w, r, d, err)

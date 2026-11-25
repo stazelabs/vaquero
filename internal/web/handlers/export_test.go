@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,4 +28,18 @@ func SetStreamPing(t testing.TB, d time.Duration) {
 	saved := streamPing
 	streamPing = d
 	t.Cleanup(func() { streamPing = saved })
+}
+
+// AfterSeqRead runs fn once, right after the first event-sequence read of a
+// test; tests that call it must not run in parallel.
+func AfterSeqRead(t testing.TB, fn func()) {
+	t.Helper()
+	var once sync.Once
+	saved := readEventSeq
+	readEventSeq = func(ctx context.Context, d Deps) (int64, error) {
+		n, err := saved(ctx, d)
+		once.Do(fn)
+		return n, err
+	}
+	t.Cleanup(func() { readEventSeq = saved })
 }

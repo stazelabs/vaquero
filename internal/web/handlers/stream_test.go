@@ -282,3 +282,23 @@ func TestStreamPingsWhenQuiet(t *testing.T) {
 	lines, _ := openStream(t, e.Server.URL)
 	waitFor(t, lines, ": ping", 2*time.Second)
 }
+
+// A re-rendered form reads the sequence before the page's data, so a change
+// made in between is shown by the page and still announced by the stream.
+func TestFormRerenderReadsSequenceBeforeData(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Anchor"})
+	c := e.Client()
+	before := seqNow(t, e)
+	handlers.AfterSeqRead(t, func() {
+		if _, err := e.Deps.Core.AddComment(bg, e.Deps.Actor.ID, tk.ID, "Added between"); err != nil {
+			t.Error(err)
+		}
+	})
+	r := c.Post("/t/VAQ-1/links", url.Values{"kind": {"blocks"}, "to": {"nonsense"}})
+	if r.Status != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal: %d", r.Status)
+	}
+	contains(t, r.Body, "Added between", `data-event-seq="`+strconv.FormatInt(before, 10)+`"`)
+}
