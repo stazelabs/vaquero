@@ -72,7 +72,7 @@ func TestCLISubcommandsDocumented(t *testing.T) {
 			body = body[:j+1]
 		}
 		var rows []string
-		for _, l := range strings.Split(a.Markdown, "\n") {
+		for l := range strings.SplitSeq(a.Markdown, "\n") {
 			if strings.HasPrefix(l, "| `vaquero "+c.cmd+" ") {
 				rows = append(rows, l)
 			}
