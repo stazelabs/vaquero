@@ -15,11 +15,12 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
   - [x] Phase 2b: agent identity, ready queue, claims with leases, MCP at `/mcp` and `vaquero mcp`, MCP activity — plan: docs/superpowers/plans/2026-11-19-phase-2b-agents.md
 - [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
   - [x] Phase 3a: snapshot before migrating, `stop`, `backup list|restore`, upgrade fixtures, restart of a stale local server, goreleaser and the Homebrew formula from a manual workflow — plan: docs/superpowers/plans/2026-11-20-phase-3a-releases-upgrades.md
-  - [ ] Phase 3b: export and import, attachments (open: where files are stored), move this backlog into vaquero; then the first release (docs/RELEASING.md). Design: docs/superpowers/specs/2026-11-20-phase-3b-design.md, not yet approved
+  - [ ] Phase 3b: export and import, attachments (SQLite by default, or a directory or S3), the first release (docs/RELEASING.md), then move this backlog into the released vaquero. Design: docs/superpowers/specs/2026-11-20-phase-3b-design.md
+  - [ ] Move attachments between storage backends (deferred from 3b; until then a backend change with attachments present is refused at boot)
   - [ ] Linear importer (deferred from 3b: its export is CSV only, by emailed link) — pick the format(s) to support; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
 - [ ] Phase 4: Hosted mode (and the container image, moved from Phase 3)
 - [ ] Phase 5: Git integration
-- [ ] Phase 6: Notifications and attachments
+- [ ] Phase 6: Notifications (attachments moved to Phase 3b)
 - [ ] Phase 7: LLM assists
 
 ## Deferred from the Phase 0 review
