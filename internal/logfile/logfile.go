@@ -1,0 +1,91 @@
+// Package logfile keeps a background server's log, {data dir}/vaquero.log,
+// from growing without limit: at Max bytes it moves to vaquero.log.1
+// (replacing the one before) and a new file starts. The command line
+// rotates it before starting a server (Rotate); a server writing to it
+// rotates it as it goes (Writer).
+package logfile
+
+import (
+	"errors"
+	"os"
+	"sync"
+)
+
+// Max is the size at which the log rotates.
+const Max = 10 << 20
+
+// Rotate moves the file at path to path.1 when it holds max bytes or
+// more. A missing file is no error.
+func Rotate(path string, max int64) error {
+	st, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if st.Size() < max {
+		return nil
+	}
+	return os.Rename(path, path+".1")
+}
+
+// Writer appends to a log file, rotating it before a write would take it
+// past max bytes. Safe for concurrent use.
+type Writer struct {
+	path string
+	max  int64
+	mu   sync.Mutex
+	f    *os.File
+	size int64
+}
+
+// Open opens (or creates, 0600) the log at path for appending.
+func Open(path string, max int64) (*Writer, error) {
+	w := &Writer{path: path, max: max}
+	if err := w.open(); err != nil {
+		return nil, err
+	}
+	return w, nil
+}
+
+func (w *Writer) open() error {
+	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	w.f, w.size = f, st.Size()
+	return nil
+}
+
+// Write appends p, first rotating the file when p would take it past max.
+// If the rotation fails the write goes to the file as it is.
+func (w *Writer) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.size > 0 && w.size+int64(len(p)) > w.max {
+		if err := os.Rename(w.path, w.path+".1"); err == nil {
+			old := w.f
+			if err := w.open(); err != nil {
+				w.f = old // keep writing where it was
+			} else {
+				old.Close()
+			}
+		}
+	}
+	n, err := w.f.Write(p)
+	w.size += int64(n)
+	return n, err
+}
+
+// Close closes the file.
+func (w *Writer) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.f.Close()
+}

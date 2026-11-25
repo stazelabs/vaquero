@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/lockfile"
+	"github.com/stazelabs/vaquero/internal/logfile"
 )
 
 type probeResult int
@@ -87,6 +88,9 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 		return err
 	}
 	logPath := filepath.Join(dataDir, "vaquero.log")
+	// One old log is kept: the server rotates it as it writes, and a log
+	// already at the limit moves aside before this one starts.
+	_ = logfile.Rotate(logPath, logfile.Max)
 	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
