@@ -14,8 +14,9 @@ func isAPIPath(p string) bool {
 	return p == "/mcp" || strings.HasPrefix(p, "/mcp/") || p == "/api/v1" || strings.HasPrefix(p, "/api/v1/")
 }
 
-// Recover turns a handler panic into a logged 500: the API's JSON envelope under /api/v1 and /mcp, plain text elsewhere. An
-// http.ErrAbortHandler panic is passed on, as net/http expects.
+// Recover turns a handler panic into a logged 500: the API's JSON envelope
+// under /api/v1 and /mcp, plain text elsewhere. An http.ErrAbortHandler
+// panic is passed on, as net/http expects.
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

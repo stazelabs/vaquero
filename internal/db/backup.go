@@ -97,10 +97,10 @@ const StaleTempAge = 5 * time.Minute
 //
 // It refuses (ErrLowSpace) when the volume would be left with less than
 // RequiredFree of the current database size. The copy is written under a
-// temporary name and renamed on success, so a failure leaves no partial snapshot in the list; temporary files left
-// by a crash and older than StaleTempAge are removed first. It does not
-// prune; the caller does, after success. Snapshot's file has no kind in its
-// name; SnapshotNext takes one.
+// temporary name and renamed on success, so a failure leaves no partial
+// snapshot in the list; temporary files left by a crash and older than
+// StaleTempAge are removed first. It does not prune; the caller does, after
+// success. Snapshot's file has no kind in its name; SnapshotNext takes one.
 func Snapshot(ctx context.Context, src *sql.DB, dir string, now time.Time) (BackupInfo, error) {
 	return snapshot(ctx, src, dir, "", now)
 }
@@ -279,9 +279,9 @@ func FreeBytes(path string) (int64, error) {
 }
 
 // ListBackups returns the snapshots in dir, newest first (by the instant in
-// the name, whatever the kind). A missing dir is an
-// empty list. Anything that isn't a regular file with a snapshot's name
-// (symlinks, directories, temporary files) is left out.
+// the name, whatever the kind). A missing dir is an empty list. Anything
+// that isn't a regular file with a snapshot's name (symlinks, directories,
+// temporary files) is left out.
 func ListBackups(dir string) ([]BackupInfo, error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
