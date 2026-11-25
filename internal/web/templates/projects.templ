@@ -149,7 +149,7 @@ templ ProjectSettingsPage(v SettingsView) {
 			</ul>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/statuses") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
 				<div class="flex-1">
-					@TextInput(InputProps{Name: "name", Label: "New status", Value: v.NewStatus.Val("name", ""), Required: true, Error: v.NewStatus.Errors["name"]})
+					@TextInput(InputProps{Name: "name", ID: "f-status-name", Label: "New status", Value: v.NewStatus.Val("name", ""), Required: true, Error: v.NewStatus.Errors["name"]})
 				</div>
 				@Select(SelectProps{Name: "category", Label: "Category", Selected: v.NewStatus.Val("category", "todo"), Options: CategoryOptions(), Error: v.NewStatus.Errors["category"]})
 				<button type="submit" class={ btnSecondary }>Add status</button>
@@ -170,9 +170,9 @@ templ ProjectSettingsPage(v SettingsView) {
 			</ul>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/milestones") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
 				<div class="flex-1">
-					@TextInput(InputProps{Name: "name", Label: "New milestone", Value: v.NewMilestone.Val("name", ""), Required: true, Error: v.NewMilestone.Errors["name"]})
+					@TextInput(InputProps{Name: "name", ID: "f-milestone-name", Label: "New milestone", Value: v.NewMilestone.Val("name", ""), Required: true, Error: v.NewMilestone.Errors["name"]})
 				</div>
-				@TextInput(InputProps{Name: "due_on", Label: "Due", Type: "date", Value: v.NewMilestone.Val("due_on", ""), Error: v.NewMilestone.Errors["due_on"]})
+				@TextInput(InputProps{Name: "due_on", ID: "f-milestone-due", Label: "Due", Type: "date", Value: v.NewMilestone.Val("due_on", ""), Error: v.NewMilestone.Errors["due_on"]})
 				<button type="submit" class={ btnSecondary }>Add milestone</button>
 			</form>
 		</section>

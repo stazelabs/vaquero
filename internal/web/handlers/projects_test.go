@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -322,5 +323,19 @@ func TestTwoDeletesInOneSecond(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(e.Deps.BackupDir); len(entries) != 2 {
 		t.Fatalf("%d backups", len(entries))
+	}
+}
+
+// Each settings field has its own id, so every label names one field.
+func TestSettingsFieldIDsUnique(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	page := e.Client().Get("/p/VAQ/settings").Body
+	seen := map[string]bool{}
+	for _, m := range regexp.MustCompile(` id="([^"]+)"`).FindAllStringSubmatch(page, -1) {
+		if seen[m[1]] {
+			t.Errorf("id %q is used twice", m[1])
+		}
+		seen[m[1]] = true
 	}
 }

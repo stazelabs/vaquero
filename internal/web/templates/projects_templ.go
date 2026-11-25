@@ -724,7 +724,7 @@ func ProjectSettingsPage(v SettingsView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextInput(InputProps{Name: "name", Label: "New status", Value: v.NewStatus.Val("name", ""), Required: true, Error: v.NewStatus.Errors["name"]}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextInput(InputProps{Name: "name", ID: "f-status-name", Label: "New status", Value: v.NewStatus.Val("name", ""), Required: true, Error: v.NewStatus.Errors["name"]}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -821,7 +821,7 @@ func ProjectSettingsPage(v SettingsView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextInput(InputProps{Name: "name", Label: "New milestone", Value: v.NewMilestone.Val("name", ""), Required: true, Error: v.NewMilestone.Errors["name"]}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextInput(InputProps{Name: "name", ID: "f-milestone-name", Label: "New milestone", Value: v.NewMilestone.Val("name", ""), Required: true, Error: v.NewMilestone.Errors["name"]}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -829,7 +829,7 @@ func ProjectSettingsPage(v SettingsView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextInput(InputProps{Name: "due_on", Label: "Due", Type: "date", Value: v.NewMilestone.Val("due_on", ""), Error: v.NewMilestone.Errors["due_on"]}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextInput(InputProps{Name: "due_on", ID: "f-milestone-due", Label: "Due", Type: "date", Value: v.NewMilestone.Val("due_on", ""), Error: v.NewMilestone.Errors["due_on"]}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
