@@ -181,12 +181,15 @@ func TestSettingsFormsKeepTypedValues(t *testing.T) {
 		t.Fatalf("new status: %d", r.Status)
 	}
 	contains(t, r.Body, "A status with that name exists.", `value="tODO"`, `value="in_review" selected`)
+	// Each message is tied to its field, and the field says it is invalid.
+	contains(t, r.Body, `aria-invalid="true" aria-describedby="f-status-name-error"`, `id="f-status-name-error"`)
 
 	r = c.Post("/p/VAQ/statuses/"+ss[0].ID+"/rename", url.Values{"name": {"dOnE"}})
 	if r.Status != 422 {
 		t.Fatalf("rename: %d", r.Status)
 	}
 	contains(t, r.Body, "A status with that name exists.", `value="dOnE"`)
+	contains(t, r.Body, `aria-describedby="s-`+ss[0].ID+`-error"`, `id="s-`+ss[0].ID+`-error"`)
 
 	r = c.Post("/p/VAQ/milestones", url.Values{"name": {"Beta"}, "due_on": {"soon"}})
 	if r.Status != 422 {

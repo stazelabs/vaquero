@@ -15,11 +15,14 @@ templ TextInput(p InputProps) {
 			placeholder={ p.Placeholder }
 			autocomplete={ p.autocomplete() }
 			required?={ p.Required }
-			aria-invalid?={ p.Error != "" }
+			if p.Error != "" {
+				aria-invalid="true"
+				aria-describedby={ p.id() + "-error" }
+			}
 			class={ inputClass }
 			{ p.attrs()... }
 		/>
-		@FieldError(p.Error)
+		@FieldError(p.id()+"-error", p.Error)
 	</div>
 }
 
@@ -35,11 +38,14 @@ templ TextArea(p InputProps) {
 			rows={ p.rows() }
 			placeholder={ p.Placeholder }
 			required?={ p.Required }
-			aria-invalid?={ p.Error != "" }
+			if p.Error != "" {
+				aria-invalid="true"
+				aria-describedby={ p.id() + "-error" }
+			}
 			class={ inputClass }
 			{ p.attrs()... }
 		>{ p.Value }</textarea>
-		@FieldError(p.Error)
+		@FieldError(p.id()+"-error", p.Error)
 	</div>
 }
 
@@ -49,19 +55,28 @@ templ Select(p SelectProps) {
 		if p.Label != "" {
 			<label for={ "f-" + p.Name } class={ labelClass }>{ p.Label }</label>
 		}
-		<select id={ "f-" + p.Name } name={ p.Name } aria-invalid?={ p.Error != "" } class={ inputClass }>
+		<select
+			id={ "f-" + p.Name }
+			name={ p.Name }
+			if p.Error != "" {
+				aria-invalid="true"
+				aria-describedby={ "f-" + p.Name + "-error" }
+			}
+			class={ inputClass }
+		>
 			for _, o := range p.Options {
 				<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>
 			}
 		</select>
-		@FieldError(p.Error)
+		@FieldError("f-"+p.Name+"-error", p.Error)
 	</div>
 }
 
-// FieldError is a refused field's message; nothing when msg is empty.
-templ FieldError(msg string) {
+// FieldError is a refused field's message, with the id its field's
+// aria-describedby names; nothing when msg is empty.
+templ FieldError(id, msg string) {
 	if msg != "" {
-		<p class="mt-1 text-sm text-danger" role="alert">{ msg }</p>
+		<p id={ id } class="mt-1 text-sm text-danger" role="alert">{ msg }</p>
 	}
 }
 

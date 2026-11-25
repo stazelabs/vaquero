@@ -214,10 +214,19 @@ templ statusItem(key string, r StatusRow, edit SubForm) {
 		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/rename") } class="flex-1">
 			<div class="flex items-center gap-2">
 				<label for={ "s-" + r.Status.ID } class="sr-only">Name</label>
-				<input id={ "s-" + r.Status.ID } name="name" value={ edit.Val("name", r.Status.Name) } aria-invalid?={ edit.Errors["name"] != "" } class={ inputClass + " max-w-48" }/>
+				<input
+					id={ "s-" + r.Status.ID }
+					name="name"
+					value={ edit.Val("name", r.Status.Name) }
+					if edit.Errors["name"] != "" {
+						aria-invalid="true"
+						aria-describedby={ "s-" + r.Status.ID + "-error" }
+					}
+					class={ inputClass + " max-w-48" }
+				/>
 				<button type="submit" class={ btnLink }>Rename</button>
 			</div>
-			@FieldError(edit.Errors["name"])
+			@FieldError("s-"+r.Status.ID+"-error", edit.Errors["name"])
 		</form>
 		<span class="w-24 text-xs text-muted">{ CategoryLabel(r.Status.Category) }</span>
 		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/up") }>
