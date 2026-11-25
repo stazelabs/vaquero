@@ -38,8 +38,10 @@ func (c *Core) tx(ctx context.Context, fn func(q *gen.Queries) error) error {
 	if err != nil {
 		return fmt.Errorf("begin: %w", err)
 	}
+	// Rollback after a commit is a no-op; after an error or a panic it
+	// frees the writer's only connection.
+	defer func() { _ = tx.Rollback() }()
 	if err := fn(gen.New(tx)); err != nil {
-		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {
