@@ -20,7 +20,7 @@ For Claude Code, add it once:
 
     claude mcp add vaquero -- vaquero mcp --agent builder
 
-Give each agent you run its own `--agent` name, so their claims and comments stay apart.
+Give each agent you run its own `--agent` name, so their claims and comments stay apart. `--agent` works only with the local owner's token; with any other token it is ignored, and `vaquero mcp` says so on standard error.
 
 **HTTP.** A client that connects over HTTP uses `http://127.0.0.1:7878/mcp` (Streamable HTTP, one request per message, plain JSON answers) with an API token in an `Authorization: Bearer vq_...` header, and the agent's name in a `Vaquero-Agent` header. [API tokens](/help/api-tokens) explains making a token, and [Agents and claims](/help/agents-and-claims#naming-an-agent) how names work.
 

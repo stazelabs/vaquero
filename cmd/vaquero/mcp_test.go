@@ -198,3 +198,29 @@ func TestMCPBridgeAnswersBeforeExit(t *testing.T) {
 		t.Fatalf("%s", out)
 	}
 }
+
+// VAQ-67: --agent with a token that isn't the owner's is ignored, and the
+// bridge says so on stderr, once; stdout stays JSON-RPC.
+func TestMCPBridgeWarnsWhenAgentIgnored(t *testing.T) {
+	e := cliEnv(t)
+	bot, err := e.Deps.Core.EnsureAgent(t.Context(), e.Deps.Actor.ID, "ci-bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := e.Deps.Core.CreateToken(t.Context(), e.Deps.Actor.ID, bot.ID, "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := client.Config{Profiles: []client.Profile{{Name: "bot", URL: e.Server.URL, Token: raw}}}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "bot", "--agent", "builder")
+	if code != 0 || strings.Count(errOut, "--agent is ignored: this profile's token isn't the local owner's") != 1 || len(answers(t, out)) != 1 {
+		t.Fatalf("exit %d\nerr %s\nout %s", code, errOut, out)
+	}
+	// With the owner's token the agent applies, and nothing is warned.
+	if _, _, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "t", "--agent", "builder"); strings.Contains(errOut, "ignored") {
+		t.Fatalf("warned for the owner: %s", errOut)
+	}
+}
