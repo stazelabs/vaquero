@@ -53,7 +53,7 @@ func TestFilterChipsInURL(t *testing.T) {
 	all := c.Get("/p/VAQ").Body
 	contains(t, all, `href="/p/VAQ?tag=ui"`, `href="/p/VAQ?mine=1"`, `href="/p/VAQ?agents=1"`, `href="/p/VAQ?priority=1"`)
 	page := c.Get("/p/VAQ?tag=ui").Body
-	contains(t, page, `data-card="VAQ-1"`, `aria-pressed="true"`, "Clear filters")
+	contains(t, page, `data-card="VAQ-1"`, `aria-current="true"`, "Clear filters")
 	lacks(t, page, `data-card="VAQ-2"`)
 	// The fragment keeps the filter for live refreshes and drops.
 	contains(t, page, `data-filter="tag=ui"`)
@@ -179,4 +179,18 @@ func TestBoardFragmentRoute(t *testing.T) {
 		t.Fatalf("%d %.80q", r.Status, r.Body)
 	}
 	contains(t, r.Body, `data-filter="mine=1"`)
+}
+
+// Chips are links, so the one that is on says aria-current, inside a
+// labelled group; a tag filter spelled in another case still marks its
+// chip (VAQ-43).
+func TestFilterChipsAccessible(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	ticket(t, e, p, core.TicketInput{Title: "tagged", Tags: []string{"école"}})
+	for _, path := range []string{"/p/VAQ?tag=%C3%89cole", "/p/VAQ/list?tag=%C3%89cole"} {
+		page := e.Client().Get(path).Body
+		contains(t, page, `role="group" aria-label="Filters"`, `aria-current="true" class="rounded-full border px-3 py-0.5 text-xs border-accent`, ">école</a>")
+		lacks(t, page, "aria-pressed", ">École</a>")
+	}
 }

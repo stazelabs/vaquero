@@ -21,7 +21,13 @@ templ AdminShell(title, current string) {
 				<ul class="mt-2 space-y-1">
 					for _, p := range AdminPages {
 						<li>
-							<a href={ templ.SafeURL(p[0]) } aria-current?={ p[0] == current } class={ adminNavClass(p[0] == current) }>
+							<a
+								href={ templ.SafeURL(p[0]) }
+								if p[0] == current {
+									aria-current="page"
+								}
+								class={ adminNavClass(p[0] == current) }
+							>
 								@Icon(adminIcons[p[0]])
 								{ p[1] }
 							</a>
@@ -120,12 +126,12 @@ templ TokensPage(v TokensView) {
 // that appear in the log (for the filters), the filters set, and the link
 // to older calls when there are more.
 type MCPView struct {
-	Calls        []gen.ListMCPCallsRow
-	Agents       []string
-	Tools        []string
-	Agent, Tool  string
-	Older        string
-	Now          time.Time
+	Calls       []gen.ListMCPCallsRow
+	Agents      []string
+	Tools       []string
+	Agent, Tool string
+	Older       string
+	Now         time.Time
 }
 
 templ MCPPage(v MCPView) {
@@ -133,16 +139,40 @@ templ MCPPage(v MCPView) {
 		@titleWithHelp("MCP activity", "mcp", "About MCP")
 		<p class="mt-2 max-w-xl text-sm text-muted">Every tool call agents made over MCP, newest first. Long text in a call is cut short; calls are kept for 30 days.</p>
 		<div class="mt-6 space-y-2">
-			<div class="flex flex-wrap items-center gap-2" aria-label="Agent">
-				<a href={ templ.SafeURL(mcpFilterHref("", v.Tool)) } class={ chipClass(v.Agent == "") } aria-pressed={ boolAttr(v.Agent == "") }>All agents</a>
+			<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Agent">
+				<a
+					href={ templ.SafeURL(mcpFilterHref("", v.Tool)) }
+					class={ chipClass(v.Agent == "") }
+					if v.Agent == "" {
+						aria-current="true"
+					}
+				>All agents</a>
 				for _, a := range v.Agents {
-					<a href={ templ.SafeURL(mcpFilterHref(a, v.Tool)) } class={ chipClass(v.Agent == a) } aria-pressed={ boolAttr(v.Agent == a) }>{ a }</a>
+					<a
+						href={ templ.SafeURL(mcpFilterHref(a, v.Tool)) }
+						class={ chipClass(v.Agent == a) }
+						if v.Agent == a {
+							aria-current="true"
+						}
+					>{ a }</a>
 				}
 			</div>
-			<div class="flex flex-wrap items-center gap-2" aria-label="Tool">
-				<a href={ templ.SafeURL(mcpFilterHref(v.Agent, "")) } class={ chipClass(v.Tool == "") } aria-pressed={ boolAttr(v.Tool == "") }>All tools</a>
+			<div class="flex flex-wrap items-center gap-2" role="group" aria-label="Tool">
+				<a
+					href={ templ.SafeURL(mcpFilterHref(v.Agent, "")) }
+					class={ chipClass(v.Tool == "") }
+					if v.Tool == "" {
+						aria-current="true"
+					}
+				>All tools</a>
 				for _, t := range v.Tools {
-					<a href={ templ.SafeURL(mcpFilterHref(v.Agent, t)) } class={ chipClass(v.Tool == t) + " font-mono" } aria-pressed={ boolAttr(v.Tool == t) }>{ t }</a>
+					<a
+						href={ templ.SafeURL(mcpFilterHref(v.Agent, t)) }
+						class={ chipClass(v.Tool == t) + " font-mono" }
+						if v.Tool == t {
+							aria-current="true"
+						}
+					>{ t }</a>
 				}
 			</div>
 		</div>

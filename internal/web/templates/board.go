@@ -22,9 +22,10 @@ func chipClass(on bool) string {
 	return base + "border-line text-ink/80 hover:border-accent"
 }
 
-// cardClass gives ready cards the accent edge.
+// cardClass gives ready cards the accent edge, and a ring while the card's
+// link has focus (j and k move it).
 func cardClass(ready bool) string {
-	base := "cursor-grab rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60"
+	base := "cursor-grab rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
 	if ready {
 		return base + " border-l-4 border-l-accent"
 	}

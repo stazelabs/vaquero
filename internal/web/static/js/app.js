@@ -178,7 +178,8 @@ window.vqDragging = false;
 })();
 
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
-// g b board, g l list, j/k next/previous card, enter open, ? shortcuts.
+// g b board, g l list, j/k next/previous card (enter on its focused link
+// opens it), ? shortcuts.
 // Ignored while typing in a field.
 (function () {
   var dialog = document.getElementById("vq-shortcuts");
@@ -197,7 +198,6 @@ window.vqDragging = false;
     var tag = el.tagName;
     return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
   }
-  var current = -1;
   // Visible cards only: a collapsed rail's cards are skipped.
   function cards() {
     return Array.prototype.slice.call(document.querySelectorAll("[data-card]")).filter(function (el) {
@@ -205,18 +205,22 @@ window.vqDragging = false;
       return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
     });
   }
+  // j and k move real focus to the next or previous card's link, starting
+  // from the card that holds focus (after Tab or a click, too). The card
+  // draws its ring while its link is focused (focus-within in its class).
   function focusCard(step) {
     var list = cards();
     if (!list.length) {
       return;
     }
-    if (current >= 0 && list[current]) {
-      list[current].classList.remove("ring-2", "ring-accent");
+    var active = document.activeElement;
+    var at = active && active.closest ? list.indexOf(active.closest("[data-card]")) : -1;
+    var next = at < 0 ? 0 : Math.max(0, Math.min(list.length - 1, at + step));
+    var link = list[next].querySelector("a");
+    if (link) {
+      link.focus({ preventScroll: true });
     }
-    current = Math.max(0, Math.min(list.length - 1, current + step));
-    var el = list[current];
-    el.classList.add("ring-2", "ring-accent");
-    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    list[next].scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   var pendingG = false;
   document.addEventListener("keydown", function (ev) {
@@ -258,18 +262,6 @@ window.vqDragging = false;
       case "k":
         focusCard(-1);
         break;
-      case "Enter":
-        // Enter on a focused link, button or rail summary is the browser's.
-        if (ev.target.closest && ev.target.closest("a,button,summary,[tabindex]")) {
-          return;
-        }
-        var list = cards();
-        var link = current >= 0 && list[current] ? list[current].querySelector("a") : null;
-        if (!link) {
-          return;
-        }
-        link.click();
-        break;
       case "?":
         if (dialog) {
           dialog.showModal();
@@ -280,8 +272,25 @@ window.vqDragging = false;
     }
     ev.preventDefault();
   });
-  // A board refresh replaces the cards; start the focus over.
-  document.body.addEventListener("htmx:afterSwap", function () { current = -1; });
+  // A board or list refresh replaces the cards: the focused card's link is
+  // focused again in the new markup, so j and k carry on from it.
+  var refocus = "";
+  document.body.addEventListener("htmx:beforeSwap", function () {
+    var active = document.activeElement;
+    var card = active && active.closest ? active.closest("[data-card]") : null;
+    refocus = card ? card.dataset.card : "";
+  });
+  document.body.addEventListener("htmx:afterSettle", function () {
+    if (!refocus) {
+      return;
+    }
+    var card = document.querySelector('[data-card="' + refocus + '"]');
+    var link = card ? card.querySelector("a") : null;
+    refocus = "";
+    if (link && (document.activeElement === document.body || !document.activeElement)) {
+      link.focus({ preventScroll: true });
+    }
+  });
 })();
 
 // Claim countdowns: every [data-claim-expires] (a lease's end, an ISO

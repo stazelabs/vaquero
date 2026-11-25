@@ -36,11 +36,23 @@ templ projectHeader(p gen.Project, view string) {
 			<h1 class={ h1Class }>{ p.Name }</h1>
 		</div>
 		<nav aria-label="Project" class="flex items-center gap-4">
-			<a href={ templ.SafeURL("/p/" + p.Key) } class={ navIconLink } aria-current?={ view == "board" }>
+			<a
+				href={ templ.SafeURL("/p/" + p.Key) }
+				class={ navIconLink }
+				if view == "board" {
+					aria-current="page"
+				}
+			>
 				@Icon("board")
 				Board
 			</a>
-			<a href={ templ.SafeURL("/p/" + p.Key + "/list") } class={ navIconLink } aria-current?={ view == "list" }>
+			<a
+				href={ templ.SafeURL("/p/" + p.Key + "/list") }
+				class={ navIconLink }
+				if view == "list" {
+					aria-current="page"
+				}
+			>
 				@Icon("list")
 				List
 			</a>
@@ -62,9 +74,15 @@ templ projectHeader(p gen.Project, view string) {
 }
 
 templ chips(cs []Chip, clear string, active bool) {
-	<div class="mt-4 flex flex-wrap items-center gap-2" aria-label="Filters">
+	<div class="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filters">
 		for _, c := range cs {
-			<a href={ templ.SafeURL(c.Href) } aria-pressed={ boolAttr(c.On) } class={ chipClass(c.On) }>{ c.Label }</a>
+			<a
+				href={ templ.SafeURL(c.Href) }
+				if c.On {
+					aria-current="true"
+				}
+				class={ chipClass(c.On) }
+			>{ c.Label }</a>
 		}
 		if active {
 			<a href={ templ.SafeURL(clear) } class="text-xs text-muted hover:text-accent">Clear filters</a>
@@ -216,7 +234,13 @@ templ milestonePanel(b board.Board) {
 			<p class="text-muted">No open milestones.</p>
 		}
 		for _, m := range b.Milestones {
-			<a href={ templ.SafeURL(milestoneHref(b, m.ID)) } class="block hover:text-accent" aria-pressed={ boolAttr(b.Filter.Milestone == m.ID) }>
+			<a
+				href={ templ.SafeURL(milestoneHref(b, m.ID)) }
+				class="block hover:text-accent"
+				if b.Filter.Milestone == m.ID {
+					aria-current="true"
+				}
+			>
 				<span class="font-medium text-ink">{ m.Name }</span>
 				if m.Due != "" {
 					<span class="text-muted">· { m.Due }</span>
@@ -225,7 +249,13 @@ templ milestonePanel(b board.Board) {
 				<span class="text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
 			</a>
 		}
-		<a href={ templ.SafeURL(milestoneHref(b, "none")) } class="block text-muted hover:text-accent" aria-pressed={ boolAttr(b.Filter.Milestone == "none") }>
+		<a
+			href={ templ.SafeURL(milestoneHref(b, "none")) }
+			class="block text-muted hover:text-accent"
+			if b.Filter.Milestone == "none" {
+				aria-current="true"
+			}
+		>
 			No milestone · { itoa(b.NoMilestone) } open
 		</a>
 	</aside>
@@ -270,7 +300,7 @@ templ ListPage(v ListView) {
 }
 
 templ listRow(k board.Card) {
-	<li data-card={ k.Key } class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2">
+	<li data-card={ k.Key } class="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-3 py-2 focus-within:ring-2 focus-within:ring-inset focus-within:ring-accent">
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="font-mono text-xs text-muted hover:text-accent">{ k.Key }</a>
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="min-w-0 flex-1 text-sm text-ink hover:text-accent">{ k.Title }</a>
 		if k.Ready {

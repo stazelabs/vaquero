@@ -84,7 +84,13 @@ templ HelpArticlePage(a help.Article, s help.Section) {
 					<ul class="mt-2 space-y-1">
 						for _, o := range s.Articles {
 							<li>
-								<a href={ templ.SafeURL("/help/" + o.Slug) } aria-current?={ o.Slug == a.Slug } class={ helpNavClass(o.Slug == a.Slug) }>{ o.Title }</a>
+								<a
+									href={ templ.SafeURL("/help/" + o.Slug) }
+									if o.Slug == a.Slug {
+										aria-current="page"
+									}
+									class={ helpNavClass(o.Slug == a.Slug) }
+								>{ o.Title }</a>
 							</li>
 						}
 					</ul>

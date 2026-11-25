@@ -29,7 +29,7 @@ func chipsFor(base string, f board.Filter, tags []string, categories bool) []tem
 	}
 	out := []templates.Chip{chip("Mine", "mine", "1", f.Mine), chip("Agents", "agents", "1", f.Agents)}
 	for _, t := range tags {
-		out = append(out, chip(t, "tag", t, f.Tag == t))
+		out = append(out, chip(t, "tag", t, core.SameTag(f.Tag, t)))
 	}
 	for p := int64(1); p <= 4; p++ {
 		out = append(out, chip(templates.PriorityLabel(p), "priority", strconv.FormatInt(p, 10), f.Priority == p))
@@ -43,7 +43,7 @@ func chipsFor(base string, f board.Filter, tags []string, categories bool) []tem
 }
 
 // tagsOn lists the distinct tags on a set of columns, sorted, keeping the
-// active tag even when nothing carries it.
+// active tag even when nothing carries it (in any case or normalisation).
 func tagsOn(cols [][]board.Column, active string) []string {
 	var out []string
 	for _, group := range cols {
@@ -57,7 +57,7 @@ func tagsOn(cols [][]board.Column, active string) []string {
 			}
 		}
 	}
-	if active != "" && !slices.Contains(out, active) {
+	if active != "" && !slices.ContainsFunc(out, func(t string) bool { return core.SameTag(t, active) }) {
 		out = append(out, active)
 	}
 	slices.Sort(out)
