@@ -123,10 +123,7 @@ func TestLinkEventsAppearInBothTicketsHistory(t *testing.T) {
 		t.Fatalf("%d events for add and remove, want 2", got)
 	}
 	hist := func(tk gen.Ticket) []string {
-		evs, err := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{
-			TicketID:  sql.NullString{String: tk.ID, Valid: true},
-			TicketKey: core.TicketKey{Project: "VAQ", Number: tk.Number}.String(),
-		})
+		evs, err := d.RQ.ListTicketEvents(bg, sql.NullString{String: tk.ID, Valid: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,8 +171,8 @@ func TestLinkHistoryFollowsTheTicketNotItsKey(t *testing.T) {
 	if _, err := c.AddLink(bg, f.Owner.ID, other.ID, "blocks", core.TicketKey{Project: "OLD", Number: f.T1.Number}); err != nil {
 		t.Fatal(err)
 	}
-	links := func(tk gen.Ticket, key string) int {
-		evs, err := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{TicketID: sql.NullString{String: tk.ID, Valid: true}, TicketKey: key})
+	links := func(tk gen.Ticket) int {
+		evs, err := d.RQ.ListTicketEvents(bg, sql.NullString{String: tk.ID, Valid: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,11 +184,11 @@ func TestLinkHistoryFollowsTheTicketNotItsKey(t *testing.T) {
 		}
 		return n
 	}
-	if n := links(reuse, "VAQ-1"); n != 0 {
+	if n := links(reuse); n != 0 {
 		t.Fatalf("a ticket that reuses the key shows %d foreign link events", n)
 	}
 	// T1 (now OLD-1) keeps the fixture link, T2's, and the new one from other.
-	if n := links(f.T1, "OLD-1"); n != 3 {
+	if n := links(f.T1); n != 3 {
 		t.Fatalf("renamed ticket has %d link events, want 3", n)
 	}
 }

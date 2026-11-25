@@ -314,7 +314,8 @@ func decodeRows(raw json.RawMessage) ([]map[string]any, error) {
 // refused, naming its table); a column the export lacks takes its default.
 // Foreign keys are checked at commit (tickets refer to their parents in id
 // order). Attachments keep the blob_key the export gives (the entry name);
-// the caller rewrites it to its own instance's keys. Last, the search
+// the caller rewrites it to its own instance's keys. Link events without
+// to_id get it as on upgrade (appdb.BackfillLinkTargets). Last, the search
 // indexes are rebuilt, leaving deleted comments out as the triggers do.
 func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
@@ -375,6 +376,11 @@ func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 			}
 		}
 		closeAll(stmts)
+	}
+	// An export from v0.1.x has link events without to_id; fill them in as
+	// migration 0008 did on upgrade.
+	if err := appdb.BackfillLinkTargets(ctx, tx); err != nil {
+		return err
 	}
 	for _, q := range []string{
 		"INSERT INTO tickets_fts (tickets_fts) VALUES ('rebuild')",

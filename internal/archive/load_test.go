@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -423,5 +424,30 @@ func TestBlobClosesWhenCallerDoes(t *testing.T) {
 	}
 	if after := fdCount(t); after > before+2 {
 		t.Fatalf("descriptors rose from %d to %d: opened blobs stay open", before, after)
+	}
+}
+
+// An export from v0.1.x has link events without to_id; loading it fills
+// them in as migration 0008 did, so the target ticket's history lists them.
+func TestLoadBackfillsLinkTargets(t *testing.T) {
+	strip := regexp.MustCompile(`,\\"to_id\\":\\"[0-9A-Z]+\\"`)
+	b := edited(t, func(s string) string {
+		if !strip.MatchString(s) {
+			t.Fatal("the seeded export has no link event with to_id")
+		}
+		return strip.ReplaceAllString(s, "")
+	})
+	d, err := load(t, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var total, wrong int
+	if err := d.R.QueryRow(`SELECT count(*), count(*) FILTER (WHERE coalesce(json_extract(e.payload, '$.to_id'), '') <> l.to_id)
+		FROM events e JOIN ticket_links l ON l.id = json_extract(e.payload, '$.link_id')
+		WHERE e.kind IN ('link.created', 'link.deleted')`).Scan(&total, &wrong); err != nil {
+		t.Fatal(err)
+	}
+	if total == 0 || wrong != 0 {
+		t.Fatalf("%d of %d link events lack their target's id", wrong, total)
 	}
 }

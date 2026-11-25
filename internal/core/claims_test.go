@@ -92,7 +92,7 @@ func TestClaimMovesAndAssigns(t *testing.T) {
 	if eventCount(t, d)-before != 1 {
 		t.Fatal("want one event")
 	}
-	evs, _ := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{TicketID: sql.NullString{String: f.T1.ID, Valid: true}, TicketKey: "VAQ-1"})
+	evs, _ := d.RQ.ListTicketEvents(bg, sql.NullString{String: f.T1.ID, Valid: true})
 	if evs[0].Kind != core.EvTicketClaimed {
 		t.Fatalf("newest event %s", evs[0].Kind)
 	}
@@ -287,7 +287,7 @@ func TestExpireReturnsTicket(t *testing.T) {
 	if eventCount(t, d)-before != 1 {
 		t.Fatal("want one event")
 	}
-	evs, _ := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{TicketID: sql.NullString{String: f.T1.ID, Valid: true}, TicketKey: "VAQ-1"})
+	evs, _ := d.RQ.ListTicketEvents(bg, sql.NullString{String: f.T1.ID, Valid: true})
 	if last := evs[0]; last.Kind != core.EvClaimLapsed || last.ActorID != a.ID {
 		t.Fatalf("%+v", last)
 	}
