@@ -22,7 +22,7 @@ Drag a card to another column to change its status, or within a column to reorde
 
 ## Live updates
 
-The board, the list view and the Activity page update themselves when anything changes, whether from another tab, the command line or an agent. A refresh waits while you are dragging. Updates pause while the tab is hidden and catch up when you come back.
+The board, the list view and the Activity page update themselves when anything changes, whether from another tab, the command line or an agent. A refresh waits while you are dragging. Updates pause while the tab is hidden and catch up when you come back. A page also catches up on changes made while it was loading, or while Vaquero was restarting.
 
 ## The list view
 

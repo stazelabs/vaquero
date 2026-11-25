@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +20,18 @@ import (
 // the lines it sends, closed when the stream ends.
 func openStream(t *testing.T, base string) (<-chan string, context.CancelFunc) {
 	t.Helper()
+	return openStreamAt(t, base, "/events/stream", "")
+}
+
+// openStreamAt is openStream on path, sending lastID as Last-Event-ID
+// when it is set, the way a browser's EventSource reconnects.
+func openStreamAt(t *testing.T, base, path, lastID string) (<-chan string, context.CancelFunc) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/events/stream", nil)
+	req, _ := http.NewRequestWithContext(ctx, "GET", base+path, nil)
+	if lastID != "" {
+		req.Header.Set("Last-Event-ID", lastID)
+	}
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		cancel()
@@ -140,4 +152,82 @@ func TestStreamAnnouncesMCPCalls(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	mcpCall(t, cs, "list_projects", nil)
 	waitFor(t, lines, "event: mcp", time.Second)
+}
+
+// seqNow is the newest event sequence number.
+func seqNow(t *testing.T, e *webtest.Env) int64 {
+	t.Helper()
+	n, err := e.Deps.R.MaxEventSeq(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// quiet fails if the stream sends want within d.
+func quiet(t *testing.T, lines <-chan string, want string, d time.Duration) {
+	t.Helper()
+	deadline := time.After(d)
+	for {
+		select {
+		case l, ok := <-lines:
+			if !ok {
+				return
+			}
+			if l == want {
+				t.Fatalf("unexpected %q", want)
+			}
+		case <-deadline:
+			return
+		}
+	}
+}
+
+// VAQ-36 (Review Focus 4): each change carries its sequence as the event id.
+func TestStreamChangesCarryTheirSequence(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	lines, _ := openStream(t, e.Server.URL)
+	time.Sleep(50 * time.Millisecond)
+	ticket(t, e, p, core.TicketInput{Title: "new"})
+	waitFor(t, lines, "id: "+strconv.FormatInt(seqNow(t, e), 10), time.Second)
+}
+
+// A page carries the sequence it was rendered at; a stream opened with it
+// announces a change made in between at once, and one opened at the
+// current sequence stays quiet (no duplicate refresh).
+func TestStreamCatchesUpFromThePage(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	page := e.Client().Get("/p/VAQ").Body
+	m := regexp.MustCompile(`data-event-seq="(\d+)"`).FindStringSubmatch(page)
+	if m == nil || m[1] != strconv.FormatInt(seqNow(t, e), 10) {
+		t.Fatalf("page sequence %v, newest %d", m, seqNow(t, e))
+	}
+	ticket(t, e, p, core.TicketInput{Title: "between render and connect"})
+	lines, _ := openStreamAt(t, e.Server.URL, "/events/stream?since="+m[1], "")
+	waitFor(t, lines, "event: change", 200*time.Millisecond)
+
+	current, _ := openStreamAt(t, e.Server.URL, "/events/stream?since="+strconv.FormatInt(seqNow(t, e), 10), "")
+	quiet(t, current, "event: change", 200*time.Millisecond)
+}
+
+// After a restart the browser reconnects with Last-Event-ID, which wins
+// over the page's since: changes made while it was away are announced once.
+func TestStreamHonoursLastEventID(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	before := strconv.FormatInt(seqNow(t, e), 10)
+	ticket(t, e, p, core.TicketInput{Title: "while disconnected"})
+	now := strconv.FormatInt(seqNow(t, e), 10)
+
+	lines, _ := openStreamAt(t, e.Server.URL, "/events/stream?since="+now, before)
+	waitFor(t, lines, "id: "+now, 200*time.Millisecond)
+	waitFor(t, lines, "event: change", 200*time.Millisecond)
+	quiet(t, lines, "event: change", 200*time.Millisecond)
+
+	// Up to date: only the id, so the browser's next reconnect starts there.
+	same, _ := openStreamAt(t, e.Server.URL, "/events/stream?since="+before, now)
+	waitFor(t, same, "id: "+now, 200*time.Millisecond)
+	quiet(t, same, "event: change", 200*time.Millisecond)
 }

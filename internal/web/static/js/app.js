@@ -154,16 +154,22 @@ window.vqDragging = false;
 
 // Live updates. One EventSource per tab (not per page part) listens to
 // /events/stream; on "change" every [data-live] element gets a vq:change
-// event, which its hx-trigger turns into a refresh. A hidden tab closes its
+// event, which its hx-trigger turns into a refresh. The stream opens from
+// the event sequence the page was rendered at (the body's data-event-seq,
+// sent as ?since=), and each change carries its sequence as the event id,
+// so the server announces at once anything the page missed: before the
+// stream connected, while the server restarted (the browser reconnects
+// with Last-Event-ID) or while the tab was hidden. A hidden tab closes its
 // stream, since browsers allow only six connections to one host, and
-// refreshes once when it is shown again. A refresh of #board waits while a
-// card is being dragged.
+// reopens it from the last sequence it saw when shown again. A refresh of
+// #board waits while a card is being dragged.
 (function () {
   if (!document.querySelector("[data-live], [data-live-mcp]") || !window.EventSource || !window.htmx) {
     return;
   }
   var source = null;
   var pending = false;
+  var seen = document.body.getAttribute("data-event-seq") || "";
   function refresh() {
     document.querySelectorAll("[data-live]").forEach(function (el) {
       if (el.id === "board" && window.vqDragging) {
@@ -183,8 +189,13 @@ window.vqDragging = false;
     if (source) {
       return;
     }
-    source = new EventSource("/events/stream");
-    source.addEventListener("change", refresh);
+    source = new EventSource("/events/stream" + (seen ? "?since=" + encodeURIComponent(seen) : ""));
+    source.addEventListener("change", function (ev) {
+      if (ev.lastEventId) {
+        seen = ev.lastEventId;
+      }
+      refresh();
+    });
     source.addEventListener("mcp", refreshMCP);
     window.vqStream = source;
   }
@@ -199,8 +210,12 @@ window.vqDragging = false;
     if (document.hidden) {
       close();
     } else {
+      // The stream reopens from the last sequence seen and announces
+      // anything missed while hidden; without one, refresh to be sure.
+      if (!seen) {
+        refresh();
+      }
       open();
-      refresh(); // catch up on anything missed while hidden
       refreshMCP();
     }
   });

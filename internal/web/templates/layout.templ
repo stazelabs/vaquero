@@ -24,7 +24,12 @@ templ Shell(title string) {
 			<script src={ static.URL("vendor/sortable.min.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 			<script src={ static.URL("js/app.js") } nonce={ templ.GetNonce(ctx) } defer></script>
 		</head>
-		<body class="min-h-screen bg-paper text-ink font-sans antialiased">
+		<body
+			class="min-h-screen bg-paper text-ink font-sans antialiased"
+			if seq, ok := eventSeq(ctx); ok {
+				data-event-seq={ seq }
+			}
+		>
 			if f, ok := flash.Current(ctx); ok {
 				@toast(f)
 			}
