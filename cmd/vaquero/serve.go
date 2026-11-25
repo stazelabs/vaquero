@@ -91,6 +91,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 
 	c := core.New(w, time.Now)
 	c.BlobStore = cfg.BlobBackend
+	c.BlobLocation = blobs.Location(cfg)
 	// The instance id names blob keys; the backend lock keeps existing
 	// attachments from being stranded by a changed VQ_BLOB_STORE. Both come
 	// before anything else is written, so a refused boot changes nothing.
@@ -98,11 +99,17 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err != nil {
 		return fmt.Errorf("instance id: %w", err)
 	}
-	if err := checkBlobBackend(ctx, gen.New(r), cfg.BlobBackend); err != nil {
+	if err := checkBlobBackend(ctx, gen.New(r), cfg); err != nil {
 		return err
 	}
+	// Both are recorded on every boot that passes the check: unchanged with
+	// attachments, free to change without them, and a location missing
+	// from an older database is recorded here rather than refused.
 	if err := gen.New(w).PutSetting(ctx, gen.PutSettingParams{Key: settingBlobStore, Value: cfg.BlobBackend, UpdatedAt: timefmt.Format(time.Now())}); err != nil {
 		return fmt.Errorf("blob store setting: %w", err)
+	}
+	if err := gen.New(w).PutSetting(ctx, gen.PutSettingParams{Key: settingBlobLocation, Value: c.BlobLocation, UpdatedAt: timefmt.Format(time.Now())}); err != nil {
+		return fmt.Errorf("blob location setting: %w", err)
 	}
 	// Opening checks the configuration now, so a bad directory or S3 setting
 	// stops the boot instead of the first upload.
@@ -187,8 +194,9 @@ func prepareDataDir(dir string, logger *slog.Logger) error {
 
 // Settings keys written by serve.
 const (
-	settingInstanceID = "instance_id"
-	settingBlobStore  = "blob_store"
+	settingInstanceID   = "instance_id"
+	settingBlobStore    = "blob_store"
+	settingBlobLocation = "blob_location"
 )
 
 // ensureInstance returns the instance id, minting a lower-case ULID on the
@@ -209,16 +217,26 @@ func ensureInstance(ctx context.Context, w *sql.DB, now time.Time) (string, erro
 	return id, nil
 }
 
-// checkBlobBackend refuses a boot whose configured backend differs from the
-// one recorded in settings while attachments exist, since their bytes would
-// be unreachable.
-func checkBlobBackend(ctx context.Context, r *gen.Queries, configured string) error {
-	s, err := r.GetSetting(ctx, settingBlobStore)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && s.Value == configured) {
+// checkBlobBackend refuses a boot whose configured backend, or the place it
+// keeps the bytes (blobs.Location), differs from the one recorded in
+// settings while attachments exist, since their bytes would be unreachable.
+// A location not recorded yet (a database from before it was) is no
+// refusal.
+func checkBlobBackend(ctx context.Context, r *gen.Queries, cfg config.Config) error {
+	store, err := r.GetSetting(ctx, settingBlobStore)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	loc, err := r.GetSetting(ctx, settingBlobLocation)
+	locChanged := err == nil && store.Value == cfg.BlobBackend && loc.Value != blobs.Location(cfg)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if store.Value == cfg.BlobBackend && !locChanged {
+		return nil
 	}
 	n, err := r.CountAttachments(ctx)
 	if err != nil {
@@ -227,8 +245,24 @@ func checkBlobBackend(ctx context.Context, r *gen.Queries, configured string) er
 	if n == 0 {
 		return nil
 	}
+	if locChanged {
+		return blobLocationRefusal(cfg, loc.Value)
+	}
 	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s. Set it back to %s.", s.Value, configured, s.Value)
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s. Set it back to %s.", store.Value, cfg.BlobBackend, store.Value)
+}
+
+// blobLocationRefusal says the attachments are in recorded, not where the
+// configuration points, and which settings to put back.
+func blobLocationRefusal(cfg config.Config, recorded string) error {
+	now := blobs.Location(cfg)
+	if cfg.BlobBackend == "s3" {
+		ep, bucket, _ := strings.Cut(recorded, "/")
+		//lint:ignore ST1005 the refusal is a sentence the operator reads as is
+		return fmt.Errorf("Attachments are stored in %s; VQ_S3_ENDPOINT and VQ_S3_BUCKET name %s. Set them back to %s and %s.", recorded, now, ep, bucket)
+	}
+	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s. Set it back to %s.", recorded, now, recorded)
 }
 
 // TokenFile is where the local token lives in the data directory. The CLI

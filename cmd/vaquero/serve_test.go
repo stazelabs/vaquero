@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/sweep"
 	_ "modernc.org/sqlite"
@@ -393,5 +394,77 @@ func TestServeAllowsBackendChangeWhenEmpty(t *testing.T) {
 	}
 	if got := readSetting(t, dir, "blob_store"); got != "dir" {
 		t.Fatalf("blob_store = %q", got)
+	}
+}
+
+// VAQ-78: the lock covers where the bytes are, not only the backend: a dir
+// store moved to another VQ_BLOB_DIR while attachments exist is refused,
+// naming both, and the recorded location still boots.
+func TestServeRefusesBlobLocationChange(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(t.TempDir(), "a"), filepath.Join(t.TempDir(), "b")
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": a}); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSetting(t, dir, "blob_location"); got != a {
+		t.Fatalf("blob_location = %q, want %q", got, a)
+	}
+	addAttachmentRow(t, dir)
+	before := settingsDump(t, dir)
+	err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": b})
+	want := "Attachments are stored in " + a + "; VQ_BLOB_DIR is " + b + ". Set it back to " + a + "."
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("%v", err)
+	}
+	if after := settingsDump(t, dir); after != before {
+		t.Fatalf("database changed:\n%s\n%s", before, after)
+	}
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": a}); err != nil {
+		t.Fatalf("the recorded location must still boot: %v", err)
+	}
+}
+
+// VAQ-78: a database from before the location was recorded is not refused:
+// the next boot records it.
+func TestServeRecordsMissingBlobLocation(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(t.TempDir(), "a")
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": a}); err != nil {
+		t.Fatal(err)
+	}
+	addAttachmentRow(t, dir)
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DELETE FROM settings WHERE key = 'blob_location'`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	b := filepath.Join(t.TempDir(), "b")
+	if err := bootOnce(t, dir, map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": b}); err != nil {
+		t.Fatalf("an unrecorded location was refused: %v", err)
+	}
+	if got := readSetting(t, dir, "blob_location"); got != b {
+		t.Fatalf("blob_location = %q, want %q", got, b)
+	}
+}
+
+// VAQ-78: an S3 store is named by endpoint and bucket; SQLite storage has
+// no location.
+func TestBlobLocationRefusals(t *testing.T) {
+	s3 := func(ep, bucket string) config.Config {
+		return config.Config{BlobBackend: "s3", S3Endpoint: ep, S3Bucket: bucket}
+	}
+	if got := blobs.Location(s3("S3.example.com", "files")); got != "s3.example.com/files" {
+		t.Fatalf("s3 location %q", got)
+	}
+	if got := blobs.Location(config.Config{BlobBackend: "sqlite", BlobDir: "/x"}); got != "" {
+		t.Fatalf("sqlite location %q", got)
+	}
+	err := blobLocationRefusal(s3("s3.example.com", "other"), "s3.example.com/files")
+	want := "Attachments are stored in s3.example.com/files; VQ_S3_ENDPOINT and VQ_S3_BUCKET name s3.example.com/other. Set them back to s3.example.com and files."
+	if err == nil || err.Error() != want {
+		t.Fatalf("%v", err)
 	}
 }

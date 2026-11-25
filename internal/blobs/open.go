@@ -3,6 +3,8 @@ package blobs
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
@@ -22,4 +24,22 @@ func Open(cfg config.Config, w, r *sql.DB, now func() time.Time) (Store, error) 
 	default:
 		return nil, fmt.Errorf("blobs: unknown backend %q", cfg.BlobBackend)
 	}
+}
+
+// Location names where the configured store keeps its bytes, recorded in
+// settings beside the backend (blob_location) so a boot pointed at another
+// directory or bucket is caught: the absolute directory for dir, endpoint
+// and bucket for s3 ("endpoint/bucket", the endpoint in lower case), and ""
+// for sqlite, whose bytes are in the database itself.
+func Location(cfg config.Config) string {
+	switch cfg.BlobBackend {
+	case "dir":
+		if abs, err := filepath.Abs(cfg.BlobDir); err == nil {
+			return abs
+		}
+		return filepath.Clean(cfg.BlobDir)
+	case "s3":
+		return strings.ToLower(strings.TrimSuffix(cfg.S3Endpoint, "/")) + "/" + cfg.S3Bucket
+	}
+	return ""
 }

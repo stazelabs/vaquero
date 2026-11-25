@@ -301,7 +301,7 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		}
 	}
 
-	if err = fill(ctx, w, rd, instance, cfg.BlobBackend); err != nil {
+	if err = fill(ctx, w, rd, instance, cfg); err != nil {
 		return "", err
 	}
 	if err = checkDatabase(ctx, w); err != nil {
@@ -327,8 +327,8 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 }
 
 // fill loads rd in one transaction, keys the attachments under instance
-// and records the instance and its blob backend.
-func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance, backend string) error {
+// and records the instance, its blob backend and that backend's location.
+func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance string, cfg config.Config) error {
 	tx, err := w.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -348,7 +348,10 @@ func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance, backend 
 	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "instance_id", Value: instance, UpdatedAt: now}); err != nil {
 		return err
 	}
-	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_store", Value: backend, UpdatedAt: now}); err != nil {
+	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_store", Value: cfg.BlobBackend, UpdatedAt: now}); err != nil {
+		return err
+	}
+	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_location", Value: blobs.Location(cfg), UpdatedAt: now}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

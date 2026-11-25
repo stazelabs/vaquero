@@ -140,6 +140,7 @@ func TestAttachmentNameCleaned(t *testing.T) {
 func TestFirstAttachmentRecordsBackend(t *testing.T) {
 	c, d, f := newFixture(t)
 	c.BlobStore = "dir"
+	c.BlobLocation = "/srv/attachments"
 	if _, err := d.RQ.GetSetting(bg, "blob_store"); err == nil {
 		t.Fatal("set before any attachment")
 	}
@@ -148,6 +149,9 @@ func TestFirstAttachmentRecordsBackend(t *testing.T) {
 	}
 	if s, err := d.RQ.GetSetting(bg, "blob_store"); err != nil || s.Value != "dir" {
 		t.Fatalf("%+v %v", s, err)
+	}
+	if s, err := d.RQ.GetSetting(bg, "blob_location"); err != nil || s.Value != "/srv/attachments" {
+		t.Fatalf("location %+v %v", s, err)
 	}
 	c.BlobStore = "s3" // an existing setting is never overwritten here
 	if _, err := attach(c, f.Owner.ID, f.T1.ID, "b.png"); err != nil {
