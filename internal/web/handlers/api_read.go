@@ -16,6 +16,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/search"
 	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/units"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
@@ -334,10 +335,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 // APISearch is GET /api/v1/search?q=.
 func APISearch(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("q")
-		if len(q) > 500 {
-			q = q[:500]
-		}
+		q := units.Clip(r.URL.Query().Get("q"), maxQuery)
 		hits, err := search.Run(r.Context(), d.RDB, q, limitParam(r, 50, maxAPIList))
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)

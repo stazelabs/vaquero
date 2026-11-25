@@ -4,6 +4,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/stazelabs/vaquero/internal/units"
 )
 
 // Filter narrows the board and list views. It lives in the page's query
@@ -16,7 +18,7 @@ type Filter struct {
 	Assignee     string // "" any; an actor id
 }
 
-// maxValue bounds a filter value read from a URL.
+// maxValue bounds a filter value read from a URL, in characters.
 const maxValue = 100
 
 // ParseFilter reads a filter from a query string. A malformed or
@@ -39,10 +41,7 @@ func truthy(s string) bool { return s != "" && s != "0" && s != "false" }
 
 func clip(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > maxValue {
-		s = s[:maxValue]
-	}
-	return s
+	return units.Clip(s, maxValue)
 }
 
 // Query is the filter as a query string; ParseFilter reads it back.

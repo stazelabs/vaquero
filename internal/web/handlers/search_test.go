@@ -46,3 +46,15 @@ func TestShortcutsDialogPresent(t *testing.T) {
 	}
 	contains(t, e.Client().Get("/p/VAQ").Body, `data-project="VAQ"`)
 }
+
+// A long query is cut to 500 characters, not 500 bytes.
+func TestSearchClipsCharacters(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	for _, ch := range []string{"é", "🐄"} {
+		page := e.Client().Get("/search?q=" + url.QueryEscape(strings.Repeat(ch, 501))).Body
+		if !strings.Contains(page, `value="`+strings.Repeat(ch, 500)+`"`) {
+			t.Errorf("%s: the query isn't kept to 500 characters", ch)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stazelabs/vaquero/internal/board"
 )
@@ -58,5 +59,15 @@ func TestFilterWith(t *testing.T) {
 	}
 	if !(board.Filter{Priority: -1}).With("mine", "1").Mine {
 		t.Fatal("mine")
+	}
+}
+
+// Filter values are cut to 100 characters, never mid-character.
+func TestParseFilterClipsCharacters(t *testing.T) {
+	for _, v := range []string{strings.Repeat("é", 101), strings.Repeat("🐄", 101), strings.Repeat("a", 99) + "éé"} {
+		f := board.ParseFilter(url.Values{"tag": {v}})
+		if n := len([]rune(f.Tag)); n != 100 || !utf8.ValidString(f.Tag) || !strings.HasPrefix(v, f.Tag) {
+			t.Errorf("%q: %d characters, %q", v[:8], n, f.Tag)
+		}
 	}
 }

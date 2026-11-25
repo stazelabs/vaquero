@@ -1,4 +1,4 @@
-// Package units words quantities for people.
+// Package units words quantities for people and cuts text by characters.
 package units
 
 import "fmt"
@@ -13,4 +13,16 @@ func SizeWords(n int64) string {
 	default:
 		return fmt.Sprintf("%d KB", (n+1023)/1024)
 	}
+}
+
+// Clip cuts s to at most n characters (runes), never inside one.
+func Clip(s string, n int) string {
+	i := 0
+	for j := range s {
+		if i == n {
+			return s[:j]
+		}
+		i++
+	}
+	return s
 }

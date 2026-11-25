@@ -12,3 +12,22 @@ func TestSizeWords(t *testing.T) {
 		}
 	}
 }
+
+func TestClipCutsCharactersNotBytes(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"abc", 5, "abc"},
+		{"abc", 2, "ab"},
+		{"École", 1, "É"},
+		{"éééé", 3, "ééé"},
+		{"🐄🐄🐄", 2, "🐄🐄"},
+		{"", 3, ""},
+	} {
+		if got := Clip(c.in, c.n); got != c.want {
+			t.Errorf("Clip(%q, %d) = %q, want %q", c.in, c.n, got, c.want)
+		}
+	}
+}
