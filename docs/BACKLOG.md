@@ -159,7 +159,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] CI triggers once outside contributors send pull requests (the repo is private and workflows are manual for now)
 - [ ] Check the name `vaquero` for collisions on Homebrew and the container registry before the first public release
 - [ ] Whether local mode should ever offer a LAN bind with sign-in (current answer: use hosted mode)
-- [ ] Make the repository public — planned around the first release in Phase 3
+- [x] Make the repository public — done with the v0.1.0 release (2026-11-25)
 
 ## Deferred from Phase 3b design (2026-11-20)
 
@@ -181,3 +181,5 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] Import spools into `os.TempDir()` (often a small tmpfs) — spool into the data directory (review 3b)
 - [ ] `blobs.PutDeadline` of 10 s is tight for 10 MB to S3 on slow uplinks (review 3b)
 - [ ] With sqlite storage, swept blob rows don't shrink the file (no VACUUM) (review 3b)
+- [ ] A `cmd/vaquero` test leaves detached `vaquero.test serve` processes running after the suite (two found six days later, parent pid 1) — stop every server a test starts (release 3b)
+- [ ] The release workflow's `goreleaser/goreleaser-action@v6` runs on deprecated Node 20 — bump it before GitHub removes Node 20 (release 3b)
