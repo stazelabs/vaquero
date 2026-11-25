@@ -46,7 +46,7 @@ func (c *cmd) download(ctx context.Context, w io.Writer) (int64, error) {
 	if _, ok := errors.AsType[*client.Error](err); ok || err == nil {
 		return n, err
 	}
-	return n, fmt.Errorf("%s (%w)%s", "The export broke off before it finished", err, ".")
+	return n, brokeOff{err}
 }
 
 // exportFile downloads into dest.tmp (0600: it holds everything), then
@@ -69,7 +69,24 @@ func exportFile(ctx context.Context, c *cmd, dest string) (int64, error) {
 	}
 	if err != nil {
 		os.Remove(tmp)
-		return 0, fmt.Errorf("%w %s", err, "Nothing was saved at "+dest+".")
+		return 0, notSaved{err: err, dest: dest}
 	}
 	return n, nil
 }
+
+// brokeOff is a download that ended before the whole archive arrived.
+type brokeOff struct{ err error }
+
+func (e brokeOff) Error() string {
+	return "The export broke off before it finished (" + e.err.Error() + ")."
+}
+func (e brokeOff) Unwrap() error { return e.err }
+
+// notSaved is a failed export to a file, which leaves nothing there.
+type notSaved struct {
+	err  error
+	dest string
+}
+
+func (e notSaved) Error() string { return e.err.Error() + " Nothing was saved at " + e.dest + "." }
+func (e notSaved) Unwrap() error { return e.err }

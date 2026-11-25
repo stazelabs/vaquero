@@ -13,9 +13,34 @@ import (
 	"unicode/utf8"
 )
 
-// skipSettings are the settings rows that describe this instance, not its
-// data: import writes its own.
-var skipSettings = []string{"instance_id", "blob_store"}
+// Settings keys come in two known sets. ExportedSettings travel with the
+// data (none yet). InstanceSettings describe this instance, not its data,
+// and never leave it: import writes its own. Any other key makes Write fail,
+// so a new key, which might hold a secret, is never exported unexamined:
+// add it to one set (TestSettingsKeysKnown finds the keys the code writes).
+var (
+	ExportedSettings = []string{}
+	InstanceSettings = []string{"instance_id", "blob_store"}
+)
+
+// checkSettings refuses a settings key in neither known set.
+func checkSettings(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "SELECT key FROM settings ORDER BY key")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return err
+		}
+		if !slices.Contains(ExportedSettings, k) && !slices.Contains(InstanceSettings, k) {
+			return fmt.Errorf("settings key %q is neither exported nor instance-local; add it to archive.ExportedSettings or archive.InstanceSettings", k)
+		}
+	}
+	return rows.Err()
+}
 
 // nulled are columns written as null whatever they hold: live claims don't
 // travel.
@@ -123,8 +148,12 @@ func dumpTable(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, enc *json.Enc
 	q := "SELECT " + strings.Join(names, ", ") + " FROM " + quote(table)
 	var args []any
 	if table == "settings" {
-		q += " WHERE key NOT IN (?, ?)"
-		args = []any{skipSettings[0], skipSettings[1]}
+		if err := checkSettings(ctx, tx); err != nil {
+			return err
+		}
+		q += " WHERE key IN (SELECT value FROM json_each(?))"
+		keys, _ := json.Marshal(ExportedSettings)
+		args = []any{string(keys)}
 	}
 	q += " ORDER BY " + strings.Join(order, ", ")
 	rows, err := tx.QueryContext(ctx, q, args...)

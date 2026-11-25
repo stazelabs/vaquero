@@ -53,12 +53,12 @@ The file is a `.tar.gz`. Inside, `export.json` holds every project, status, mile
 
 Left out on purpose:
 
-- API tokens, which belong to this server only;
+- API tokens, which belong to this server only (the activity history still records each token's name and the first 9 characters of the token that the Admin page shows, never the token itself);
 - the MCP activity log;
 - live claims: tickets keep their status and assignee, but no claim;
 - the settings that describe this server rather than its data, such as where attachments are kept.
 
-If an attachment's file is missing from storage (for example, someone deleted it from the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
+If an attachment's file is missing from storage, or isn't the size its record says (for example, someone deleted or changed it in the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
 
 ## Restoring a snapshot
 

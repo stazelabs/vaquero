@@ -8,8 +8,12 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -301,6 +305,11 @@ func TestExportLeavesOutSecrets(t *testing.T) {
 
 func TestExportEveryColumn(t *testing.T) {
 	d, store := seeded(t)
+	// No settings key is exported yet; allow one here so the settings
+	// columns are checked too.
+	saved := archive.ExportedSettings
+	archive.ExportedSettings = []string{"example"}
+	t.Cleanup(func() { archive.ExportedSettings = saved })
 	if _, err := d.W.ExecContext(bg, "INSERT INTO settings (key, value, updated_at) VALUES ('example', 'yes', 'x')"); err != nil {
 		t.Fatal(err)
 	}
@@ -341,6 +350,26 @@ func TestExportEveryColumn(t *testing.T) {
 	// Every table is exported or deliberately left out, so a new
 	// migration's table can't be forgotten.
 	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence"}
+	// The search indexes: each FTS5 virtual table and its shadow tables.
+	vt, err := d.R.QueryContext(bg, "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fts []string
+	for vt.Next() {
+		var n string
+		if err := vt.Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		fts = append(fts, n)
+		for _, suffix := range []string{"_data", "_idx", "_content", "_docsize", "_config"} {
+			fts = append(fts, n+suffix)
+		}
+	}
+	vt.Close()
+	if !slices.Contains(fts, "tickets_fts") || !slices.Contains(fts, "comments_fts") {
+		t.Fatalf("search indexes %v", fts)
+	}
 	rows, err := d.R.QueryContext(bg, "SELECT name FROM sqlite_schema WHERE type = 'table'")
 	if err != nil {
 		t.Fatal(err)
@@ -351,11 +380,11 @@ func TestExportEveryColumn(t *testing.T) {
 		if err := rows.Scan(&n); err != nil {
 			t.Fatal(err)
 		}
-		fts := strings.Contains(n, "_fts")
-		if !slices.Contains(archive.Tables, n) && !slices.Contains(left, n) && !fts {
+		index := slices.Contains(fts, n)
+		if !slices.Contains(archive.Tables, n) && !slices.Contains(left, n) && !index {
 			t.Errorf("table %s is neither exported nor left out", n)
 		}
-		if fts && slices.Contains(archive.Tables, n) {
+		if index && slices.Contains(archive.Tables, n) {
 			t.Errorf("search index %s exported", n)
 		}
 	}
@@ -374,8 +403,8 @@ func TestExportMissingBlobFails(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	err := archive.Write(bg, &buf, d.R, store, header)
-	var missing *archive.MissingFileError
-	if !errors.As(err, &missing) || missing.AttachmentID != id || missing.TicketKey != ticket {
+	var missing *archive.FileError
+	if !errors.As(err, &missing) || !missing.Missing || missing.AttachmentID != id || missing.TicketKey != ticket {
 		t.Fatalf("%v %+v", err, missing)
 	}
 	if !strings.Contains(err.Error(), id) || !strings.Contains(err.Error(), ticket) {
@@ -407,8 +436,145 @@ func TestExportFileVanishesWhileStreaming(t *testing.T) {
 	d, store := seeded(t)
 	var buf bytes.Buffer
 	err := archive.Write(bg, &buf, d.R, &vanishing{store, map[string]bool{}}, header)
-	var missing *archive.MissingFileError
-	if !errors.As(err, &missing) || buf.Len() == 0 {
+	var missing *archive.FileError
+	if !errors.As(err, &missing) || !missing.Missing || buf.Len() == 0 {
 		t.Fatalf("%v, %d bytes", err, buf.Len())
+	}
+}
+
+// An object shorter than its record (truncated out of band) is refused
+// before any byte, naming the attachment and its ticket.
+func TestExportWrongSizeFails(t *testing.T) {
+	d, store := seeded(t)
+	var id, key, ticket string
+	var size int64
+	if err := d.R.QueryRowContext(bg, `SELECT a.id, a.blob_key, a.size, p.key || '-' || t.number
+		FROM attachments a JOIN tickets t ON t.id = a.ticket_id JOIN projects p ON p.id = t.project_id
+		ORDER BY a.id LIMIT 1`).Scan(&id, &key, &size, &ticket); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Put(bg, key, strings.NewReader("short"), 5, "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := archive.Write(bg, &buf, d.R, store, header)
+	var fe *archive.FileError
+	if !errors.As(err, &fe) || fe.Missing || fe.AttachmentID != id || fe.TicketKey != ticket || fe.Size != size || fe.Stored != 5 {
+		t.Fatalf("%v %+v", err, fe)
+	}
+	if !strings.Contains(err.Error(), id) || !strings.Contains(err.Error(), ticket) || buf.Len() != 0 {
+		t.Fatalf("%q, %d bytes", err, buf.Len())
+	}
+	if err := archive.Check(bg, d.R, store); !errors.As(err, &fe) {
+		t.Fatalf("Check: %v", err)
+	}
+}
+
+// A settings key in neither known set stops the export: it might hold a
+// secret.
+func TestExportUnknownSettingRefused(t *testing.T) {
+	d, store := seeded(t)
+	if err := archive.Check(bg, d.R, store); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.W.ExecContext(bg, "INSERT INTO settings (key, value, updated_at) VALUES ('smtp_password', 'hunter2', 'x')"); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := archive.Write(bg, &buf, d.R, store, header)
+	if err == nil || !strings.Contains(err.Error(), "smtp_password") || buf.Len() != 0 {
+		t.Fatalf("%v, %d bytes", err, buf.Len())
+	}
+}
+
+// Every settings key the code writes is in a known set. Keys are written
+// with PutSetting, whose Key is a string literal or a constant declared in
+// the same file.
+func TestSettingsKeysKnown(t *testing.T) {
+	put := regexp.MustCompile(`PutSettingParams\{Key:\s*([A-Za-z0-9_]+|"[^"]*")`)
+	found := 0
+	err := filepath.WalkDir("../..", func(path string, de fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if de.IsDir() && (de.Name() == "gen" || de.Name() == "testdata" || strings.HasPrefix(de.Name(), ".") && path != "../..") {
+			return filepath.SkipDir
+		}
+		if de.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		src := string(b)
+		if strings.Contains(strings.ToUpper(src), "INTO SETTINGS") {
+			t.Errorf("%s writes settings without PutSetting", path)
+		}
+		for _, m := range put.FindAllStringSubmatch(src, -1) {
+			key := m[1]
+			if strings.HasPrefix(key, `"`) {
+				key = strings.Trim(key, `"`)
+			} else {
+				c := regexp.MustCompile(`\b` + key + `\s*=\s*"([^"]+)"`).FindStringSubmatch(src)
+				if c == nil {
+					t.Errorf("%s: can't resolve settings key %s; declare it as a constant in that file", path, key)
+					continue
+				}
+				key = c[1]
+			}
+			found++
+			if !slices.Contains(archive.ExportedSettings, key) && !slices.Contains(archive.InstanceSettings, key) {
+				t.Errorf("%s writes settings key %q, in neither archive.ExportedSettings nor archive.InstanceSettings", path, key)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found < 3 {
+		t.Fatalf("found %d PutSetting calls; the scan is broken", found)
+	}
+}
+
+// A fractional position (a board drop between two cards) comes back exactly.
+func TestExportFractionalPosition(t *testing.T) {
+	d, store := seeded(t)
+	want := map[string]float64{}
+	for i, v := range []float64{0.1 + 0.2, 1536.123456789012, 3e-9} {
+		var id string
+		if err := d.R.QueryRowContext(bg, "SELECT id FROM tickets ORDER BY id LIMIT 1 OFFSET ?", i).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := d.W.ExecContext(bg, "UPDATE tickets SET position = ? WHERE id = ?", v, id); err != nil {
+			t.Fatal(err)
+		}
+		want[id] = v
+	}
+	raw := unpack(t, export(t, d, store))[0].data
+	var doc struct {
+		Tickets []map[string]any `json:"tickets"`
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&doc); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for _, tk := range doc.Tickets {
+		v, ok := want[tk["id"].(string)]
+		if !ok {
+			continue
+		}
+		n := tk["position"].(json.Number)
+		got, err := strconv.ParseFloat(string(n), 64)
+		if err != nil || got != v || !strings.ContainsAny(string(n), ".eE") {
+			t.Errorf("position %s, want %v (%v)", n, v, err)
+		}
+		seen++
+	}
+	if seen != len(want) {
+		t.Fatalf("saw %d of %d", seen, len(want))
 	}
 }

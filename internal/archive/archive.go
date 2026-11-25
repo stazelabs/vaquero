@@ -25,9 +25,9 @@
 // have no BLOB columns, and Write refuses one.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
-// entries, whatever the backend), the FTS tables, goose's table, and the
-// settings rows that describe the instance rather than its data
-// (instance_id, blob_store). Tickets' claim columns (claimed_by,
+// entries, whatever the backend), the FTS tables, goose's table, and every
+// settings row but those in ExportedSettings (an allow-list; a key in
+// neither ExportedSettings nor InstanceSettings makes Write fail). Tickets' claim columns (claimed_by,
 // claim_expires_at, claim_prev_status_id) are written as null. An
 // attachment's blob_key is written as its entry's name, attachments/{id},
 // because the stored key names this instance: a loader stores the bytes
@@ -81,11 +81,36 @@ func NewHeader(schema int64, now time.Time, version string) Header {
 	return Header{Format: Format, FormatVersion: FormatVersion, Schema: schema, ExportedAt: timefmt.Format(now), VaqueroVersion: version}
 }
 
-// MissingFileError is an attachment whose bytes the store doesn't have.
-type MissingFileError struct{ AttachmentID, TicketKey string }
+// FileError is an attachment whose bytes can't be exported: missing from
+// the store, or a different size there from the one its record says.
+type FileError struct {
+	AttachmentID, TicketKey string
+	Missing                 bool  // absent from the store
+	Size, Stored            int64 // the record's size and the store's, when present
+}
 
-func (e *MissingFileError) Error() string {
-	return "The file for attachment " + e.AttachmentID + " on " + e.TicketKey + " is missing from storage."
+func (e *FileError) Error() string {
+	what := "The file for attachment " + e.AttachmentID + " on " + e.TicketKey
+	if e.Missing {
+		return what + " is missing from storage."
+	}
+	return fmt.Sprintf("%s is %d bytes in storage, but its record says %d.", what, e.Stored, e.Size)
+}
+
+// open gets a's bytes, refusing a missing or wrongly sized object.
+func (a attachment) open(ctx context.Context, store blobs.Store) (io.ReadCloser, error) {
+	rc, size, err := store.Get(ctx, a.key)
+	if errors.Is(err, blobs.ErrNotFound) {
+		return nil, &FileError{AttachmentID: a.id, TicketKey: a.ticket, Missing: true, Size: a.size}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read attachment %s: %w", a.id, err)
+	}
+	if size != a.size {
+		rc.Close()
+		return nil, &FileError{AttachmentID: a.id, TicketKey: a.ticket, Size: a.size, Stored: size}
+	}
+	return rc, nil
 }
 
 // attachment is one attachments/ entry to write.
@@ -94,26 +119,40 @@ type attachment struct {
 	size            int64
 }
 
+// Check reads db as Write does and checks every attachment's bytes,
+// writing nothing: what Write would refuse before its first byte.
+func Check(ctx context.Context, db *sql.DB, store blobs.Store) error {
+	_, _, err := prepare(ctx, db, store, Header{})
+	return err
+}
+
+// prepare reads export.json and the attachment list, then checks every
+// attachment's bytes are in store at their recorded size.
+func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h Header) ([]byte, []attachment, error) {
+	doc, atts, err := snapshot(ctx, db, h)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, a := range atts {
+		rc, err := a.open(ctx, store)
+		if err != nil {
+			return nil, nil, err
+		}
+		rc.Close()
+	}
+	return doc, atts, nil
+}
+
 // Write writes the export of db, with attachment bytes from store, to w.
 // Every table is read in one read transaction, so all see one snapshot.
 // Every attachment's bytes are checked before the first byte reaches w: a
-// missing one is *MissingFileError and w gets nothing. One that vanishes
-// later, while the archive streams, is an error too; the caller must then
-// treat what reached w as broken.
+// missing or wrongly sized one is *FileError and w gets nothing. One that
+// vanishes or changes later, while the archive streams, is an error too;
+// the caller must then treat what reached w as broken.
 func Write(ctx context.Context, w io.Writer, db *sql.DB, store blobs.Store, h Header) error {
-	doc, atts, err := snapshot(ctx, db, h)
+	doc, atts, err := prepare(ctx, db, store, h)
 	if err != nil {
 		return err
-	}
-	for _, a := range atts {
-		rc, _, err := store.Get(ctx, a.key)
-		if errors.Is(err, blobs.ErrNotFound) {
-			return &MissingFileError{AttachmentID: a.id, TicketKey: a.ticket}
-		}
-		if err != nil {
-			return fmt.Errorf("check attachment %s: %w", a.id, err)
-		}
-		rc.Close()
 	}
 
 	zw, err := gzip.NewWriterLevel(w, gzip.DefaultCompression)
@@ -140,17 +179,12 @@ func Write(ctx context.Context, w io.Writer, db *sql.DB, store blobs.Store, h He
 
 // writeAttachment copies one attachment's bytes into the archive.
 func writeAttachment(ctx context.Context, tw *tar.Writer, store blobs.Store, a attachment) error {
-	rc, size, err := store.Get(ctx, a.key)
-	if errors.Is(err, blobs.ErrNotFound) {
-		return &MissingFileError{AttachmentID: a.id, TicketKey: a.ticket}
-	}
+	rc, err := a.open(ctx, store)
 	if err != nil {
-		return fmt.Errorf("read attachment %s: %w", a.id, err)
+		return err
 	}
 	defer rc.Close()
-	if size != a.size {
-		return fmt.Errorf("attachment %s on %s: storage holds %d bytes, the record says %d", a.id, a.ticket, size, a.size)
-	}
+	size := a.size
 	if err := tw.WriteHeader(fileHeader("attachments/"+a.id, size)); err != nil {
 		return err
 	}

@@ -4,11 +4,15 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"io"
+	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
@@ -103,4 +107,65 @@ func TestAPIExportMissingFile(t *testing.T) {
 		r.Header.Get("Content-Disposition") != "" {
 		t.Fatalf("%d %v %q", r.Status, r.Header, r.Body)
 	}
+}
+
+// HEAD checks as GET does and answers only the headers.
+func TestAPIExportHead(t *testing.T) {
+	e, tok := exportEnv(t)
+	head := func(token, agent string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodHead, e.Server.URL+"/api/v1/export", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		if agent != "" {
+			req.Header.Set("Vaquero-Agent", agent)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res
+	}
+	// Count the store's reads: a HEAD checks each file once and copies none.
+	counted := &countingStore{Store: e.Deps.Blobs}
+	e.Deps.Blobs = counted
+	e.Rebuild()
+	res := head(tok, "")
+	if n := counted.gets.Load(); n != 2 {
+		t.Errorf("HEAD read the store %d times, want 2 (one check per attachment)", n)
+	}
+	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "application/gzip" ||
+		res.Header.Get("Content-Disposition") != `attachment; filename="vaquero-20261118-120000.tar.gz"` {
+		t.Fatalf("%d %v", res.StatusCode, res.Header)
+	}
+	if res := head(tok, "builder"); res.StatusCode != 403 {
+		t.Fatalf("agent: %d", res.StatusCode)
+	}
+	var key string
+	if err := e.DB.R.QueryRowContext(bg, "SELECT blob_key FROM attachments ORDER BY id LIMIT 1").Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Deps.Blobs.Put(bg, key, strings.NewReader("short"), 5, "image/png"); err != nil {
+		t.Fatal(err)
+	}
+	if res := head(tok, ""); res.StatusCode != 500 || res.Header.Get("Content-Disposition") != "" {
+		t.Fatalf("damaged: %d %v", res.StatusCode, res.Header)
+	}
+	r := e.Client().API("GET", "/api/v1/export", tok, nil)
+	if r.Status != 500 || !strings.Contains(r.Body, `"damaged_file"`) || !strings.Contains(r.Body, "5 bytes in storage") {
+		t.Fatalf("%d %q", r.Status, r.Body)
+	}
+}
+
+type countingStore struct {
+	blobs.Store
+	gets atomic.Int32
+}
+
+func (c *countingStore) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
+	c.gets.Add(1)
+	return c.Store.Get(ctx, key)
 }
