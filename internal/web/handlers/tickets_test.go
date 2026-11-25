@@ -236,3 +236,89 @@ func TestTicketHistoryShowsLinkOnBothTickets(t *testing.T) {
 	contains(t, c.Get("/t/VAQ-1").Body, "marked this ticket as blocking VAQ-2")
 	contains(t, c.Get("/t/VAQ-2").Body, "marked VAQ-1 as blocking this ticket")
 }
+
+// dbCount reads one number from the database, for no-write assertions.
+func dbCount(t *testing.T, e *webtest.Env, q string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := e.Deps.DB.QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// A post from another site to a route that changes things is refused and
+// writes nothing: no event, no comment, no new version.
+func TestCrossSitePostWritesNothing(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "Original"})
+	c := e.Client()
+	events := dbCount(t, e, `SELECT count(*) FROM events`)
+	for path, form := range map[string]url.Values{
+		"/t/VAQ-1/comments": {"body": {"planted"}},
+		"/t/VAQ-1":          {"title": {"Hijacked"}},
+		"/p/VAQ/tickets":    {"title": {"Planted ticket"}},
+		"/p/VAQ/delete":     {"confirm": {"VAQ"}},
+	} {
+		if r := c.PostCrossSite(path, form); r.Status != 403 {
+			t.Errorf("%s: %d, want 403", path, r.Status)
+		}
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM events`); n != events {
+		t.Errorf("events %d, had %d", n, events)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM comments`); n != 0 {
+		t.Errorf("%d comments", n)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM tickets WHERE title = 'Original' AND version = 1`); n != 1 {
+		t.Error("the ticket changed")
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM tickets`); n != 1 {
+		t.Errorf("%d tickets", n)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM projects`); n != 1 {
+		t.Errorf("%d projects", n)
+	}
+}
+
+// Hostile Markdown in a comment is neutralised on the ticket page itself.
+func TestCommentMarkdownRenderedSafely(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "x"})
+	c := e.Client()
+	body := "<script>alert(1)</script> [x](javascript:alert(2)) <img src=x onerror=alert(3)> ![p](https://tracker.example/p.png) <a href=\"javascript:alert(4)\">y</a>"
+	if r := c.Post("/t/VAQ-1/comments", url.Values{"body": {body}}); r.Status != 303 {
+		t.Fatal(r.Status)
+	}
+	page := c.Get("/t/VAQ-1").Body
+	lacks(t, page, "<script>alert", `href="javascript:`, "<img src=x", `src="https://tracker.example`)
+	// Raw HTML shows as text, so the attribute text is there but inert.
+	contains(t, page, "&lt;script&gt;", "&lt;img src=x onerror")
+}
+
+// A parent in another project is refused through the forms, and the ticket
+// keeps its fields.
+func TestCrossProjectParentRefusedByForms(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	ticket(t, e, p, core.TicketInput{Title: "Mine"})
+	other, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket(t, e, other, core.TicketInput{Title: "Theirs"})
+	c := e.Client()
+	for _, path := range []string{"/t/VAQ-1", "/p/VAQ/tickets"} {
+		r := c.Post(path, url.Values{"title": {"Mine"}, "parent": {"OTH-1"}})
+		if r.Status != 422 {
+			t.Fatalf("%s: %d", path, r.Status)
+		}
+		contains(t, r.Body, "The parent must be in the same project.", `value="OTH-1"`)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM tickets WHERE parent_id IS NOT NULL`); n != 0 {
+		t.Errorf("%d tickets got a parent", n)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM tickets`); n != 2 {
+		t.Errorf("%d tickets", n)
+	}
+}
