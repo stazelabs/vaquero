@@ -40,7 +40,7 @@ CLAUDE.md "Hard invariants" is the authority.
 
 ## Body limits
 
-`middleware.BodyLimit(MaxBody)`: 1 MiB for every request, except a POST to an upload route (`middleware.IsUpload`, its list in bodylimit.go), which gets `MaxUpload` (10 MB plus 64 KiB of multipart framing). An upload over the limit, declared or read, answers 413 in the API envelope with "Files can be at most 10 MB." (`middleware.TooLargeUpload`), never a bare 413.
+`middleware.BodyLimit(MaxBody)`: 1 MiB for every request, except a POST to an upload route (`middleware.IsUpload`, its list in bodylimit.go), which gets `MaxUpload` (10 MB plus 64 KiB of multipart framing). An upload over the limit, declared or read, answers 413 in the API envelope with "Files can be at most 10 MB." (`middleware.TooLargeUpload`), never a bare 413. A declared body over the limit elsewhere answers the API envelope (`too_large`) on `/api/v1` and `/mcp`, and a small HTML page on every other route, never plain text.
 
 ## Attachments
 
