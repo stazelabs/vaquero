@@ -4,7 +4,7 @@ Vaquero herds the chaos.
 
 Vaquero is an agent-native, local-first, lightweight ticket tracker. It ships as one Go binary: run it on your laptop for yourself, or deploy the same binary to cheap cloud hosting for a small team. People use the web UI or the CLI; agents use MCP, with a ready queue, claims with expiring leases and a full activity log so several of them can share one backlog without colliding. It costs nothing to run for one person, and only the hosting bill when shared.
 
-Status: early development. Not ready for use.
+Status: v0.1.0, the first release. Local mode, for one person on their own machine, is ready to use, and Vaquero tracks its own work in it. Hosted mode, for a small team on cloud hosting, comes in a later release.
 
 ## Install
 
