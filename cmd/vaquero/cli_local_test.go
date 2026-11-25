@@ -3,9 +3,12 @@ package main
 import (
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,6 +30,9 @@ func localEnv(t *testing.T) (dataDir, addr string) {
 	t.Setenv("VQ_DATA_DIR", dataDir)
 	t.Setenv("VQ_ADDR", addr)
 	t.Setenv("VQ_TEST_AS_VAQUERO", "1")
+	// A server this test starts stops when this process does, even when a
+	// killed run skips the cleanup below (see TestMain).
+	t.Setenv("VQ_TEST_OWNER_PID", strconv.Itoa(os.Getpid()))
 	t.Cleanup(func() { killTestServer(dataDir) })
 	return dataDir, addr
 }
@@ -40,8 +46,68 @@ func killTestServer(dataDir string) {
 		return
 	}
 	if p, err := os.FindProcess(pid); err == nil {
-		_ = p.Signal(os.Interrupt)
+		_ = p.Signal(syscall.SIGTERM) // not SIGINT, which a background job's children ignore
 		time.Sleep(300 * time.Millisecond)
+	}
+}
+
+// A stand-in server outlives the test that started it only while that test's
+// process lives: a killed `go test` runs no cleanups, and the server, in its
+// own session, would otherwise run on for good (VAQ-92).
+func TestStandInServerStopsWithItsOwner(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	owner := exec.Command("sleep", "60")
+	if err := owner.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Process.Kill(); _ = owner.Wait() })
+	t.Setenv("VQ_TEST_OWNER_PID", strconv.Itoa(owner.Process.Pid))
+	if code, _, e := cli(t, "projects"); code != 0 {
+		t.Fatalf("exit %d: %q", code, e)
+	}
+	if _, running, _ := lockfile.Holder(dataDir); !running {
+		t.Fatal("no server started")
+	}
+	_ = owner.Process.Kill()
+	_ = owner.Wait()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, running, _ := lockfile.Holder(dataDir); !running {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("the server kept running after its owner exited")
+}
+
+// The leak VAQ-92 found: a server started from a background job inherits
+// SIGINT ignored, and its owner dies while the server is still starting
+// (before serve installs its handler). It must stop anyway.
+func TestStandInServerStopsWithItsOwnerDuringStart(t *testing.T) {
+	dataDir, addr := localEnv(t)
+	owner := exec.Command("sleep", "60")
+	if err := owner.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = owner.Process.Kill(); _ = owner.Wait() })
+	exe, _ := os.Executable()
+	// trap '' INT is how a non-interactive shell starts a background job.
+	srv := exec.Command("sh", "-c", `trap '' INT; exec "$0" serve`, exe)
+	srv.Env = append(os.Environ(), "VQ_TEST_OWNER_PID="+strconv.Itoa(owner.Process.Pid),
+		"VQ_TEST_START_DELAY=3s", "VQ_DATA_DIR="+dataDir, "VQ_ADDR="+addr)
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { _ = srv.Wait(); close(done) }()
+	t.Cleanup(func() { _ = srv.Process.Kill(); <-done })
+	time.Sleep(500 * time.Millisecond) // the server is asleep in its slow start
+	_ = owner.Process.Kill()
+	_ = owner.Wait()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the starting server kept running after its owner exited")
 	}
 }
 
