@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/apitoken"
@@ -45,16 +46,26 @@ var bootNow = time.Now
 
 func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err error) {
 	ln, err := net.Listen("tcp", cfg.Addr)
-	if err != nil {
+	if errors.Is(err, syscall.EADDRINUSE) {
 		return fmt.Errorf("cannot listen on %s: %w (is vaquero already running?)", cfg.Addr, err)
 	}
-	defer ln.Close() // a no-op once the server owns it; frees it on an early return
-	// The data directory will hold the API token, so only its owner may read it.
-	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
-		return fmt.Errorf("data directory: %w", err)
+	if err != nil {
+		return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
 	}
-	if err := os.Chmod(cfg.DataDir, 0o700); err != nil {
-		return fmt.Errorf("data directory: %w", err)
+	defer ln.Close() // a no-op once the server owns it; frees it on an early return
+	// Local mode has no sign-in: whatever the address said, the socket must
+	// be a loopback one the Host check answers to.
+	if cfg.Mode == config.ModeLocal {
+		if ta, ok := ln.Addr().(*net.TCPAddr); !ok || !config.AllowedHostIP(ta.IP) {
+			return fmt.Errorf("refusing to serve on %s: local mode listens on a loopback address only", ln.Addr())
+		}
+	}
+	// The data directory will hold the API token, so only its owner should
+	// read it. A new directory is made 0700; an existing one is left as it
+	// is (it may be the working directory or shared with other tools), with
+	// a warning when it is open to others.
+	if err := prepareDataDir(cfg.DataDir, logger); err != nil {
+		return err
 	}
 	// One server per data directory, whatever port it listens on. Released
 	// last, after the WAL checkpoint (defers run in reverse).
@@ -147,6 +158,29 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	}
 	if err := <-served; !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("server: %w", err)
+	}
+	return nil
+}
+
+// prepareDataDir creates dir 0700 when it is missing. An existing directory
+// is never changed; one that grants group or other any access is warned
+// about, since the API token lives in it.
+func prepareDataDir(dir string, logger *slog.Logger) error {
+	fi, err := os.Stat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("data directory: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("data directory: %w", err)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("data directory: %s is not a directory", dir)
+	}
+	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
+		logger.Warn("the data directory is open to other users, and it holds the API token; run chmod 700 "+dir, "path", dir, "mode", fmt.Sprintf("%04o", perm))
 	}
 	return nil
 }

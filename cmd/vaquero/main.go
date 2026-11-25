@@ -81,7 +81,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, "config:", err)
 			return 1
 		}
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		ctx, stop := shutdownContext()
 		defer stop()
 		if err := serve(ctx, cfg, newLogger(cfg, stderr)); err != nil {
 			fmt.Fprintln(stderr, "serve:", err)
@@ -95,6 +95,22 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return 0
+}
+
+// notifyContext is signal.NotifyContext; tests replace it.
+var notifyContext = signal.NotifyContext
+
+// shutdownContext is done on the first interrupt or SIGTERM. It then
+// releases the signal handler, so a second Ctrl-C during the drain takes the
+// default action and ends the process at once. SQLite recovers the WAL on
+// the next open, so nothing is lost.
+func shutdownContext() (context.Context, context.CancelFunc) {
+	ctx, stop := notifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	return ctx, stop
 }
 
 // openDB opens the writer (migrated) and a reader pool on path, creating
