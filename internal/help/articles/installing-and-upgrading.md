@@ -8,7 +8,10 @@ Vaquero is one program, `vaquero`, for macOS and Linux, on Intel or ARM.
 
 ## Installing with Homebrew
 
-    brew install stazelabs/vaquero/vaquero
+    brew tap stazelabs/vaquero
+    brew install vaquero
+
+The first line adds the Stazelabs tap (once per machine), so every later Homebrew command can say plain `vaquero`. `brew install stazelabs/vaquero/vaquero` does both in one step.
 
 That is all: run any `vaquero` command and the server starts in the background. To have it start when you log in, and come back if it stops, let Homebrew run it as a service:
 

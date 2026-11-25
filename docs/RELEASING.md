@@ -18,7 +18,7 @@ Releases are cut by hand from GitHub Actions; nothing runs on push. The workflow
 
 2. In Actions, run "release" with the tag `v0.1.0`.
    The workflow runs only from `main`, and checks the fixture's schema matches the newest migration. If a migration landed after the fixture was made, delete the unreleased fixture's two files and run `make fixture` again.
-3. Check the release page has four archives and `checksums.txt`, and that `brew install stazelabs/vaquero/vaquero` (or `brew upgrade vaquero`) installs it and `vaquero version` prints `0.1.0`.
+3. Check the release page has four archives and `checksums.txt`, and that `brew tap stazelabs/vaquero` then `brew install vaquero` (or `brew upgrade vaquero`) installs it and `vaquero version` prints `0.1.0`.
 
 ## When a release fails
 

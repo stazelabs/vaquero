@@ -8,8 +8,11 @@ Status: early development. Not ready for use.
 
 ## Install
 
-    brew install stazelabs/vaquero/vaquero
+    brew tap stazelabs/vaquero
+    brew install vaquero
     vaquero docs welcome
+
+(`brew install stazelabs/vaquero/vaquero` does the first two in one step.)
 
 Upgrade with `brew upgrade vaquero`; the next command restarts the server on the new version, after snapshotting the database if its layout changes. Release archives for macOS and Linux, with `checksums.txt`, are on the releases page. `vaquero docs installing-and-upgrading` has the details.
 
