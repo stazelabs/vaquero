@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 )
 
 // The commands here work on this machine's data directory without a
-// server: stop and backup.
+// server: stop and backup (and import, in cli_import.go).
 func init() {
 	cliCommands["stop"] = cmdStop
 	cliCommands["backup"] = cmdBackup
@@ -166,17 +167,24 @@ func backupList(c *cmd, dir string) error {
 	return nil
 }
 
+// lockStopped takes the data directory's lock, which a running server
+// holds: the commands that replace the database need it stopped.
+func lockStopped(dataDir string) (release func(), err error) {
+	release, _, err = lockfile.Acquire(dataDir)
+	if errors.Is(err, lockfile.ErrLocked) {
+		if brewService() {
+			return nil, message("Stop vaquero first: brew services stop vaquero")
+		}
+		return nil, message("Stop vaquero first: vaquero stop")
+	}
+	return release, err
+}
+
 // backupRestore puts the backup called name in place of the database,
 // after saving the current one as a backup, so a restore can be undone.
 // The server must be stopped: it holds the database open.
 func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name string) error {
-	release, _, err := lockfile.Acquire(cfg.DataDir)
-	if errors.Is(err, lockfile.ErrLocked) {
-		if brewService() {
-			return message("Stop vaquero first: brew services stop vaquero")
-		}
-		return message("Stop vaquero first: vaquero stop")
-	}
+	release, err := lockStopped(cfg.DataDir)
 	if errors.Is(err, os.ErrNotExist) {
 		return message("No backup called " + name + ".")
 	}
@@ -193,48 +201,65 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 	}
 	defer src.Close()
 
-	// Save the current database first, so the restore can be undone. One
-	// that can't be copied (damaged, which is often why a restore is wanted,
-	// or too big for the free space) is moved aside whole instead.
-	var saved, movedTo string
-	if _, err := os.Stat(cfg.DBPath); err == nil {
-		saved, err = snapshotFile(ctx, cfg.DBPath, dir)
-		if err != nil {
-			movedTo = cfg.DBPath + ".before-restore-" + timefmt.FileStamp(localNow())
-			for _, ext := range []string{"", "-wal", "-shm"} {
-				if err := os.Rename(cfg.DBPath+ext, movedTo+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("couldn't copy or move aside the current database, so nothing changed: %w", err)
-				}
-			}
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
 	tmp := cfg.DBPath + ".restore"
 	if err := copyFile(tmp, src); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	// A stale WAL would be replayed onto the restored file.
-	for _, ext := range []string{"-wal", "-shm"} {
-		if err := os.Remove(cfg.DBPath + ext); err != nil && !errors.Is(err, os.ErrNotExist) {
-			_ = os.Remove(tmp)
-			return err
-		}
-	}
-	if err := os.Rename(tmp, cfg.DBPath); err != nil {
+	aside, err := swapDatabase(ctx, cfg, tmp)
+	if err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	switch {
-	case saved != "":
-		fmt.Fprintf(c.stdout, "Restored %s. The database before it is saved as %s.\n", name, saved)
-	case movedTo != "":
-		fmt.Fprintf(c.stdout, "Restored %s. The database before it couldn't be copied, so it was moved to %s.\n", name, movedTo)
-	default:
+	case aside == "":
 		fmt.Fprintf(c.stdout, "Restored %s.\n", name)
+	case filepath.Dir(aside) == dir:
+		fmt.Fprintf(c.stdout, "Restored %s. The database before it is saved as %s.\n", name, filepath.Base(aside))
+	default:
+		fmt.Fprintf(c.stdout, "Restored %s. The database before it couldn't be copied, so it was moved to %s.\n", name, aside)
 	}
 	return nil
+}
+
+// swapDatabase puts the closed database file at newPath in place of the
+// current one, with the lock held. The current database is saved first: as
+// a snapshot in {data dir}/backups (aside is its path) or, when it can't be
+// copied (damaged, which is often why a restore is wanted, or too big for
+// the free space), moved aside whole (aside is where it went). With no
+// current database there is nothing to save and aside is "". On an error,
+// newPath is still the caller's to remove.
+func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside string, err error) {
+	dir := filepath.Join(cfg.DataDir, "backups")
+	if _, err := os.Stat(cfg.DBPath); err == nil {
+		name, err := snapshotFile(ctx, cfg.DBPath, dir)
+		if err == nil {
+			aside = filepath.Join(dir, name)
+		} else {
+			what := "restore"
+			if strings.HasSuffix(newPath, importFile) {
+				what = "import"
+			}
+			aside = cfg.DBPath + ".before-" + what + "-" + timefmt.FileStamp(localNow())
+			for _, ext := range []string{"", "-wal", "-shm"} {
+				if err := os.Rename(cfg.DBPath+ext, aside+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return "", fmt.Errorf("couldn't copy or move aside the current database, so nothing changed: %w", err)
+				}
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	// A stale WAL would be replayed onto the new file.
+	for _, ext := range []string{"-wal", "-shm"} {
+		if err := os.Remove(cfg.DBPath + ext); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return aside, err
+		}
+	}
+	if err := os.Rename(newPath, cfg.DBPath); err != nil {
+		return aside, err
+	}
+	return aside, nil
 }
 
 // snapshotFile saves the database at path as a snapshot in dir and returns

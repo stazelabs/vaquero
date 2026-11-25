@@ -1,7 +1,7 @@
 ---
 title: Your data and backups
 section: getting-started
-summary: Where Vaquero keeps its data, what each file is for, and how to restore a backup.
+summary: Where Vaquero keeps its data, what each file is for, how to export and import it, and how to restore a backup.
 order: 3
 ---
 ## The data directory
@@ -23,7 +23,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `vaquero.lock` | Held while a server runs, so two servers never share one directory |
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
 | `vaquero.log` | The output of a server the command line started in the background |
-| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore |
+| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore or an import |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.
 
@@ -33,7 +33,8 @@ Vaquero takes a snapshot of the whole database, into `backups/`, before anything
 
 - deleting a project;
 - starting a newer Vaquero that changes the database's layout (an upgrade);
-- restoring another snapshot.
+- restoring another snapshot;
+- importing an export.
 
 If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots are kept. `vaquero backup list` shows them.
 
@@ -59,6 +60,23 @@ Left out on purpose:
 - the settings that describe this server rather than its data, such as where attachments are kept.
 
 If an attachment's file is missing from storage, or isn't the size its record says (for example, someone deleted or changed it in the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
+
+## Importing an export
+
+`vaquero import` puts an export back, into an instance with no projects and no tickets: a new machine, or a data directory that has only been started. Stop the server first; import works on the data directory directly and needs no network:
+
+    vaquero stop
+    vaquero import vaquero.tar.gz
+
+An instance that has been served but holds no projects or tickets still has its owner, its token and a few changes in its history. Those are replaced by the export's. An instance with any project or ticket is refused; import never merges.
+
+Import is all or nothing. It checks the whole file first, then builds a new database beside the current one, `vaquero.import.db`, and checks that too. Only then does it put the new database in place, saving the current one as a snapshot in `backups/` first. If anything fails on the way, the new database and every attachment file it stored are deleted, and the current database is as it was.
+
+An export from a newer Vaquero is refused; upgrade Vaquero and import again. An export from an older one is read into the current layout.
+
+Attachment files go where `VQ_BLOB_STORE` says, in the shell you run `vaquero import` from (see [Attachments](/help/attachments#where-the-bytes-are-kept)), and the message names that storage. The server must start with the same setting. If Vaquero runs under `brew services`, its environment is the service's, not your shell's: if the two differ, the server refuses to start, names both, and changes nothing. Set them to the same storage and start it again.
+
+Tokens are not part of an export. Import removes the `token` file, so the next start makes a new token for the imported owner, and the command line on this machine picks it up. Any other token for the old instance, such as one saved in a profile for another machine or an agent, stops working: make a new one with `vaquero token create`.
 
 ## Restoring a snapshot
 

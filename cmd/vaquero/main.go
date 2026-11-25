@@ -28,6 +28,7 @@ server:
   stop       stop the background server
   backup     list the database snapshots, or restore one
   export     write everything to a .tar.gz (vaquero export FILE)
+  import     restore an export into an empty instance (vaquero import FILE)
 
 tickets:
   projects   list projects
@@ -37,6 +38,9 @@ tickets:
   comment    add a comment to a ticket
   link       link two tickets (blocks, relates, duplicates)
   unlink     remove the links between two tickets
+  attach     attach files to a ticket
+  attachments  list a ticket's files
+  detach     remove an attachment
   search     search tickets and comments
   activity   recent changes
 
