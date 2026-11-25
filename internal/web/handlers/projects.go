@@ -214,7 +214,7 @@ func ProjectKeyChange(d Deps) http.HandlerFunc {
 // snapshot saves a backup before a delete. Backups are named by the second,
 // so a second delete in the same second takes the next free name.
 func snapshot(r *http.Request, d Deps) error {
-	_, err := appdb.SnapshotNext(r.Context(), d.RDB, d.BackupDir, d.Now())
+	_, err := appdb.SnapshotNext(r.Context(), d.RDB, d.BackupDir, appdb.KindPreDelete, d.Now())
 	return err
 }
 

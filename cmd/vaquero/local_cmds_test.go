@@ -162,6 +162,34 @@ func TestRestoreReplacesAndKeepsPrevious(t *testing.T) {
 	}
 }
 
+// Each restore saves the database before it, and those copies are pruned as
+// they are made (7 kept) rather than at the next unrelated prune; a snapshot
+// of another kind is left alone.
+func TestRestorePrunesItsOwnSnapshots(t *testing.T) {
+	dataDir := seedData(t)
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	name := snapshotNow(t, dataDir) // a plain name: never pruned
+	dir := filepath.Join(dataDir, "backups")
+	keepName := appdb.BackupNameKind(appdb.KindPreMigrate, time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC))
+	if err := os.WriteFile(filepath.Join(dir, keepName), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 9 {
+		setNow(t, time.Date(2026, 11, 18, 12, 1, i, 0, time.UTC))
+		if code, _, e := runCLI(t, "backup", "restore", name); code != 0 {
+			t.Fatalf("restore %d: %q", i, e)
+		}
+	}
+	bs, _ := appdb.ListBackups(dir)
+	counts := map[appdb.Kind]int{}
+	for _, b := range bs {
+		counts[b.Kind]++
+	}
+	if counts[appdb.KindPreRestore] != appdb.BackupKeep || counts[appdb.KindPreMigrate] != 1 || counts[""] != 1 {
+		t.Fatalf("kept %v:\n%v", counts, bs)
+	}
+}
+
 func TestRestoreUnknownName(t *testing.T) {
 	localEnv(t)
 	code, _, e := runCLI(t, "backup", "restore", "vaquero-20000101-000000.sqlite")

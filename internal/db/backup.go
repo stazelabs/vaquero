@@ -16,10 +16,24 @@ import (
 	"time"
 )
 
+// Kind says why a snapshot was taken. It is part of the file name
+// ("vaquero-predelete-20261013-093005.sqlite") so that each kind is kept and
+// pruned on its own: a run of project deletes can't push out the snapshot
+// taken before an upgrade. A snapshot with no kind in its name (every one
+// from before kinds, and Snapshot's own) is Kind "" and is never pruned.
+type Kind string
+
+const (
+	KindPreMigrate Kind = "premigrate"
+	KindPreDelete  Kind = "predelete"
+	KindPreRestore Kind = "prerestore"
+	KindPreImport  Kind = "preimport"
+)
+
 // BackupNamePattern is the exact shape of a snapshot's file name. Every name
 // that arrives from a request is checked against it before any path is built,
 // so nothing can reach outside the backup directory.
-var BackupNamePattern = regexp.MustCompile(`^vaquero-\d{8}-\d{6}\.sqlite$`)
+var BackupNamePattern = regexp.MustCompile(`^vaquero-(?:(premigrate|predelete|prerestore|preimport)-)?(\d{8}-\d{6})\.sqlite$`)
 
 // MinBackupMargin is the least free space that must remain on the volume
 // after a snapshot (see RequiredFree).
@@ -39,26 +53,32 @@ var (
 // BackupInfo describes one snapshot file.
 type BackupInfo struct {
 	Name    string
+	Kind    Kind
 	Size    int64
 	ModTime time.Time
 }
 
-// backupStamp is the layout of the instant in a snapshot's file name. It
-// lives only here: BackupName formats it and ParseBackupName reads it back.
+// backupStamp is the layout of the instant in a snapshot's file name.
 const backupStamp = "20060102-150405"
 
-// BackupName is the snapshot file name for an instant.
-func BackupName(t time.Time) string {
-	return "vaquero-" + t.UTC().Format(backupStamp) + ".sqlite"
+// BackupName is the plain (kindless) snapshot file name for an instant.
+func BackupName(t time.Time) string { return BackupNameKind("", t) }
+
+// BackupNameKind is the snapshot file name for a kind and an instant.
+func BackupNameKind(k Kind, t time.Time) string {
+	if k == "" {
+		return "vaquero-" + t.UTC().Format(backupStamp) + ".sqlite"
+	}
+	return "vaquero-" + string(k) + "-" + t.UTC().Format(backupStamp) + ".sqlite"
 }
 
-// ParseBackupName reads the instant (UTC) a snapshot's file name was taken
-// at. A name that isn't a snapshot's file name is ErrBadBackupName.
-func ParseBackupName(name string) (time.Time, error) {
-	if !BackupNamePattern.MatchString(name) {
-		return time.Time{}, ErrBadBackupName
+// kindAndStamp splits a valid snapshot name into its kind and timestamp text.
+func kindAndStamp(name string) (Kind, string, bool) {
+	m := BackupNamePattern.FindStringSubmatch(name)
+	if m == nil {
+		return "", "", false
 	}
-	return time.Parse(backupStamp, strings.TrimSuffix(strings.TrimPrefix(name, "vaquero-"), ".sqlite"))
+	return Kind(m[1]), m[2], true
 }
 
 // snapshotMu keeps two snapshots from racing for the same name or temp file.
@@ -77,18 +97,22 @@ const StaleTempAge = 5 * time.Minute
 //
 // It refuses (ErrLowSpace) when the volume would be left with less than
 // RequiredFree of the current database size. The copy is written under a
-// temporary name, and renamed on success,
-// so a failure leaves no partial snapshot in the list; temporary files left
+// temporary name and renamed on success, so a failure leaves no partial snapshot in the list; temporary files left
 // by a crash and older than StaleTempAge are removed first. It does not
-// prune; the caller does, after success.
+// prune; the caller does, after success. Snapshot's file has no kind in its
+// name; SnapshotNext takes one.
 func Snapshot(ctx context.Context, src *sql.DB, dir string, now time.Time) (BackupInfo, error) {
+	return snapshot(ctx, src, dir, "", now)
+}
+
+func snapshot(ctx context.Context, src *sql.DB, dir string, kind Kind, now time.Time) (BackupInfo, error) {
 	snapshotMu.Lock()
 	defer snapshotMu.Unlock()
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return BackupInfo{}, fmt.Errorf("create backup dir: %w", err)
 	}
 	removeStaleTemps(dir, now)
-	name := BackupName(now)
+	name := BackupNameKind(kind, now)
 	final := filepath.Join(dir, name)
 	if _, err := os.Lstat(final); err == nil {
 		return BackupInfo{}, ErrBackupExists
@@ -122,13 +146,13 @@ func Snapshot(ctx context.Context, src *sql.DB, dir string, now time.Time) (Back
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	return BackupInfo{Name: name, Size: st.Size(), ModTime: st.ModTime()}, nil
+	return BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime()}, nil
 }
 
 const tempPrefix = ".tmp-"
 
 // tempPattern matches a temporary snapshot name.
-var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-\d{8}-\d{6}\.sqlite$`)
+var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-(?:(?:premigrate|predelete|prerestore|preimport)-)?\d{8}-\d{6}\.sqlite$`)
 
 // removeStaleTemps deletes temporary snapshots a crash left behind. A file
 // younger than StaleTempAge is left alone.
@@ -232,81 +256,30 @@ func RequiredFree(dbSize int64) int64 {
 var freeBytes = FreeBytes
 
 // FreeBytes is the space available to an unprivileged writer on the
-// filesystem holding path. A directory that doesn't exist yet is measured
-// through its nearest existing parent.
+// filesystem holding path (statfs, so it builds on Linux and macOS alike). A
+// directory that doesn't exist yet is measured through its nearest existing
+// parent.
 func FreeBytes(path string) (int64, error) {
-	free, _, err := VolumeSpace(path)
-	return free, err
-}
-
-// VolumeSpace is the free space available to an unprivileged writer and the
-// total size of the filesystem holding path (statfs, so it builds on Linux
-// and macOS alike). A directory that doesn't exist yet is measured through
-// its nearest existing parent.
-func VolumeSpace(path string) (free, total int64, err error) {
 	p, err := filepath.Abs(path)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 	for {
 		var st syscall.Statfs_t
 		err := syscall.Statfs(p, &st)
 		if err == nil {
-			bsize := int64(st.Bsize)                                       //nolint:gosec // block sizes fit int64
-			return int64(st.Bavail) * bsize, int64(st.Blocks) * bsize, nil //nolint:gosec // block counts fit int64
+			return int64(st.Bavail) * blockSize(&st), nil //nolint:gosec // block counts fit int64
 		}
 		parent := filepath.Dir(p)
 		if !errors.Is(err, syscall.ENOENT) || parent == p {
-			return 0, 0, err
+			return 0, err
 		}
 		p = parent
 	}
 }
 
-// LowFreeBytes and LowFreeShare are when the volume counts as running low
-// (SpaceLow): under 200 MB free, or under a fifth of the volume free. The
-// Overview tells admins then; the volume stops every write when full.
-const (
-	LowFreeBytes = 200 << 20
-	LowFreeShare = 5 // free * LowFreeShare < total
-)
-
-// SpaceLow reports whether free bytes of a volume of total bytes is low. An
-// unknown total (0) is judged by the byte floor alone.
-func SpaceLow(free, total int64) bool {
-	return free < LowFreeBytes || (total > 0 && free*LowFreeShare < total)
-}
-
-// EffectiveKeep caps the configured snapshot count so that the live database
-// and its snapshots (about (keep+2) x size at the peak: the live file and its
-// log, keep kept, one being written) fit in half the volume, and never goes
-// below 1. A database or volume of unknown size leaves keep as set. It only
-// lowers the count: the keep count stays the ceiling.
-func EffectiveKeep(keep int, size, total int64) int {
-	if size <= 0 || total <= 0 {
-		return keep
-	}
-	fit := total/2/size - 2
-	return int(max(1, min(int64(keep), fit)))
-}
-
-// KeepFor is EffectiveKeep for the database behind src and the volume
-// holding dir; where either can't be read it returns keep.
-func KeepFor(ctx context.Context, src interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}, dir string, keep int) int {
-	size, err := Size(ctx, src)
-	if err != nil {
-		return keep
-	}
-	_, total, err := VolumeSpace(dir)
-	if err != nil {
-		return keep
-	}
-	return EffectiveKeep(keep, size, total)
-}
-
-// ListBackups returns the snapshots in dir, newest first. A missing dir is an
+// ListBackups returns the snapshots in dir, newest first (by the instant in
+// the name, whatever the kind). A missing dir is an
 // empty list. Anything that isn't a regular file with a snapshot's name
 // (symlinks, directories, temporary files) is left out.
 func ListBackups(dir string) ([]BackupInfo, error) {
@@ -326,9 +299,17 @@ func ListBackups(dir string) ([]BackupInfo, error) {
 		if err != nil {
 			continue
 		}
-		out = append(out, BackupInfo{Name: e.Name(), Size: info.Size(), ModTime: info.ModTime()})
+		kind, _, _ := kindAndStamp(e.Name())
+		out = append(out, BackupInfo{Name: e.Name(), Kind: kind, Size: info.Size(), ModTime: info.ModTime()})
 	}
-	slices.SortFunc(out, func(a, b BackupInfo) int { return strings.Compare(b.Name, a.Name) })
+	slices.SortFunc(out, func(a, b BackupInfo) int {
+		_, sa, _ := kindAndStamp(a.Name)
+		_, sb, _ := kindAndStamp(b.Name)
+		if c := strings.Compare(sb, sa); c != 0 {
+			return c
+		}
+		return strings.Compare(b.Name, a.Name)
+	})
 	return out, nil
 }
 
@@ -364,7 +345,8 @@ func OpenBackup(dir, name string) (*os.File, BackupInfo, error) {
 		f.Close()
 		return nil, BackupInfo{}, err
 	}
-	return f, BackupInfo{Name: name, Size: st.Size(), ModTime: st.ModTime()}, nil
+	kind, _, _ := kindAndStamp(name)
+	return f, BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime()}, nil
 }
 
 // DeleteBackup removes one snapshot.
@@ -381,11 +363,12 @@ func DeleteBackup(dir, name string) error {
 	return nil
 }
 
-// SnapshotNext is Snapshot, taking the next free second's name when one is
-// taken (a snapshot a moment earlier: a restore, then a boot), up to five.
-func SnapshotNext(ctx context.Context, src *sql.DB, dir string, now time.Time) (BackupInfo, error) {
+// SnapshotNext is Snapshot for a kind, taking the next free second's name
+// when one is taken (a snapshot a moment earlier: a restore, then a boot),
+// up to five.
+func SnapshotNext(ctx context.Context, src *sql.DB, dir string, kind Kind, now time.Time) (BackupInfo, error) {
 	for range 5 {
-		info, err := Snapshot(ctx, src, dir, now)
+		info, err := snapshot(ctx, src, dir, kind, now)
 		if !errors.Is(err, ErrBackupExists) {
 			return info, err
 		}
@@ -394,13 +377,13 @@ func SnapshotNext(ctx context.Context, src *sql.DB, dir string, now time.Time) (
 	return BackupInfo{}, ErrBackupExists
 }
 
-// BackupKeep is how many snapshots are kept: those taken before a project
-// delete and those taken before a migration share the directory and the
-// count.
+// BackupKeep is how many snapshots of each kind are kept.
 const BackupKeep = 7
 
-// PruneBackups removes the oldest snapshots until at most keep remain and
-// returns the names removed. keep below 1 removes nothing.
+// PruneBackups removes the oldest snapshots of each kind until at most keep
+// of that kind remain and returns the names removed. Snapshots with no kind
+// in their name (from before kinds) are never removed. keep below 1 removes
+// nothing.
 func PruneBackups(dir string, keep int) ([]string, error) {
 	if keep < 1 {
 		return nil, nil
@@ -410,7 +393,14 @@ func PruneBackups(dir string, keep int) ([]string, error) {
 		return nil, err
 	}
 	var removed []string
-	for _, b := range all[min(keep, len(all)):] {
+	seen := map[Kind]int{}
+	for _, b := range all {
+		if b.Kind == "" {
+			continue
+		}
+		if seen[b.Kind]++; seen[b.Kind] <= keep {
+			continue
+		}
 		if err := DeleteBackup(dir, b.Name); err != nil && !errors.Is(err, ErrBackupNotFound) {
 			return removed, err
 		}

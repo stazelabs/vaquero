@@ -167,7 +167,7 @@ func snapshotIfPending(ctx context.Context, w *sql.DB, backupDir string, now tim
 			return nil
 		}
 	}
-	info, err := appdb.SnapshotNext(ctx, w, backupDir, now)
+	info, err := appdb.SnapshotNext(ctx, w, backupDir, appdb.KindPreMigrate, now)
 	if err != nil {
 		hint := "check that " + backupDir + " can be written"
 		if errors.Is(err, appdb.ErrLowSpace) {

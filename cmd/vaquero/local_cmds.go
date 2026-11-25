@@ -233,7 +233,11 @@ func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside
 	dir := filepath.Join(cfg.DataDir, "backups")
 	moved := false
 	if _, err := os.Stat(cfg.DBPath); err == nil {
-		name, err := snapshotFile(ctx, cfg.DBPath, dir)
+		kind := appdb.KindPreRestore
+		if strings.HasSuffix(newPath, importFile) {
+			kind = appdb.KindPreImport
+		}
+		name, err := snapshotFile(ctx, cfg.DBPath, dir, kind)
 		if err == nil {
 			aside = filepath.Join(dir, name)
 		} else {
@@ -330,14 +334,20 @@ func savedLine(cfg config.Config, aside string) string {
 
 // snapshotFile saves the database at path as a snapshot in dir and returns
 // its name.
-func snapshotFile(ctx context.Context, path, dir string) (string, error) {
+func snapshotFile(ctx context.Context, path, dir string, kind appdb.Kind) (string, error) {
 	cur, err := appdb.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer cur.Close()
-	info, err := appdb.SnapshotNext(ctx, cur, dir, localNow())
-	return info.Name, err
+	info, err := appdb.SnapshotNext(ctx, cur, dir, kind, localNow())
+	if err != nil {
+		return "", err
+	}
+	// Each restore or import adds one, so they are pruned as they are made
+	// (best effort: the snapshot is what matters).
+	_, _ = appdb.PruneBackups(dir, appdb.BackupKeep)
+	return info.Name, nil
 }
 
 // copyFile writes src to path (0600) and syncs it.

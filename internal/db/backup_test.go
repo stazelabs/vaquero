@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,13 +96,13 @@ func TestListPruneAndNames(t *testing.T) {
 	if list, err := appdb.ListBackups(filepath.Join(dir, "missing")); err != nil || len(list) != 0 {
 		t.Fatalf("missing dir: %v %v", list, err)
 	}
-	names := []string{"vaquero-20261010-000000.sqlite", "vaquero-20261012-000000.sqlite", "vaquero-20261011-000000.sqlite", "vaquero-20261013-000000.sqlite"}
+	names := []string{"vaquero-predelete-20261010-000000.sqlite", "vaquero-predelete-20261012-000000.sqlite", "vaquero-predelete-20261011-000000.sqlite", "vaquero-predelete-20261013-000000.sqlite"}
 	for _, n := range names {
 		touch(t, dir, n)
 	}
 	touch(t, dir, "notes.txt")
-	touch(t, dir, ".tmp-vaquero-20261014-000000.sqlite")
-	if err := os.Mkdir(filepath.Join(dir, "vaquero-20261015-000000.sqlite"), 0o750); err != nil {
+	touch(t, dir, ".tmp-vaquero-predelete-20261014-000000.sqlite")
+	if err := os.Mkdir(filepath.Join(dir, "vaquero-predelete-20261015-000000.sqlite"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	list, err := appdb.ListBackups(dir)
@@ -119,7 +120,7 @@ func TestListPruneAndNames(t *testing.T) {
 		t.Fatalf("after prune %v", list)
 	}
 	// Unrelated files are never touched.
-	for _, n := range []string{"notes.txt", ".tmp-vaquero-20261014-000000.sqlite"} {
+	for _, n := range []string{"notes.txt", ".tmp-vaquero-predelete-20261014-000000.sqlite"} {
 		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
 			t.Errorf("%s was removed", n)
 		}
@@ -269,79 +270,80 @@ func TestSnapshotDoesNotHoldTheWriterPool(t *testing.T) {
 	}
 }
 
-func TestVolumeSpaceReadsFreeAndTotal(t *testing.T) {
-	free, total, err := appdb.VolumeSpace(filepath.Join(t.TempDir(), "not", "yet"))
+func TestFreeBytesReadsAMissingDirThroughItsParent(t *testing.T) {
+	free, err := appdb.FreeBytes(filepath.Join(t.TempDir(), "not", "yet"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if total <= 0 || free <= 0 || free > total {
-		t.Fatalf("free %d, total %d", free, total)
+	if free <= 0 {
+		t.Fatalf("free %d", free)
 	}
 }
 
-func TestSpaceLow(t *testing.T) {
-	const gb = int64(1) << 30
-	for _, c := range []struct {
-		name        string
-		free, total int64
-		low         bool
-	}{
-		{"plenty on 1 GB", 600 << 20, gb, false},
-		{"under 200 MB of 3 GB", 150 << 20, 3 * gb, true},
-		{"under a fifth of 3 GB", 500 << 20, 3 * gb, true},
-		{"just over a fifth of 1 GB", 205 << 20, gb, false},
-		{"just under 200 MB on 1 GB", 199 << 20, gb, true},
-		{"unknown total", 10 << 20, 0, true},
-		{"unknown total, roomy", 5 * gb, 0, false},
-	} {
-		if got := appdb.SpaceLow(c.free, c.total); got != c.low {
-			t.Errorf("%s: SpaceLow(%d, %d) = %v, want %v", c.name, c.free, c.total, got, c.low)
+// Each kind of snapshot is kept on its own: a run of project deletes can't
+// prune the snapshot taken before an upgrade. Snapshots from before kinds
+// existed (plain names) still list and open, and are never pruned.
+func TestPruneKeepsEachKindOnItsOwn(t *testing.T) {
+	dir := t.TempDir()
+	touch(t, dir, "vaquero-20260101-000000.sqlite") // an old release's
+	touch(t, dir, "vaquero-20260102-000000.sqlite")
+	touch(t, dir, "vaquero-premigrate-20261020-000000.sqlite")
+	for i := 1; i <= 9; i++ {
+		touch(t, dir, appdb.BackupNameKind(appdb.KindPreDelete, snapAt.Add(time.Duration(i)*time.Second)))
+	}
+	removed, err := appdb.PruneBackups(dir, appdb.BackupKeep)
+	if err != nil || len(removed) != 2 {
+		t.Fatalf("pruned %v %v", removed, err)
+	}
+	for _, n := range removed {
+		if !strings.HasPrefix(n, "vaquero-predelete-") {
+			t.Errorf("pruned %s", n)
 		}
 	}
-}
-
-// Snapshots may take at most half the volume, so the keep count
-// shrinks as the database grows and never goes below one.
-func TestEffectiveKeep(t *testing.T) {
-	const mb = int64(1) << 20
-	for _, c := range []struct {
-		name              string
-		keep              int
-		size, total, want int64
-	}{
-		{"small database keeps the setting", 7, 40 * mb, 1024 * mb, 7},
-		{"setting below the cap wins", 3, 40 * mb, 1024 * mb, 3},
-		{"100 MB on 1 GB", 7, 100 * mb, 1024 * mb, 3},
-		{"110 MB on 1 GB", 7, 110 * mb, 1024 * mb, 2},
-		{"150 MB on 1 GB", 7, 150 * mb, 1024 * mb, 1},
-		{"400 MB on 1 GB still keeps one", 7, 400 * mb, 1024 * mb, 1},
-		{"400 MB on 3 GB", 7, 400 * mb, 3072 * mb, 1},
-		{"200 MB on 3 GB", 7, 200 * mb, 3072 * mb, 5},
-		{"unknown volume keeps the setting", 7, 40 * mb, 0, 7},
-		{"unknown size keeps the setting", 7, 0, 1024 * mb, 7},
-	} {
-		if got := appdb.EffectiveKeep(c.keep, c.size, c.total); int64(got) != c.want {
-			t.Errorf("%s: EffectiveKeep(%d, %d, %d) = %d, want %d", c.name, c.keep, c.size, c.total, got, c.want)
+	list, err := appdb.ListBackups(dir)
+	if err != nil || len(list) != 10 {
+		t.Fatalf("list %v %v", list, err)
+	}
+	if list[0].Name != "vaquero-premigrate-20261020-000000.sqlite" || list[0].Kind != appdb.KindPreMigrate {
+		t.Errorf("newest first: %+v", list[0])
+	}
+	if last := list[len(list)-1]; last.Name != "vaquero-20260101-000000.sqlite" || last.Kind != "" {
+		t.Errorf("an old name lists as a plain snapshot: %+v", last)
+	}
+	for _, n := range []string{"vaquero-20260101-000000.sqlite", "vaquero-premigrate-20261020-000000.sqlite"} {
+		f, _, err := appdb.OpenBackup(dir, n)
+		if err != nil {
+			t.Errorf("open %s: %v", n, err)
+			continue
 		}
+		f.Close()
 	}
 }
 
-func TestKeepForReadsTheRealDatabaseAndVolume(t *testing.T) {
+func TestSnapshotNextNamesTheKind(t *testing.T) {
 	d := dbtest.New(t)
-	// A test database is far smaller than any volume's half, so the setting stands.
-	if got := appdb.KeepFor(context.Background(), d.R, t.TempDir(), 7); got != 7 {
-		t.Fatalf("KeepFor = %d, want 7", got)
+	dir := t.TempDir()
+	for _, k := range []appdb.Kind{appdb.KindPreMigrate, appdb.KindPreDelete, appdb.KindPreRestore, appdb.KindPreImport} {
+		info, err := appdb.SnapshotNext(context.Background(), d.R, dir, k, snapAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "vaquero-" + string(k) + "-"
+		if !strings.HasPrefix(info.Name, want) || info.Kind != k {
+			t.Errorf("%s: %+v", k, info)
+		}
 	}
-}
-
-func TestBackupNameParsesBack(t *testing.T) {
-	got, err := appdb.ParseBackupName(appdb.BackupName(snapAt))
-	if err != nil || !got.Equal(snapAt) {
-		t.Fatalf("ParseBackupName(BackupName(%v)) = %v, %v", snapAt, got, err)
+	// Same second, same kind: the next free second.
+	a, _ := appdb.SnapshotNext(context.Background(), d.R, dir, appdb.KindPreDelete, snapAt)
+	if a.Name == appdb.BackupNameKind(appdb.KindPreDelete, snapAt) {
+		t.Errorf("reused a name: %s", a.Name)
 	}
-	for _, bad := range []string{"", "backup.sqlite", "vaquero-20261313-093005.sqlite", "vaquero-20261013-093005.sqlite.tmp"} {
-		if _, err := appdb.ParseBackupName(bad); err == nil {
-			t.Errorf("%q parsed", bad)
+	if _, err := appdb.ListBackups(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"vaquero-other-20261013-093005.sqlite", "vaquero-premigrate-premigrate-20261013-093005.sqlite"} {
+		if _, _, err := appdb.OpenBackup(dir, bad); !errors.Is(err, appdb.ErrBadBackupName) {
+			t.Errorf("%s: %v", bad, err)
 		}
 	}
 }
