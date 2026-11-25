@@ -144,3 +144,21 @@ func TestAPIProjectEdits(t *testing.T) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 }
+
+// VAQ-100: one unmatched name is named in the top-level message; several
+// keep the generic sentence, with the fields alongside.
+func TestAPINameRefusalMessage(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	var e apiErrBody
+	r := c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "x", "milestone": "Never"})
+	decode(t, r.Body, &e)
+	if r.Status != 422 || e.Error.Message != "No milestone Never in VAQ." || e.Error.Fields["milestone"] != e.Error.Message {
+		t.Fatalf("%d %+v", r.Status, e)
+	}
+	r = c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "x", "status": "Nope", "milestone": "Never"})
+	e = apiErrBody{}
+	decode(t, r.Body, &e)
+	if r.Status != 422 || e.Error.Message != "Some names don't match anything." || len(e.Error.Fields) != 2 {
+		t.Fatalf("%d %+v", r.Status, e)
+	}
+}

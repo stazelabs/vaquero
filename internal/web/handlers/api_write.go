@@ -103,7 +103,13 @@ func (n *names) fail(w http.ResponseWriter) bool {
 	if len(n.fields) == 0 {
 		return false
 	}
-	f := api.Fail(http.StatusUnprocessableEntity, "invalid", "Some names don't match anything.")
+	msg := "Some names don't match anything."
+	if len(n.fields) == 1 {
+		for _, m := range n.fields {
+			msg = m
+		}
+	}
+	f := api.Fail(http.StatusUnprocessableEntity, "invalid", msg)
 	f.Fields = n.fields
 	api.WriteFailure(w, f)
 	return true

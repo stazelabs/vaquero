@@ -276,3 +276,18 @@ func TestMCPGetTicketListsAttachments(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-100: a tool refusal carries the field messages, so an agent sees
+// which names were wrong, not only the generic sentence.
+func TestMCPToolErrorCarriesFields(t *testing.T) {
+	e, tok := agentEnv(t)
+	cs := mcpConnect(t, e, tok, "builder")
+	res, text := mcpCall(t, cs, "create_ticket", map[string]any{"project": "VAQ", "title": "x", "status": "Nope", "milestone": "Never"})
+	if !res.IsError || !strings.Contains(text, "No status Nope in VAQ.") || !strings.Contains(text, "No milestone Never in VAQ.") {
+		t.Fatalf("%v %q", res.IsError, text)
+	}
+	res, text = mcpCall(t, cs, "create_ticket", map[string]any{"project": "VAQ", "title": "x", "milestone": "Never"})
+	if !res.IsError || text != "No milestone Never in VAQ." {
+		t.Fatalf("%v %q", res.IsError, text)
+	}
+}

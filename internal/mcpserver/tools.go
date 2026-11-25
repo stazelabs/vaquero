@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -346,13 +349,28 @@ func (c *caller) do(ctx context.Context, rq request) ([]byte, *toolError) {
 		return rec.body.Bytes(), nil
 	}
 	var fail struct {
-		Error toolError `json:"error"`
+		Error struct {
+			toolError
+			Fields map[string]string `json:"fields"`
+		} `json:"error"`
 	}
 	if json.Unmarshal(rec.body.Bytes(), &fail) != nil || fail.Error.Message == "" {
 		c.logger.ErrorContext(ctx, "mcp api answer", "status", rec.status, "path", rq.path)
 		return nil, errSomething
 	}
-	return nil, &fail.Error
+	return nil, withFields(fail.Error.toolError, fail.Error.Fields)
+}
+
+// withFields is e with the API's field messages added to its text, one per
+// line, when the message doesn't already say them (a refusal over several
+// names says only that some don't match).
+func withFields(e toolError, fields map[string]string) *toolError {
+	for _, k := range slices.Sorted(maps.Keys(fields)) {
+		if m := fields[k]; m != "" && !strings.Contains(e.Message, m) {
+			e.Message += "\n" + m
+		}
+	}
+	return &e
 }
 
 // recorder keeps an in-process answer.
