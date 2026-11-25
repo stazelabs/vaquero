@@ -43,6 +43,8 @@ Give each agent you run its own `--agent` name, so their claims and comments sta
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
 | `release_ticket` | Give up your claim: `key` |
 
+`update_ticket`, `move_ticket`, `add_comment`, `claim_ticket`, `heartbeat` and `release_ticket` also take `view`: `summary` answers with only the ticket's key, status, category, version, assignee and claim (and the comment's id), the API's [short answer](/help/api#short-answers), instead of the whole ticket.
+
 A tool's answer is the same JSON the API gives. Its structured content, for clients that read it, is that JSON too, except that a list arrives as `{"items": [...]}`, because structured content is always an object. A refusal (an unknown ticket, a claim someone else holds, a stale `version`) is a tool error whose text says what went wrong, the same message the API gives.
 
 The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping.

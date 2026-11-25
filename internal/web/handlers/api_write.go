@@ -297,9 +297,13 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 
 // APITicketPatch is PATCH /api/v1/tickets/{ticket}: only the fields sent
 // change; with version, a stale save is refused with 409 and the current
-// ticket.
+// ticket. ?view=summary answers with the short answer.
 func APITicketPatch(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -319,7 +323,7 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		writeTicket(w, r, d, nt, p, http.StatusOK)
+		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
 }
 
@@ -332,9 +336,14 @@ func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p
 	api.WriteJSON(w, status, out)
 }
 
-// APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?, after?}.
+// APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?,
+// after?}; ?view=summary answers with the short answer.
 func APITicketMove(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -355,7 +364,7 @@ func APITicketMove(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		writeTicket(w, r, d, nt, p, http.StatusOK)
+		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
 }
 
@@ -363,9 +372,14 @@ func commentDTO(c gen.Comment, author string) api.Comment {
 	return api.Comment{ID: c.ID, Author: author, Body: c.Body, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 }
 
-// APICommentCreate is POST /api/v1/tickets/{ticket}/comments {body}.
+// APICommentCreate is POST /api/v1/tickets/{ticket}/comments {body};
+// ?view=summary answers with the ticket's short answer and the comment's id.
 func APICommentCreate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -379,6 +393,16 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 		c, err := d.Core.AddComment(r.Context(), a.ID, t.ID, in.Body)
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
+			return
+		}
+		if short {
+			b, err := ticketBrief(r, d, t, p)
+			if err != nil {
+				apiFail(w, r, d, api.Internal(), err)
+				return
+			}
+			b.ID = c.ID
+			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
 		api.WriteJSON(w, http.StatusCreated, commentDTO(c, a.Name))

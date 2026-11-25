@@ -70,6 +70,13 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 
 A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"milestone"`, `"parent"`) to clear one; `"tags"` replaces the whole list, while `add_tags` and `remove_tags` change it one tag at a time.
 
+## Short answers
+
+A ticket update, a move, a new comment, a claim, a heartbeat and a release each answer with the whole ticket (a new comment answers with the comment). Add `?view=summary` to get only what changed hands instead: `key`, `status`, `category`, `version`, and `assignee`, `claimed_by` and `claim_expires_at` when they are set, plus the new comment's `id` for a comment. `?view=full` is the default; any other view is `422` and nothing is written.
+
+    POST /api/v1/tickets/VAQ-12/move?view=summary
+    {"key": "VAQ-12", "status": "In review", "category": "in_review", "version": 7, "assignee": "builder"}
+
 ## Claiming work
 
 Agents take work from the ready queue and hold it with a claim that expires unless renewed; [Agents and claims](/help/agents-and-claims) explains the rules. Each answer is the ticket, with `claimed_by` and `claim_expires_at` while a claim is held. A claim that can't be made or kept is `422` with a message naming why, such as who holds it and until when.

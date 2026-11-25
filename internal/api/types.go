@@ -57,6 +57,19 @@ type Ticket struct {
 	UpdatedAt   string          `json:"updated_at"`
 }
 
+// TicketBrief is the short answer to a write (?view=summary): the
+// ticket's state after it, and for a new comment the comment's id.
+type TicketBrief struct {
+	ID             string `json:"id,omitempty"` // the new comment's, for a comment
+	Key            string `json:"key"`
+	Status         string `json:"status"`
+	Category       string `json:"category"`
+	Version        int64  `json:"version"`
+	Assignee       string `json:"assignee,omitempty"`
+	ClaimedBy      string `json:"claimed_by,omitempty"`
+	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
+}
+
 type Link struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`      // blocks, relates, duplicates

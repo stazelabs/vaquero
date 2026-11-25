@@ -78,16 +78,19 @@ type (
 		AddTags    []string `json:"add_tags,omitempty" jsonschema:"Tags to add."`
 		RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"Tags to remove."`
 		Version    int64    `json:"version,omitempty" jsonschema:"The version you read; the update is refused if the ticket changed since."`
+		View       string   `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 
 	moveArgs struct {
 		Key    string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		Status string `json:"status" jsonschema:"The status to move it to, by name."`
+		View   string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 
 	commentArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		Body string `json:"body" jsonschema:"The comment, in Markdown."`
+		View string `json:"view,omitempty" jsonschema:"summary for a short answer: the comment's id and the ticket's key, status, category, version, assignee and claim. Leave it out for the comment."`
 	}
 
 	linkArgs struct {
@@ -99,6 +102,12 @@ type (
 	leaseArgs struct {
 		Key          string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		LeaseMinutes int64  `json:"lease_minutes,omitempty" jsonschema:"How long to hold it, 1 to 120 minutes. Leave it out for 15."`
+		View         string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
+	}
+
+	releaseArgs struct {
+		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 )
 
@@ -123,6 +132,14 @@ func get(path string, q url.Values) request {
 }
 func post(path string, body any) request {
 	return request{method: http.MethodPost, path: path, body: body}
+}
+
+// viewed is rq asking for view (?view=), when one is given.
+func viewed(rq request, view string) request {
+	if view != "" {
+		rq.query = url.Values{"view": {view}}
+	}
+	return rq
 }
 
 // ticketPath is a ticket key's API path.
@@ -203,17 +220,17 @@ func addTools(s *mcp.Server, c *caller) {
 			if in.Version != 0 {
 				b["version"] = in.Version
 			}
-			return request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}
+			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
 		})
 	add(s, c, "move_ticket", "Move a ticket", false,
 		"Move a ticket to another status, at the end of its column.",
 		func(in moveArgs) request {
-			return post(ticketPath(in.Key, "/move"), map[string]string{"status": in.Status})
+			return viewed(post(ticketPath(in.Key, "/move"), map[string]string{"status": in.Status}), in.View)
 		})
 	add(s, c, "add_comment", "Add a comment", false,
 		"Add a comment to a ticket, in Markdown.",
 		func(in commentArgs) request {
-			return post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body})
+			return viewed(post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body}), in.View)
 		})
 	add(s, c, "link_tickets", "Link two tickets", false,
 		"Record that one ticket blocks, relates to or duplicates another. A blocking loop is refused.",
@@ -222,13 +239,17 @@ func addTools(s *mcp.Server, c *caller) {
 		})
 	add(s, c, "claim_ticket", "Claim a ticket", false,
 		"Claim a ticket to work on it: it is assigned to you and moved to in progress, and no one else can claim it until your lease ends. Claiming your own claim renews it.",
-		func(in leaseArgs) request { return post(ticketPath(in.Key, "/claim"), leaseBody(in.LeaseMinutes)) })
+		func(in leaseArgs) request {
+			return viewed(post(ticketPath(in.Key, "/claim"), leaseBody(in.LeaseMinutes)), in.View)
+		})
 	add(s, c, "heartbeat", "Renew a claim", false,
 		"Extend your claim on a ticket from now, so it doesn't lapse while you work.",
-		func(in leaseArgs) request { return post(ticketPath(in.Key, "/heartbeat"), leaseBody(in.LeaseMinutes)) })
+		func(in leaseArgs) request {
+			return viewed(post(ticketPath(in.Key, "/heartbeat"), leaseBody(in.LeaseMinutes)), in.View)
+		})
 	add(s, c, "release_ticket", "Release a claim", false,
 		"Give up your claim on a ticket, leaving its status and assignee as they are.",
-		func(in keyArgs) request { return post(ticketPath(in.Key, "/release"), nil) })
+		func(in releaseArgs) request { return viewed(post(ticketPath(in.Key, "/release"), nil), in.View) })
 }
 
 func set(q url.Values, k, v string) {

@@ -126,9 +126,14 @@ func decodeLease(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
 }
 
 // claimAction is POST /api/v1/tickets/{ticket}/claim, /heartbeat or
-// /release: op runs as the request's actor and the ticket is the answer.
+// /release: op runs as the request's actor and the ticket is the answer,
+// short with ?view=summary.
 func claimAction(d Deps, withLease bool, op func(r *http.Request, by, ticketID string, lease time.Duration) (gen.Ticket, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -144,7 +149,7 @@ func claimAction(d Deps, withLease bool, op func(r *http.Request, by, ticketID s
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		writeTicket(w, r, d, nt, p, http.StatusOK)
+		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
 }
 
