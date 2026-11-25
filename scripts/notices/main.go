@@ -110,7 +110,7 @@ func addModules(mods map[string]component, goos, goarch string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", m.Path, err)
 		}
-		mods[m.Path] = component{Name: m.Path, Version: m.Version, URL: "https://" + m.Path, License: text}
+		mods[m.Path] = component{Name: m.Path, Version: m.Version, URL: "https://pkg.go.dev/" + m.Path, License: text}
 	}
 	return nil
 }
