@@ -14,7 +14,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 ## Queries
 
 - SQL lives in internal/db/queries; `make sqlc` (part of `make gen`) writes internal/db/gen. Never edit generated files.
-- Only internal/core writes the tracker tables (actors through events). Everything else reads through the reader pool. The one offline exception is `vaquero import` (`archive.Load` into a new file, then swapped in). The `blobs` table is written only through internal/blobs.
+- Only internal/core writes the tracker tables (actors through events). Everything else reads through the reader pool. The one offline exception is `vaquero import` (`archive.Load` into a new file, then swapped in). A migration may rewrite rows too (0008 backfills link event payloads); keep such a backfill's SQL in the migration and run that text again where imported data needs it (`BackfillLinkTargets`). The `blobs` table is written only through internal/blobs.
 - Rejected: ORMs and mattn/go-sqlite3.
 
 ## Reader and writer pools (internal/db/sqlite.go)
@@ -33,7 +33,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 
 ## Search indexes
 
-- `tickets_fts` and `comments_fts` are FTS5 external-content tables keyed on the tickets' and comments' implicit rowids, kept current by triggers (insert, update, soft delete, hard delete). Never `VACUUM` the live database in place: it can renumber rowids and attach hits to the wrong tickets. Snapshots use `VACUUM INTO` a copy, which is fine.
+- `tickets_fts` and `comments_fts` are FTS5 external-content tables keyed on the tickets' and comments' implicit rowids, kept current by triggers (insert, update, soft delete, hard delete). Never `VACUUM` the live database in place: it can renumber rowids and attach hits to the wrong tickets. Snapshots and `vaquero backup compact` use `VACUUM INTO` a copy; compaction then rebuilds both indexes in the copy (`RebuildSearch`) before it is swapped in.
 - The search query is hand-written in `internal/db/search.go` because sqlc can't read FTS5 tables.
 
 ## Instants and IDs
