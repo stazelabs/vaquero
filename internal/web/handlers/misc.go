@@ -42,6 +42,18 @@ func MethodNotAllowed(d Deps) http.HandlerFunc {
 }
 
 // NotFound renders the themed 404.
+// TooLarge is the themed 413 page middleware.BodyLimit shows for a web
+// form body declared over the limit.
+func TooLarge(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusRequestEntityTooLarge)
+		if err := templates.TooLargePage().Render(r.Context(), w); err != nil {
+			d.Logger.ErrorContext(r.Context(), "render too large", "err", err)
+		}
+	}
+}
+
 func NotFound(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

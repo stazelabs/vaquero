@@ -279,6 +279,27 @@ func FreeBytes(path string) (int64, error) {
 	}
 }
 
+// snapshotVersion is the schema version a snapshot records, read without
+// writing to it; ok is false when it can't be read.
+func snapshotVersion(path string) (v int64, ok bool) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return 0, false
+	}
+	// immutable: a snapshot is never written, and a read-only open of a
+	// WAL-mode file would otherwise need its shared memory.
+	d, err := sql.Open("sqlite", "file:"+abs+"?mode=ro&immutable=1")
+	if err != nil {
+		return 0, false
+	}
+	defer d.Close()
+	var got sql.NullInt64
+	if err := d.QueryRow(`SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&got); err != nil || !got.Valid {
+		return 0, false
+	}
+	return got.Int64, true
+}
+
 // SameFilesystem reports whether paths a and b are on one filesystem. A
 // path that doesn't exist yet is placed by its nearest existing parent.
 func SameFilesystem(a, b string) (bool, error) {
@@ -416,8 +437,10 @@ const BackupKeep = 7
 
 // PruneBackups removes the oldest snapshots of each kind until at most keep
 // of that kind remain and returns the names removed. Snapshots with no kind
-// in their name (from before kinds) are never removed. keep below 1 removes
-// nothing.
+// in their name (from before kinds) are never removed. Beyond keep, the
+// newest pre-migration snapshot of each schema version not already kept
+// stays too, so the last copy of an older layout is never pruned (one that
+// can't be read is pruned as usual). keep below 1 removes nothing.
 func PruneBackups(dir string, keep int) ([]string, error) {
 	if keep < 1 {
 		return nil, nil
@@ -428,11 +451,20 @@ func PruneBackups(dir string, keep int) ([]string, error) {
 	}
 	var removed []string
 	seen := map[Kind]int{}
+	schemas := map[int64]bool{} // versions of the pre-migration snapshots kept
 	for _, b := range all {
 		if b.Kind == "" {
 			continue
 		}
-		if seen[b.Kind]++; seen[b.Kind] <= keep {
+		seen[b.Kind]++
+		if b.Kind == KindPreMigrate {
+			v, ok := snapshotVersion(filepath.Join(dir, b.Name))
+			if ok && (seen[b.Kind] <= keep || !schemas[v]) {
+				schemas[v] = true
+				continue
+			}
+		}
+		if seen[b.Kind] <= keep {
 			continue
 		}
 		if err := DeleteBackup(dir, b.Name); err != nil && !errors.Is(err, ErrBackupNotFound) {

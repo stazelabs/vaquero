@@ -347,3 +347,52 @@ func TestSnapshotNextNamesTheKind(t *testing.T) {
 		}
 	}
 }
+
+// atVersion writes a snapshot that records schema version v, as goose does.
+func atVersion(t *testing.T, dir, name string, v int64) {
+	t.Helper()
+	d, err := appdb.Open(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, err := d.Exec(`CREATE TABLE goose_db_version (id INTEGER PRIMARY KEY, version_id INTEGER, is_applied INTEGER, tstamp TEXT);
+		INSERT INTO goose_db_version (version_id, is_applied) VALUES (0, 1), (?, 1)`, v); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// VAQ-113: pruning keeps seven pre-migration snapshots and, beyond them, the
+// newest one of each schema version they don't cover, so many migrating
+// upgrades never remove the last copy of an older schema.
+func TestPruneKeepsOnePreMigratePerSchemaVersion(t *testing.T) {
+	dir := t.TempDir()
+	name := func(i int) string {
+		return appdb.BackupNameKind(appdb.KindPreMigrate, snapAt.Add(time.Duration(i)*time.Second))
+	}
+	atVersion(t, dir, name(1), 5) // older copy of 5: pruned
+	atVersion(t, dir, name(2), 5) // newest of 5: kept
+	atVersion(t, dir, name(3), 6) // the only 6: kept
+	touch(t, dir, name(4))        // unreadable: pruned as before
+	for i := 5; i <= 13; i++ {
+		atVersion(t, dir, name(i), 7) // seven kept, two pruned
+	}
+	removed, err := appdb.PruneBackups(dir, appdb.BackupKeep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{name(1): true, name(4): true, name(5): true, name(6): true}
+	if len(removed) != len(want) {
+		t.Fatalf("pruned %v", removed)
+	}
+	for _, n := range removed {
+		if !want[n] {
+			t.Errorf("pruned %s", n)
+		}
+	}
+	for _, n := range []string{name(2), name(3), name(13)} {
+		if _, err := os.Stat(filepath.Join(dir, n)); err != nil {
+			t.Errorf("%s gone: %v", n, err)
+		}
+	}
+}

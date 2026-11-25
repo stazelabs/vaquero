@@ -87,3 +87,12 @@ templ emptyState(icon, text string) {
 		<p>{ text }</p>
 	</div>
 }
+
+// emptyStateLink is emptyState with a next step.
+templ emptyStateLink(icon, text, href, label string) {
+	<div class="mt-8 flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
+		@IconClass(icon, "h-8 w-8 shrink-0 opacity-70")
+		<p>{ text }</p>
+		<a href={ templ.SafeURL(href) } class={ btnLink }>{ label }</a>
+	</div>
+}

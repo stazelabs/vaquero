@@ -46,13 +46,16 @@ func IsUpload(r *http.Request) bool {
 
 // tooLarge writes the 413 for a body declared over the limit: the file
 // message on an upload route, the API envelope on /api/v1 and /mcp, and a
-// small page anywhere else.
-func tooLarge(w http.ResponseWriter, r *http.Request, upload bool) {
+// page (or, without one, a small plain page) anywhere else.
+func tooLarge(w http.ResponseWriter, r *http.Request, upload bool, page http.Handler) {
 	switch {
 	case upload:
 		api.WriteFailure(w, TooLargeUpload())
 	case r.URL.Path == "/mcp" || r.URL.Path == "/api/v1" || strings.HasPrefix(r.URL.Path, "/api/v1/"):
 		api.WriteFailure(w, api.Fail(http.StatusRequestEntityTooLarge, "too_large", "The request body is too large."))
+	case page != nil:
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		page.ServeHTTP(w, r)
 	default:
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -64,8 +67,9 @@ func tooLarge(w http.ResponseWriter, r *http.Request, upload bool) {
 
 // BodyLimit refuses a body declared larger than limit with 413, and stops
 // reading any body at that limit. An upload route (IsUpload) gets MaxUpload
-// instead, and its 413 is TooLargeUpload.
-func BodyLimit(limit int64) func(http.Handler) http.Handler {
+// instead, and its 413 is TooLargeUpload. page answers a web form's 413
+// (the themed page); nil keeps a small plain one.
+func BodyLimit(limit int64, page http.Handler) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			n, upload := limit, IsUpload(r)
@@ -73,7 +77,7 @@ func BodyLimit(limit int64) func(http.Handler) http.Handler {
 				n = MaxUpload
 			}
 			if r.ContentLength > n {
-				tooLarge(w, r, upload)
+				tooLarge(w, r, upload, page)
 				return
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, n)

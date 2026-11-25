@@ -164,6 +164,18 @@ func mcpActorLabel(a gen.ListMCPCallActorsRow, all []gen.ListMCPCallActorsRow) s
 }
 
 // mcpFilterHref is the MCP activity page filtered by agent and tool.
+// mcpAgentListed reports whether the agent filter names an actor in the
+// log; an id that matches nothing (an old name-based link) gets its own
+// empty state.
+func mcpAgentListed(v MCPView) bool {
+	for _, a := range v.Agents {
+		if a.ID == v.Agent {
+			return true
+		}
+	}
+	return false
+}
+
 func mcpFilterHref(agent, tool string) string {
 	q := url.Values{}
 	if agent != "" {

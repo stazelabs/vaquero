@@ -187,7 +187,9 @@ templ MCPPage(v MCPView) {
 			hx-swap="outerHTML"
 			class="mt-6"
 		>
-			if len(v.Calls) == 0 && (v.Agent != "" || v.Tool != "") {
+			if v.Agent != "" && !mcpAgentListed(v) {
+				@emptyStateLink("no-results", "No agent with that id has made MCP calls.", mcpFilterHref("", v.Tool), "Show every agent")
+			} else if len(v.Calls) == 0 && (v.Agent != "" || v.Tool != "") {
 				@emptyState("no-results", "No MCP calls match.")
 			} else if len(v.Calls) == 0 {
 				@emptyState("agent", "No MCP calls yet.")

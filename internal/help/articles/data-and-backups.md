@@ -37,7 +37,9 @@ Vaquero takes a snapshot of the whole database, into `backups/`, before anything
 - importing an export;
 - compacting the database.
 
-If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots of each of those kinds are kept, so a run of project deletes never pushes out the snapshot taken before an upgrade; the kind is in the file name (`vaquero-predelete-…`). Snapshots from older releases have plain names and are never removed. `vaquero backup list` shows them all.
+If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots of each of those kinds are kept, so a run of project deletes never pushes out the snapshot taken before an upgrade; the kind is in the file name (`vaquero-predelete-…`). Beyond those seven, the newest snapshot taken before an upgrade from each older database layout is kept too, so the last copy of a layout is never removed. Snapshots from older releases have plain names and are never removed. `vaquero backup list` shows them all.
+
+A Vaquero older than 0.1.2 doesn't list snapshots whose names carry a kind. To restore one with it, copy the file over `vaquero.db` by hand while no server is running.
 
 Snapshots hold attachments only with the default `sqlite` storage; files kept in a directory or an S3 bucket are yours to back up. See [Attachments](/help/attachments#backups).
 
