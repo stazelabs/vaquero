@@ -97,7 +97,6 @@ func readMCPLine(rd *bufio.Reader) (line []byte, tooLong bool, err error) {
 	}
 }
 
-
 // mcpBridge posts messages to /mcp and writes the answers.
 type mcpBridge struct {
 	url, token, agent string
