@@ -323,7 +323,7 @@ func TestPruneKeepsEachKindOnItsOwn(t *testing.T) {
 func TestSnapshotNextNamesTheKind(t *testing.T) {
 	d := dbtest.New(t)
 	dir := t.TempDir()
-	for _, k := range []appdb.Kind{appdb.KindPreMigrate, appdb.KindPreDelete, appdb.KindPreRestore, appdb.KindPreImport} {
+	for _, k := range []appdb.Kind{appdb.KindPreMigrate, appdb.KindPreDelete, appdb.KindPreRestore, appdb.KindPreImport, appdb.KindPreCompact} {
 		info, err := appdb.SnapshotNext(context.Background(), d.R, dir, k, snapAt)
 		if err != nil {
 			t.Fatal(err)

@@ -1,7 +1,7 @@
 ---
 title: Your data and backups
 section: getting-started
-summary: Where Vaquero keeps its data, what each file is for, how to export and import it, and how to restore a backup.
+summary: Where Vaquero keeps its data, what each file is for, how to export and import it, how to restore a backup, and how to compact the database.
 order: 3
 ---
 ## The data directory
@@ -23,7 +23,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `vaquero.lock` | Held while a server runs, so two servers never share one directory |
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
 | `vaquero.log` | The output of a server the command line started in the background |
-| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore or an import |
+| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import or a compaction |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.
 
@@ -34,7 +34,8 @@ Vaquero takes a snapshot of the whole database, into `backups/`, before anything
 - deleting a project;
 - starting a newer Vaquero that changes the database's layout (an upgrade);
 - restoring another snapshot;
-- importing an export.
+- importing an export;
+- compacting the database.
 
 If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots of each of those kinds are kept, so a run of project deletes never pushes out the snapshot taken before an upgrade; the kind is in the file name (`vaquero-predelete-…`). Snapshots from older releases have plain names and are never removed. `vaquero backup list` shows them all.
 
@@ -91,3 +92,14 @@ The database as it was is saved as a new snapshot first, so a restore can itself
 A database written by a newer Vaquero is refused by an older one, with a message saying so; upgrade Vaquero rather than editing the file.
 
 A copied data directory shares the original's instance id. Never run a copy against the same attachment directory or bucket as the original: the two would write and sweep each other's files.
+
+## Compacting the database
+
+Deleting things doesn't shrink `vaquero.db`: the space is kept for new data. With the default `sqlite` storage, attachment files live in the database, so deleted attachments can leave it much bigger than what it holds. To give that space back, stop the server and compact:
+
+    vaquero stop
+    vaquero backup compact
+
+Compacting is all or nothing. It saves the database as a snapshot first (`vaquero-precompact-…`), then writes a compacted copy beside it, `vaquero.db.compact`, rebuilds the search index in the copy and checks it: the database's own integrity check, every reference between records, and the same number of rows in every table. Only then does it put the copy in place, and it says how big the database was and is now, and which snapshot holds the one before. If anything fails on the way, the copy is deleted and the database is the file it was. It needs free space for the snapshot and the copy, and says so when there isn't.
+
+A database from an older Vaquero is upgraded when the server starts; start it once, stop it, then compact.

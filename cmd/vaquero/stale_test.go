@@ -270,7 +270,7 @@ func TestStopLeavesAMaintenanceHolderAlone(t *testing.T) {
 	defer release()
 	// The holder is this process: a signal would end the test.
 	stopped, err := stopLocal(t.Context(), dir, time.Second, 0)
-	if stopped || err == nil || !strings.Contains(err.Error(), "restore or import") {
+	if stopped || err == nil || !strings.Contains(err.Error(), "restore, import or compaction") {
 		t.Fatalf("stopped %v, err %v", stopped, err)
 	}
 }

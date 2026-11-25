@@ -382,17 +382,7 @@ func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 	if err := appdb.BackfillLinkTargets(ctx, tx); err != nil {
 		return err
 	}
-	for _, q := range []string{
-		"INSERT INTO tickets_fts (tickets_fts) VALUES ('rebuild')",
-		// A rebuild indexes every comment; the triggers index only live ones.
-		"INSERT INTO comments_fts (comments_fts) VALUES ('rebuild')",
-		"INSERT INTO comments_fts (comments_fts, rowid, body) SELECT 'delete', rowid, body FROM comments WHERE deleted_at IS NOT NULL",
-	} {
-		if _, err := tx.ExecContext(ctx, q); err != nil {
-			return fmt.Errorf("rebuild the search index: %w", err)
-		}
-	}
-	return nil
+	return appdb.RebuildSearch(ctx, tx)
 }
 
 func closeAll(stmts map[string]*sql.Stmt) {

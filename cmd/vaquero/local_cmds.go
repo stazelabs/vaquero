@@ -109,15 +109,15 @@ var errBrewServices = message("Vaquero runs under brew services; run brew servic
 //
 // expect, when not 0, is the pid of the server the caller meant to stop (the
 // one that answered its probe): if another holds the lock by now, it was
-// already replaced and nothing is stopped. A restore or import holds the
-// lock too, and is never signalled.
+// already replaced and nothing is stopped. A restore, import or compaction
+// holds the lock too, and is never signalled.
 func stopLocal(ctx context.Context, dataDir string, wait time.Duration, expect int) (stopped bool, err error) {
 	pid, role, running, err := lockfile.HolderRole(dataDir)
 	if err != nil || !running {
 		return false, err
 	}
 	if role == lockfile.RoleMaintenance {
-		return false, message("A restore or import is replacing the database in " + dataDir + "; wait for it to finish.")
+		return false, message("A restore, import or compaction is replacing the database in " + dataDir + "; wait for it to finish.")
 	}
 	if expect != 0 && pid != expect {
 		return false, nil
@@ -169,9 +169,10 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	return exitOK
 }
 
-const backupUsage = "vaquero backup list | vaquero backup restore NAME"
+const backupUsage = "vaquero backup list | vaquero backup restore NAME | vaquero backup compact"
 
-// cmdBackup is `vaquero backup list` and `vaquero backup restore NAME`.
+// cmdBackup is `vaquero backup list`, `vaquero backup restore NAME` and
+// `vaquero backup compact`.
 func cmdBackup(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	c := newCmd(stdout, stderr, backupUsage)
 	pos, err := c.parse(args, 1, 2)
@@ -188,6 +189,8 @@ func cmdBackup(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		return c.finish(backupList(c, dir))
 	case pos[0] == "restore" && len(pos) == 2:
 		return c.finish(backupRestore(ctx, c, cfg, dir, pos[1]))
+	case pos[0] == "compact" && len(pos) == 1:
+		return c.finish(backupCompact(ctx, c, cfg, dir))
 	}
 	return c.finish(usageError{usage: backupUsage})
 }
@@ -294,6 +297,13 @@ func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
+	return installDatabase(cfg, newPath, aside, moved)
+}
+
+// installDatabase renames the closed database file at newPath over the
+// current one, whose copy the caller has saved at aside (moved: moved there
+// whole). An error after that is a *swapFailed saying where it is.
+func installDatabase(cfg config.Config, newPath, aside string, moved bool) (string, error) {
 	fail := func(err error) (string, error) {
 		if aside == "" {
 			return "", err
