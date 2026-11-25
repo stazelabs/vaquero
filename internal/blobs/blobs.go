@@ -63,6 +63,9 @@ type Store interface {
 	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
 	// Get opens the object and reports its size. ErrNotFound when absent.
 	Get(ctx context.Context, key string) (io.ReadCloser, int64, error)
+	// Stat reports the object's size without reading it. ErrNotFound when
+	// absent.
+	Stat(ctx context.Context, key string) (int64, error)
 	// Delete removes the object. An absent key is not an error.
 	Delete(ctx context.Context, key string) error
 	// List calls fn for each object under the directory prefix with its

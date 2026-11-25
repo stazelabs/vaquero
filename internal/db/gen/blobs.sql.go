@@ -92,3 +92,14 @@ func (q *Queries) PutBlob(ctx context.Context, arg PutBlobParams) error {
 	)
 	return err
 }
+
+const statBlob = `-- name: StatBlob :one
+SELECT size FROM blobs WHERE key = ?
+`
+
+func (q *Queries) StatBlob(ctx context.Context, key string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, statBlob, key)
+	var size int64
+	err := row.Scan(&size)
+	return size, err
+}

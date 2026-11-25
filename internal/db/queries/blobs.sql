@@ -6,6 +6,9 @@ ON CONFLICT(key) DO UPDATE SET bytes = excluded.bytes, content_type = excluded.c
 -- name: GetBlob :one
 SELECT bytes, size FROM blobs WHERE key = ?;
 
+-- name: StatBlob :one
+SELECT size FROM blobs WHERE key = ?;
+
 -- name: DeleteBlob :exec
 DELETE FROM blobs WHERE key = ?;
 

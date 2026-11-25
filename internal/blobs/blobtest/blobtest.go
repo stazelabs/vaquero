@@ -88,6 +88,31 @@ func Run(t *testing.T, open func(t *testing.T) blobs.Store) {
 			}
 		}
 	})
+	t.Run("stat reports the size without reading", func(t *testing.T) {
+		s := open(t)
+		put(t, s, "images/a.png", "hello")
+		put(t, s, "mail/empty.gz", "")
+		for key, want := range map[string]int64{"images/a.png": 5, "mail/empty.gz": 0} {
+			if size, err := s.Stat(ctx, key); err != nil || size != want {
+				t.Fatalf("Stat(%q) = %d, %v; want %d", key, size, err, want)
+			}
+		}
+		put(t, s, "images/a.png", "replaced body")
+		if size, err := s.Stat(ctx, "images/a.png"); err != nil || size != 13 {
+			t.Fatalf("Stat after overwrite = %d, %v", size, err)
+		}
+		for _, key := range []string{"images/none.png", "images", "deep/er/none.bin"} {
+			if _, err := s.Stat(ctx, key); !errors.Is(err, blobs.ErrNotFound) {
+				t.Fatalf("Stat(%q) = %v, want ErrNotFound", key, err)
+			}
+		}
+		if err := s.Delete(ctx, "images/a.png"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Stat(ctx, "images/a.png"); !errors.Is(err, blobs.ErrNotFound) {
+			t.Fatalf("Stat after delete = %v", err)
+		}
+	})
 	t.Run("get of a prefix is ErrNotFound", func(t *testing.T) {
 		s := open(t)
 		put(t, s, "images/a.png", "x")
@@ -170,6 +195,9 @@ func Run(t *testing.T, open func(t *testing.T) blobs.Store) {
 			}
 			if _, _, err := s.Get(ctx, key); err == nil || errors.Is(err, blobs.ErrNotFound) {
 				t.Errorf("Get(%q) = %v, want a key error", key, err)
+			}
+			if _, err := s.Stat(ctx, key); err == nil || errors.Is(err, blobs.ErrNotFound) {
+				t.Errorf("Stat(%q) = %v, want a key error", key, err)
 			}
 			if err := s.Delete(ctx, key); err == nil {
 				t.Errorf("Delete(%q) accepted", key)

@@ -106,6 +106,22 @@ func (s *S3) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) 
 	return obj, st.Size, nil
 }
 
+// Stat asks for the object's size (a HEAD request); NoSuchKey is
+// ErrNotFound.
+func (s *S3) Stat(ctx context.Context, key string) (int64, error) {
+	if err := ValidKey(key); err != nil {
+		return 0, err
+	}
+	st, err := s.client.StatObject(ctx, s.bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		if isNoSuchKey(err) {
+			return 0, ErrNotFound
+		}
+		return 0, fmt.Errorf("s3 stat %s: %w", key, err)
+	}
+	return st.Size, nil
+}
+
 // Delete removes the object; NoSuchKey is not an error.
 func (s *S3) Delete(ctx context.Context, key string) error {
 	if err := ValidKey(key); err != nil {

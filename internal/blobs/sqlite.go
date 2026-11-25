@@ -64,6 +64,18 @@ func (s *SQLite) Get(ctx context.Context, key string) (io.ReadCloser, int64, err
 	return io.NopCloser(bytes.NewReader(row.Bytes)), row.Size, nil
 }
 
+// Stat reads the object's size, not its bytes; a missing key is ErrNotFound.
+func (s *SQLite) Stat(ctx context.Context, key string) (int64, error) {
+	if err := ValidKey(key); err != nil {
+		return 0, err
+	}
+	size, err := gen.New(s.r).StatBlob(ctx, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return size, err
+}
+
 // Delete removes the object; absent is fine.
 func (s *SQLite) Delete(ctx context.Context, key string) error {
 	if err := ValidKey(key); err != nil {

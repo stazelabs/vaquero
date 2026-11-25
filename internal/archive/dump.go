@@ -98,6 +98,20 @@ func dump(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, h Header) error {
 	return nil
 }
 
+// checkTables makes dump's refusals that don't depend on a value: a
+// settings key in neither set, a missing table, a BLOB column.
+func checkTables(ctx context.Context, tx *sql.Tx) error {
+	if err := checkSettings(ctx, tx); err != nil {
+		return fmt.Errorf("export settings: %w", err)
+	}
+	for _, t := range Tables {
+		if _, err := columns(ctx, tx, t); err != nil {
+			return fmt.Errorf("export %s: %w", t, err)
+		}
+	}
+	return nil
+}
+
 // columns reads a table's columns, refusing a BLOB one.
 func columns(ctx context.Context, tx *sql.Tx, table string) ([]column, error) {
 	rows, err := tx.QueryContext(ctx, "SELECT name, type, pk FROM pragma_table_info(?)", table)

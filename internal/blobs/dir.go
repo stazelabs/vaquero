@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -105,6 +106,27 @@ func (d *Dir) Get(ctx context.Context, key string) (io.ReadCloser, int64, error)
 		return nil, 0, ErrNotFound
 	}
 	return f, st.Size(), nil
+}
+
+// Stat reports the file's size; a missing key or a directory is ErrNotFound.
+func (d *Dir) Stat(ctx context.Context, key string) (int64, error) {
+	if err := ValidKey(key); err != nil {
+		return 0, err
+	}
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	st, err := os.Stat(d.path(key))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	if !st.Mode().IsRegular() {
+		return 0, ErrNotFound
+	}
+	return st.Size(), nil
 }
 
 // Delete removes the object; absent is fine.

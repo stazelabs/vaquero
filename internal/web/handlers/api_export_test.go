@@ -129,17 +129,25 @@ func TestAPIExportHead(t *testing.T) {
 		res.Body.Close()
 		return res
 	}
-	// Count the store's reads: a HEAD checks each file once and copies none.
+	// Count the store's calls: a HEAD checks each file's size once and
+	// reads none; a GET reads each file once.
 	counted := &countingStore{Store: e.Deps.Blobs}
 	e.Deps.Blobs = counted
 	e.Rebuild()
 	res := head(tok, "")
-	if n := counted.gets.Load(); n != 2 {
-		t.Errorf("HEAD read the store %d times, want 2 (one check per attachment)", n)
+	if g, s := counted.gets.Load(), counted.stats.Load(); g != 0 || s != 2 {
+		t.Errorf("HEAD made %d reads and %d stats, want 0 and 2 (one per attachment)", g, s)
 	}
 	if res.StatusCode != 200 || res.Header.Get("Content-Type") != "application/gzip" ||
 		res.Header.Get("Content-Disposition") != `attachment; filename="vaquero-20261118-120000.tar.gz"` {
 		t.Fatalf("%d %v", res.StatusCode, res.Header)
+	}
+	counted.gets.Store(0)
+	if r := e.Client().API("GET", "/api/v1/export", tok, nil); r.Status != 200 {
+		t.Fatalf("GET: %d", r.Status)
+	}
+	if n := counted.gets.Load(); n != 2 {
+		t.Errorf("GET read the store %d times, want 2 (each file once)", n)
 	}
 	if res := head(tok, "builder"); res.StatusCode != 403 {
 		t.Fatalf("agent: %d", res.StatusCode)
@@ -154,7 +162,11 @@ func TestAPIExportHead(t *testing.T) {
 	if res := head(tok, ""); res.StatusCode != 500 || res.Header.Get("Content-Disposition") != "" {
 		t.Fatalf("damaged: %d %v", res.StatusCode, res.Header)
 	}
+	counted.gets.Store(0)
 	r := e.Client().API("GET", "/api/v1/export", tok, nil)
+	if n := counted.gets.Load(); n != 0 {
+		t.Errorf("a refused GET read the store %d times, want 0", n)
+	}
 	if r.Status != 500 || !strings.Contains(r.Body, `"damaged_file"`) || !strings.Contains(r.Body, "5 bytes in storage") {
 		t.Fatalf("%d %q", r.Status, r.Body)
 	}
@@ -162,7 +174,12 @@ func TestAPIExportHead(t *testing.T) {
 
 type countingStore struct {
 	blobs.Store
-	gets atomic.Int32
+	gets, stats atomic.Int32
+}
+
+func (c *countingStore) Stat(ctx context.Context, key string) (int64, error) {
+	c.stats.Add(1)
+	return c.Store.Stat(ctx, key)
 }
 
 func (c *countingStore) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {

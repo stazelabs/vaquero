@@ -413,19 +413,14 @@ func TestExportMissingBlobFails(t *testing.T) {
 	}
 }
 
-// vanishing is a store whose objects disappear after their first Get: an
-// attachment deleted between the check and the copy.
+// vanishing is a store whose objects pass the size check (Stat) and then
+// are gone when read: an attachment deleted between the check and the copy.
 type vanishing struct {
 	blobs.Store
-	seen map[string]bool
 }
 
-func (v *vanishing) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
-	if v.seen[key] {
-		return nil, 0, blobs.ErrNotFound
-	}
-	v.seen[key] = true
-	return v.Store.Get(ctx, key)
+func (v *vanishing) Get(context.Context, string) (io.ReadCloser, int64, error) {
+	return nil, 0, blobs.ErrNotFound
 }
 
 // A file that vanishes once the archive has started is still an error, so
@@ -433,7 +428,7 @@ func (v *vanishing) Get(ctx context.Context, key string) (io.ReadCloser, int64, 
 func TestExportFileVanishesWhileStreaming(t *testing.T) {
 	d, store := seeded(t)
 	var buf bytes.Buffer
-	err := archive.Write(bg, &buf, d.R, &vanishing{store, map[string]bool{}}, header)
+	err := archive.Write(bg, &buf, d.R, &vanishing{store}, header)
 	var missing *archive.FileError
 	if !errors.As(err, &missing) || !missing.Missing || buf.Len() == 0 {
 		t.Fatalf("%v, %d bytes", err, buf.Len())
@@ -482,6 +477,9 @@ func TestExportUnknownSettingRefused(t *testing.T) {
 	err := archive.Write(bg, &buf, d.R, store, header)
 	if err == nil || !strings.Contains(err.Error(), "smtp_password") || buf.Len() != 0 {
 		t.Fatalf("%v, %d bytes", err, buf.Len())
+	}
+	if err := archive.Check(bg, d.R, store); err == nil || !strings.Contains(err.Error(), "smtp_password") {
+		t.Fatalf("Check: %v", err)
 	}
 }
 

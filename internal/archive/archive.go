@@ -97,6 +97,22 @@ func (e *FileError) Error() string {
 	return fmt.Sprintf("%s is %d bytes in storage, but its record says %d.", what, e.Stored, e.Size)
 }
 
+// check refuses a missing or wrongly sized object, asking the store for its
+// size only.
+func (a attachment) check(ctx context.Context, store blobs.Store) error {
+	size, err := store.Stat(ctx, a.key)
+	if errors.Is(err, blobs.ErrNotFound) {
+		return &FileError{AttachmentID: a.id, TicketKey: a.ticket, Missing: true, Size: a.size}
+	}
+	if err != nil {
+		return fmt.Errorf("check attachment %s: %w", a.id, err)
+	}
+	if size != a.size {
+		return &FileError{AttachmentID: a.id, TicketKey: a.ticket, Size: a.size, Stored: size}
+	}
+	return nil
+}
+
 // open gets a's bytes, refusing a missing or wrongly sized object.
 func (a attachment) open(ctx context.Context, store blobs.Store) (io.ReadCloser, error) {
 	rc, size, err := store.Get(ctx, a.key)
@@ -119,38 +135,39 @@ type attachment struct {
 	size            int64
 }
 
-// Check reads db as Write does and checks every attachment's bytes,
-// writing nothing: what Write would refuse before its first byte.
+// Check makes Write's checks without building export.json or reading any
+// attachment: the settings keys and table columns Write would refuse, and
+// every attachment's size in the store (a Stat each). What it can't see is
+// a value Write can't encode (text that isn't UTF-8, a REAL with no JSON
+// form), which core never stores.
 func Check(ctx context.Context, db *sql.DB, store blobs.Store) error {
-	_, _, err := prepare(ctx, db, store, Header{})
+	_, _, err := prepare(ctx, db, store, nil)
 	return err
 }
 
-// prepare reads export.json and the attachment list, then checks every
-// attachment's bytes are in store at their recorded size.
-func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h Header) ([]byte, []attachment, error) {
+// prepare reads the attachment list and, when h is set, export.json, then
+// checks every attachment's bytes are in store at their recorded size.
+func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h *Header) ([]byte, []attachment, error) {
 	doc, atts, err := snapshot(ctx, db, h)
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, a := range atts {
-		rc, err := a.open(ctx, store)
-		if err != nil {
+		if err := a.check(ctx, store); err != nil {
 			return nil, nil, err
 		}
-		rc.Close()
 	}
 	return doc, atts, nil
 }
 
 // Write writes the export of db, with attachment bytes from store, to w.
 // Every table is read in one read transaction, so all see one snapshot.
-// Every attachment's bytes are checked before the first byte reaches w: a
-// missing or wrongly sized one is *FileError and w gets nothing. One that
-// vanishes or changes later, while the archive streams, is an error too;
-// the caller must then treat what reached w as broken.
+// Every attachment's size is checked (Stat) before the first byte reaches
+// w: a missing or wrongly sized one is *FileError and w gets nothing. Each
+// is then read once, as it is copied; one that vanishes or changes by then
+// is an error too, and the caller must treat what reached w as broken.
 func Write(ctx context.Context, w io.Writer, db *sql.DB, store blobs.Store, h Header) error {
-	doc, atts, err := prepare(ctx, db, store, h)
+	doc, atts, err := prepare(ctx, db, store, &h)
 	if err != nil {
 		return err
 	}
@@ -204,16 +221,22 @@ func fileHeader(name string, size int64) *tar.Header {
 	}
 }
 
-// snapshot reads export.json and the attachment list in one read
+// snapshot reads export.json (only when h is set; otherwise it makes the
+// same settings and column checks) and the attachment list in one read
 // transaction.
-func snapshot(ctx context.Context, db *sql.DB, h Header) ([]byte, []attachment, error) {
+func snapshot(ctx context.Context, db *sql.DB, h *Header) ([]byte, []attachment, error) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Rollback()
 	var buf bytes.Buffer
-	if err := dump(ctx, tx, &buf, h); err != nil {
+	if h != nil {
+		err = dump(ctx, tx, &buf, *h)
+	} else {
+		err = checkTables(ctx, tx)
+	}
+	if err != nil {
 		return nil, nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT a.id, a.blob_key, a.size, p.key || '-' || t.number
