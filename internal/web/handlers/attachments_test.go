@@ -249,3 +249,38 @@ func TestDeleteAttachmentRemovesBytes(t *testing.T) {
 	}
 	assertAttachmentHeaders(t, gone)
 }
+
+// Served bytes are revalidated on every use: the id is the ETag, and a
+// matching If-None-Match gets a bodiless 304 with the same security headers.
+func TestAttachmentRevalidated(t *testing.T) {
+	e, c := attachEnv(t)
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "shot.png", "", pngBytes))
+	r := c.Get(u.URL)
+	etag := r.Header.Get("ETag")
+	if etag != `"`+u.ID+`"` || r.Header.Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("etag %q cache %q", etag, r.Header.Get("Cache-Control"))
+	}
+	for _, inm := range []string{etag, `"other", W/` + etag, "*"} {
+		req, _ := http.NewRequest(http.MethodGet, e.Server.URL+u.URL, nil)
+		req.Header.Set("If-None-Match", inm)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusNotModified || res.Header.Get("ETag") != etag ||
+			res.Header.Get("X-Content-Type-Options") != "nosniff" || res.Header.Get("Content-Security-Policy") != "sandbox" {
+			t.Fatalf("%q: %d %v", inm, res.StatusCode, res.Header)
+		}
+	}
+	req, _ := http.NewRequest(http.MethodGet, e.Server.URL+u.URL, nil)
+	req.Header.Set("If-None-Match", `"other"`)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("other etag: %d", res.StatusCode)
+	}
+}

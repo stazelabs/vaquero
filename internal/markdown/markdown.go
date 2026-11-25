@@ -16,6 +16,8 @@ package markdown
 import (
 	"bytes"
 	"html/template"
+	"net/url"
+	"path"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
@@ -93,6 +95,26 @@ func renderRawBlock(w util.BufWriter, source []byte, n ast.Node, entering bool) 
 // attachmentPrefix starts the only image destinations shown as images.
 const attachmentPrefix = "/attachments/"
 
+// isAttachment reports whether dest is an attachment path: it starts with
+// /attachments/ and has no ".." segment, even percent-encoded or split by
+// a backslash (browsers read both as path separators), so it can't climb
+// to another page of the app.
+func isAttachment(dest string) bool {
+	if !strings.HasPrefix(dest, attachmentPrefix) || strings.Contains(dest, `\`) {
+		return false
+	}
+	decoded, err := url.PathUnescape(dest)
+	if err != nil || strings.Contains(decoded, `\`) || !strings.HasPrefix(path.Clean(decoded), attachmentPrefix) {
+		return false
+	}
+	for seg := range strings.SplitSeq(decoded, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // images renders an image as <img> for an attachment, else as a link.
 type images struct{}
 
@@ -107,7 +129,7 @@ func renderImage(w util.BufWriter, source []byte, node ast.Node, entering bool) 
 	n := node.(*ast.Image)
 	dest := util.EscapeHTML(util.URLEscape(n.Destination, true))
 	alt := util.EscapeHTML(plainText(source, n))
-	if bytes.HasPrefix(n.Destination, []byte(attachmentPrefix)) {
+	if isAttachment(string(n.Destination)) {
 		_, _ = w.WriteString(`<img src="`)
 		_, _ = w.Write(dest)
 		_, _ = w.WriteString(`" alt="`)

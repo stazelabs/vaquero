@@ -145,12 +145,12 @@ func AttachmentUpload(d Deps) http.HandlerFunc {
 		}
 		for {
 			part, err := mr.NextPart()
-			var tooBig *http.MaxBytesError
+			_, tooBig := errors.AsType[*http.MaxBytesError](err)
 			switch {
 			case errors.Is(err, io.EOF):
 				api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", "Send the file in a part named file."))
 				return
-			case errors.As(err, &tooBig):
+			case tooBig:
 				api.WriteFailure(w, middleware.TooLargeUpload())
 				return
 			case err != nil:
@@ -192,9 +192,9 @@ func AttachmentDelete(d Deps) http.HandlerFunc {
 			return
 		}
 		key, err := d.Core.DeleteAttachment(r.Context(), d.Actor.ID, a.ID)
-		var inv *core.Invalid
+		inv, invalid := errors.AsType[*core.Invalid](err)
 		switch {
-		case errors.As(err, &inv):
+		case invalid:
 			redirectWithFlash(w, r, flash.Error, inv.Error(), to)
 			return
 		case errors.Is(err, core.ErrNotFound):
@@ -204,7 +204,7 @@ func AttachmentDelete(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		if err := d.Blobs.Delete(r.Context(), key); err != nil {
+		if err := d.Blobs.Delete(context.WithoutCancel(r.Context()), key); err != nil {
 			d.Logger.ErrorContext(r.Context(), "delete attachment bytes", "err", err, "key", key)
 		}
 		redirectWithFlash(w, r, flash.Success, "Attachment removed.", to)
@@ -265,6 +265,16 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 			w.WriteHeader(http.StatusMovedPermanently)
 			return
 		}
+		// An id's bytes never change, so the id is the validator: a browser
+		// revalidates on every use (a deleted file stops showing) and gets
+		// a bodiless 304 while it still exists.
+		etag := `"` + a.ID + `"`
+		h.Set("ETag", etag)
+		h.Set("Cache-Control", "private, no-cache")
+		if etagMatches(r.Header.Get("If-None-Match"), etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
 		rc, size, err := d.Blobs.Get(r.Context(), a.BlobKey)
 		if errors.Is(err, blobs.ErrNotFound) {
 			d.Logger.ErrorContext(r.Context(), "attachment bytes missing", "attachment", a.ID, "key", a.BlobKey)
@@ -283,7 +293,6 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 		h.Set("Content-Type", ctype)
 		h.Set("Content-Disposition", contentDisposition(kind, a.Name))
 		h.Set("Content-Length", strconv.FormatInt(size, 10))
-		h.Set("Cache-Control", "private, max-age=86400")
 		w.WriteHeader(http.StatusOK)
 		if r.Method == http.MethodHead {
 			return
@@ -292,4 +301,16 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 			d.Logger.WarnContext(r.Context(), "stream attachment", "err", err, "attachment", a.ID)
 		}
 	}
+}
+
+// etagMatches reports whether an If-None-Match header names etag (weak
+// comparison, as RFC 9110 asks for If-None-Match) or is "*".
+func etagMatches(header, etag string) bool {
+	for t := range strings.SplitSeq(header, ",") {
+		t = strings.TrimPrefix(strings.TrimSpace(t), "W/")
+		if t == "*" || t == etag {
+			return true
+		}
+	}
+	return false
 }

@@ -2,6 +2,7 @@ package sweep_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -87,10 +88,19 @@ func TestMCPLogPruned(t *testing.T) {
 	}
 }
 
-// listSpy records the prefixes the sweep lists.
+// listSpy records the prefixes the sweep lists, and fails deletes of
+// failKey.
 type listSpy struct {
 	blobs.Store
 	prefixes []string
+	failKey  string
+}
+
+func (s *listSpy) Delete(ctx context.Context, key string) error {
+	if key == s.failKey {
+		return errors.New("disk on fire")
+	}
+	return s.Store.Delete(ctx, key)
 }
 
 func (s *listSpy) List(ctx context.Context, prefix string, fn func(string, time.Time) error) error {
@@ -138,5 +148,41 @@ func TestSweepDeletesOldOrphans(t *testing.T) {
 	// A sweeper without a store skips the pass.
 	if _, err := (&sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock}).Tick(bg); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// One failed delete doesn't stop the pass, and the pass runs at most once
+// per OrphanAge.
+func TestSweepOrphanPassSurvivesFailuresAndRunsHourly(t *testing.T) {
+	d := dbtest.New(t)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	c := core.New(d.W, clock)
+	store := &listSpy{Store: blobs.NewSQLite(d.W, d.R, func() time.Time { return now.Add(-2 * time.Hour) }), failKey: "attachments/inst/a"}
+	for _, k := range []string{"attachments/inst/a", "attachments/inst/b"} {
+		if err := store.Put(bg, k, strings.NewReader("abc"), 3, "text/plain"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := &sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock, Blobs: store, Instance: "inst"}
+	if _, err := s.Tick(bg); err != nil {
+		t.Fatal(err)
+	}
+	left := func() string {
+		var ks []string
+		_ = store.Store.List(bg, "", func(k string, _ time.Time) error { ks = append(ks, k); return nil })
+		return strings.Join(ks, " ")
+	}
+	if got := left(); got != "attachments/inst/a" {
+		t.Fatalf("left %q", got)
+	}
+	store.failKey = ""
+	now = now.Add(59 * time.Minute)
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 1 || left() != "attachments/inst/a" {
+		t.Fatalf("ran again within the hour: %v %v %q", err, store.prefixes, left())
+	}
+	now = now.Add(time.Minute)
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 || left() != "" {
+		t.Fatalf("hourly pass: %v %v %q", err, store.prefixes, left())
 	}
 }

@@ -46,6 +46,7 @@ type Sweeper struct {
 	Interval time.Duration
 	OnTick   func()
 
+	lastOrphans         time.Time // when the orphan pass last ran
 	startOnce, stopOnce sync.Once
 	cancel              context.CancelFunc
 	done                chan struct{}
@@ -67,13 +68,20 @@ func (s *Sweeper) Tick(ctx context.Context) (int, error) {
 }
 
 // deleteOrphans removes this instance's attachment objects that no row
-// references and that are older than OrphanAge. It lists first and deletes
-// after, so no backend is changed while it is being listed.
+// references and that are older than OrphanAge, at most once per OrphanAge
+// (the first tick runs it). It lists first and deletes after, so no backend
+// is changed while it is being listed. A key that can't be checked or
+// deleted is logged and skipped; the next pass tries it again.
 func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 	if s.Blobs == nil || s.Instance == "" {
 		return nil
 	}
-	cutoff := s.Now().Add(-OrphanAge)
+	now := s.Now()
+	if !s.lastOrphans.IsZero() && now.Sub(s.lastOrphans) < OrphanAge {
+		return nil
+	}
+	s.lastOrphans = now
+	cutoff := now.Add(-OrphanAge)
 	var old []string
 	err := s.Blobs.List(ctx, "attachments/"+s.Instance+"/", func(key string, modified time.Time) error {
 		if modified.Before(cutoff) {
@@ -85,22 +93,29 @@ func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 		return fmt.Errorf("list attachment objects: %w", err)
 	}
 	q := gen.New(s.DB)
-	deleted := 0
+	deleted, failed := 0, 0
 	for _, key := range old {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		_, err := q.AttachmentByBlobKey(ctx, key)
 		if err == nil {
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("attachment by blob key: %w", err)
+			s.Logger.ErrorContext(ctx, "check orphan", "key", key, "err", err)
+			failed++
+			continue
 		}
 		if err := s.Blobs.Delete(ctx, key); err != nil {
-			return fmt.Errorf("delete orphan: %w", err)
+			s.Logger.ErrorContext(ctx, "delete orphan", "key", key, "err", err)
+			failed++
+			continue
 		}
 		deleted++
 	}
-	if deleted > 0 {
-		s.Logger.InfoContext(ctx, "orphaned attachments deleted", "count", deleted)
+	if deleted > 0 || failed > 0 {
+		s.Logger.InfoContext(ctx, "orphaned attachments swept", "deleted", deleted, "failed", failed)
 	}
 	return nil
 }

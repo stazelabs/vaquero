@@ -81,6 +81,12 @@ func TestMarkdownImagesOnlyForAttachments(t *testing.T) {
 	if !strings.Contains(out, `<a href="https://e.com/x.png" rel="nofollow">x</a>`) || strings.Contains(out, "<img") {
 		t.Errorf("external: %s", out)
 	}
+	for _, src := range []string{"![x](/attachments/../p/VAQ/board)", "![x](/attachments/a/../../p/VAQ/board)", "![x](/attachments/..)", "![x](/attachments/%2e%2e/p/VAQ/board)", `![x](/attachments/..\\p)`} {
+		out = string(markdown.Render(src))
+		if strings.Contains(out, "<img") || !strings.Contains(out, "<a href=") {
+			t.Errorf("%q: %s", src, out)
+		}
+	}
 	for _, src := range []string{"![x](javascript:alert(1))", "![x](//e.com/x.png)", "![x](data:image/png;base64,AAAA)", `![x"><b>](/attachments/01h/x.png)`} {
 		out = string(markdown.Render(src))
 		if strings.Contains(out, "<img") && !strings.Contains(src, "/attachments/") {
