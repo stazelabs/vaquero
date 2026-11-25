@@ -14,12 +14,40 @@ type StatusRow struct {
 	First, Last bool
 }
 
-// SettingsView is the project settings page.
+// SubForm is one of the settings page's smaller forms, as typed: ID names
+// the status or milestone a row form edits (empty for the add forms).
+// Values and Errors are set only when that form was refused.
+type SubForm struct {
+	ID             string
+	Values, Errors map[string]string
+}
+
+// Val is the typed value of field name, or def when the form wasn't refused.
+func (f SubForm) Val(name, def string) string {
+	if v, ok := f.Values[name]; ok {
+		return v
+	}
+	return def
+}
+
+// SettingsView is the project settings page. NewStatus and NewMilestone
+// are the add forms; EditStatus and EditMilestone the row form that was
+// refused, if any.
 type SettingsView struct {
 	Project    gen.Project
 	Form       ProjectForm
 	Statuses   []StatusRow
 	Milestones []gen.Milestone
+
+	NewStatus, NewMilestone, EditStatus, EditMilestone SubForm
+}
+
+// row is the refused form f when it edits id, else an empty one.
+func (f SubForm) row(id string) SubForm {
+	if f.ID == id {
+		return f
+	}
+	return SubForm{}
 }
 
 // ProjectListPage is the front page: every project, archived ones last.
@@ -116,14 +144,14 @@ templ ProjectSettingsPage(v SettingsView) {
 			<p class="mt-1 text-sm text-muted">Tickets move through these in order. Each category keeps at least one status.</p>
 			<ul class="mt-3 max-w-2xl divide-y divide-line rounded-md border border-line">
 				for _, s := range v.Statuses {
-					@statusItem(v.Project.Key, s)
+					@statusItem(v.Project.Key, s, v.EditStatus.row(s.Status.ID))
 				}
 			</ul>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/statuses") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
 				<div class="flex-1">
-					@TextInput(InputProps{Name: "name", Label: "New status", Required: true})
+					@TextInput(InputProps{Name: "name", Label: "New status", Value: v.NewStatus.Val("name", ""), Required: true, Error: v.NewStatus.Errors["name"]})
 				</div>
-				@Select(SelectProps{Name: "category", Label: "Category", Selected: "todo", Options: CategoryOptions()})
+				@Select(SelectProps{Name: "category", Label: "Category", Selected: v.NewStatus.Val("category", "todo"), Options: CategoryOptions(), Error: v.NewStatus.Errors["category"]})
 				<button type="submit" class={ btnSecondary }>Add status</button>
 			</form>
 		</section>
@@ -137,14 +165,14 @@ templ ProjectSettingsPage(v SettingsView) {
 			}
 			<ul class="mt-3 max-w-2xl space-y-3">
 				for _, m := range v.Milestones {
-					@milestoneItem(v.Project.Key, m)
+					@milestoneItem(v.Project.Key, m, v.EditMilestone.row(m.ID))
 				}
 			</ul>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/milestones") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
 				<div class="flex-1">
-					@TextInput(InputProps{Name: "name", Label: "New milestone", Required: true})
+					@TextInput(InputProps{Name: "name", Label: "New milestone", Value: v.NewMilestone.Val("name", ""), Required: true, Error: v.NewMilestone.Errors["name"]})
 				</div>
-				@TextInput(InputProps{Name: "due_on", Label: "Due", Type: "date"})
+				@TextInput(InputProps{Name: "due_on", Label: "Due", Type: "date", Value: v.NewMilestone.Val("due_on", ""), Error: v.NewMilestone.Errors["due_on"]})
 				<button type="submit" class={ btnSecondary }>Add milestone</button>
 			</form>
 		</section>
@@ -181,12 +209,15 @@ templ ProjectSettingsPage(v SettingsView) {
 	}
 }
 
-templ statusItem(key string, r StatusRow) {
+templ statusItem(key string, r StatusRow, edit SubForm) {
 	<li class="flex flex-wrap items-center gap-3 px-3 py-2">
-		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/rename") } class="flex flex-1 items-center gap-2">
-			<label for={ "s-" + r.Status.ID } class="sr-only">Name</label>
-			<input id={ "s-" + r.Status.ID } name="name" value={ r.Status.Name } class={ inputClass + " max-w-48" }/>
-			<button type="submit" class={ btnLink }>Rename</button>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/rename") } class="flex-1">
+			<div class="flex items-center gap-2">
+				<label for={ "s-" + r.Status.ID } class="sr-only">Name</label>
+				<input id={ "s-" + r.Status.ID } name="name" value={ edit.Val("name", r.Status.Name) } aria-invalid?={ edit.Errors["name"] != "" } class={ inputClass + " max-w-48" }/>
+				<button type="submit" class={ btnLink }>Rename</button>
+			</div>
+			@FieldError(edit.Errors["name"])
 		</form>
 		<span class="w-24 text-xs text-muted">{ CategoryLabel(r.Status.Category) }</span>
 		<form method="post" action={ templ.SafeURL("/p/" + key + "/statuses/" + r.Status.ID + "/up") }>
@@ -201,7 +232,7 @@ templ statusItem(key string, r StatusRow) {
 	</li>
 }
 
-templ milestoneItem(key string, m gen.Milestone) {
+templ milestoneItem(key string, m gen.Milestone, edit SubForm) {
 	<li class={ panelClass }>
 		<div class="flex flex-wrap items-baseline justify-between gap-2">
 			<p class="font-medium text-ink">
@@ -214,9 +245,9 @@ templ milestoneItem(key string, m gen.Milestone) {
 		</div>
 		<form method="post" action={ templ.SafeURL("/p/" + key + "/milestones/" + m.ID) } class="mt-3 flex flex-wrap items-end gap-3">
 			<div class="flex-1">
-				@TextInput(InputProps{Name: "name", ID: "m-name-" + m.ID, Label: "Name", Value: m.Name, Required: true})
+				@TextInput(InputProps{Name: "name", ID: "m-name-" + m.ID, Label: "Name", Value: edit.Val("name", m.Name), Required: true, Error: edit.Errors["name"]})
 			</div>
-			@TextInput(InputProps{Name: "due_on", ID: "m-due-" + m.ID, Label: "Due", Type: "date", Value: m.DueOn.String})
+			@TextInput(InputProps{Name: "due_on", ID: "m-due-" + m.ID, Label: "Due", Type: "date", Value: edit.Val("due_on", m.DueOn.String), Error: edit.Errors["due_on"]})
 			<button type="submit" class={ btnSecondary }>Save</button>
 		</form>
 		<form method="post" action={ templ.SafeURL("/p/" + key + "/milestones/" + m.ID + closeOrReopen(m)) } class="mt-2">

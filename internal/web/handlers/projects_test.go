@@ -152,7 +152,7 @@ func TestMilestoneSettings(t *testing.T) {
 	contains(t, c.Follow(r).Body, "Milestone added.", "Launch", "Dec 31, 2026")
 	ms, _ := e.Deps.R.ListMilestones(bg, p.ID)
 	r = c.Post("/p/VAQ/milestones/"+ms[0].ID, url.Values{"name": {"Launch"}, "due_on": {"soon"}})
-	contains(t, c.Follow(r).Body, "Use a date like 2026-12-31.")
+	contains(t, r.Body, "Use a date like 2026-12-31.")
 	c.Post("/p/VAQ/milestones/"+ms[0].ID+"/close", nil)
 	if m, _ := e.Deps.R.GetMilestone(bg, ms[0].ID); !m.ClosedAt.Valid {
 		t.Fatal("not closed")
@@ -161,6 +161,43 @@ func TestMilestoneSettings(t *testing.T) {
 	if m, _ := e.Deps.R.GetMilestone(bg, ms[0].ID); m.ClosedAt.Valid {
 		t.Fatal("not reopened")
 	}
+}
+
+// A refused status or milestone form re-renders settings with 422, the
+// field's message and what was typed.
+func TestSettingsFormsKeepTypedValues(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	m, err := e.Deps.Core.CreateMilestone(bg, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Launch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ss := statuses(t, e, p)
+
+	r := c.Post("/p/VAQ/statuses", url.Values{"name": {"tODO"}, "category": {"in_review"}})
+	if r.Status != 422 {
+		t.Fatalf("new status: %d", r.Status)
+	}
+	contains(t, r.Body, "A status with that name exists.", `value="tODO"`, `value="in_review" selected`)
+
+	r = c.Post("/p/VAQ/statuses/"+ss[0].ID+"/rename", url.Values{"name": {"dOnE"}})
+	if r.Status != 422 {
+		t.Fatalf("rename: %d", r.Status)
+	}
+	contains(t, r.Body, "A status with that name exists.", `value="dOnE"`)
+
+	r = c.Post("/p/VAQ/milestones", url.Values{"name": {"Beta"}, "due_on": {"soon"}})
+	if r.Status != 422 {
+		t.Fatalf("new milestone: %d", r.Status)
+	}
+	contains(t, r.Body, "Use a date like 2026-12-31.", `value="Beta"`, `value="soon"`)
+
+	r = c.Post("/p/VAQ/milestones/"+m.ID, url.Values{"name": {"Launch two"}, "due_on": {"later"}})
+	if r.Status != 422 {
+		t.Fatalf("edit milestone: %d", r.Status)
+	}
+	contains(t, r.Body, "Use a date like 2026-12-31.", `value="Launch two"`, `value="later"`)
 }
 
 func TestArchiveHidesFromList(t *testing.T) {

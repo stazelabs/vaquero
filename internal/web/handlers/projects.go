@@ -88,8 +88,9 @@ func ProjectCreate(d Deps) http.HandlerFunc {
 	}
 }
 
-// settingsPage renders the settings page with form f and status.
-func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f templates.ProjectForm, status int) {
+// settingsPage renders the settings page with form f and status; set, if
+// given, fills in a refused smaller form.
+func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f templates.ProjectForm, status int, set ...func(*templates.SettingsView)) {
 	ctx := r.Context()
 	statuses, err := d.R.ListStatuses(ctx, p.ID)
 	if err != nil {
@@ -104,6 +105,9 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	v := templates.SettingsView{Project: p, Form: f, Milestones: milestones}
 	for i, s := range statuses {
 		v.Statuses = append(v.Statuses, templates.StatusRow{Status: s, First: i == 0, Last: i == len(statuses)-1})
+	}
+	for _, fn := range set {
+		fn(&v)
 	}
 	render(w, r, d, status, templates.ProjectSettingsPage(v))
 }
@@ -154,6 +158,40 @@ func settingsAction(w http.ResponseWriter, r *http.Request, d Deps, p gen.Projec
 	default:
 		serverError(w, r, d, err)
 	}
+}
+
+// settingsForm runs a settings-page form with typed fields. A refusal that
+// names only those fields re-renders the page with 422, the messages and
+// what was typed (sf, put in place by set); anything else is settingsAction's.
+func settingsForm(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, okMsg string, sf templates.SubForm, set func(*templates.SettingsView, templates.SubForm), fn func() error) {
+	err := fn()
+	var inv *core.Invalid
+	if errors.As(err, &inv) && namesOnly(inv.Fields, sf.Values) {
+		sf.Errors = inv.Fields
+		settingsPage(w, r, d, p, templates.ProjectForm{Key: p.Key, Name: p.Name, Description: p.Description}, http.StatusUnprocessableEntity,
+			func(v *templates.SettingsView) { set(v, sf) })
+		return
+	}
+	settingsAction(w, r, d, p, okMsg, func() error { return err })
+}
+
+// namesOnly reports whether every field in errs is one of the form's.
+func namesOnly(errs, values map[string]string) bool {
+	for k := range errs {
+		if _, ok := values[k]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// formValues is the named fields of the posted form, as typed.
+func formValues(r *http.Request, names ...string) map[string]string {
+	v := make(map[string]string, len(names))
+	for _, n := range names {
+		v[n] = r.PostFormValue(n)
+	}
+	return v
 }
 
 // ProjectKeyChange gives the project a new key and goes to its settings
@@ -268,8 +306,9 @@ func StatusCreate(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		settingsAction(w, r, d, p, "Status added.", func() error {
-			_, err := d.Core.CreateStatus(r.Context(), d.Actor.ID, p.ID, r.PostFormValue("name"), r.PostFormValue("category"))
+		sf := templates.SubForm{Values: formValues(r, "name", "category")}
+		settingsForm(w, r, d, p, "Status added.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.NewStatus = f }, func() error {
+			_, err := d.Core.CreateStatus(r.Context(), d.Actor.ID, p.ID, sf.Values["name"], sf.Values["category"])
 			return err
 		})
 	}
@@ -277,9 +316,20 @@ func StatusCreate(d Deps) http.HandlerFunc {
 
 // StatusRename, StatusUp, StatusDown and StatusDelete change one status.
 func StatusRename(d Deps) http.HandlerFunc {
-	return statusAction(d, "Status renamed.", func(r *http.Request, s gen.Status) error {
-		return d.Core.RenameStatus(r.Context(), d.Actor.ID, s.ID, r.PostFormValue("name"))
-	})
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		sf := templates.SubForm{ID: chi.URLParam(r, "id"), Values: formValues(r, "name")}
+		settingsForm(w, r, d, p, "Status renamed.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditStatus = f }, func() error {
+			s, err := ownedStatus(r, d, p)
+			if err != nil {
+				return err
+			}
+			return d.Core.RenameStatus(r.Context(), d.Actor.ID, s.ID, sf.Values["name"])
+		})
+	}
 }
 
 func StatusUp(d Deps) http.HandlerFunc {
@@ -308,16 +358,22 @@ func milestoneAction(d Deps, okMsg string, fn func(r *http.Request, m gen.Milest
 			return
 		}
 		settingsAction(w, r, d, p, okMsg, func() error {
-			m, err := d.R.GetMilestone(r.Context(), chi.URLParam(r, "id"))
-			if errors.Is(err, sql.ErrNoRows) || err == nil && m.ProjectID != p.ID {
-				return core.ErrNotFound
-			}
+			m, err := ownedMilestone(r, d, p)
 			if err != nil {
 				return err
 			}
 			return fn(r, m)
 		})
 	}
+}
+
+// ownedMilestone is the {id} milestone when it belongs to p, else ErrNotFound.
+func ownedMilestone(r *http.Request, d Deps, p gen.Project) (gen.Milestone, error) {
+	m, err := d.R.GetMilestone(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, sql.ErrNoRows) || err == nil && m.ProjectID != p.ID {
+		return m, core.ErrNotFound
+	}
+	return m, err
 }
 
 func milestoneInput(r *http.Request) core.MilestoneInput {
@@ -331,7 +387,8 @@ func MilestoneCreate(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		settingsAction(w, r, d, p, "Milestone added.", func() error {
+		sf := templates.SubForm{Values: formValues(r, "name", "due_on")}
+		settingsForm(w, r, d, p, "Milestone added.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.NewMilestone = f }, func() error {
 			_, err := d.Core.CreateMilestone(r.Context(), d.Actor.ID, p.ID, milestoneInput(r))
 			return err
 		})
@@ -340,11 +397,22 @@ func MilestoneCreate(d Deps) http.HandlerFunc {
 
 // MilestoneUpdate, MilestoneClose and MilestoneReopen change one milestone.
 func MilestoneUpdate(d Deps) http.HandlerFunc {
-	return milestoneAction(d, "Milestone saved.", func(r *http.Request, m gen.Milestone) error {
-		in := milestoneInput(r)
-		in.Description = m.Description // the settings form doesn't edit it
-		return d.Core.UpdateMilestone(r.Context(), d.Actor.ID, m.ID, in)
-	})
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		sf := templates.SubForm{ID: chi.URLParam(r, "id"), Values: formValues(r, "name", "due_on")}
+		settingsForm(w, r, d, p, "Milestone saved.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditMilestone = f }, func() error {
+			m, err := ownedMilestone(r, d, p)
+			if err != nil {
+				return err
+			}
+			in := milestoneInput(r)
+			in.Description = m.Description // the settings form doesn't edit it
+			return d.Core.UpdateMilestone(r.Context(), d.Actor.ID, m.ID, in)
+		})
+	}
 }
 
 func MilestoneClose(d Deps) http.HandlerFunc {
