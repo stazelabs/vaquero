@@ -300,3 +300,25 @@ func TestCLIClaimFlow(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-56: tickets filters by milestone name, in any case.
+func TestCLITicketsMilestoneFilter(t *testing.T) {
+	e := cliEnv(t)
+	ctx := context.Background()
+	p, err := e.Deps.R.GetProjectByKey(ctx, "VAQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.CreateMilestone(ctx, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Beta"}); err != nil {
+		t.Fatal(err)
+	}
+	mustCLI(t, "ticket", "new", "VAQ", "In beta", "--milestone", "Beta")
+	mustCLI(t, "ticket", "new", "VAQ", "Elsewhere")
+	out := mustCLI(t, "tickets", "VAQ", "--milestone", "beta")
+	if !strings.Contains(out, "In beta") || strings.Contains(out, "Elsewhere") {
+		t.Fatalf("%s", out)
+	}
+	if code, _, errOut := cli(t, "tickets", "VAQ", "--milestone", "Gamma"); code == 0 || !strings.Contains(errOut, "Gamma") {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+}

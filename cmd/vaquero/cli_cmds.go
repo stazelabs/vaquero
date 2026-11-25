@@ -143,10 +143,11 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 }
 
 func cmdTickets(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero tickets KEY [--status S] [--tag T] [--priority P] [--mine] [--agents] [--all] [--limit N]")
+	c := newCmd(stdout, stderr, "vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]")
 	status := c.fs.String("status", "", "status name")
 	tag := c.fs.String("tag", "", "tag")
 	prio := c.fs.String("priority", "", "priority")
+	milestone := c.fs.String("milestone", "", "milestone name, or none")
 	mine := c.fs.Bool("mine", false, "assigned to you")
 	agents := c.fs.Bool("agents", false, "assigned to agents")
 	all := c.fs.Bool("all", false, "include done and cancelled")
@@ -168,6 +169,9 @@ func cmdTickets(ctx context.Context, stdout, stderr io.Writer, args []string) in
 				return err
 			}
 			q.Set("priority", strconv.FormatInt(p, 10))
+		}
+		if *milestone != "" {
+			q.Set("milestone", *milestone)
 		}
 		if *mine {
 			q.Set("mine", "1")
