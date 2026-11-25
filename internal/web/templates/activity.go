@@ -13,6 +13,18 @@ import (
 type EventView struct {
 	Actor, Kind, ProjectKey, TicketKey, TicketTitle, Ago string
 	Payload                                              map[string]any
+
+	// Reader is the key of the ticket whose page shows the line, so a link
+	// event reads from that ticket's side; "" on the activity feed.
+	Reader string
+}
+
+// side is how a ticket is named for the reader: "this ticket" on its own page.
+func (e EventView) side(key string) string {
+	if e.Reader != "" && key == e.Reader {
+		return "this ticket"
+	}
+	return key
 }
 
 // ParsePayload decodes an event's JSON payload; a bad one reads as empty.
@@ -87,16 +99,17 @@ func EventSentence(e EventView) string {
 	case core.EvAttachmentDeleted:
 		return "removed the attachment " + s("name") + " from " + e.TicketKey
 	case core.EvLinkCreated:
+		from, to := e.side(e.TicketKey), e.side(s("to"))
 		switch s("kind") {
 		case "blocks":
-			return fmt.Sprintf("marked %s as blocking %s", e.TicketKey, s("to"))
+			return fmt.Sprintf("marked %s as blocking %s", from, to)
 		case "duplicates":
-			return fmt.Sprintf("marked %s as a duplicate of %s", e.TicketKey, s("to"))
+			return fmt.Sprintf("marked %s as a duplicate of %s", from, to)
 		default:
-			return fmt.Sprintf("related %s to %s", e.TicketKey, s("to"))
+			return fmt.Sprintf("related %s to %s", from, to)
 		}
 	case core.EvLinkDeleted:
-		return fmt.Sprintf("removed a link from %s to %s", e.TicketKey, s("to"))
+		return fmt.Sprintf("removed a link from %s to %s", e.side(e.TicketKey), e.side(s("to")))
 	case core.EvActorCreated:
 		return "joined"
 	case core.EvTokenCreated:

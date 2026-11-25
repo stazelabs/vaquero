@@ -1,9 +1,12 @@
 package core_test
 
 import (
+	"database/sql"
+	"slices"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
 func key(s string) core.TicketKey {
@@ -101,5 +104,46 @@ func TestRelatesLoopAllowed(t *testing.T) {
 	}
 	if _, err := c.AddLink(bg, f.Owner.ID, t3.ID, "relates", key("VAQ-2")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A link is one event on the "from" ticket; the "to" ticket's history lists
+// it too, and no second event is written.
+func TestLinkEventsAppearInBothTicketsHistory(t *testing.T) {
+	c, d, f := newFixture(t)
+	before := eventCount(t, d)
+	l, err := c.AddLink(bg, f.Owner.ID, f.T2.ID, "blocks", core.TicketKey{Project: "VAQ", Number: f.T1.Number})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RemoveLink(bg, f.Owner.ID, l.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := eventCount(t, d) - before; got != 2 {
+		t.Fatalf("%d events for add and remove, want 2", got)
+	}
+	hist := func(tk gen.Ticket) []string {
+		evs, err := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{
+			TicketID:  sql.NullString{String: tk.ID, Valid: true},
+			TicketKey: core.TicketKey{Project: "VAQ", Number: tk.Number}.String(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var kinds []string
+		for _, e := range evs {
+			if e.Kind == core.EvLinkCreated || e.Kind == core.EvLinkDeleted {
+				kinds = append(kinds, e.Kind)
+			}
+		}
+		return kinds
+	}
+	// The fixture already holds one link from T2 to T1.
+	want := []string{core.EvLinkDeleted, core.EvLinkCreated, core.EvLinkCreated}
+	if got := hist(f.T2); !slices.Equal(got, want) {
+		t.Fatalf("from side: %v", got)
+	}
+	if got := hist(f.T1); !slices.Equal(got, want) {
+		t.Fatalf("to side: %v", got)
 	}
 }

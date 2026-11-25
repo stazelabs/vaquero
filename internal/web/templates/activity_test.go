@@ -42,3 +42,27 @@ func TestAttachmentWording(t *testing.T) {
 		t.Fatal("icon")
 	}
 }
+
+func TestLinkWordingTakesTheReadersSide(t *testing.T) {
+	e := func(kind, reader string) EventView {
+		return EventView{Kind: core.EvLinkCreated, TicketKey: "VAQ-2", Reader: reader, Payload: map[string]any{"kind": kind, "to": "VAQ-1"}}
+	}
+	for _, c := range []struct {
+		kind, reader, want string
+	}{
+		{"blocks", "", "marked VAQ-2 as blocking VAQ-1"},
+		{"blocks", "VAQ-2", "marked this ticket as blocking VAQ-1"},
+		{"blocks", "VAQ-1", "marked VAQ-2 as blocking this ticket"},
+		{"duplicates", "VAQ-1", "marked VAQ-2 as a duplicate of this ticket"},
+		{"duplicates", "VAQ-2", "marked this ticket as a duplicate of VAQ-1"},
+		{"relates", "VAQ-1", "related VAQ-2 to this ticket"},
+	} {
+		if got := EventSentence(e(c.kind, c.reader)); got != c.want {
+			t.Errorf("%s as %q: %q, want %q", c.kind, c.reader, got, c.want)
+		}
+	}
+	d := EventView{Kind: core.EvLinkDeleted, TicketKey: "VAQ-2", Reader: "VAQ-1", Payload: map[string]any{"to": "VAQ-1"}}
+	if got := EventSentence(d); got != "removed a link from VAQ-2 to this ticket" {
+		t.Fatal(got)
+	}
+}

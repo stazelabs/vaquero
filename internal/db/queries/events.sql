@@ -13,13 +13,16 @@ ORDER BY e.seq DESC
 LIMIT ?;
 
 -- name: ListTicketEvents :many
+-- A ticket's history: its own events, and link events that name it as the
+-- "to" side (a link is one event, recorded on the "from" ticket).
 SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.ticket_id = ?
+WHERE e.ticket_id = sqlc.arg(ticket_id)
+   OR (e.kind IN ('link.created', 'link.deleted') AND json_extract(e.payload, '$.to') = sqlc.arg(ticket_key))
 ORDER BY e.seq DESC;
 
 -- name: CountEvents :one

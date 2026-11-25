@@ -244,9 +244,15 @@ FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.ticket_id = ?
+WHERE e.ticket_id = ?1
+   OR (e.kind IN ('link.created', 'link.deleted') AND json_extract(e.payload, '$.to') = ?2)
 ORDER BY e.seq DESC
 `
+
+type ListTicketEventsParams struct {
+	TicketID  sql.NullString
+	TicketKey string
+}
 
 type ListTicketEventsRow struct {
 	Seq          int64
@@ -262,8 +268,10 @@ type ListTicketEventsRow struct {
 	TicketTitle  string
 }
 
-func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString) ([]ListTicketEventsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTicketEvents, ticketID)
+// A ticket's history: its own events, and link events that name it as the
+// "to" side (a link is one event, recorded on the "from" ticket).
+func (q *Queries) ListTicketEvents(ctx context.Context, arg ListTicketEventsParams) ([]ListTicketEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTicketEvents, arg.TicketID, arg.TicketKey)
 	if err != nil {
 		return nil, err
 	}

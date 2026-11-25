@@ -222,3 +222,17 @@ func TestEditFormKeepsVersionOnFieldError(t *testing.T) {
 		t.Fatalf("%d: version lost", r.Status)
 	}
 }
+
+// The blocked ticket's history says it became blocked, from its own side.
+func TestTicketHistoryShowsLinkOnBothTickets(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	a := ticket(t, e, p, core.TicketInput{Title: "Blocker"})
+	ticket(t, e, p, core.TicketInput{Title: "Blocked"})
+	if _, err := e.Deps.Core.AddLink(bg, e.Deps.Actor.ID, a.ID, "blocks", core.TicketKey{Project: "VAQ", Number: 2}); err != nil {
+		t.Fatal(err)
+	}
+	c := e.Client()
+	contains(t, c.Get("/t/VAQ-1").Body, "marked this ticket as blocking VAQ-2")
+	contains(t, c.Get("/t/VAQ-2").Body, "marked VAQ-1 as blocking this ticket")
+}

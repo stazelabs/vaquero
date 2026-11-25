@@ -341,7 +341,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
 		})
 	}
-	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))
+	events, err := d.R.ListTicketEvents(ctx, gen.ListTicketEventsParams{TicketID: sqlNull(t.ID), TicketKey: v.Key})
 	if err != nil {
 		return v, err
 	}
@@ -351,6 +351,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey,
 			TicketKey:   core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String(),
 			TicketTitle: e.TicketTitle, Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
+			Reader: v.Key,
 		})
 	}
 	return v, nil
