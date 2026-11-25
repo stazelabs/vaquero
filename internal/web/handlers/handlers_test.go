@@ -24,7 +24,10 @@ func TestHandlersNeverWriteDirectly(t *testing.T) {
 			t.Fatal(err)
 		}
 		src := string(b)
-		for _, bad := range []string{"gen.New(", ".Exec(", "BeginTx(", "d.DB."} {
+		// d.Touch and d.MCPCalls write (a token's last use, the MCP log),
+		// but only from the token middleware and the MCP server; a handler
+		// never touches them.
+		for _, bad := range []string{"gen.New(", ".Exec(", "BeginTx(", "d.DB.", "d.Touch.", "d.MCPCalls."} {
 			// idgen.New( mints an id; it is not gen.New(.
 			if strings.Contains(strings.ReplaceAll(src, "idgen.New(", ""), bad) && !(f == "misc.go" && bad == "d.DB.") {
 				t.Errorf("%s uses %s; change the tracker through d.Core", f, bad)
