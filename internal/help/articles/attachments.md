@@ -48,4 +48,4 @@ All four of the endpoint, bucket, key and secret are needed for `s3`. Once a ser
 
 ## Backups
 
-Snapshots and `vaquero backup restore` cover the database. With `sqlite` storage that includes every attachment. With `dir` or `s3` storage the files are not in the database, so a snapshot holds only the records of them: backing up the directory or the bucket is yours to do. See [Your data and backups](/help/data-and-backups#backups).
+Snapshots and `vaquero backup restore` cover the database. With `sqlite` storage that includes every attachment. With `dir` or `s3` storage the files are not in the database, so a snapshot holds only the records of them: backing up the directory or the bucket is yours to do. Restoring an older snapshot makes the files of newer attachments orphans, which the sweep deletes after an hour, so undoing that restore leaves records without files. See [Your data and backups](/help/data-and-backups#backups).

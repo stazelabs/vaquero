@@ -14,7 +14,7 @@ One SQLite file. CLAUDE.md "Hard invariants" is the authority.
 ## Queries
 
 - SQL lives in internal/db/queries; `make sqlc` (part of `make gen`) writes internal/db/gen. Never edit generated files.
-- Only internal/core writes the tracker tables (actors through events). Everything else reads through the reader pool.
+- Only internal/core writes the tracker tables (actors through events). Everything else reads through the reader pool. The one offline exception is `vaquero import` (`archive.Load` into a new file, then swapped in). The `blobs` table is written only through internal/blobs.
 - Rejected: ORMs and mattn/go-sqlite3.
 
 ## Reader and writer pools (internal/db/sqlite.go)

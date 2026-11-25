@@ -89,3 +89,5 @@ Stop the server, then restore:
 The database as it was is saved as a new snapshot first, so a restore can itself be undone. The next command starts Vaquero on the restored database.
 
 A database written by a newer Vaquero is refused by an older one, with a message saying so; upgrade Vaquero rather than editing the file.
+
+A copied data directory shares the original's instance id. Never run a copy against the same attachment directory or bucket as the original: the two would write and sweep each other's files.

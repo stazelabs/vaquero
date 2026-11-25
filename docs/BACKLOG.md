@@ -159,3 +159,20 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 ## Deferred from Phase 3b design (2026-11-20)
 
 - [ ] stazelabs skills adapter (`trackers/vaquero.md` in agent-workflow), this repo's profile and audit packs, and the Vaquero additions they need (ticket `url`, MCP `whoami`, `list_tags`)
+
+## Deferred from Phase 3b
+
+- [ ] Backend lock compares only the backend name — record a location fingerprint (dir path, bucket+endpoint) next to `blob_store` (review 3b)
+- [ ] Redact `Config.S3SecretAccessKey` under %v — add String, LogValue or Format (review 3b)
+- [ ] Make the AddAttachment/DeleteAttachment entries in `TestEveryOperationRollsBackPartWay` meaningful — they fail at setup under the ghost actor (review 3b)
+- [ ] Canonical attachment redirects are 301 (permanent) — revisit if renames arrive (review 3b)
+- [ ] Plain-text 413 fallback in bodylimit.go for non-upload routes (review 3b)
+- [ ] API tests: delete permissions (agent own, owner's, owner deletes agent's) and HEAD on `/api/v1/attachments/{id}`; api.md note on the 422 for a non-uploader delete (review 3b)
+- [ ] `ExportedSettings` and `InstanceSettings` are mutable exported vars — a race risk if tests go parallel (review 3b)
+- [ ] HEAD `/api/v1/export` builds export.json then discards it, and export reads every object twice — use a Stat for the pre-check (review 3b)
+- [ ] S3 bad credentials surface only at the first Put during import (review 3b)
+- [ ] A killed import (SIGKILL) leaves objects under an unrecorded instance id that no sweep sees (review 3b)
+- [ ] `swapFailed` wording should mention the -wal and -shm files; the gzip drain is unbounded (CPU only) (review 3b)
+- [ ] Import spools into `os.TempDir()` (often a small tmpfs) — spool into the data directory (review 3b)
+- [ ] `blobs.PutDeadline` of 10 s is tight for 10 MB to S3 on slow uplinks (review 3b)
+- [ ] With sqlite storage, swept blob rows don't shrink the file (no VACUUM) (review 3b)
