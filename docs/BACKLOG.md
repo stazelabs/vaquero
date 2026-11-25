@@ -4,6 +4,18 @@ Vaquero's own work list until a vaquero instance can track it (planned for Phase
 
 Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, with the commit; prune ticked lines at the end of each phase.
 
+## Direction (owner, 2026-11-25; more to come)
+
+1. First goal: self-hosting, meaning Vaquero tracks its own work. Phase 3b, then the v0.1.0 release, then the backlog move.
+2. The bigger idea is a self-contained, local-first software factory orchestrator. Vaquero, git and an LLM should be enough to build most software. This is a one-stop shop, and the growth in scope is accepted.
+3. Open threads, each to become a design of its own after self-hosting:
+   - [ ] Git and GitHub, deeply: tight integration options, growing out of Phase 5.
+   - [ ] Structured requirements: capture and manage them, and trace each one to the code, tests and reviews that satisfy it (in the BDD and traceability family).
+   - [ ] Seamless code review, marginalia style: requirements, tests and comments shown beside the code.
+   - [ ] LLMs for review and for the work itself. Catalogue the review types first. Grows out of Phase 7.
+   - [ ] Project design artifacts as first-class items: specs, plans and diagrams, linkable to tickets and code.
+4. Design note: make each of these items linkable to tickets and commits by ID.
+
 ## Phases
 
 - [x] Phase 0: Foundation — merged a69c53a
