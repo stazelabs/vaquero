@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -69,6 +70,29 @@ func TestRecover(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "boom") || strings.Contains(logs.String(), "secret") {
 		t.Fatalf("log: %s", logs.String())
+	}
+}
+
+// VAQ-57: a panic under /api/v1 or /mcp answers the API's JSON envelope,
+// and the panic is logged once.
+func TestRecoverAPIAnswersJSON(t *testing.T) {
+	for _, path := range []string{"/api/v1/tickets/VAQ-1", "/mcp"} {
+		var logs strings.Builder
+		h := Recover(slog.New(slog.NewTextHandler(&logs, nil)))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { panic("boom") }))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != 500 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("%s: code %d type %q body %q", path, rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+		var out struct {
+			Error struct{ Code, Message string }
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || out.Error.Code != "server_error" || strings.Contains(rec.Body.String(), "boom") {
+			t.Fatalf("%s: %v %q", path, err, rec.Body.String())
+		}
+		if n := strings.Count(logs.String(), "msg=panic"); n != 1 {
+			t.Fatalf("%s: logged %d times", path, n)
+		}
 	}
 }
 
