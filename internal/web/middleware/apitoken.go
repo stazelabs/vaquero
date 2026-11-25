@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/api"
@@ -115,7 +116,12 @@ func APIToken(a APIAuth) func(http.Handler) http.Handler {
 				return
 			}
 			if name := r.Header.Get(AgentHeader); name != "" && a.Local && a.Agent != nil && actor.ID == a.OwnerID {
-				agent, err := a.Agent(ctx, actor.ID, name)
+				// An agent that exists is found through the reader; the
+				// writer is for making one.
+				agent, err := a.R.GetActorByKindName(ctx, gen.GetActorByKindNameParams{Kind: "agent", Name: strings.TrimSpace(name)})
+				if err != nil {
+					agent, err = a.Agent(ctx, actor.ID, name)
+				}
 				if inv, ok := errors.AsType[*core.Invalid](err); ok {
 					api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", inv.Fields["agent"]))
 					return
