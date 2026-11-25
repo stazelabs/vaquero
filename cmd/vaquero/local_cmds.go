@@ -303,7 +303,10 @@ type swapFailed struct {
 func (e *swapFailed) Error() string {
 	msg := "The new database couldn't be put in place (" + e.err.Error() + "). "
 	if e.moved {
-		return msg + "The database before it is at " + e.aside + "; move it back to " + e.dbPath + " to undo."
+		// moveDatabase moves the write-ahead log and shared memory too, and
+		// the log may hold the newest changes: all three go back together.
+		return msg + "The database before it is at " + e.aside + ", with any " + e.aside + "-wal and " + e.aside + "-shm files; move them back to " +
+			e.dbPath + ", " + e.dbPath + "-wal and " + e.dbPath + "-shm to undo."
 	}
 	name := filepath.Base(e.aside)
 	return msg + "The database before it is saved as " + name + "; vaquero backup restore " + name + " puts it back."
@@ -320,7 +323,7 @@ func savedLine(cfg config.Config, aside string) string {
 	case filepath.Dir(aside) == filepath.Join(cfg.DataDir, "backups"):
 		return "The database before it is saved as " + filepath.Base(aside) + "."
 	}
-	return "The database before it couldn't be copied, so it was moved to " + aside + "."
+	return "The database before it couldn't be copied, so it was moved to " + aside + ", with any -wal and -shm files beside it."
 }
 
 // snapshotFile saves the database at path as a snapshot in dir and returns

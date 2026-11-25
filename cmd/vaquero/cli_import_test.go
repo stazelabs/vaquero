@@ -485,7 +485,8 @@ func TestSwapFailureNamesTheOldDatabase(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, func(cfg config.Config, aside string) string {
-			return "The database before it is at " + aside + "; move it back to " + cfg.DBPath + " to undo."
+			return "The database before it is at " + aside + ", with any " + aside + "-wal and " + aside + "-shm files; move them back to " +
+				cfg.DBPath + ", " + cfg.DBPath + "-wal and " + cfg.DBPath + "-shm to undo."
 		}},
 		{"snapshot", func(path string) {
 			d, err := appdb.Open(path)

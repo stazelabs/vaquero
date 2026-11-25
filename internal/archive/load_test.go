@@ -325,11 +325,32 @@ func TestReadRefusesHardening(t *testing.T) {
 	}
 	flipped[at] ^= 0x20
 
+	// Data past the tar's end inside the gzip stream: a little (a tar
+	// program's padding) is read through to the checksum, more is refused
+	// rather than decompressed without end.
+	trailing := func(n int) []byte {
+		var b bytes.Buffer
+		zw := gzip.NewWriter(&b)
+		tw := tar.NewWriter(zw)
+		for _, e := range good {
+			tw.WriteHeader(e.hdr)
+			tw.Write(e.data)
+		}
+		tw.Close()
+		zw.Write(make([]byte, n))
+		zw.Close()
+		return b.Bytes()
+	}
+	if _, err := read(t, trailing(64<<10)); err != nil {
+		t.Fatalf("64 KiB of padding: %v", err)
+	}
+
 	for _, tc := range []struct {
 		name string
 		file []byte
 		want string
 	}{
+		{"trailing data", trailing(archive.MaxTrailing + 1), "The export has more than 1 MB of data after its last file."},
 		{"attachment over the limit", withDoc(func(s string) string { return attachmentField(s, "size", "10485761") }),
 			"The export's attachment " + firstID + " is 10485761 bytes; attachments can be at most 10 MB."},
 		{"export.json over the cap", huge.Bytes(), "The export's export.json is larger than"},

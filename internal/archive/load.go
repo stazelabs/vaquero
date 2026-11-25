@@ -28,6 +28,11 @@ func (e *Refused) Error() string { return e.msg }
 
 func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format, a...)} }
 
+// MaxTrailing is the most data Read reads past the tar's end, inside the
+// gzip stream, on its way to the checksum: room for a tar program's padding,
+// and a bound on the work a crafted file can make.
+const MaxTrailing = 1 << 20
+
 // MaxDocument is the largest export.json Read takes: far beyond any real
 // instance's, but a bound on the memory a crafted file can claim.
 const MaxDocument = 256 << 20
@@ -81,8 +86,9 @@ func (rd *Reader) Close() error {
 // build doesn't know, an attachment whose id isn't a ULID (or equals
 // another's in lower case, as blob keys are) or whose size is over
 // core.MaxAttachment, an attachment record without its file, a file without
-// its record or of another size than its record says, any other entry, and
-// a stream whose gzip checksum fails (read to the end to check it).
+// its record or of another size than its record says, any other entry, more
+// than MaxTrailing bytes after the tar's end, and a stream whose gzip
+// checksum fails (read to the end to check it).
 func Read(r io.Reader) (_ *Reader, err error) {
 	zr, err := gzip.NewReader(r)
 	if err != nil {
@@ -158,8 +164,10 @@ func Read(r io.Reader) (_ *Reader, err error) {
 	}
 	// The rest of the stream holds gzip's checksum, which only reading to
 	// the end verifies.
-	if _, err := io.Copy(io.Discard, zr); err != nil {
+	if n, err := io.Copy(io.Discard, io.LimitReader(zr, MaxTrailing+1)); err != nil {
 		return nil, refuse("The export is damaged (%v).", err)
+	} else if n > MaxTrailing {
+		return nil, refuse("The export has more than %d MB of data after its last file.", MaxTrailing>>20)
 	}
 	if err := zr.Close(); err != nil {
 		return nil, refuse("The export is damaged (%v).", err)
