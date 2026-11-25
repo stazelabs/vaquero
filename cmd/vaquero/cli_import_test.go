@@ -119,7 +119,8 @@ func importLeftovers(t *testing.T, dataDir string) []string {
 	t.Helper()
 	got, _ := filepath.Glob(filepath.Join(dataDir, "vaquero.import.db*"))
 	spools, _ := filepath.Glob(filepath.Join(dataDir, "import-spool-*"))
-	return append(got, spools...)
+	pending, _ := filepath.Glob(filepath.Join(dataDir, "import.pending"))
+	return append(append(got, spools...), pending...)
 }
 
 // dirObjects counts the objects in a dir store's root.
@@ -649,5 +650,125 @@ func TestImportCopies(t *testing.T) {
 	t.Cleanup(func() { sameFilesystem = old })
 	if got := importCopies(config.Config{DataDir: dataDir, BlobBackend: "dir", BlobDir: "/elsewhere"}); got != 1 {
 		t.Errorf("dir on another volume: %d copies, want 1", got)
+	}
+}
+
+// leftBehind is what an import killed after its first put leaves: objects
+// under an instance no database records, and import.pending naming it.
+func leftBehind(t *testing.T, dataDir, root, instance string) blobs.Store {
+	t.Helper()
+	store, err := blobs.NewDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"01jkilled000000000000000001", "01jkilled000000000000000002"} {
+		if err := store.Put(t.Context(), blobs.AttachmentKey(instance, id), strings.NewReader("bytes"), 5, "text/plain"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := config.Config{DataDir: dataDir, BlobBackend: "dir", BlobDir: root}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePending(cfg, instance); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+// VAQ-87: the next import deletes what a killed import left, and the file
+// naming it.
+func TestImportCleansUpAKilledImport(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "dir")
+	root := filepath.Join(dataDir, "attachments")
+	leftBehind(t, dataDir, root, "01jkilledinstance000000000")
+	file := seededArchive(t, importHeader(t, 0), nil)
+	code, out, e := runCLI(t, "import", file)
+	if code != 0 || !strings.Contains(e, "Removed 2 files an interrupted import left in dir.") {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if n := dirObjects(t, filepath.Join(root, "attachments", "01jkilledinstance000000000")); n != 0 {
+		t.Fatalf("%d objects left", n)
+	}
+	if n := dirObjects(t, root); n != 2 {
+		t.Fatalf("%d objects in the store, want the import's 2", n)
+	}
+	if left := importLeftovers(t, dataDir); len(left) != 0 {
+		t.Fatalf("left %v", left)
+	}
+}
+
+// VAQ-87: so does the next serve; and the instance the database records is
+// never deleted, whatever the file says.
+func TestServeCleansUpAKilledImport(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(t.TempDir(), "store")
+	env := map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": root}
+	if err := bootOnce(t, dir, env); err != nil {
+		t.Fatal(err)
+	}
+	leftBehind(t, dir, root, "01jkilledinstance000000000")
+	if err := bootOnce(t, dir, env); err != nil {
+		t.Fatal(err)
+	}
+	if n := dirObjects(t, root); n != 0 {
+		t.Fatalf("%d objects left", n)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "import.pending")); !os.IsNotExist(err) {
+		t.Fatalf("import.pending stays: %v", err)
+	}
+	live := readSetting(t, dir, "instance_id")
+	leftBehind(t, dir, root, live) // a finished import whose file outlived it
+	if err := bootOnce(t, dir, env); err != nil {
+		t.Fatal(err)
+	}
+	if n := dirObjects(t, root); n != 2 {
+		t.Fatalf("the live instance lost objects: %d left", n)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "import.pending")); !os.IsNotExist(err) {
+		t.Fatalf("import.pending stays: %v", err)
+	}
+}
+
+// pendingCheck is a dir store that records, at each attachment put,
+// whether import.pending named the instance by then.
+type pendingCheck struct {
+	blobs.Store
+	dataDir string
+	named   []bool
+}
+
+func (p *pendingCheck) Put(ctx context.Context, key string, r io.Reader, size int64, ctype string) error {
+	if key != importProbeKey {
+		b, _ := os.ReadFile(filepath.Join(p.dataDir, "import.pending"))
+		parts := strings.Split(key, "/")
+		p.named = append(p.named, len(parts) == 3 && strings.Contains(string(b), `"instance":"`+parts[1]+`"`) && strings.Contains(string(b), `"backend":"dir"`))
+	}
+	return p.Store.Put(ctx, key, r, size, ctype)
+}
+
+// VAQ-87: the file names the instance and backend before the first put,
+// and goes once the import is done.
+func TestImportRecordsPendingBeforeItsPuts(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "dir")
+	check := &pendingCheck{dataDir: dataDir}
+	saved := openBlobStore
+	openBlobStore = func(cfg config.Config, w, r *sql.DB, now func() time.Time) (blobs.Store, error) {
+		s, err := saved(cfg, w, r, now)
+		check.Store = s
+		return check, err
+	}
+	t.Cleanup(func() { openBlobStore = saved })
+	file := seededArchive(t, importHeader(t, 0), nil)
+	if code, _, e := runCLI(t, "import", file); code != 0 {
+		t.Fatal(e)
+	}
+	if len(check.named) != 2 || !check.named[0] || !check.named[1] {
+		t.Fatalf("pending named the instance at the puts: %v", check.named)
+	}
+	if left := importLeftovers(t, dataDir); len(left) != 0 {
+		t.Fatalf("left %v", left)
 	}
 }

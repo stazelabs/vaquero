@@ -37,7 +37,9 @@ const importFile = "vaquero.import.db"
 // at {data dir}/vaquero.import.db (attachment bytes put into the configured
 // store first, under a fresh instance id), checked, and only then swapped
 // in by swapDatabase. Until the swap, any failure deletes the new file and
-// every object put, and the current database is never written.
+// every object put, and the current database is never written. A kill
+// (no cleanup) leaves import.pending for the next import or serve
+// (cleanPending).
 func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	c := newCmd(stdout, stderr, "vaquero import FILE")
 	pos, err := c.parse(args, 1, 1)
@@ -50,7 +52,7 @@ func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if err != nil {
 		return c.finish(err)
 	}
-	res, err := importArchive(ctx, cfg, pos[0])
+	res, err := importArchive(ctx, cfg, pos[0], c.stderr)
 	if err != nil {
 		return c.finish(err)
 	}
@@ -99,7 +101,9 @@ func (e notImported) Error() string {
 }
 func (e notImported) Unwrap() error { return e.err }
 
-func importArchive(ctx context.Context, cfg config.Config, file string) (importResult, error) {
+// importArchive runs the import; warn gets the lines about an earlier,
+// interrupted import's leftovers.
+func importArchive(ctx context.Context, cfg config.Config, file string, warn io.Writer) (importResult, error) {
 	res := importResult{Backend: cfg.BlobBackend}
 	f, err := os.Open(file)
 	if err != nil {
@@ -121,6 +125,16 @@ func importArchive(ctx context.Context, cfg config.Config, file string) (importR
 	store, err := importStore(ctx, cfg)
 	if err != nil {
 		return res, notImported{err}
+	}
+	// What an import killed before it finished left in the store.
+	current, err := currentInstance(ctx, cfg.DBPath)
+	if err != nil {
+		return res, notImported{err}
+	}
+	if n, err := cleanPending(ctx, cfg, store, current); err != nil {
+		fmt.Fprintf(warn, "vaquero: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(warn, "Removed %s an interrupted import left in %s.\n", count(n, "file"), cfg.BlobBackend)
 	}
 	removeSpools(cfg.DataDir)
 	rd, err := archive.Read(f, cfg.DataDir, importCopies(cfg))
@@ -163,6 +177,27 @@ func checkEmpty(ctx context.Context, path string) error {
 		return message(fmt.Sprintf("Import needs an empty instance; this one has %s and %s.", count(projects, "project"), count(tickets, "ticket")))
 	}
 	return nil
+}
+
+// currentInstance is the instance id the database at path records, or ""
+// when there is no database or no id yet.
+func currentInstance(ctx context.Context, path string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	db, err := appdb.OpenReader(path, 1)
+	if err != nil {
+		return "", fmt.Errorf("couldn't read the current database: %w", err)
+	}
+	defer db.Close()
+	s, err := gen.New(db).GetSetting(ctx, "instance_id")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("couldn't read the current database: %w", err)
+	}
+	return s.Value, nil
 }
 
 // removeSpools deletes the attachment spools an interrupted import left in
@@ -262,11 +297,17 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		// Ctrl-C may have ended ctx; the cleanup must still run.
 		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancel()
+		clean := true
 		for _, k := range put {
-			_ = store.Delete(dctx, k)
+			if err := store.Delete(dctx, k); err != nil && !errors.Is(err, blobs.ErrNotFound) {
+				clean = false
+			}
 		}
 		if cfg.BlobBackend == "dir" {
 			_ = os.Remove(filepath.Join(cfg.BlobDir, "attachments", instance)) // only when empty
+		}
+		if clean {
+			removePending(cfg.DataDir) // else the next import or serve tries again
 		}
 	}()
 
@@ -284,6 +325,13 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 	}
 
 	atts := rd.Tables["attachments"]
+	if cfg.BlobBackend != "sqlite" && len(atts) > 0 {
+		// Before the first put: a kill from here on leaves the bytes for
+		// the next import or serve to delete.
+		if err = writePending(cfg, instance); err != nil {
+			return "", err
+		}
+	}
 	for _, a := range atts {
 		id := a["id"].(string) // Read checked it
 		body, size, _ := rd.Blob(id)
@@ -323,6 +371,7 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		return "", err
 	}
 	swapped = true
+	removePending(cfg.DataDir)
 	return aside, nil
 }
 

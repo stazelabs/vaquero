@@ -117,6 +117,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err != nil {
 		return fmt.Errorf("attachment store: %w", err)
 	}
+	// What an import killed before it finished left in the store.
+	if n, err := cleanPending(ctx, cfg, store, instance); err != nil {
+		logger.Warn("interrupted import cleanup", "err", err)
+	} else if n > 0 {
+		logger.Info("removed files an interrupted import left", "count", n, "backend", cfg.BlobBackend)
+	}
 	owner, err := c.EnsureOwner(ctx)
 	if err != nil {
 		return fmt.Errorf("owner: %w", err)
