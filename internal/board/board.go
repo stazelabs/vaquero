@@ -94,7 +94,8 @@ func LoadList(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Acto
 	return columns(ctx, q, p, owner, f, time.Time{})
 }
 
-// columns groups the filtered tickets by status. A non-zero now hides done
+// columns groups the filtered tickets by status, keeping only the filter's
+// category's statuses when it names one. A non-zero now hides done
 // cards older than DoneWindow, counting them in Older.
 func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, error) {
 	statuses, err := q.ListStatuses(ctx, p.ID)
@@ -125,6 +126,9 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 	for _, r := range tagRows {
 		tags[r.TicketID] = append(tags[r.TicketID], r.Name)
 	}
+	if f.Category != "" {
+		statuses = slices.DeleteFunc(statuses, func(s gen.Status) bool { return s.Category != f.Category })
+	}
 	cols := make([]Column, len(statuses))
 	index := map[string]int{}
 	for i, s := range statuses {
@@ -133,7 +137,11 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 	}
 	cutoff := now.Add(-DoneWindow)
 	for _, r := range rows {
-		c := &cols[index[r.StatusID]]
+		i, ok := index[r.StatusID]
+		if !ok {
+			continue // another category
+		}
+		c := &cols[i]
 		if !now.IsZero() && r.StatusCategory == "done" {
 			if at, err := timefmt.Parse(r.StatusChangedAt); err == nil && at.Before(cutoff) {
 				c.Older++

@@ -151,6 +151,26 @@ func TestListViewShowsEverything(t *testing.T) {
 	contains(t, c.Get("/p/VAQ/list?tag=nothing").Body, "No tickets match.")
 }
 
+// "N older" leads to the list's done tickets, and the list has a chip per
+// status category (VAQ-39).
+func TestOlderLinksToDoneList(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	ticket(t, e, p, core.TicketInput{Title: "in backlog", StatusID: statusID(t, e, "Backlog")})
+	now := e.Deps.Core.Now
+	e.Deps.Core.Now = func() time.Time { return webtest.Start.Add(-10 * 24 * time.Hour) }
+	ticket(t, e, p, core.TicketInput{Title: "long done", StatusID: statusID(t, e, "Done"), Tags: []string{"ui"}})
+	e.Deps.Core.Now = now
+	c := e.Client()
+	contains(t, c.Get("/p/VAQ?tag=ui").Body, "1 older", `href="/p/VAQ/list?category=done&amp;tag=ui"`)
+	list := c.Get("/p/VAQ/list?category=done").Body
+	contains(t, list, "long done", `href="/p/VAQ/list"`, "Clear filters")
+	lacks(t, list, "in backlog")
+	all := c.Get("/p/VAQ/list").Body
+	contains(t, all, `href="/p/VAQ/list?category=done"`, `href="/p/VAQ/list?category=backlog"`, "In review")
+	lacks(t, c.Get("/p/VAQ").Body, `href="/p/VAQ?category=done"`)
+}
+
 func TestBoardFragmentRoute(t *testing.T) {
 	e := webtest.New(t)
 	project(t, e)

@@ -148,7 +148,7 @@ templ column(b board.Board, c board.Column) {
 		</h2>
 		@cards(b, c)
 		if c.Older > 0 {
-			<a href={ templ.SafeURL(listHref(b)) } class="mt-1 block text-center text-xs text-muted hover:text-accent">{ itoa(int64(c.Older)) } older</a>
+			<a href={ templ.SafeURL(olderHref(b, c)) } class="mt-1 block text-center text-xs text-muted hover:text-accent">{ itoa(int64(c.Older)) } older</a>
 		}
 	</section>
 }

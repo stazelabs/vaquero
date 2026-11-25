@@ -2,9 +2,11 @@ package board
 
 import (
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/units"
 )
 
@@ -16,6 +18,7 @@ type Filter struct {
 	Priority     int64  // -1 any; 0 none .. 4 low
 	Milestone    string // "" any; "none"; or a milestone id
 	Assignee     string // "" any; an actor id
+	Category     string // "" any; one of core.Categories
 }
 
 // maxValue bounds a filter value read from a URL, in characters.
@@ -33,6 +36,9 @@ func ParseFilter(q url.Values) Filter {
 	f.Assignee = clip(q.Get("assignee"))
 	if n, err := strconv.ParseInt(q.Get("priority"), 10, 64); err == nil && n >= 0 && n <= 4 {
 		f.Priority = n
+	}
+	if c := q.Get("category"); slices.Contains(core.Categories, c) {
+		f.Category = c
 	}
 	return f
 }
@@ -64,6 +70,9 @@ func (f Filter) Query() url.Values {
 	}
 	if f.Assignee != "" {
 		q.Set("assignee", f.Assignee)
+	}
+	if f.Category != "" {
+		q.Set("category", f.Category)
 	}
 	return q
 }

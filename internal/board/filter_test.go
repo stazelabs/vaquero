@@ -71,3 +71,17 @@ func TestParseFilterClipsCharacters(t *testing.T) {
 		}
 	}
 }
+
+// category narrows to one status category; anything else means any.
+func TestParseFilterCategory(t *testing.T) {
+	for raw, want := range map[string]string{"category=done": "done", "category=in_review": "in_review", "category=nope": "", "category=DONE": ""} {
+		q, _ := url.ParseQuery(raw)
+		f := board.ParseFilter(q)
+		if f.Category != want {
+			t.Errorf("%s: %q", raw, f.Category)
+		}
+		if want != "" && f.Query().Get("category") != want {
+			t.Errorf("%s: query %v", raw, f.Query())
+		}
+	}
+}

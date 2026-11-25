@@ -6,7 +6,7 @@ order: 2
 ---
 ## Columns and rails
 
-The board shows a project's tickets by status. Todo, in progress and in review statuses are full columns. Backlog and cancelled statuses are narrow rails at the edges: click one to open it. Done columns show the last seven days; a link at the bottom leads to the list view with everything older.
+The board shows a project's tickets by status. Todo, in progress and in review statuses are full columns. Backlog and cancelled statuses are narrow rails at the edges: click one to open it. Done columns show the last seven days; the "older" link at the bottom opens the list view on done tickets, the older ones included.
 
 ## Ready tickets
 
@@ -26,7 +26,7 @@ The board, the list view and the Activity page update themselves when anything c
 
 ## The list view
 
-List shows every status, done and cancelled included, with every ticket that matches the filters. Use it to find older work.
+List shows every status, done and cancelled included, with every ticket that matches the filters. Use it to find older work. Besides the board's chips it has one per status category (Backlog, Todo, In progress, In review, Done, Cancelled), which shows only the statuses in that category; `?category=done` in the address does the same.
 
 ## Keys
 

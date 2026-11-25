@@ -61,7 +61,10 @@ func FilterHref(base string, f board.Filter) string {
 	return base
 }
 
-func listHref(b board.Board) string { return FilterHref("/p/"+b.Project.Key+"/list", b.Filter) }
+// olderHref is the list view of a done column's category, with the board's filter.
+func olderHref(b board.Board, c board.Column) string {
+	return FilterHref("/p/"+b.Project.Key+"/list", b.Filter.With("category", c.Status.Category))
+}
 
 // milestoneHref toggles the milestone filter to id.
 func milestoneHref(b board.Board, id string) string {

@@ -17,9 +17,9 @@ import (
 )
 
 // chipsFor builds the filter chips for a page at base: Mine, Agents, each
-// tag on the page, and each priority. A chip that is on links to the filter
-// without it.
-func chipsFor(base string, f board.Filter, tags []string) []templates.Chip {
+// tag on the page, each priority and, with categories (the list view), each
+// status category. A chip that is on links to the filter without it.
+func chipsFor(base string, f board.Filter, tags []string, categories bool) []templates.Chip {
 	chip := func(label, key, value string, on bool) templates.Chip {
 		next := f.With(key, value)
 		if on {
@@ -33,6 +33,11 @@ func chipsFor(base string, f board.Filter, tags []string) []templates.Chip {
 	}
 	for p := int64(1); p <= 4; p++ {
 		out = append(out, chip(templates.PriorityLabel(p), "priority", strconv.FormatInt(p, 10), f.Priority == p))
+	}
+	if categories {
+		for _, c := range core.Categories {
+			out = append(out, chip(templates.CategoryLabel(c), "category", c, f.Category == c))
+		}
 	}
 	return out
 }
@@ -77,7 +82,7 @@ func ProjectShow(d Deps) http.HandlerFunc {
 			return
 		}
 		base := projectPath(p, "")
-		v := templates.BoardView{Board: b, Chips: chipsFor(base, f, tagsOn([][]board.Column{b.Active, b.Rails}, f.Tag)), Clear: base}
+		v := templates.BoardView{Board: b, Chips: chipsFor(base, f, tagsOn([][]board.Column{b.Active, b.Rails}, f.Tag), false), Clear: base}
 		render(w, r, d, http.StatusOK, templates.BoardPage(v))
 	}
 }
@@ -116,7 +121,7 @@ func ProjectListView(d Deps) http.HandlerFunc {
 			return
 		}
 		base := projectPath(p, "/list")
-		v := templates.ListView{Project: p, Filter: f, Columns: cols, Chips: chipsFor(base, f, tagsOn([][]board.Column{cols}, f.Tag)), Clear: base}
+		v := templates.ListView{Project: p, Filter: f, Columns: cols, Chips: chipsFor(base, f, tagsOn([][]board.Column{cols}, f.Tag), true), Clear: base}
 		render(w, r, d, http.StatusOK, templates.ListPage(v))
 	}
 }
