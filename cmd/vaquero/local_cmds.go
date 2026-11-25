@@ -37,9 +37,11 @@ var (
 	serviceOS = runtime.GOOS
 )
 
-// localConfig is the data directory and address `vaquero serve` would use.
+// localConfig is the data directory and address `vaquero serve` would use
+// (config.Local: VQ_MODE, VQ_ADDR, VQ_DATA_DIR), for stop and backup; a bad
+// server-only setting doesn't stop them.
 func localConfig() (config.Config, error) {
-	return config.FromEnv(os.Getenv)
+	return config.Local(os.Getenv)
 }
 
 // brewServiceFile is where brew services keeps Vaquero's launchd agent or

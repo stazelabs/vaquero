@@ -89,8 +89,9 @@ func (c Config) Find(name string) (Profile, bool) {
 // Resolve picks the profile to use: name (a --profile flag) if given, else
 // VAQUERO_PROFILE, else the saved current one, else "local". local is true
 // for the local server, whose address and data directory come from the
-// same VQ_* settings `vaquero serve` reads, and whose token is read from
-// the data directory (empty until the server has started once).
+// same VQ_MODE, VQ_ADDR and VQ_DATA_DIR `vaquero serve` reads (config.Local;
+// the server-only settings aren't read), and whose token is read from the
+// data directory (empty until the server has started once).
 func Resolve(name string, getenv func(string) string) (p Profile, local bool, err error) {
 	cfg, err := Load()
 	if err != nil {
@@ -109,7 +110,7 @@ func Resolve(name string, getenv func(string) string) (p Profile, local bool, er
 		}
 		return p, false, nil
 	}
-	sc, err := config.FromEnv(getenv)
+	sc, err := config.Local(getenv) // never the server-only settings
 	if err != nil {
 		return p, true, err
 	}

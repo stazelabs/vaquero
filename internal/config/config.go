@@ -84,14 +84,51 @@ func Load() (Config, error) {
 	return FromEnv(os.Getenv)
 }
 
-// FromEnv builds a Config from get, which looks up one variable.
+// FromEnv builds the whole Config from get, which looks up one variable,
+// checking every setting: what vaquero serve reads.
 func FromEnv(get func(string) string) (Config, error) {
+	c, errs := local(get)
+	c.LogFormat = or(get("VQ_LOG_FORMAT"), "text")
+	c.LogLevel = or(get("VQ_LOG_LEVEL"), "info")
+	if c.LogFormat != "text" && c.LogFormat != "json" {
+		errs = append(errs, fmt.Errorf("VQ_LOG_FORMAT must be text or json, not %q", c.LogFormat))
+	}
+	switch strings.ToLower(c.LogLevel) {
+	case "debug", "info", "warn", "error":
+	default:
+		errs = append(errs, fmt.Errorf("VQ_LOG_LEVEL must be debug, info, warn or error, not %q", c.LogLevel))
+	}
+	if err := readBlobs(&c, get); err != nil {
+		errs = append(errs, err)
+	}
+	return c, errors.Join(errs...)
+}
+
+// Local reads and checks only what the command line needs to find the local
+// server and its data directory: VQ_MODE, VQ_ADDR and VQ_DATA_DIR (Mode,
+// Addr, DataDir, DBPath). The server-only settings (VQ_LOG_*, VQ_BLOB_*,
+// VQ_S3_*) are neither read nor checked, so a bad one stops only serve.
+func Local(get func(string) string) (Config, error) {
+	c, errs := local(get)
+	return c, errors.Join(errs...)
+}
+
+// LocalWithBlobs is Local plus the attachment storage settings (VQ_BLOB_*,
+// VQ_S3_*), checked: what vaquero import reads.
+func LocalWithBlobs(get func(string) string) (Config, error) {
+	c, errs := local(get)
+	if err := readBlobs(&c, get); err != nil {
+		errs = append(errs, err)
+	}
+	return c, errors.Join(errs...)
+}
+
+// local reads mode, address and data directory, with their problems.
+func local(get func(string) string) (Config, []error) {
 	c := Config{
-		Mode:      Mode(or(get("VQ_MODE"), string(ModeLocal))),
-		Addr:      or(get("VQ_ADDR"), "127.0.0.1:7878"),
-		DataDir:   get("VQ_DATA_DIR"),
-		LogFormat: or(get("VQ_LOG_FORMAT"), "text"),
-		LogLevel:  or(get("VQ_LOG_LEVEL"), "info"),
+		Mode:    Mode(or(get("VQ_MODE"), string(ModeLocal))),
+		Addr:    or(get("VQ_ADDR"), "127.0.0.1:7878"),
+		DataDir: get("VQ_DATA_DIR"),
 	}
 	var errs []error
 	switch c.Mode {
@@ -100,14 +137,6 @@ func FromEnv(get func(string) string) (Config, error) {
 		errs = append(errs, errors.New("VQ_MODE=hosted is not available yet; this build runs in local mode only"))
 	default:
 		errs = append(errs, fmt.Errorf("VQ_MODE must be local or hosted, not %q", c.Mode))
-	}
-	if c.LogFormat != "text" && c.LogFormat != "json" {
-		errs = append(errs, fmt.Errorf("VQ_LOG_FORMAT must be text or json, not %q", c.LogFormat))
-	}
-	switch strings.ToLower(c.LogLevel) {
-	case "debug", "info", "warn", "error":
-	default:
-		errs = append(errs, fmt.Errorf("VQ_LOG_LEVEL must be debug, info, warn or error, not %q", c.LogLevel))
 	}
 	if err := checkAddr(c.Mode, c.Addr); err != nil {
 		errs = append(errs, err)
@@ -120,10 +149,7 @@ func FromEnv(get func(string) string) (Config, error) {
 		c.DataDir = dir
 	}
 	c.DBPath = filepath.Join(c.DataDir, "vaquero.db")
-	if err := readBlobs(&c, get); err != nil {
-		errs = append(errs, err)
-	}
-	return c, errors.Join(errs...)
+	return c, errs
 }
 
 // readBlobs fills the blob store settings. The S3 variables are read only

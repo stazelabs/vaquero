@@ -102,6 +102,26 @@ func TestProfilesRoundTrip(t *testing.T) {
 	}
 }
 
+// R11: settings only the server reads (log level and format, attachment
+// storage) never stop the command line from finding the local server.
+func TestResolveLocalIgnoresServerOnlySettings(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	env := map[string]string{
+		"VQ_DATA_DIR": t.TempDir(), "VQ_ADDR": "127.0.0.1:9999",
+		"VQ_LOG_LEVEL": "verbose", "VQ_LOG_FORMAT": "xml", "VQ_BLOB_STORE": "s3",
+	}
+	get := func(k string) string { return env[k] }
+	p, local, err := client.Resolve("local", get)
+	if err != nil || !local || p.URL != "http://127.0.0.1:9999" {
+		t.Fatalf("%+v %v %v", p, local, err)
+	}
+	env["VQ_ADDR"] = "0.0.0.0:9999"
+	if _, _, err := client.Resolve("local", get); err == nil || !strings.Contains(err.Error(), "VQ_ADDR") {
+		t.Fatalf("a network address: %v", err)
+	}
+}
+
 func TestResolveLocalReadsTokenFile(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()

@@ -66,7 +66,7 @@ Text that starts with `-`, such as a markdown list, would read as a flag. Put `-
 
 ## Profiles
 
-`local` is built in: the server on this machine at `VQ_ADDR` (default `127.0.0.1:7878`), with its data in `VQ_DATA_DIR`, using the token Vaquero keeps there. Other profiles are saved in your user config directory (`vaquero/config.json`, readable only by you) with `vaquero profile add`. The profile used is the `--profile` flag, else `VAQUERO_PROFILE`, else the one chosen with `vaquero profile use`, else `local`.
+`local` is built in: the server on this machine at `VQ_ADDR` (default `127.0.0.1:7878`), with its data in `VQ_DATA_DIR`, using the token Vaquero keeps there. Commands read only `VQ_MODE`, `VQ_ADDR` and `VQ_DATA_DIR` (and `vaquero import` the attachment storage settings), so a setting only the server uses, such as `VQ_LOG_LEVEL`, is checked by `vaquero serve` alone. Other profiles are saved in your user config directory (`vaquero/config.json`, readable only by you) with `vaquero profile add`. The profile used is the `--profile` flag, else `VAQUERO_PROFILE`, else the one chosen with `vaquero profile use`, else `local`.
 
 ## Scripts and agents
 

@@ -197,3 +197,32 @@ func TestRestoreOverDamagedDatabase(t *testing.T) {
 		t.Fatalf("restored database:\n%s", out)
 	}
 }
+
+// R11: a bad server-only setting in the shell (log level, log format,
+// attachment storage) stops only the commands that use it: serve checks
+// them all, import the storage settings; every other command ignores them.
+func TestServerOnlySettingsStopOnlyServeAndImport(t *testing.T) {
+	startBackground(t)
+	t.Setenv("VQ_LOG_LEVEL", "verbose")
+	t.Setenv("VQ_LOG_FORMAT", "xml")
+	for _, args := range [][]string{{"projects"}, {"backup", "list"}, {"stop"}} {
+		if code, _, e := runCLI(t, args...); code != 0 {
+			t.Fatalf("%v: %d %q", args, code, e)
+		}
+	}
+	if code, _, e := runCLI(t, "serve"); code != 1 || !strings.Contains(e, "VQ_LOG_LEVEL") || !strings.Contains(e, "VQ_LOG_FORMAT") {
+		t.Fatalf("serve: %d %q", code, e)
+	}
+	t.Setenv("VQ_BLOB_STORE", "floppy")
+	if code, _, e := runCLI(t, "backup", "list"); code != 0 {
+		t.Fatalf("backup list: %d %q", code, e)
+	}
+	file := seededArchive(t, importHeader(t, 0), nil)
+	if code, _, e := runCLI(t, "import", file); code != 1 || !strings.Contains(e, "VQ_BLOB_STORE") || strings.Contains(e, "VQ_LOG") {
+		t.Fatalf("import with bad storage: %d %q", code, e)
+	}
+	t.Setenv("VQ_BLOB_STORE", "")
+	if code, _, e := runCLI(t, "import", file); code != 0 {
+		t.Fatalf("import: %d %q", code, e)
+	}
+}

@@ -44,7 +44,9 @@ func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if err != nil {
 		return c.finish(err)
 	}
-	cfg, err := localConfig()
+	// The data directory and the attachment storage it fills, not the
+	// server's log settings.
+	cfg, err := config.LocalWithBlobs(os.Getenv)
 	if err != nil {
 		return c.finish(err)
 	}

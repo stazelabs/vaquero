@@ -204,3 +204,43 @@ func TestSecretIsRedactedEverywhere(t *testing.T) {
 		}
 	}
 }
+
+// R11: the CLI reads only the settings it uses. Local reads mode, address
+// and data directory, refusing a bad one of those and ignoring the
+// server-only log and blob settings; LocalWithBlobs (import) adds the blob
+// settings and refuses a bad one; FromEnv (serve) checks everything.
+func TestLocalReadsOnlyWhatTheCLIUses(t *testing.T) {
+	serverOnly := map[string]string{
+		"HOME": "/h", "VQ_DATA_DIR": "/data", "VQ_ADDR": "127.0.0.1:7999",
+		"VQ_LOG_LEVEL": "verbose", "VQ_LOG_FORMAT": "xml", "VQ_BLOB_STORE": "s3",
+	}
+	c, err := Local(env(serverOnly))
+	if err != nil {
+		t.Fatalf("Local: %v", err)
+	}
+	if c.Mode != ModeLocal || c.Addr != "127.0.0.1:7999" || c.DataDir != "/data" || c.DBPath != filepath.Join("/data", "vaquero.db") {
+		t.Fatalf("%+v", c)
+	}
+	if _, err := Local(env(map[string]string{"HOME": "/h", "VQ_ADDR": "0.0.0.0:7878"})); err == nil || !strings.Contains(err.Error(), "VQ_ADDR") {
+		t.Fatalf("Local with a network address: %v", err)
+	}
+	if _, err := Local(env(map[string]string{"HOME": "/h", "VQ_MODE": "hosted"})); err == nil {
+		t.Fatal("Local accepted hosted mode")
+	}
+
+	_, err = LocalWithBlobs(env(serverOnly))
+	if err == nil || !strings.Contains(err.Error(), "VQ_S3_ENDPOINT") || strings.Contains(err.Error(), "VQ_LOG") {
+		t.Fatalf("LocalWithBlobs: %v", err)
+	}
+	logOnly := map[string]string{"HOME": "/h", "VQ_DATA_DIR": "/data", "VQ_LOG_LEVEL": "verbose", "VQ_BLOB_STORE": "dir"}
+	if c, err := LocalWithBlobs(env(logOnly)); err != nil || c.BlobBackend != "dir" || c.BlobDir != filepath.Join("/data", "attachments") {
+		t.Fatalf("LocalWithBlobs: %+v %v", c, err)
+	}
+
+	_, err = FromEnv(env(serverOnly))
+	for _, name := range []string{"VQ_LOG_LEVEL", "VQ_LOG_FORMAT", "VQ_S3_ENDPOINT"} {
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("FromEnv doesn't name %s: %v", name, err)
+		}
+	}
+}
