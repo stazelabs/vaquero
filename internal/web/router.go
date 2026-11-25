@@ -20,7 +20,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Use(
 		middleware.RequestID,
 		middleware.Recover(d.Logger),
-		middleware.HostCheck(d.Cfg.AllowedHosts()),
+		middleware.HostCheck(d.Cfg.AllowedHosts(), d.Logger),
 		middleware.Logger(d.Logger),
 		middleware.SecurityHeaders(false),
 		middleware.CSP,
