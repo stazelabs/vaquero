@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // CountSeqReads counts the newest-event-sequence reads the page middleware
@@ -18,4 +19,12 @@ func CountSeqReads(t testing.TB) *atomic.Int32 {
 	}
 	t.Cleanup(func() { readEventSeq = saved })
 	return &n
+}
+
+// SetStreamPing shortens the stream's keep-alive interval for one test.
+func SetStreamPing(t testing.TB, d time.Duration) {
+	t.Helper()
+	saved := streamPing
+	streamPing = d
+	t.Cleanup(func() { streamPing = saved })
 }

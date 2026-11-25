@@ -200,3 +200,30 @@ func TestFilterChipsAccessible(t *testing.T) {
 		lacks(t, page, "aria-pressed", ">École</a>")
 	}
 }
+
+// A drop from a stale page names neighbours that are gone, in another
+// project, or in another column: they are ignored and the card goes to the
+// end of the column.
+func TestMoveWithStaleNeighbourKeys(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	ticket(t, e, p, core.TicketInput{Title: "one"})
+	ticket(t, e, p, core.TicketInput{Title: "two"})
+	other, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket(t, e, other, core.TicketInput{Title: "theirs"})
+	ip := statusID(t, e, "In progress")
+	c := e.Client()
+	for _, nb := range []string{"VAQ-99", "garbage", "OTH-1", "VAQ-2"} { // gone, unparsable, other project, other column
+		c.PostHX("/t/VAQ-1/move", url.Values{"status": {statusID(t, e, "Todo")}})
+		r := c.PostHX("/t/VAQ-1/move", url.Values{"status": {ip}, "before": {nb}, "after": {nb}})
+		if r.Status != 200 || r.Header.Get("HX-Refresh") != "" || !strings.HasPrefix(strings.TrimSpace(r.Body), `<div id="board"`) {
+			t.Fatalf("%s: %d %v", nb, r.Status, r.Header)
+		}
+		if tk, _, _ := e.Deps.Core.ResolveTicket(bg, e.Deps.R, core.TicketKey{Project: "VAQ", Number: 1}); tk.StatusID != ip {
+			t.Fatalf("%s: not moved", nb)
+		}
+	}
+}

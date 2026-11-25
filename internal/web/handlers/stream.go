@@ -11,7 +11,7 @@ import (
 )
 
 // streamPing is how long the stream stays silent before a keep-alive comment.
-const streamPing = 25 * time.Second
+var streamPing = 25 * time.Second
 
 // Stream is GET /events/stream: server-sent events announcing that the
 // tracker changed. Every Deps.StreamPoll it reads the newest event sequence

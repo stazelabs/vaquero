@@ -273,3 +273,12 @@ func TestFormSequenceReadOnlyOnRerender(t *testing.T) {
 		t.Fatalf("a page read the sequence %d times, want 1", n)
 	}
 }
+
+// A quiet stream sends a keep-alive comment, so proxies and browsers don't
+// drop it.
+func TestStreamPingsWhenQuiet(t *testing.T) {
+	handlers.SetStreamPing(t, 100*time.Millisecond)
+	e := webtest.New(t)
+	lines, _ := openStream(t, e.Server.URL)
+	waitFor(t, lines, ": ping", 2*time.Second)
+}

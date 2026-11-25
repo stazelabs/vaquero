@@ -197,3 +197,78 @@ func TestMoveTicketStatusLookupFailureIsNotAFieldError(t *testing.T) {
 		t.Fatalf("a database failure was reported as a field error: %v", err)
 	}
 }
+
+// A drop at the top of another column puts the card first there and records
+// a status change.
+func TestDropAtTopOfAnotherColumn(t *testing.T) {
+	c, d, f := newFixture(t)
+	ip := f.Statuses[2].ID
+	a, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "A", StatusID: ip})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "B", StatusID: ip}); err != nil {
+		t.Fatal(err)
+	}
+	// Nothing above it, A below it.
+	moved, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, ip, "", a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := column(t, d, ip); !eq(got, []string{"First", "A", "B"}) {
+		t.Fatalf("%v", got)
+	}
+	if moved.StatusID != ip || lastKind(t, c) != core.EvTicketUpdated {
+		t.Fatalf("status %s, last event %s", moved.StatusID, lastKind(t, c))
+	}
+	if got := column(t, d, f.T2.StatusID); !eq(got, []string{"Second"}) {
+		t.Fatalf("source column %v", got)
+	}
+}
+
+// Inserting in the middle of a column whose neighbours are too close to
+// split renumbers the column first, and the order holds.
+func TestMidColumnInsertRenumbersATightGap(t *testing.T) {
+	c, d, f := newFixture(t)
+	ip := f.Statuses[2].ID
+	var ids []string
+	for _, title := range []string{"A", "B", "C"} {
+		tk, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: title, StatusID: ip})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, tk.ID)
+	}
+	// B sits a hair after A.
+	if _, err := c.DB.Exec(`UPDATE tickets SET position = 1 WHERE id = ?`, ids[0]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Exec(`UPDATE tickets SET position = 1.0000000001 WHERE id = ?`, ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.DB.Exec(`UPDATE tickets SET position = 5 WHERE id = ?`, ids[2]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MoveTicket(bg, f.Owner.ID, f.T1.ID, ip, ids[0], ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := column(t, d, ip); !eq(got, []string{"A", "First", "B", "C"}) {
+		t.Fatalf("%v", got)
+	}
+	rows, err := d.R.Query(`SELECT position FROM tickets WHERE status_id = ? ORDER BY position`, ip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	prev := -1.0
+	for rows.Next() {
+		var p float64
+		if err := rows.Scan(&p); err != nil {
+			t.Fatal(err)
+		}
+		if p-prev < 0.5 {
+			t.Errorf("positions %v then %v: still tight", prev, p)
+		}
+		prev = p
+	}
+}
