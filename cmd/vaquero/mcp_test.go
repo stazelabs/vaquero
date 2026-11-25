@@ -167,3 +167,34 @@ func TestMCPBridgeRestartsLocalServer(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 }
+
+// VAQ-65: a line over the limit gets a JSON-RPC error (id null) and the
+// bridge keeps reading; the line after it is answered.
+func TestMCPBridgeOversizedLine(t *testing.T) {
+	cliEnv(t)
+	big := `{"jsonrpc":"2.0","id":9,"method":"x","params":"` + strings.Repeat("a", mcpLineMax+10) + `"}`
+	in := initLine + "\n" + big + "\n" + `{"jsonrpc":"2.0","id":8,"method":"tools/list"}` + "\n"
+	code, out, errOut := bridge(t, strings.NewReader(in))
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	as := answers(t, out)
+	if len(as) != 3 || as[1].Error == nil || string(as[1].ID) != "null" || !strings.Contains(as[1].Error.Message, "too long") ||
+		string(as[2].ID) != "8" || as[2].Error != nil {
+		t.Fatalf("%.300s", out)
+	}
+}
+
+// VAQ-65: a request still in flight when stdin closes is answered first.
+func TestMCPBridgeAnswersBeforeExit(t *testing.T) {
+	cliEnv(t)
+	r, w := io.Pipe()
+	go func() { _, _ = w.Write([]byte(initLine)); w.Close() }() // no trailing newline: EOF right after
+	code, out, errOut := bridge(t, r)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if as := answers(t, out); len(as) != 1 || string(as[0].ID) != "1" {
+		t.Fatalf("%s", out)
+	}
+}

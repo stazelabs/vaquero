@@ -53,21 +53,47 @@ func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 		url: strings.TrimRight(c.client.BaseURL, "/") + "/mcp", token: c.client.Token, agent: c.client.Agent,
 		http: &http.Client{Timeout: 2 * time.Minute}, out: stdout, log: stderr, restart: c.restartLocal,
 	}
-	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 64<<10), mcpLineMax)
-	for sc.Scan() {
-		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 {
+	rd := bufio.NewReaderSize(in, 64<<10)
+	for {
+		line, tooLong, err := readMCPLine(rd)
+		if tooLong {
+			fmt.Fprintf(stderr, "vaquero mcp: a message over %d MB was skipped\n", mcpLineMax>>20)
+			b.fail(nil, -32600, fmt.Sprintf("The message is too long: the limit is %d MB.", mcpLineMax>>20))
+		} else if line = bytes.TrimSpace(line); len(line) > 0 {
+			// Messages are forwarded one at a time, so one in flight when
+			// input ends is answered before this returns.
+			b.forward(ctx, line)
+		}
+		if err == io.EOF {
+			return exitOK
+		}
+		if err != nil {
+			fmt.Fprintf(stderr, "vaquero mcp: reading standard input: %v\n", err)
+			return exitFail
+		}
+	}
+}
+
+// readMCPLine reads one line. A line over mcpLineMax is read to its end and
+// dropped (tooLong), so the next one can be read. err is io.EOF when the
+// input ended (line may still hold a last line with no newline).
+func readMCPLine(rd *bufio.Reader) (line []byte, tooLong bool, err error) {
+	for {
+		part, perr := rd.ReadSlice('\n')
+		if !tooLong {
+			if len(line)+len(part) > mcpLineMax {
+				tooLong, line = true, nil
+			} else {
+				line = append(line, part...)
+			}
+		}
+		if perr == bufio.ErrBufferFull {
 			continue
 		}
-		b.forward(ctx, line)
+		return line, tooLong, perr
 	}
-	if err := sc.Err(); err != nil {
-		fmt.Fprintf(stderr, "vaquero mcp: reading standard input: %v\n", err)
-		return exitFail
-	}
-	return exitOK
 }
+
 
 // mcpBridge posts messages to /mcp and writes the answers.
 type mcpBridge struct {
