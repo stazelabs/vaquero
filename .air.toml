@@ -3,7 +3,7 @@ tmp_dir = "tmp"
 
 [build]
   pre_cmd   = ["make templ", "make css"]
-  cmd       = "CGO_ENABLED=0 go build -o bin/vaquero ./cmd/vaquero"
+  cmd       = "CGO_ENABLED=0 go build -ldflags \"$VQ_LDFLAGS\" -o bin/vaquero ./cmd/vaquero"
   bin       = "bin/vaquero"
   args_bin  = ["serve"]
   include_ext = ["go", "templ", "css", "js", "sql"]

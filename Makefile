@@ -60,7 +60,9 @@ dev: ## Run the server with hot reload on 127.0.0.1:7879 (logs to tmp/dev.log)
 	@# plain tcp: match would also signal clients (browsers) holding a connection.
 	@lsof -ti tcp:7879 -sTCP:LISTEN | xargs kill 2>/dev/null || true
 	@mkdir -p tmp
-	air 2>&1 | tee tmp/dev.log
+	@# .air.toml builds with VQ_LDFLAGS, the same -X values as make build, so the
+	@# footer shows the commit.
+	VQ_LDFLAGS="$(LDFLAGS)" air 2>&1 | tee tmp/dev.log
 
 build: gen ## Generate, then build bin/vaquero for this machine
 	@mkdir -p bin
