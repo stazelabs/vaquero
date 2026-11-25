@@ -66,7 +66,15 @@ type (
 	}
 
 	updateArgs struct {
-		Key        string   `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Key string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		fieldArgs
+		Version int64  `json:"version,omitempty" jsonschema:"The version you read; the update is refused if the ticket changed since."`
+		View    string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
+	}
+
+	// fieldArgs are a ticket's fields to change, in update_ticket and in a
+	// bulk_update item's update.
+	fieldArgs struct {
 		Title      *string  `json:"title,omitempty" jsonschema:"A new title."`
 		Body       *string  `json:"body,omitempty" jsonschema:"A new description, in Markdown."`
 		Status     *string  `json:"status,omitempty" jsonschema:"A status name."`
@@ -77,8 +85,24 @@ type (
 		Tags       []string `json:"tags,omitempty" jsonschema:"Replace every tag with these."`
 		AddTags    []string `json:"add_tags,omitempty" jsonschema:"Tags to add."`
 		RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"Tags to remove."`
-		Version    int64    `json:"version,omitempty" jsonschema:"The version you read; the update is refused if the ticket changed since."`
-		View       string   `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
+	}
+
+	bulkArgs struct {
+		Items []bulkItemArgs `json:"items" jsonschema:"1 to 100 items, run in order; each stands alone, so one refused item doesn't stop the others."`
+	}
+
+	bulkItemArgs struct {
+		Key     string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
+		Version int64      `json:"version,omitempty" jsonschema:"The version you read; the item's update is refused if the ticket changed since. Needs an update."`
+		Claim   *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket, or renew your claim on it: {} for 15 minutes."`
+		Update  *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
+		Comment *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
+		Move    string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column."`
+		Release bool       `json:"release,omitempty" jsonschema:"Give up your claim last."`
+	}
+
+	claimArgs struct {
+		LeaseMinutes int64 `json:"lease_minutes,omitempty" jsonschema:"How long to hold it, 1 to 120 minutes. Leave it out for 15."`
 	}
 
 	moveArgs struct {
@@ -113,7 +137,7 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
+	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
 	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "search", "update_ticket",
 }
 
@@ -203,24 +227,43 @@ func addTools(s *mcp.Server, c *caller) {
 	add(s, c, "update_ticket", "Update a ticket", false,
 		"Change only the fields given. Pass the version you read to have the change refused if someone else changed the ticket since.",
 		func(in updateArgs) request {
-			b := map[string]any{}
-			for k, v := range map[string]*string{"title": in.Title, "body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent} {
-				if v != nil {
-					b[k] = *v
-				}
-			}
-			if in.Priority != nil {
-				b["priority"] = *in.Priority
-			}
-			for k, v := range map[string][]string{"tags": in.Tags, "add_tags": in.AddTags, "remove_tags": in.RemoveTags} {
-				if v != nil {
-					b[k] = v
-				}
-			}
+			b := in.body()
 			if in.Version != 0 {
 				b["version"] = in.Version
 			}
 			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
+		})
+	add(s, c, "bulk_update", "Update tickets in bulk", false,
+		"Work several tickets in one call, up to 100. Each item names a ticket and any of claim, update, comment, move and release, which run in that order; "+
+			"the first that fails skips the rest of that item. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
+		func(in bulkArgs) request {
+			items := make([]map[string]any, len(in.Items))
+			for i, it := range in.Items {
+				b := map[string]any{"key": it.Key}
+				if it.Version != 0 {
+					b["version"] = it.Version
+				}
+				if it.Claim != nil {
+					b["claim"] = leaseBody(it.Claim.LeaseMinutes)
+					if b["claim"] == nil {
+						b["claim"] = map[string]any{}
+					}
+				}
+				if it.Update != nil {
+					b["update"] = it.Update.body()
+				}
+				if it.Comment != nil {
+					b["comment"] = *it.Comment
+				}
+				if it.Move != "" {
+					b["move"] = it.Move
+				}
+				if it.Release {
+					b["release"] = true
+				}
+				items[i] = b
+			}
+			return post("/tickets/bulk", map[string]any{"items": items})
 		})
 	add(s, c, "move_ticket", "Move a ticket", false,
 		"Move a ticket to another status, at the end of its column.",
@@ -250,6 +293,26 @@ func addTools(s *mcp.Server, c *caller) {
 	add(s, c, "release_ticket", "Release a claim", false,
 		"Give up your claim on a ticket, leaving its status and assignee as they are.",
 		func(in releaseArgs) request { return viewed(post(ticketPath(in.Key, "/release"), nil), in.View) })
+}
+
+// body is the fields as the API's ticket request names them; only those
+// given are sent.
+func (f fieldArgs) body() map[string]any {
+	b := map[string]any{}
+	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent} {
+		if v != nil {
+			b[k] = *v
+		}
+	}
+	if f.Priority != nil {
+		b["priority"] = *f.Priority
+	}
+	for k, v := range map[string][]string{"tags": f.Tags, "add_tags": f.AddTags, "remove_tags": f.RemoveTags} {
+		if v != nil {
+			b[k] = v
+		}
+	}
+	return b
 }
 
 func set(q url.Values, k, v string) {

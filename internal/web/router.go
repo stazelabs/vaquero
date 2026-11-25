@@ -136,6 +136,7 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.Patch("/projects/{key}", handlers.APIProjectUpdate(d))
 	r.Post("/projects/{key}/key", handlers.APIProjectKey(d))
 	r.Post("/projects/{key}/tickets", handlers.APITicketCreate(d))
+	r.Post("/tickets/bulk", handlers.APITicketsBulk(d))
 	r.Patch("/tickets/{ticket}", handlers.APITicketPatch(d))
 	r.Post("/tickets/{ticket}/move", handlers.APITicketMove(d))
 	r.Get("/ready", handlers.APIReady(d))

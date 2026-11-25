@@ -70,6 +70,25 @@ type TicketBrief struct {
 	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
 }
 
+// BulkResult is one item's outcome in POST /api/v1/tickets/bulk: the
+// ticket's status and version as the item left it (absent when the key
+// names no ticket), and on a failure the refusal and the actions it
+// skipped.
+type BulkResult struct {
+	Key     string   `json:"key"`
+	OK      bool     `json:"ok"`
+	Status  string   `json:"status,omitempty"`
+	Version int64    `json:"version,omitempty"`
+	Error   *Failure `json:"error,omitempty"`
+	Skipped []string `json:"skipped,omitempty"`
+}
+
+// BulkAnswer is POST /api/v1/tickets/bulk's answer, one result per item
+// in request order.
+type BulkAnswer struct {
+	Items []BulkResult `json:"items"`
+}
+
 type Link struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`      // blocks, relates, duplicates

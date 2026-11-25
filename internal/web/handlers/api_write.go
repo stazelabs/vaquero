@@ -118,25 +118,40 @@ func (n *names) ticket(field, key string) string {
 	return t.ID
 }
 
-// fail answers the lookups' failure, if any: a database error as a 500,
-// names that match nothing as a 422 with a message per field.
-func (n *names) fail(w http.ResponseWriter, r *http.Request) bool {
+// failure is the lookups' failure, if any: a database error as a 500
+// (n.err is its cause), names that match nothing as a 422 with a message
+// per field.
+func (n *names) failure() *api.Failure {
 	if n.err != nil {
-		apiFail(w, r, n.d, api.Internal(), n.err)
-		return true
+		return api.Internal()
 	}
 	if len(n.fields) == 0 {
-		return false
+		return nil
 	}
-	msg := "Some names don't match anything."
-	if len(n.fields) == 1 {
-		for _, m := range n.fields {
+	return invalidFields(n.fields, "Some names don't match anything.")
+}
+
+// invalidFields is a 422 naming fields: the one message when there is
+// one, else several.
+func invalidFields(fields map[string]string, several string) *api.Failure {
+	msg := several
+	if len(fields) == 1 {
+		for _, m := range fields {
 			msg = m
 		}
 	}
 	f := api.Fail(http.StatusUnprocessableEntity, "invalid", msg)
-	f.Fields = n.fields
-	api.WriteFailure(w, f)
+	f.Fields = fields
+	return f
+}
+
+// fail answers the lookups' failure, if any.
+func (n *names) fail(w http.ResponseWriter, r *http.Request) bool {
+	f := n.failure()
+	if f == nil {
+		return false
+	}
+	apiFail(w, r, n.d, f, n.err)
 	return true
 }
 

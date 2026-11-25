@@ -56,6 +56,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags"}`; only `title` is required |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
+| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
@@ -87,6 +88,33 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 | `POST /api/v1/tickets/{ticket}/claim` | `{"lease_minutes"}`, optional: 1 to 120, default 15. Assigns the ticket to you and moves a backlog or todo ticket to the first in-progress status; claiming your own claim again renews it |
 | `POST /api/v1/tickets/{ticket}/heartbeat` | `{"lease_minutes"}`, optional: extends your claim from now |
 | `POST /api/v1/tickets/{ticket}/release` | Nothing; gives up your claim, keeping the status and assignee |
+
+## Bulk changes
+
+`POST /api/v1/tickets/bulk` works many tickets in one request, so an agent booking a batch makes one call instead of one per action:
+
+    {"items": [
+      {"key": "VAQ-9", "claim": {"lease_minutes": 120}, "comment": "Taking this."},
+      {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "release": true}
+    ]}
+
+- An item names a ticket by `key` and any of `claim` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column) and `release` (`true`).
+- An item's actions run in that order: claim, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
+- An item's `version` is checked by its update, as a `PATCH` checks it. A claim in the same item changes the version, which is allowed for: send the version you read.
+- Items stand alone and run in request order. One refused item never stops the others, and the same key may appear in more than one item.
+- Each action is the same change its own endpoint makes, recorded in the ticket's history the same way. A claim on your own claim renews it, so a bulk claim is also a bulk renewal.
+- At most 100 items, within the 1 MiB body limit. A call with no items, more than 100, or an item with no `key` or nothing to do is `422` and changes nothing.
+
+The answer is `200` with one result per item, in request order:
+
+    {"items": [
+      {"key": "VAQ-9", "ok": true, "status": "In progress", "version": 4},
+      {"key": "VAQ-10", "ok": false, "status": "Todo", "version": 5,
+       "error": {"code": "conflict", "message": "VAQ-10 changed since you read it."},
+       "skipped": ["move", "release"]}
+    ]}
+
+`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run.
 
 ## Errors
 
