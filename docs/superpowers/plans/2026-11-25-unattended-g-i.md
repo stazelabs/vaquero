@@ -54,3 +54,13 @@
 **Tickets:** VAQ-98, VAQ-108, VAQ-113, VAQ-61, VAQ-78, VAQ-87 (rulings R7–R9). Read each full ticket; several list multiple items.
 
 - [ ] Test-first per item where there's behaviour; commit per ticket. Gate and `make ci`.
+
+### Task 4: VAQ-117, bulk operations and short answers (added by the owner, 2026-11-25)
+
+**Ticket:** VAQ-117. Read it and its decision comment with `vaquero ticket show VAQ-117 --agent claude`. The design there is the spec. Rulings:
+
+- **R10:** the short answer is `?view=summary` on the REST write endpoints (move, release, claim, heartbeat, ticket update, comment create) and a `view` argument (`"summary"`) on the matching MCP tools. A summary answer has key, status, category, version, assignee and claim (claimed_by, claim_expires_at), plus id for a comment. The default stays the full answer (additive).
+- **R11:** `POST /api/v1/tickets/bulk` and the MCP tool `bulk_update`, exactly as the ticket's decision comment says: items independent; the actions in each item run in a fixed order (claim, update, comment, move, release), with the first failure skipping the rest of that item, reported as `skipped`; at most 100 items (more is a 422); one result per item in request order, `{key, ok, status, version, error?, skipped?}`; and every change a normal core operation with its own event. The call adds no event of its own. Item versions apply to that item's update.
+- Documentation: lines in the api and mcp help articles, `TestMCPToolList` and `ToolNames` grow by one (15 tools), and CLAUDE.md through the controller's patch.
+
+- [ ] Test-first: per-item independence (one refused item, others applied), skip within an item after a failed claim, over 100 items refused, version conflict on one item, the summary view on each write, MCP `bulk_update` equal to the REST answer, one event per change and none for the call. Commit, gate, then `make ci`.
