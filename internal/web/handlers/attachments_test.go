@@ -185,7 +185,7 @@ func TestAttachmentURLRoundTrip(t *testing.T) {
 		}
 		for _, wrong := range []string{"/attachments/" + u.ID + "/wrong.png", "/attachments/" + strings.ToLower(u.ID) + "/" + tc.escaped, "/attachments/" + u.ID + "/" + url.PathEscape("a/b")} {
 			r := c.Get(wrong)
-			if r.Status != http.StatusMovedPermanently || r.Location != u.URL {
+			if r.Status != http.StatusFound || r.Location != u.URL {
 				t.Fatalf("%q: %s answered %d %q", tc.name, wrong, r.Status, r.Location)
 			}
 			assertAttachmentHeaders(t, r)

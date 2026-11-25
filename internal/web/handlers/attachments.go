@@ -270,7 +270,7 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 		}
 		if id != a.ID || name != a.Name {
 			h.Set("Location", attachmentURL(a))
-			w.WriteHeader(http.StatusMovedPermanently)
+			w.WriteHeader(http.StatusFound)
 			return
 		}
 		switch err := serveBytes(w, r, d, a); {
