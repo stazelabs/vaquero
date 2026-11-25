@@ -44,7 +44,7 @@ func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 		return c.finish(err)
 	}
 	if ag := strings.TrimSpace(c.client.Agent); ag != "" && (me.Actor.Kind != "agent" || me.Actor.Name != ag) {
-		fmt.Fprintln(stderr, "vaquero mcp: --agent is ignored: this profile's token isn't the local owner's")
+		fmt.Fprintln(stderr, "vaquero mcp: the agent name is ignored: this profile's token isn't the local owner's")
 	}
 	fmt.Fprintf(stderr, "vaquero mcp: connected to %s as %s\n", c.client.BaseURL, me.Actor.Name)
 

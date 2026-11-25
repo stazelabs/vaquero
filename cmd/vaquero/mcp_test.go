@@ -216,7 +216,7 @@ func TestMCPBridgeWarnsWhenAgentIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "bot", "--agent", "builder")
-	if code != 0 || strings.Count(errOut, "--agent is ignored: this profile's token isn't the local owner's") != 1 || len(answers(t, out)) != 1 {
+	if code != 0 || strings.Count(errOut, "the agent name is ignored: this profile's token isn't the local owner's") != 1 || len(answers(t, out)) != 1 {
 		t.Fatalf("exit %d\nerr %s\nout %s", code, errOut, out)
 	}
 	// With the owner's token the agent applies, and nothing is warned.
