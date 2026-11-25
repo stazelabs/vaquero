@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bytes"
+	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -173,5 +176,21 @@ func TestLogLevelValidated(t *testing.T) {
 	_, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_LOG_LEVEL": "verbose"}))
 	if err == nil || !strings.Contains(err.Error(), "VQ_LOG_LEVEL") {
 		t.Fatalf("%v", err)
+	}
+}
+
+func TestSecretIsRedactedEverywhere(t *testing.T) {
+	c := Config{S3SecretAccessKey: Secret("hunter2-secret")}
+	var buf bytes.Buffer
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("cfg", "cfg", c, "key", c.S3SecretAccessKey)
+	outs := []string{
+		fmt.Sprintf("%v", c), fmt.Sprintf("%+v", c), fmt.Sprintf("%#v", c),
+		fmt.Sprintf("%s", c.S3SecretAccessKey), fmt.Sprintf("%x", c.S3SecretAccessKey), fmt.Sprintf("%v", c.S3SecretAccessKey),
+		buf.String(),
+	}
+	for _, o := range outs {
+		if strings.Contains(o, "hunter2") || strings.Contains(o, "68756e") {
+			t.Errorf("secret leaked: %s", o)
+		}
 	}
 }

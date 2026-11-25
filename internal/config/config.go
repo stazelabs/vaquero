@@ -7,6 +7,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -50,9 +51,27 @@ type Config struct {
 	S3Endpoint        string
 	S3Bucket          string
 	S3AccessKeyID     string
-	S3SecretAccessKey []byte
+	S3SecretAccessKey Secret
 	S3Region          string
 }
+
+// Secret is a credential that prints as "[redacted]" under every fmt verb,
+// %#v and slog; read the value with string(s).
+type Secret []byte
+
+const redacted = "[redacted]"
+
+// String implements fmt.Stringer.
+func (Secret) String() string { return redacted }
+
+// GoString implements fmt.GoStringer, for %#v.
+func (Secret) GoString() string { return redacted }
+
+// Format implements fmt.Formatter so no verb (%x, %q, %v) shows the bytes.
+func (Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(redacted)) }
+
+// LogValue implements slog.LogValuer.
+func (Secret) LogValue() slog.Value { return slog.StringValue(redacted) }
 
 // Load reads .env.local when present (best effort, for development), then
 // the process environment.
@@ -124,7 +143,7 @@ func readBlobs(c *Config, get func(string) string) error {
 	c.S3Endpoint = strings.TrimSpace(get("VQ_S3_ENDPOINT"))
 	c.S3Bucket = strings.TrimSpace(get("VQ_S3_BUCKET"))
 	c.S3AccessKeyID = strings.TrimSpace(get("VQ_S3_ACCESS_KEY_ID"))
-	c.S3SecretAccessKey = []byte(strings.TrimSpace(get("VQ_S3_SECRET_ACCESS_KEY")))
+	c.S3SecretAccessKey = Secret(strings.TrimSpace(get("VQ_S3_SECRET_ACCESS_KEY")))
 	c.S3Region = or(strings.TrimSpace(get("VQ_S3_REGION")), "auto")
 	var missing []string
 	for _, f := range []struct {
