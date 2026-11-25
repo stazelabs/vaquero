@@ -211,13 +211,10 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 		_ = os.Remove(tmp)
 		return err
 	}
-	switch {
-	case aside == "":
+	if line := savedLine(cfg, aside); line != "" {
+		fmt.Fprintf(c.stdout, "Restored %s. %s\n", name, line)
+	} else {
 		fmt.Fprintf(c.stdout, "Restored %s.\n", name)
-	case filepath.Dir(aside) == dir:
-		fmt.Fprintf(c.stdout, "Restored %s. The database before it is saved as %s.\n", name, filepath.Base(aside))
-	default:
-		fmt.Fprintf(c.stdout, "Restored %s. The database before it couldn't be copied, so it was moved to %s.\n", name, aside)
 	}
 	return nil
 }
@@ -228,9 +225,11 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 // copied (damaged, which is often why a restore is wanted, or too big for
 // the free space), moved aside whole (aside is where it went). With no
 // current database there is nothing to save and aside is "". On an error,
-// newPath is still the caller's to remove.
+// newPath is still the caller's to remove; once the current database has
+// been saved or moved, the error is a *swapFailed saying where it is.
 func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside string, err error) {
 	dir := filepath.Join(cfg.DataDir, "backups")
+	moved := false
 	if _, err := os.Stat(cfg.DBPath); err == nil {
 		name, err := snapshotFile(ctx, cfg.DBPath, dir)
 		if err == nil {
@@ -241,25 +240,87 @@ func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside
 				what = "import"
 			}
 			aside = cfg.DBPath + ".before-" + what + "-" + timefmt.FileStamp(localNow())
-			for _, ext := range []string{"", "-wal", "-shm"} {
-				if err := os.Rename(cfg.DBPath+ext, aside+ext); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return "", fmt.Errorf("couldn't copy or move aside the current database, so nothing changed: %w", err)
-				}
+			if err := moveDatabase(cfg.DBPath, aside); err != nil {
+				return "", err
 			}
+			moved = true
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
+	fail := func(err error) (string, error) {
+		if aside == "" {
+			return "", err
+		}
+		return aside, &swapFailed{err: err, aside: aside, dbPath: cfg.DBPath, moved: moved}
+	}
 	// A stale WAL would be replayed onto the new file.
 	for _, ext := range []string{"-wal", "-shm"} {
 		if err := os.Remove(cfg.DBPath + ext); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return aside, err
+			return fail(err)
 		}
 	}
 	if err := os.Rename(newPath, cfg.DBPath); err != nil {
-		return aside, err
+		return fail(err)
 	}
 	return aside, nil
+}
+
+// moveDatabase renames the database at from, with its WAL and shared
+// memory, to to. If one rename fails, those done are undone, so on an error
+// the database is where it was; when even that fails, the error says where
+// it is.
+func moveDatabase(from, to string) error {
+	var done []string
+	for _, ext := range []string{"", "-wal", "-shm"} {
+		err := os.Rename(from+ext, to+ext)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err == nil {
+			done = append(done, ext)
+			continue
+		}
+		for _, d := range done {
+			if uerr := os.Rename(to+d, from+d); uerr != nil {
+				return &swapFailed{err: err, aside: to, dbPath: from, moved: true}
+			}
+		}
+		return fmt.Errorf("couldn't copy or move aside the current database, so nothing changed: %w", err)
+	}
+	return nil
+}
+
+// swapFailed is a swap that failed after the current database was saved
+// or moved aside: the database may no longer be where it was, so the
+// message says where it is and how to put it back.
+type swapFailed struct {
+	err           error
+	aside, dbPath string
+	moved         bool // aside is the moved file, not a snapshot
+}
+
+func (e *swapFailed) Error() string {
+	msg := "The new database couldn't be put in place (" + e.err.Error() + "). "
+	if e.moved {
+		return msg + "The database before it is at " + e.aside + "; move it back to " + e.dbPath + " to undo."
+	}
+	name := filepath.Base(e.aside)
+	return msg + "The database before it is saved as " + name + "; vaquero backup restore " + name + " puts it back."
+}
+
+func (e *swapFailed) Unwrap() error { return e.err }
+
+// savedLine is the sentence saying where swapDatabase put the database
+// before it, or "" when there was none.
+func savedLine(cfg config.Config, aside string) string {
+	switch {
+	case aside == "":
+		return ""
+	case filepath.Dir(aside) == filepath.Join(cfg.DataDir, "backups"):
+		return "The database before it is saved as " + filepath.Base(aside) + "."
+	}
+	return "The database before it couldn't be copied, so it was moved to " + aside + "."
 }
 
 // snapshotFile saves the database at path as a snapshot in dir and returns

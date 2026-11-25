@@ -23,40 +23,40 @@ import (
 const usage = `usage: vaquero <command>
 
 server:
-  serve      run the server (the commands below start it when needed)
-  version    print the release, commit and build date
-  stop       stop the background server
-  backup     list the database snapshots, or restore one
-  export     write everything to a .tar.gz (vaquero export FILE)
-  import     restore an export into an empty instance (vaquero import FILE)
+  serve        run the server (the commands below start it when needed)
+  version      print the release, commit and build date
+  stop         stop the background server
+  backup       list the database snapshots, or restore one
+  export       write everything to a .tar.gz (vaquero export FILE)
+  import       restore an export into an empty instance (vaquero import FILE)
 
 tickets:
-  projects   list projects
-  project    create, show, edit or re-key a project
-  tickets    list a project's tickets
-  ticket     show, new, edit or move a ticket
-  comment    add a comment to a ticket
-  link       link two tickets (blocks, relates, duplicates)
-  unlink     remove the links between two tickets
-  attach     attach files to a ticket
+  projects     list projects
+  project      create, show, edit or re-key a project
+  tickets      list a project's tickets
+  ticket       show, new, edit or move a ticket
+  comment      add a comment to a ticket
+  link         link two tickets (blocks, relates, duplicates)
+  unlink       remove the links between two tickets
+  attach       attach files to a ticket
   attachments  list a ticket's files
-  detach     remove an attachment
-  search     search tickets and comments
-  activity   recent changes
+  detach       remove an attachment
+  search       search tickets and comments
+  activity     recent changes
 
 agents:
-  ready      list the tickets ready to be worked on
-  claim      claim a ticket, with a lease (--lease 30m)
-  heartbeat  extend your claim's lease
-  release    give up your claim
-  mcp        an MCP server on standard input and output, for agent clients
+  ready        list the tickets ready to be worked on
+  claim        claim a ticket, with a lease (--lease 30m)
+  heartbeat    extend your claim's lease
+  release      give up your claim
+  mcp          an MCP server on standard input and output, for agent clients
 
 setup:
-  token      create, list or revoke API tokens
-  profile    add, list, use or remove servers to talk to
+  token        create, list or revoke API tokens
+  profile      add, list, use or remove servers to talk to
 
 help:
-  docs       list the help articles, or print one (vaquero docs cli)
+  docs         list the help articles, or print one (vaquero docs cli)
 
 Commands that talk to a server take --profile NAME, --agent NAME and --json.
 Every command is in: vaquero docs cli

@@ -407,8 +407,15 @@ func TestImportMintsNewToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := seededArchive(t, importHeader(t, 0), nil)
-	if code, _, e := runCLI(t, "import", file); code != 0 {
+	code, out, e := runCLI(t, "import", file)
+	if code != 0 {
 		t.Fatal(e)
+	}
+	// The served database before it was snapshotted, and the output says so.
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	bs, _ := appdb.ListBackups(filepath.Join(dataDir, "backups"))
+	if len(lines) != 2 || len(bs) != 1 || lines[1] != "The database before it is saved as "+bs[0].Name+"." {
+		t.Fatalf("output %q, backups %v", out, bs)
 	}
 	if _, err := os.Stat(tokenFile); !os.IsNotExist(err) {
 		t.Fatalf("import kept the old token file: %v", err)
@@ -461,5 +468,57 @@ func TestImportRefusesBadStore(t *testing.T) {
 	}
 	if left := importLeftovers(t, dataDir); len(left) != 0 {
 		t.Fatalf("left %v", left)
+	}
+}
+
+// A swap that fails after the old database was moved or saved says where
+// it is and how to put it back, never that nothing changed.
+func TestSwapFailureNamesTheOldDatabase(t *testing.T) {
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	for _, tc := range []struct {
+		name string
+		old  func(path string)
+		want func(cfg config.Config, aside string) string
+	}{
+		{"moved aside", func(path string) {
+			if err := os.WriteFile(path, []byte("this is not a database"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, func(cfg config.Config, aside string) string {
+			return "The database before it is at " + aside + "; move it back to " + cfg.DBPath + " to undo."
+		}},
+		{"snapshot", func(path string) {
+			d, err := appdb.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := d.Exec("CREATE TABLE x (y)"); err != nil {
+				t.Fatal(err)
+			}
+			d.Close()
+		}, func(cfg config.Config, aside string) string {
+			name := filepath.Base(aside)
+			return "The database before it is saved as " + name + "; vaquero backup restore " + name + " puts it back."
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfg := testConfig(t, freeAddr(t), dir)
+			tc.old(cfg.DBPath)
+			missing := filepath.Join(dir, importFile) // never made, so the rename fails
+			aside, err := swapDatabase(t.Context(), cfg, missing)
+			if err == nil || aside == "" {
+				t.Fatalf("%q %v", aside, err)
+			}
+			if want := tc.want(cfg, aside); !strings.Contains(err.Error(), want) {
+				t.Fatalf("got %q, want %q", err, want)
+			}
+			if _, serr := os.Stat(aside); serr != nil {
+				t.Fatalf("the old database isn't at %s: %v", aside, serr)
+			}
+			if msg := (notImported{err}).Error(); strings.Contains(msg, "Nothing was imported") {
+				t.Fatalf("%q", msg)
+			}
+		})
 	}
 }

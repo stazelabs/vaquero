@@ -51,6 +51,9 @@ func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	c.emit(res, func() {
 		fmt.Fprintf(c.stdout, "Imported %s, %s and %s into %s. Profiles holding a token for the old instance need a new one: vaquero token create.\n",
 			count(res.Projects, "project"), count(res.Tickets, "ticket"), count(res.Attachments, "attachment"), res.Backend)
+		if line := savedLine(cfg, res.Previous); line != "" {
+			fmt.Fprintln(c.stdout, line)
+		}
 	})
 	return exitOK
 }
@@ -79,6 +82,9 @@ func count(n int, noun string) string {
 type notImported struct{ err error }
 
 func (e notImported) Error() string {
+	if _, ok := errors.AsType[*swapFailed](e.err); ok {
+		return e.err.Error() // the old database moved: that, not "nothing", is the news
+	}
 	msg := e.err.Error()
 	if !strings.HasSuffix(msg, ".") {
 		msg += "."

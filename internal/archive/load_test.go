@@ -270,3 +270,87 @@ func TestLoadRebuildsSearch(t *testing.T) {
 		t.Fatalf("deleted comment indexed: %d %v", n, err)
 	}
 }
+
+// attachmentField rewrites the value of field in the first attachment row.
+func attachmentField(s, field, value string) string {
+	i := strings.Index(s, `"attachments":[`)
+	j := i + strings.Index(s[i:], `"`+field+`":`) + len(field) + 3
+	k := j
+	if s[k] == '"' {
+		k = j + 1 + strings.Index(s[j+1:], `"`) + 1
+	} else {
+		for s[k] >= '0' && s[k] <= '9' {
+			k++
+		}
+	}
+	return s[:j] + value + s[k:]
+}
+
+func TestReadRefusesHardening(t *testing.T) {
+	d, store := seeded(t)
+	good := unpack(t, export(t, d, store))
+	withDoc := func(edit func(string) string) []byte {
+		es := make([]entry, len(good))
+		copy(es, good)
+		es[0] = entry{good[0].hdr, []byte(edit(string(good[0].data)))}
+		return repack(t, es)
+	}
+	firstID := good[1].hdr.Name[len("attachments/"):]
+
+	// export.json claiming more than the cap: only its header is written.
+	var huge bytes.Buffer
+	zw := gzip.NewWriter(&huge)
+	tw := tar.NewWriter(zw)
+	if err := tw.WriteHeader(&tar.Header{Typeflag: tar.TypeReg, Name: "export.json", Mode: 0o644, Size: archive.MaxDocument + 1}); err != nil {
+		t.Fatal(err)
+	}
+	zw.Close()
+
+	// A flipped byte inside an attachment, with stored (uncompressed)
+	// blocks so the byte can be found: sizes still match, the CRC doesn't.
+	var stored bytes.Buffer
+	zw, _ = gzip.NewWriterLevel(&stored, gzip.NoCompression)
+	tw = tar.NewWriter(zw)
+	for _, e := range good {
+		tw.WriteHeader(e.hdr)
+		tw.Write(e.data)
+	}
+	tw.Close()
+	zw.Close()
+	flipped := stored.Bytes()
+	at := bytes.Index(flipped, []byte("Lasso notes."))
+	if at < 0 {
+		t.Fatal("attachment bytes not found")
+	}
+	flipped[at] ^= 0x20
+
+	for _, tc := range []struct {
+		name string
+		file []byte
+		want string
+	}{
+		{"attachment over the limit", withDoc(func(s string) string { return attachmentField(s, "size", "10485761") }),
+			"The export's attachment " + firstID + " is 10485761 bytes; attachments can be at most 10 MB."},
+		{"export.json over the cap", huge.Bytes(), "The export's export.json is larger than"},
+		{"corrupted stream", flipped, "The export is damaged"},
+		{"id not a ULID", withDoc(func(s string) string { return attachmentField(s, "id", `"../../x"`) }),
+			"The export's attachment record 1 has an id that isn't one Vaquero makes."},
+		{"ids equal once lower-cased", withDoc(func(s string) string {
+			i := strings.Index(s, `"attachments":[`)
+			second := good[2].hdr.Name[len("attachments/"):]
+			return s[:i] + strings.Replace(s[i:], `"id":"`+second+`"`, `"id":"`+strings.ToLower(firstID)+`"`, 1)
+		}), "twice"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before, _ := os.ReadDir(os.TempDir())
+			_, err := read(t, tc.file)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+			after, _ := os.ReadDir(os.TempDir())
+			if spools(after) > spools(before) {
+				t.Fatal("a spool directory was left behind")
+			}
+		})
+	}
+}

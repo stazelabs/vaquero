@@ -15,7 +15,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/idgen"
 )
 
 // Refused is an archive Read or Load won't take, with a sentence saying
@@ -25,6 +27,10 @@ type Refused struct{ msg string }
 func (e *Refused) Error() string { return e.msg }
 
 func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format, a...)} }
+
+// MaxDocument is the largest export.json Read takes: far beyond any real
+// instance's, but a bound on the memory a crafted file can claim.
+const MaxDocument = 256 << 20
 
 var errNotExport = &Refused{"This file isn't a Vaquero export."}
 
@@ -76,10 +82,13 @@ func (rd *Reader) Close() error {
 }
 
 // Read reads an export written by Write. It refuses, with a *Refused, a file
-// that isn't an export, a format version other than FormatVersion, a schema
-// newer than this build's, a table this build doesn't know, an attachment
-// record without its file, a file without its record or of another size
-// than its record says, and any other entry.
+// that isn't an export, an export.json over MaxDocument, a format version
+// other than FormatVersion, a schema newer than this build's, a table this
+// build doesn't know, an attachment whose id isn't a ULID (or equals
+// another's in lower case, as blob keys are) or whose size is over
+// core.MaxAttachment, an attachment record without its file, a file without
+// its record or of another size than its record says, any other entry, and
+// a stream whose gzip checksum fails (read to the end to check it).
 func Read(r io.Reader) (_ *Reader, err error) {
 	zr, err := gzip.NewReader(r)
 	if err != nil {
@@ -90,21 +99,35 @@ func Read(r io.Reader) (_ *Reader, err error) {
 	if err != nil || h.Name != "export.json" || h.Typeflag != tar.TypeReg {
 		return nil, errNotExport
 	}
+	if h.Size > MaxDocument {
+		return nil, refuse("The export's export.json is larger than %d MB, more than this vaquero reads.", MaxDocument>>20)
+	}
 	rd := &Reader{files: map[string]spooled{}}
 	defer func() {
 		if err != nil {
 			rd.Close()
 		}
 	}()
-	if err := rd.readDoc(tr); err != nil {
+	if err := rd.readDoc(io.LimitReader(tr, MaxDocument)); err != nil {
 		return nil, err
 	}
-	want := map[string]int64{} // attachment id → size, for each one not yet seen
+	want := map[string]int64{} // attachment id → size
+	lower := map[string]bool{} // blob keys are lower case, so ids must differ in it
 	for i, row := range rd.Tables["attachments"] {
 		id, ok1 := row["id"].(string)
 		size, ok2 := row["size"].(int64)
 		if !ok1 || id == "" || !ok2 || size < 0 {
 			return nil, refuse("The export's attachment record %d has no id or size.", i+1)
+		}
+		if !idgen.Valid(id) {
+			return nil, refuse("The export's attachment record %d has an id that isn't one Vaquero makes.", i+1)
+		}
+		if lower[strings.ToLower(id)] {
+			return nil, refuse("The export holds attachment %s twice.", id)
+		}
+		lower[strings.ToLower(id)] = true
+		if size > core.MaxAttachment {
+			return nil, refuse("The export's attachment %s is %d bytes; attachments can be at most %d MB.", id, size, core.MaxAttachment>>20)
 		}
 		want[id] = size
 	}
@@ -138,6 +161,14 @@ func Read(r io.Reader) (_ *Reader, err error) {
 			return nil, refuse("The export is damaged (%v).", err)
 		}
 		rd.files[id] = spooled{p, size}
+	}
+	// The rest of the stream holds gzip's checksum, which only reading to
+	// the end verifies.
+	if _, err := io.Copy(io.Discard, zr); err != nil {
+		return nil, refuse("The export is damaged (%v).", err)
+	}
+	if err := zr.Close(); err != nil {
+		return nil, refuse("The export is damaged (%v).", err)
 	}
 	for _, row := range rd.Tables["attachments"] {
 		if id := row["id"].(string); rd.files[id].path == "" {
