@@ -27,3 +27,4 @@ internal/web/handlers 70
 internal/web/middleware 90
 internal/sweep 80
 internal/mcpserver 80
+internal/archive 75

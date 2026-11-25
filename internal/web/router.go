@@ -116,6 +116,7 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.NotFound(handlers.APINotFound)
 	r.MethodNotAllowed(handlers.APIMethodNotAllowed)
 	r.Get("/me", handlers.APIMe(d))
+	r.Get("/export", handlers.APIExport(d))
 	r.Get("/projects", handlers.APIProjects(d))
 	r.Get("/projects/{key}", handlers.APIProject(d))
 	r.Get("/projects/{key}/statuses", handlers.APIStatuses(d))

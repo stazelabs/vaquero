@@ -30,9 +30,7 @@ var errTooLarge = errors.New("upload over the attachment limit")
 
 // attachKey is the blob key of attachment id: attachments/{instance}/{id},
 // lower case.
-func attachKey(instance, id string) string {
-	return "attachments/" + instance + "/" + strings.ToLower(id)
-}
+func attachKey(instance, id string) string { return blobs.AttachmentKey(instance, id) }
 
 // attachmentURL is the canonical address of a: /attachments/{id}/{name},
 // the name escaped as one path segment.

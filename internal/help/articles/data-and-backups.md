@@ -41,6 +41,25 @@ Snapshots hold attachments only with the default `sqlite` storage; files kept in
 
 For your own backups, copy the data directory while no server is running, or copy a snapshot.
 
+## Exporting everything
+
+An export is one file holding all of your data, to keep, to move to another machine, or to read with other tools:
+
+    vaquero export vaquero.tar.gz
+
+It works while the server runs and doesn't stop anyone working. Only the owner can export; an agent can't. `vaquero export -` writes the file to standard output instead.
+
+The file is a `.tar.gz`. Inside, `export.json` holds every project, status, milestone, tag, ticket (with its history fields and version), comment (deleted ones included, marked as deleted), link, attachment record, actor and change in the activity history, as plain JSON. Each attachment's bytes follow as `attachments/ID`, wherever they are stored. Two exports of unchanged data are identical apart from the time and version at the top of `export.json`.
+
+Left out on purpose:
+
+- API tokens, which belong to this server only;
+- the MCP activity log;
+- live claims: tickets keep their status and assignee, but no claim;
+- the settings that describe this server rather than its data, such as where attachments are kept.
+
+If an attachment's file is missing from storage (for example, someone deleted it from the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
+
 ## Restoring a snapshot
 
 Stop the server, then restore:

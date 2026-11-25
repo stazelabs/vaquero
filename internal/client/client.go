@@ -92,12 +92,41 @@ func (c *Client) Upload(ctx context.Context, path, filename string, r io.Reader,
 	return c.send(ctx, http.MethodPost, path, &buf, mw.FormDataContentType(), out)
 }
 
-// send makes one request with body (nil for none) of contentType, and
-// reads the answer as Do says.
-func (c *Client) send(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
+// Download GETs path and copies a 2xx answer's body to w, with no overall
+// time limit (ctx bounds it). Any other answer is *Error. A body that ends
+// early (the server aborted it) is an error, so a caller writing a file
+// must treat any error as a broken download.
+func (c *Client) Download(ctx context.Context, path string, w io.Writer) (int64, error) {
+	req, err := c.request(ctx, http.MethodGet, path, nil, "")
+	if err != nil {
+		return 0, err
+	}
+	hc := c.HTTP
+	if hc == nil {
+		hc = &http.Client{}
+	}
+	res, err := hc.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("can't reach %s: %w", c.BaseURL, err)
+	}
+	defer res.Body.Close()
+	c.minClient = res.Header.Get("Vaquero-Min-Client")
+	c.serverVersion = res.Header.Get("Vaquero-Version")
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		data, err := io.ReadAll(res.Body)
+		if err != nil {
+			return 0, err
+		}
+		return 0, failure(res.StatusCode, data)
+	}
+	return io.Copy(w, res.Body)
+}
+
+// request builds one request with the client's headers.
+func (c *Client) request(ctx context.Context, method, path string, body io.Reader, contentType string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
 	if contentType != "" {
@@ -111,6 +140,26 @@ func (c *Client) send(ctx context.Context, method, path string, body io.Reader, 
 	}
 	if c.Version != "" {
 		req.Header.Set("Vaquero-Client", c.Version)
+	}
+	return req, nil
+}
+
+// failure is the *Error for a non-2xx answer with body data.
+func failure(status int, data []byte) *Error {
+	var wrapped struct{ Error *Error }
+	if json.Unmarshal(data, &wrapped) != nil || wrapped.Error == nil {
+		return &Error{Status: status, Code: "http_error", Message: fmt.Sprintf("The server answered %d %s.", status, http.StatusText(status))}
+	}
+	wrapped.Error.Status = status
+	return wrapped.Error
+}
+
+// send makes one request with body (nil for none) of contentType, and
+// reads the answer as Do says.
+func (c *Client) send(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
+	req, err := c.request(ctx, method, path, body, contentType)
+	if err != nil {
+		return err
 	}
 	hc := c.HTTP
 	if hc == nil {
@@ -133,12 +182,7 @@ func (c *Client) send(ctx context.Context, method, path string, body io.Reader, 
 		}
 		return json.Unmarshal(data, out)
 	}
-	var wrapped struct{ Error *Error }
-	if json.Unmarshal(data, &wrapped) != nil || wrapped.Error == nil {
-		return &Error{Status: res.StatusCode, Code: "http_error", Message: fmt.Sprintf("The server answered %d %s.", res.StatusCode, http.StatusText(res.StatusCode))}
-	}
-	wrapped.Error.Status = res.StatusCode
-	return wrapped.Error
+	return failure(res.StatusCode, data)
 }
 
 // UpgradeNeeded reports whether this client is older than the server's

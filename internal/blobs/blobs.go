@@ -60,6 +60,12 @@ type Store interface {
 	List(ctx context.Context, prefix string, fn func(key string, modified time.Time) error) error
 }
 
+// AttachmentKey is the key of attachment id's bytes:
+// attachments/{instance}/{id}, lower case.
+func AttachmentKey(instance, id string) string {
+	return "attachments/" + instance + "/" + strings.ToLower(id)
+}
+
 // ValidKey reports why key is not a legal key, or nil.
 func ValidKey(key string) error {
 	if key == "" {

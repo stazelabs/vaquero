@@ -17,6 +17,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero stop` | Stop the server running in the background on this machine |
 | `vaquero backup list` | The database snapshots in the data directory, newest first; needs no server |
 | `vaquero backup restore NAME` | Put a snapshot in place of the database, saving the current one as a snapshot first; stop the server first. See [Your data and backups](/help/data-and-backups#restoring-a-snapshot) |
+| `vaquero export FILE\|-` | Write all your data to a `.tar.gz`, or with `-` to standard output; the owner only. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |

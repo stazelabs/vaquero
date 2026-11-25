@@ -27,6 +27,7 @@ server:
   version    print the release, commit and build date
   stop       stop the background server
   backup     list the database snapshots, or restore one
+  export     write everything to a .tar.gz (vaquero export FILE)
 
 tickets:
   projects   list projects

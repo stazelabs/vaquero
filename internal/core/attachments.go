@@ -137,7 +137,7 @@ func (c *Core) AddAttachment(ctx context.Context, by string, in AttachmentInput)
 // CanDeleteAttachment reports whether actor may remove a: its uploader or
 // the owner.
 func CanDeleteAttachment(actor gen.Actor, a gen.Attachment) bool {
-	return a.UploadedBy == actor.ID || (actor.Kind == "human" && actor.Name == OwnerName)
+	return a.UploadedBy == actor.ID || IsOwner(actor)
 }
 
 // DeleteAttachment removes an attachment's row and returns its blob key, so

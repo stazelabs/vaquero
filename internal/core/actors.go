@@ -17,6 +17,10 @@ import (
 // OwnerName is the local owner actor's name.
 const OwnerName = "Owner"
 
+// IsOwner reports whether a is the local owner: the human named OwnerName.
+// An agent acting through the owner's token is not.
+func IsOwner(a gen.Actor) bool { return a.Kind == "human" && a.Name == OwnerName }
+
 // EnsureOwner returns the local owner: the human actor named "Owner",
 // created (with its own actor.created event) on first call.
 func (c *Core) EnsureOwner(ctx context.Context) (gen.Actor, error) {

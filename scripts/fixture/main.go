@@ -8,7 +8,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -16,17 +15,17 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
-	"github.com/stazelabs/vaquero/internal/idgen"
-	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 // tables are the ones whose row counts the fixture records.
 var tables = []string{
 	"settings", "actors", "api_tokens", "projects", "statuses", "milestones",
-	"tickets", "tags", "ticket_tags", "comments", "ticket_links", "events", "mcp_calls",
+	"tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "blobs", "events", "mcp_calls",
 }
 
 func main() {
@@ -66,8 +65,12 @@ func write(ctx context.Context, dir, version string) error {
 		return err
 	}
 	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
-	c := core.New(w, func() time.Time { return now })
-	if err := seed(ctx, c, gen.New(w), now); err != nil {
+	clock := func() time.Time { return now }
+	c := core.New(w, clock)
+	// The fixture has no server, so no instance id: any valid one names
+	// its blob keys.
+	store := blobs.NewSQLite(w, w, clock)
+	if err := coreseed.Seed(ctx, c, gen.New(w), store, "fixture", now); err != nil {
 		return err
 	}
 	schema, err := appdb.Version(w)
@@ -96,122 +99,3 @@ func write(ctx context.Context, dir, version string) error {
 	fmt.Printf("wrote %s.sqlite and %s.json (schema %d)\n", base, base, schema)
 	return nil
 }
-
-// seed makes a little of everything the schema can hold.
-func seed(ctx context.Context, c *core.Core, q *gen.Queries, now time.Time) error {
-	owner, err := c.EnsureOwner(ctx)
-	if err != nil {
-		return err
-	}
-	by := owner.ID
-	vaq, err := c.CreateProject(ctx, by, core.ProjectInput{Key: "VAQ", Name: "Vaquero", Description: "The tracker itself."})
-	if err != nil {
-		return err
-	}
-	old, err := c.CreateProject(ctx, by, core.ProjectInput{Key: "OLD", Name: "Old project"})
-	if err != nil {
-		return err
-	}
-	if _, err := c.CreateStatus(ctx, by, vaq.ID, "Blocked", "in_progress"); err != nil {
-		return err
-	}
-	ms, err := c.CreateMilestone(ctx, by, vaq.ID, core.MilestoneInput{Name: "First release", DueOn: "2026-12-31"})
-	if err != nil {
-		return err
-	}
-	statuses, err := q.ListStatuses(ctx, vaq.ID)
-	if err != nil {
-		return err
-	}
-	byCategory := map[string]string{}
-	for _, s := range statuses {
-		if _, ok := byCategory[s.Category]; !ok {
-			byCategory[s.Category] = s.ID
-		}
-	}
-	newTicket := func(in core.TicketInput) (gen.Ticket, error) { return c.CreateTicket(ctx, by, vaq.ID, in) }
-	parent, err := newTicket(core.TicketInput{Title: "Ship the first release", Body: "Everything **needed** for v0.1.0.", Priority: 2, MilestoneID: ms.ID, Tags: []string{"release"}})
-	if err != nil {
-		return err
-	}
-	child, err := newTicket(core.TicketInput{Title: "Write the install guide", ParentID: parent.ID, AssigneeID: by, Tags: []string{"docs", "release"}})
-	if err != nil {
-		return err
-	}
-	lasso, err := newTicket(core.TicketInput{Title: "Throw a lasso around the backlog", Priority: 1})
-	if err != nil {
-		return err
-	}
-	done, err := newTicket(core.TicketInput{Title: "Pick a name", StatusID: byCategory["done"]})
-	if err != nil {
-		return err
-	}
-	if _, err := newTicket(core.TicketInput{Title: "Rewrite it in another language", StatusID: byCategory["cancelled"]}); err != nil {
-		return err
-	}
-	if _, err := newTicket(core.TicketInput{Title: "Someday: themes", StatusID: byCategory["backlog"], Priority: 4}); err != nil {
-		return err
-	}
-	review, err := newTicket(core.TicketInput{Title: "Review the board styles", StatusID: byCategory["in_review"], Priority: 3})
-	if err != nil {
-		return err
-	}
-	if _, err := c.CreateTicket(ctx, by, old.ID, core.TicketInput{Title: "An old ticket"}); err != nil {
-		return err
-	}
-	cm, err := c.AddComment(ctx, by, parent.ID, "Started on this.")
-	if err != nil {
-		return err
-	}
-	if err := c.EditComment(ctx, by, cm.ID, "Started on this; the checklist is in the description."); err != nil {
-		return err
-	}
-	gone, err := c.AddComment(ctx, by, parent.ID, "A comment that was taken back.")
-	if err != nil {
-		return err
-	}
-	if err := c.DeleteComment(ctx, by, gone.ID); err != nil {
-		return err
-	}
-	if _, err := c.AddComment(ctx, by, lasso.ID, "Lasso first, then sort."); err != nil {
-		return err
-	}
-	if _, err := c.AddLink(ctx, by, child.ID, "blocks", core.TicketKey{Project: "VAQ", Number: parent.Number}); err != nil {
-		return err
-	}
-	if _, err := c.AddLink(ctx, by, review.ID, "relates", core.TicketKey{Project: "VAQ", Number: parent.Number}); err != nil {
-		return err
-	}
-	if _, err := c.AddLink(ctx, by, done.ID, "duplicates", core.TicketKey{Project: "OLD", Number: 1}); err != nil {
-		return err
-	}
-	agent, err := c.EnsureAgent(ctx, by, "builder")
-	if err != nil {
-		return err
-	}
-	if _, err := c.Claim(ctx, agent.ID, lasso.ID, 15*time.Minute); err != nil {
-		return err
-	}
-	_, tok, err := c.CreateToken(ctx, by, by, "laptop")
-	if err != nil {
-		return err
-	}
-	if err := c.RevokeToken(ctx, by, tok.ID); err != nil {
-		return err
-	}
-	if _, _, err := c.CreateToken(ctx, by, by, "local"); err != nil {
-		return err
-	}
-	// Archived last: an archived project takes no new tickets or links.
-	if err := c.SetProjectArchived(ctx, by, old.ID, true); err != nil {
-		return err
-	}
-	// The MCP log is written outside core, as the server writes it.
-	return q.RecordMCPCall(ctx, gen.RecordMCPCallParams{
-		ID: idgen.New(), At: timefmt.Format(now), TokenPrefix: "vq_abcdef",
-		Tool: "claim_ticket", Args: `key=VAQ-3`, Outcome: "ok", DurationMs: 4,
-		ActorID: nullString(agent.ID),
-	})
-}
-
-func nullString(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
