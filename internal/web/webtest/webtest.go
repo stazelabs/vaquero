@@ -201,6 +201,12 @@ func (c *Client) API(method, path, token string, body any) *Response {
 // declared type ("" for application/octet-stream).
 func (c *Client) Upload(path, filename, contentType string, data []byte) *Response {
 	c.t.Helper()
+	return c.UploadAs(path, "", filename, contentType, data)
+}
+
+// UploadAs is Upload with token as the bearer ("" for none), for the API.
+func (c *Client) UploadAs(path, token, filename, contentType string, data []byte) *Response {
+	c.t.Helper()
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
 	if contentType == "" {
@@ -221,6 +227,9 @@ func (c *Client) Upload(path, filename, contentType string, data []byte) *Respon
 	}
 	req := c.newRequest(http.MethodPost, path, &b)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	return c.do(req)
 }
 

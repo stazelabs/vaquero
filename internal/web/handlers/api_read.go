@@ -255,7 +255,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		Key: ticketKey(p, t.Number), Title: t.Title, Status: st.Name, Category: st.Category,
 		Priority: t.Priority, Tags: []string{}, Version: t.Version,
 		Body: t.Body, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
-		SubTickets: []api.TicketSummary{}, Links: []api.Link{}, Comments: []api.Comment{},
+		SubTickets: []api.TicketSummary{}, Links: []api.Link{}, Comments: []api.Comment{}, Attachments: []api.Attachment{},
 	}
 	if t.AssigneeID.Valid {
 		a, err := d.R.GetActor(ctx, t.AssigneeID.String)
@@ -324,6 +324,9 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	}
 	for _, c := range comments {
 		out.Comments = append(out.Comments, api.Comment{ID: c.ID, Author: c.AuthorName, Body: c.Body, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt})
+	}
+	if out.Attachments, err = ticketAttachments(r, d, t.ID); err != nil {
+		return out, err
 	}
 	return out, nil
 }

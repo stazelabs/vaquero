@@ -45,6 +45,12 @@ func TestUploadBodyLimit(t *testing.T) {
 	if rec.Code != 200 || limit != MaxBody+10 {
 		t.Fatalf("upload: %d read %d", rec.Code, limit)
 	}
+	req = httptest.NewRequest("POST", "/api/v1/tickets/VAQ-1/attachments", strings.NewReader(strings.Repeat("x", MaxBody+10)))
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || limit != MaxBody+10 {
+		t.Fatalf("api upload: %d read %d", rec.Code, limit)
+	}
 	// Declared over MaxUpload: the API envelope with the file limit.
 	req = httptest.NewRequest("POST", "/t/VAQ-1/attachments", strings.NewReader("x"))
 	req.ContentLength = MaxUpload + 1

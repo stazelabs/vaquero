@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,20 +59,49 @@ func (e *Error) Error() string {
 // answer into out (when out isn't nil). Any other answer is *Error.
 func (c *Client) Do(ctx context.Context, method, path string, body, out any) error {
 	var rd io.Reader
+	contentType := ""
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		rd = bytes.NewReader(b)
+		rd, contentType = bytes.NewReader(b), "application/json"
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, rd)
+	return c.send(ctx, method, path, rd, contentType, out)
+}
+
+// Upload posts the bytes of r to path as a multipart form, in the part
+// "file" named filename, and decodes a 2xx answer into out. The file is
+// buffered, so a refusal for its size comes back as the server's *Error.
+func (c *Client) Upload(ctx context.Context, path, filename string, r io.Reader, out any) error {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", `form-data; name="file"; filename="`+strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", "", "\n", "").Replace(filename)+`"`)
+	h.Set("Content-Type", "application/octet-stream")
+	pw, err := mw.CreatePart(h)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(pw, r); err != nil {
+		return err
+	}
+	if err := mw.Close(); err != nil {
+		return err
+	}
+	return c.send(ctx, http.MethodPost, path, &buf, mw.FormDataContentType(), out)
+}
+
+// send makes one request with body (nil for none) of contentType, and
+// reads the answer as Do says.
+func (c *Client) send(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, body)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
 	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)

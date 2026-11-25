@@ -216,3 +216,35 @@ func TestMCPToolsMatchTheAPI(t *testing.T) {
 		}
 	}
 }
+
+// get_ticket shows a ticket's attachments, with no tool of their own.
+func TestMCPGetTicketListsAttachments(t *testing.T) {
+	e, tok := agentEnv(t)
+	if r := e.Client().UploadAs("/api/v1/tickets/VAQ-1/attachments", tok, "shot.png", "", pngBytes); r.Status != 201 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	cs := mcpConnect(t, e, tok, "builder")
+	res, text := mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-1"})
+	var tk struct {
+		Attachments []struct {
+			Name        string
+			ContentType string `json:"content_type"`
+			URL         string
+			Size        int64
+		}
+	}
+	if err := json.Unmarshal([]byte(text), &tk); err != nil || res.IsError || len(tk.Attachments) != 1 ||
+		tk.Attachments[0].Name != "shot.png" || tk.Attachments[0].ContentType != "image/png" ||
+		!strings.HasPrefix(tk.Attachments[0].URL, "/attachments/") || tk.Attachments[0].Size != int64(len(pngBytes)) {
+		t.Fatalf("%v %s", err, text)
+	}
+	tools, err := cs.ListTools(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range tools.Tools {
+		if tool.Name == "get_ticket" && !strings.Contains(tool.Description, "attachments") {
+			t.Errorf("get_ticket description: %q", tool.Description)
+		}
+	}
+}

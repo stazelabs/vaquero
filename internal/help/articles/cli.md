@@ -31,6 +31,9 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero comment TICKET TEXT` | Add a comment |
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
+| `vaquero attach TICKET FILE... [--name NAME]` | Attach files (up to 10 MB each) and print a Markdown reference for each, to paste into a description or comment; `-` reads standard input and needs `--name`. See [Attachments](/help/attachments) |
+| `vaquero attachments TICKET` | A ticket's files: id, name, size, who attached it and when |
+| `vaquero detach ID` | Remove an attachment; only the person who attached it, or the owner, can |
 | `vaquero search WORDS...` | Search titles, descriptions and comments |
 | `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ |
 | `vaquero ready [KEY] [--limit N]` | Tickets ready to be worked on, most urgent first; every project unless KEY |

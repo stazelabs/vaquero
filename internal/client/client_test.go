@@ -184,3 +184,35 @@ func TestErrorMessageNotRepeated(t *testing.T) {
 		t.Fatalf("%q", e.Error())
 	}
 }
+
+func TestUpload(t *testing.T) {
+	var gotName, gotBody, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, h, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		b := make([]byte, 100)
+		n, _ := f.Read(b)
+		gotName, gotBody, gotAuth = h.Filename, string(b[:n]), r.Header.Get("Authorization")
+		if gotName == "refuse.txt" {
+			w.WriteHeader(413)
+			fmt.Fprint(w, `{"error":{"code":"too_large","message":"Files can be at most 10 MB."}}`)
+			return
+		}
+		fmt.Fprint(w, `{"id":"A1"}`)
+	}))
+	defer srv.Close()
+	c := &client.Client{BaseURL: srv.URL, Token: "vq_t"}
+	var out struct{ ID string }
+	if err := c.Upload(t.Context(), "/up", `a "quoted"\name.txt`, strings.NewReader("hello"), &out); err != nil ||
+		out.ID != "A1" || gotName != `a "quoted"\name.txt` || gotBody != "hello" || gotAuth != "Bearer vq_t" {
+		t.Fatalf("%v %+v %q %q %q", err, out, gotName, gotBody, gotAuth)
+	}
+	var apiErr *client.Error
+	err := c.Upload(t.Context(), "/up", "refuse.txt", strings.NewReader("x"), nil)
+	if !errors.As(err, &apiErr) || apiErr.Status != 413 || apiErr.Message != "Files can be at most 10 MB." {
+		t.Fatalf("%v", err)
+	}
+}

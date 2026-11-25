@@ -19,6 +19,7 @@ const MaxUpload = 10<<20 + 64<<10
 // MaxUpload bytes. Every other request keeps MaxBody.
 var uploadRoutes = []string{
 	"/t/*/attachments",
+	"/api/v1/tickets/*/attachments",
 }
 
 // TooLargeUpload is an upload route's 413: the API's failure envelope, which

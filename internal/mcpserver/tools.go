@@ -142,7 +142,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/projects/"+url.PathEscape(in.Project)+"/tickets", q)
 		})
 	add(s, c, "get_ticket", "Get a ticket", true,
-		"One ticket with its description, tags, sub-tickets, links, comments, claim and version.",
+		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim and version.",
 		func(in keyArgs) request { return get(ticketPath(in.Key, ""), nil) })
 	add(s, c, "ready_tickets", "List ready tickets", true,
 		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first.",

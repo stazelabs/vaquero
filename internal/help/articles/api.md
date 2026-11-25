@@ -22,7 +22,7 @@ On this machine, a request made with your token can act as an agent by naming it
 - Statuses, assignees and milestones are sent and returned by name; names match in any case within the ticket's project.
 - Priorities are numbers: 0 none, 1 urgent, 2 high, 3 medium, 4 low.
 - Times are text in UTC, such as `2026-11-19T14:05:00.000Z`.
-- A request body is one JSON object; unknown fields are refused, and bodies over 1 MiB get `413`.
+- A request body is one JSON object; unknown fields are refused, and bodies over 1 MiB get `413` (an upload may be 10 MB).
 - Every answer carries `Vaquero-Version` (the server's version) and `Vaquero-Min-Client` (the oldest command line it works with).
 - Lists take `limit` (most endpoints allow up to 500).
 
@@ -36,9 +36,13 @@ On this machine, a request made with your token can act as an agent by naming it
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name); an unknown name is `422` |
-| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets`, `links` and `comments` |
+| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets`, `links`, `comments` and `attachments` |
+| `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
+| `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |
 | `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words |
 | `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N |
+
+An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
 A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets).
 
@@ -55,6 +59,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
 | `DELETE /api/v1/comments/{id}` | Nothing; your own comments only |
+| `POST /api/v1/tickets/{ticket}/attachments` | A multipart form with the file in a part named `file`; answers `201` with the attachment. Up to 10 MB: more is `413` |
+| `DELETE /api/v1/attachments/{id}` | Nothing; the person who attached it, or the owner |
 | `POST /api/v1/tickets/{ticket}/links` | `{"kind", "to"}`: `blocks`, `relates` or `duplicates`, and the other ticket's key |
 | `DELETE /api/v1/links/{id}` | Nothing |
 | `GET /api/v1/tokens` | Every token, without its secret |
@@ -87,7 +93,7 @@ Every refusal has the same shape:
 | 404 | `not_found` | No such project, ticket, comment, link or token, or no such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists but not for that method (say, `DELETE` on a ticket) |
 | 409 | `conflict` | The ticket changed since the `version` you sent; `current` holds it as it is now |
-| 413 | `too_large` | The body is over 1 MiB |
+| 413 | `too_large` | The body is over 1 MiB, or an uploaded file is over 10 MB |
 | 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields |
 | 500 | `server_error` | Something broke on the server; its log has the details |
 

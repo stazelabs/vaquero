@@ -94,6 +94,7 @@ type listSpy struct {
 	blobs.Store
 	prefixes []string
 	failKey  string
+	failList bool
 }
 
 func (s *listSpy) Delete(ctx context.Context, key string) error {
@@ -105,6 +106,9 @@ func (s *listSpy) Delete(ctx context.Context, key string) error {
 
 func (s *listSpy) List(ctx context.Context, prefix string, fn func(string, time.Time) error) error {
 	s.prefixes = append(s.prefixes, prefix)
+	if s.failList {
+		return errors.New("listing failed")
+	}
 	return s.Store.List(ctx, prefix, fn)
 }
 
@@ -184,5 +188,21 @@ func TestSweepOrphanPassSurvivesFailuresAndRunsHourly(t *testing.T) {
 	now = now.Add(time.Minute)
 	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 || left() != "" {
 		t.Fatalf("hourly pass: %v %v %q", err, store.prefixes, left())
+	}
+}
+
+// A failed listing doesn't count as the hourly pass: the next tick lists again.
+func TestSweepFailedListRetriesNextTick(t *testing.T) {
+	d := dbtest.New(t)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	store := &listSpy{Store: blobs.NewSQLite(d.W, d.R, clock), failList: true}
+	s := &sweep.Sweeper{Core: core.New(d.W, clock), DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock, Blobs: store, Instance: "inst"}
+	if _, err := s.Tick(bg); err == nil {
+		t.Fatal("a failed listing should be reported")
+	}
+	store.failList = false
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 {
+		t.Fatalf("not retried: %v %v", err, store.prefixes)
 	}
 }

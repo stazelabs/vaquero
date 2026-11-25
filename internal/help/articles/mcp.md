@@ -30,7 +30,7 @@ Give each agent you run its own `--agent` name, so their claims and comments sta
 |---|---|
 | `list_projects` | Every project, with its open ticket count |
 | `list_tickets` | A project's tickets: `project`, and optionally `status`, `tag`, `mine`, `open`, `limit` |
-| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, claim and version: `key` |
+| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim and version: `key` |
 | `ready_tickets` | Tickets ready to be worked on, most urgent first: optionally `project`, `limit` |
 | `search` | Find tickets by words: `query` |
 | `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few |

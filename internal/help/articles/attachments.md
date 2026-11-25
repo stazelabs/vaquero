@@ -1,0 +1,51 @@
+---
+title: Attachments
+section: using
+summary: Attach files to tickets, how they are shown and served, and where their bytes are kept.
+order: 6
+---
+A ticket can carry files: screenshots, logs, a spec. They show in the Attachments list on the ticket page, and a description or comment can refer to them.
+
+## What you can attach
+
+Any file up to 10 MB. A larger one is refused with "Files can be at most 10 MB." and nothing is stored. A file's type is read from its contents, never from its name or from what the sender says it is.
+
+On the ticket page, drop files on the Attachments area, choose them with Choose files, or paste them into a description or comment: a pasted image becomes an image in the text, any other file becomes a link. A new ticket can take files once it exists.
+
+From the command line:
+
+    vaquero attach VAQ-12 screenshot.png trace.log
+    vaquero attachments VAQ-12
+    vaquero detach 01M89WJCM72AW7ZD4DHSKJ0RQ1
+
+`vaquero attach` prints a Markdown reference for each file, ready to paste into a description or comment. `-` reads standard input, with `--name` for the file's name. See [The command line](/help/cli). Over the API, upload with a multipart form; see [The API](/help/api).
+
+Only the person who attached a file, or the owner, can remove it.
+
+## How files are served
+
+A file lives at `/attachments/ID/NAME` on the server, with no project key, so a reference keeps working if the project's key changes. A wrong name, or an id in lower case, redirects to the right address.
+
+PNG, JPEG, GIF and WebP files show in the page. Every other file, including SVG and HTML, is a download: it is never shown inside Vaquero, whatever it is named. Markdown shows an image only when it points at an attachment; an image from anywhere else becomes a plain link.
+
+Every file answer carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. A browser checks with the server each time it shows a file, so a removed file stops showing.
+
+## Where the bytes are kept
+
+By default, in the database file, with everything else. Two settings move them, chosen when the server starts:
+
+| Variable | Meaning |
+|---|---|
+| `VQ_BLOB_STORE` | `sqlite` (the default), `dir` or `s3` |
+| `VQ_BLOB_DIR` | For `dir`: the directory; default `attachments` inside the data directory |
+| `VQ_S3_ENDPOINT` | For `s3`: a host or host:port of an S3-compatible service, with no `https://` and no bucket path |
+| `VQ_S3_BUCKET` | For `s3`: the bucket |
+| `VQ_S3_ACCESS_KEY_ID` | For `s3`: the access key |
+| `VQ_S3_SECRET_ACCESS_KEY` | For `s3`: the secret; never logged |
+| `VQ_S3_REGION` | For `s3`: the region; default `auto` |
+
+All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, saying which one the files are in, since their bytes would be out of reach.
+
+## Backups
+
+Snapshots and `vaquero backup restore` cover the database. With `sqlite` storage that includes every attachment. With `dir` or `s3` storage the files are not in the database, so a snapshot holds only the records of them: backing up the directory or the bucket is yours to do. See [Your data and backups](/help/data-and-backups#backups).

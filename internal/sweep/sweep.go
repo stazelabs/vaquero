@@ -80,7 +80,6 @@ func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 	if !s.lastOrphans.IsZero() && now.Sub(s.lastOrphans) < OrphanAge {
 		return nil
 	}
-	s.lastOrphans = now
 	cutoff := now.Add(-OrphanAge)
 	var old []string
 	err := s.Blobs.List(ctx, "attachments/"+s.Instance+"/", func(key string, modified time.Time) error {
@@ -92,6 +91,7 @@ func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("list attachment objects: %w", err)
 	}
+	s.lastOrphans = now // only a listing that worked counts as the pass
 	q := gen.New(s.DB)
 	deleted, failed := 0, 0
 	for _, key := range old {

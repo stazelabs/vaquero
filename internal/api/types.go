@@ -1,5 +1,7 @@
 package api
 
+import "strings"
+
 // The API's objects. Tickets are named by key ("VAQ-12"); internal ids
 // appear only where an object has no key (comments and links), so they can
 // be edited or removed.
@@ -44,14 +46,15 @@ type TicketSummary struct {
 
 type Ticket struct {
 	TicketSummary
-	Body       string          `json:"body"`
-	Parent     string          `json:"parent,omitempty"`
-	Milestone  string          `json:"milestone,omitempty"`
-	SubTickets []TicketSummary `json:"sub_tickets"`
-	Links      []Link          `json:"links"`
-	Comments   []Comment       `json:"comments"`
-	CreatedAt  string          `json:"created_at"`
-	UpdatedAt  string          `json:"updated_at"`
+	Body        string          `json:"body"`
+	Parent      string          `json:"parent,omitempty"`
+	Milestone   string          `json:"milestone,omitempty"`
+	SubTickets  []TicketSummary `json:"sub_tickets"`
+	Links       []Link          `json:"links"`
+	Comments    []Comment       `json:"comments"`
+	Attachments []Attachment    `json:"attachments"`
+	CreatedAt   string          `json:"created_at"`
+	UpdatedAt   string          `json:"updated_at"`
 }
 
 type Link struct {
@@ -68,6 +71,40 @@ type Comment struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+}
+
+// Attachment is a file on a ticket. URL is the address of its bytes on the
+// server, as a ticket body or comment refers to it.
+type Attachment struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+	UploadedBy  string `json:"uploaded_by"`
+	CreatedAt   string `json:"created_at"`
+	URL         string `json:"url"`
+}
+
+// inlineTypes are the sniffed types a server shows in the page; every
+// other file is a download.
+var inlineTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+
+// IsInlineType reports whether a stored content type is served inline
+// (PNG, JPEG, GIF, WebP) rather than as a download.
+func IsInlineType(contentType string) bool {
+	t, _, _ := strings.Cut(contentType, ";")
+	return inlineTypes[strings.TrimSpace(t)]
+}
+
+// Markdown is the reference a ticket body or comment uses for the file: an
+// image for an inline type, otherwise a link.
+func (a Attachment) Markdown() string {
+	label := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(a.Name)
+	ref := "[" + label + "](" + a.URL + ")"
+	if IsInlineType(a.ContentType) {
+		return "!" + ref
+	}
+	return ref
 }
 
 type Event struct {

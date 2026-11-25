@@ -44,7 +44,7 @@ CLAUDE.md "Hard invariants" is the authority.
 
 ## Attachments
 
-`GET /attachments/{id}/{name}` serves user bytes from the app's origin. The type is sniffed from the bytes at upload (`http.DetectContentType`), never taken from the client. Only PNG, JPEG, GIF and WebP are inline; everything else, SVG included, is `application/octet-stream` with `Content-Disposition: attachment`. Every answer from that route carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (replacing the page CSP). Markdown renders `<img>` only for `/attachments/` destinations.
+`GET /attachments/{id}/{name}` serves user bytes from the app's origin. The type is sniffed from the bytes at upload (`http.DetectContentType`), never taken from the client. Only PNG, JPEG, GIF and WebP are inline; everything else, SVG included, is `application/octet-stream` with `Content-Disposition: attachment`. `GET /api/v1/attachments/{id}` (token required) shares the code. Every answer from these routes carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (replacing the page CSP). Markdown renders `<img>` only for `/attachments/` destinations.
 
 ## Outbound network
 

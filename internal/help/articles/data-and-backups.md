@@ -37,6 +37,8 @@ Vaquero takes a snapshot of the whole database, into `backups/`, before anything
 
 If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots are kept. `vaquero backup list` shows them.
 
+Snapshots hold attachments only with the default `sqlite` storage; files kept in a directory or an S3 bucket are yours to back up. See [Attachments](/help/attachments#backups).
+
 For your own backups, copy the data directory while no server is running, or copy a snapshot.
 
 ## Restoring a snapshot

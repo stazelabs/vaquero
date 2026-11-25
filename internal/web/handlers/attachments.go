@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -26,10 +28,6 @@ import (
 // errTooLarge is an upload over core.MaxAttachment.
 var errTooLarge = errors.New("upload over the attachment limit")
 
-// inlineTypes are the sniffed types served inline. Everything else, SVG
-// included, is a download.
-var inlineTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
-
 // attachKey is the blob key of attachment id: attachments/{instance}/{id},
 // lower case.
 func attachKey(instance, id string) string {
@@ -42,21 +40,52 @@ func attachmentURL(a gen.Attachment) string {
 	return "/attachments/" + a.ID + "/" + url.PathEscape(a.Name)
 }
 
-// isInline reports whether a stored content type is served inline.
-func isInline(contentType string) bool {
-	t, _, _ := strings.Cut(contentType, ";")
-	return inlineTypes[strings.TrimSpace(t)]
+// attachmentDTO is the API's view of a: uploader is the uploader's name.
+func attachmentDTO(a gen.Attachment, uploader string) api.Attachment {
+	return api.Attachment{ID: a.ID, Name: a.Name, ContentType: a.ContentType, Size: a.Size,
+		UploadedBy: uploader, CreatedAt: a.CreatedAt, URL: attachmentURL(a)}
 }
 
-// attachmentMarkdown is the reference a ticket body or comment uses: an
-// image for an inline type, otherwise a link.
-func attachmentMarkdown(a gen.Attachment) string {
-	label := strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(a.Name)
-	ref := "[" + label + "](" + attachmentURL(a) + ")"
-	if isInline(a.ContentType) {
-		return "!" + ref
+// attachmentMarkdown is the reference a ticket body or comment uses.
+func attachmentMarkdown(a gen.Attachment) string { return attachmentDTO(a, "").Markdown() }
+
+// blobDeadline bounds deleting an attachment's bytes after its row is gone.
+const blobDeadline = 30 * time.Second
+
+// deleteBytes removes an attachment's bytes after core removed its row. It
+// outlives the request (a client that hangs up still gets the bytes
+// removed) but not forever; a failure is logged and left to the sweep.
+func deleteBytes(r *http.Request, d Deps, key string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), blobDeadline)
+	defer cancel()
+	if err := d.Blobs.Delete(ctx, key); err != nil {
+		d.Logger.ErrorContext(r.Context(), "delete attachment bytes", "err", err, "key", key)
 	}
-	return ref
+}
+
+// uploadedPart finds the multipart part "file" of an upload request, or
+// says why there is none: not multipart (400), no such part (400), a body
+// over the limit (413 with the file-limit message).
+func uploadedPart(r *http.Request) (*multipart.Part, *api.Failure) {
+	mr, err := r.MultipartReader()
+	if err != nil {
+		return nil, api.Fail(http.StatusBadRequest, "bad_request", "Send the file as multipart form data, in a part named file.")
+	}
+	for {
+		part, err := mr.NextPart()
+		_, tooBig := errors.AsType[*http.MaxBytesError](err)
+		switch {
+		case errors.Is(err, io.EOF):
+			return nil, api.Fail(http.StatusBadRequest, "bad_request", "Send the file in a part named file.")
+		case tooBig:
+			return nil, middleware.TooLargeUpload()
+		case err != nil:
+			return nil, api.Fail(http.StatusBadRequest, "bad_request", "That upload couldn't be read.")
+		}
+		if part.FormName() == "file" {
+			return part, nil
+		}
+	}
 }
 
 // storeUpload stores one uploaded file on a ticket, for the web and API
@@ -138,38 +167,19 @@ func AttachmentUpload(d Deps) http.HandlerFunc {
 			api.WriteFailure(w, api.Internal())
 			return
 		}
-		mr, err := r.MultipartReader()
+		part, f := uploadedPart(r)
+		if f != nil {
+			api.WriteFailure(w, f)
+			return
+		}
+		a, err := storeUpload(r.Context(), d, d.Actor.ID, t.ID, part, part.FileName())
 		if err != nil {
-			api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", "Send the file as multipart form data, in a part named file."))
+			api.WriteFailure(w, uploadFailure(r, d, err))
 			return
 		}
-		for {
-			part, err := mr.NextPart()
-			_, tooBig := errors.AsType[*http.MaxBytesError](err)
-			switch {
-			case errors.Is(err, io.EOF):
-				api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", "Send the file in a part named file."))
-				return
-			case tooBig:
-				api.WriteFailure(w, middleware.TooLargeUpload())
-				return
-			case err != nil:
-				api.WriteFailure(w, api.Fail(http.StatusBadRequest, "bad_request", "That upload couldn't be read."))
-				return
-			}
-			if part.FormName() != "file" {
-				continue
-			}
-			a, err := storeUpload(r.Context(), d, d.Actor.ID, t.ID, part, part.FileName())
-			if err != nil {
-				api.WriteFailure(w, uploadFailure(r, d, err))
-				return
-			}
-			api.WriteJSON(w, http.StatusCreated, uploadedFile{
-				ID: a.ID, Name: a.Name, URL: attachmentURL(a), Markdown: attachmentMarkdown(a), Image: isInline(a.ContentType),
-			})
-			return
-		}
+		api.WriteJSON(w, http.StatusCreated, uploadedFile{
+			ID: a.ID, Name: a.Name, URL: attachmentURL(a), Markdown: attachmentMarkdown(a), Image: api.IsInlineType(a.ContentType),
+		})
 	}
 }
 
@@ -204,9 +214,7 @@ func AttachmentDelete(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		if err := d.Blobs.Delete(context.WithoutCancel(r.Context()), key); err != nil {
-			d.Logger.ErrorContext(r.Context(), "delete attachment bytes", "err", err, "key", key)
-		}
+		deleteBytes(r, d, key)
 		redirectWithFlash(w, r, flash.Success, "Attachment removed.", to)
 	}
 }
@@ -265,42 +273,56 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 			w.WriteHeader(http.StatusMovedPermanently)
 			return
 		}
-		// An id's bytes never change, so the id is the validator: a browser
-		// revalidates on every use (a deleted file stops showing) and gets
-		// a bodiless 304 while it still exists.
-		etag := `"` + a.ID + `"`
-		h.Set("ETag", etag)
-		h.Set("Cache-Control", "private, no-cache")
-		if etagMatches(r.Header.Get("If-None-Match"), etag) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		rc, size, err := d.Blobs.Get(r.Context(), a.BlobKey)
-		if errors.Is(err, blobs.ErrNotFound) {
+		switch err := serveBytes(w, r, d, a); {
+		case errors.Is(err, blobs.ErrNotFound):
 			d.Logger.ErrorContext(r.Context(), "attachment bytes missing", "attachment", a.ID, "key", a.BlobKey)
 			NotFound(d)(w, r)
-			return
-		}
-		if err != nil {
+		case err != nil:
 			serverError(w, r, d, err)
-			return
-		}
-		defer rc.Close()
-		ctype, kind := "application/octet-stream", "attachment"
-		if isInline(a.ContentType) {
-			ctype, kind = a.ContentType, "inline"
-		}
-		h.Set("Content-Type", ctype)
-		h.Set("Content-Disposition", contentDisposition(kind, a.Name))
-		h.Set("Content-Length", strconv.FormatInt(size, 10))
-		w.WriteHeader(http.StatusOK)
-		if r.Method == http.MethodHead {
-			return
-		}
-		if _, err := io.Copy(w, rc); err != nil {
-			d.Logger.WarnContext(r.Context(), "stream attachment", "err", err, "attachment", a.ID)
 		}
 	}
+}
+
+// serveBytes answers a request for a's bytes, the web and the API alike:
+// ETag (an id's bytes never change, so it is the validator) with a bodiless
+// 304 on a match, inline only for the sniffed image types, otherwise an
+// octet-stream download named by Content-Disposition. It sets no
+// nosniff or sandbox header (the caller has, before anything can fail).
+// An error means nothing was written: blobs.ErrNotFound when the bytes are
+// gone, anything else when the store failed.
+func serveBytes(w http.ResponseWriter, r *http.Request, d Deps, a gen.Attachment) error {
+	h := w.Header()
+	etag := `"` + a.ID + `"`
+	if etagMatches(r.Header.Get("If-None-Match"), etag) {
+		h.Set("ETag", etag)
+		h.Set("Cache-Control", "private, no-cache")
+		w.WriteHeader(http.StatusNotModified)
+		return nil
+	}
+	rc, size, err := d.Blobs.Get(r.Context(), a.BlobKey)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	// A browser revalidates on every use (a deleted file stops showing) and
+	// gets a bodiless 304 while it still exists.
+	h.Set("ETag", etag)
+	h.Set("Cache-Control", "private, no-cache")
+	ctype, kind := "application/octet-stream", "attachment"
+	if api.IsInlineType(a.ContentType) {
+		ctype, kind = a.ContentType, "inline"
+	}
+	h.Set("Content-Type", ctype)
+	h.Set("Content-Disposition", contentDisposition(kind, a.Name))
+	h.Set("Content-Length", strconv.FormatInt(size, 10))
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return nil
+	}
+	if _, err := io.Copy(w, rc); err != nil {
+		d.Logger.WarnContext(r.Context(), "stream attachment", "err", err, "attachment", a.ID)
+	}
+	return nil
 }
 
 // etagMatches reports whether an If-None-Match header names etag (weak
