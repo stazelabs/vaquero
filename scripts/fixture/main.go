@@ -20,6 +20,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 // tables are the ones whose row counts the fixture records.
@@ -67,10 +68,15 @@ func write(ctx context.Context, dir, version string) error {
 	now := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return now }
 	c := core.New(w, clock)
-	// The fixture has no server, so no instance id: any valid one names
-	// its blob keys.
+	c.BlobStore = "sqlite"
+	// A served database carries its instance id, which names its blob keys;
+	// the fixture records one the same way serve does.
+	const instance = "fixture"
+	if err := gen.New(w).PutSetting(ctx, gen.PutSettingParams{Key: "instance_id", Value: instance, UpdatedAt: timefmt.Format(now)}); err != nil {
+		return err
+	}
 	store := blobs.NewSQLite(w, w, clock)
-	if err := coreseed.Seed(ctx, c, gen.New(w), store, "fixture", now); err != nil {
+	if err := coreseed.Seed(ctx, c, gen.New(w), store, instance, now); err != nil {
 		return err
 	}
 	schema, err := appdb.Version(w)

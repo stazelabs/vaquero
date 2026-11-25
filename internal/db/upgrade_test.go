@@ -101,7 +101,7 @@ func TestFixturesMigrateToHead(t *testing.T) {
 	}
 }
 
-// dump is every row of every tracker table, as quoted SQL values, in rowid
+// dump is every row of every tracker table, as quoted SQL values, in key
 // order, with the columns it was read with.
 type dump struct {
 	cols map[string][]string
@@ -146,7 +146,7 @@ func dumpTables(t *testing.T, d *sql.DB, cols map[string][]string) dump {
 		for i, c := range cs {
 			quoted[i] = "quote(" + c + ")"
 		}
-		rows, err := d.Query("SELECT " + strings.Join(quoted, " || '|' || ") + " FROM " + table + " ORDER BY rowid")
+		rows, err := d.Query("SELECT " + strings.Join(quoted, " || '|' || ") + " FROM " + table + " ORDER BY " + orderOf(t, d, table))
 		if err != nil {
 			t.Fatalf("%s: %v", table, err)
 		}
@@ -159,6 +159,29 @@ func dumpTables(t *testing.T, d *sql.DB, cols map[string][]string) dump {
 		out.cols[table] = cs
 	}
 	return out
+}
+
+// orderOf is a table's declared primary key, in key order, or rowid when it
+// declares none. A WITHOUT ROWID table (blobs) has no rowid to order by.
+func orderOf(t *testing.T, d *sql.DB, table string) string {
+	t.Helper()
+	rows, err := d.Query(`SELECT name FROM pragma_table_info(?) WHERE pk > 0 ORDER BY pk`, table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var pk []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		pk = append(pk, c)
+	}
+	if len(pk) == 0 {
+		return "rowid"
+	}
+	return strings.Join(pk, ", ")
 }
 
 func columnsOf(d dump) map[string][]string { return d.cols }
