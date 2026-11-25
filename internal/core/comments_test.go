@@ -66,3 +66,38 @@ func TestDeletedCommentsAreHidden(t *testing.T) {
 	}
 	fieldErr(t, c.EditComment(bg, f.Owner.ID, f.Comment.ID, "back"), "body", "That comment was deleted.")
 }
+
+func TestCommentKeepsLeadingIndentation(t *testing.T) {
+	c, d, f := newFixture(t)
+	cm, err := c.AddComment(bg, f.Owner.ID, f.T1.ID, "\n  \n    code()\n  more  \n\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "    code()\n  more"; cm.Body != want {
+		t.Fatalf("added %q, want %q", cm.Body, want)
+	}
+	if err := c.EditComment(bg, f.Owner.ID, cm.ID, "\n\t    indented\n"); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := d.RQ.ListComments(bg, f.T1.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cs[len(cs)-1].Body; got != "\t    indented" {
+		t.Fatalf("edited %q", got)
+	}
+	// A blank comment is still refused.
+	_, err = c.AddComment(bg, f.Owner.ID, f.T1.ID, " \n \t\n")
+	fieldErr(t, err, "body", "Write a comment.")
+}
+
+func TestTicketBodyKeepsLeadingIndentation(t *testing.T) {
+	c, _, f := newFixture(t)
+	tk, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "ok", Body: "    code()\n  more  \n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "    code()\n  more"; tk.Body != want {
+		t.Fatalf("%q", tk.Body)
+	}
+}

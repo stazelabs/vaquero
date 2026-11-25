@@ -11,7 +11,7 @@ import (
 
 func commentBody(body string) (string, error) {
 	f := fields{}
-	body = text(f, "body", body, 20000, "Write a comment.", "Keep comments under 20,000 characters.")
+	body = checked(f, "body", trimBlock(body), 20000, "Write a comment.", "Keep comments under 20,000 characters.")
 	return body, f.err()
 }
 

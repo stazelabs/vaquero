@@ -20,7 +20,11 @@ func hasControl(s string) bool {
 // text trims s and records emptyMsg (when non-empty and s is blank),
 // longMsg (when s is over max characters) or controlMsg against field.
 func text(f fields, field, s string, max int, emptyMsg, longMsg string) string {
-	s = strings.TrimSpace(s)
+	return checked(f, field, strings.TrimSpace(s), max, emptyMsg, longMsg)
+}
+
+// checked records the same refusals as text, for an s already trimmed.
+func checked(f fields, field, s string, max int, emptyMsg, longMsg string) string {
 	switch {
 	case hasControl(s):
 		f.add(field, controlMsg)
@@ -30,4 +34,18 @@ func text(f fields, field, s string, max int, emptyMsg, longMsg string) string {
 		f.add(field, longMsg)
 	}
 	return s
+}
+
+// trimBlock trims trailing whitespace and leading blank lines, keeping the
+// indentation of the first non-blank line (a comment may open with an
+// indented code block).
+func trimBlock(s string) string {
+	for {
+		i := strings.IndexByte(s, '\n')
+		if i < 0 || strings.TrimSpace(s[:i]) != "" {
+			break
+		}
+		s = s[i+1:]
+	}
+	return strings.TrimRightFunc(s, unicode.IsSpace)
 }
