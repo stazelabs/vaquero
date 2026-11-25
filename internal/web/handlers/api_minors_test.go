@@ -92,3 +92,40 @@ func TestAPINameLookupErrorIsInternal(t *testing.T) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 }
+
+// VAQ-61: a create names no version and no tags to remove; either is
+// refused rather than ignored.
+func TestAPICreateRefusesPatchOnlyFields(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	for field, v := range map[string]any{"version": 3, "remove_tags": []string{"ui"}} {
+		r := c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "New", field: v})
+		if r.Status != 422 || !strings.Contains(r.Body, `"`+field+`"`) {
+			t.Errorf("%s: %d %s", field, r.Status, r.Body)
+		}
+	}
+}
+
+// VAQ-61: a token is revoked by its exact prefix; base64url is case
+// sensitive, so another case names another token.
+func TestAPITokenRevokeComparesExactly(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	var made api.Token
+	decode(t, c.API("POST", "/api/v1/tokens", tok, map[string]any{"name": "ci"}).Body, &made)
+	flipped := []byte(made.Prefix)
+	for i := 3; i < len(flipped); i++ {
+		if b := flipped[i]; b >= 'a' && b <= 'z' {
+			flipped[i] = b - 32
+		} else if b >= 'A' && b <= 'Z' {
+			flipped[i] = b + 32
+		}
+	}
+	if string(flipped) == made.Prefix {
+		t.Skip("the prefix has no letters")
+	}
+	if r := c.API("POST", "/api/v1/tokens/"+string(flipped)+"/revoke", tok, nil); r.Status != 404 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if r := c.API("POST", "/api/v1/tokens/"+made.Prefix+"/revoke", tok, nil); r.Status != 204 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+}

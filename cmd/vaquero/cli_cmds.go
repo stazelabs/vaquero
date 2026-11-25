@@ -322,6 +322,11 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		if len(pos) != 3 {
 			return c.finish(usageError{usage: usage})
 		}
+		for _, f := range []string{"version", "remove-tag"} {
+			if c.set(f) {
+				return c.finish(usageError{usage: usage, hint: "--" + f + " is for ticket edit"})
+			}
+		}
 		return c.connected(ctx, nil, func() error {
 			b, err := fields()
 			if err != nil {

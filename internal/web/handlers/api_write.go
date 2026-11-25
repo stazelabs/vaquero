@@ -256,6 +256,14 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		pt := in.patch(n)
+		// A patch's fields that mean nothing for a new ticket are refused,
+		// not ignored.
+		if in.Version != 0 {
+			n.fields["version"] = "A new ticket has no version to check."
+		}
+		if len(in.RemoveTags) > 0 {
+			n.fields["remove_tags"] = "A new ticket has no tags to remove."
+		}
 		if n.fail(w, r) {
 			return
 		}

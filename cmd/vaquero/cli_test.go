@@ -245,6 +245,17 @@ func TestCLIVersionMustBePositive(t *testing.T) {
 	}
 }
 
+// VAQ-61: ticket new has no version to check and no tags to remove.
+func TestCLINewRefusesEditOnlyFlags(t *testing.T) {
+	cliEnv(t)
+	for _, flag := range [][]string{{"--version", "2"}, {"--remove-tag", "ui"}} {
+		args := append([]string{"ticket", "new", "VAQ", "x"}, flag...)
+		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, flag[0]+" is for ticket edit") {
+			t.Errorf("%s: exit %d %q", flag[0], code, errOut)
+		}
+	}
+}
+
 func TestCLIAgentFlag(t *testing.T) {
 	cliEnv(t)
 	mustCLI(t, "ticket", "new", "VAQ", "x")

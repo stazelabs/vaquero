@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -60,7 +59,7 @@ func APITokenRevoke(d Deps) http.HandlerFunc {
 			return
 		}
 		for _, t := range rows {
-			if strings.EqualFold(t.Prefix, prefix) && !t.RevokedAt.Valid {
+			if t.Prefix == prefix && !t.RevokedAt.Valid { // base64url is case sensitive
 				if err := d.Core.RevokeToken(r.Context(), apiActor(r).ID, t.ID); err != nil {
 					apiCoreFail(w, r, d, gen.Project{}, err)
 					return
