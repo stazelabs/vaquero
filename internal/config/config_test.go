@@ -137,3 +137,41 @@ func TestBlobDirMadeAbsolute(t *testing.T) {
 		t.Fatalf("BlobDir %q", c.BlobDir)
 	}
 }
+
+// VAQ-10: an address the Host check would refuse never boots.
+func TestLocalRefusesLoopbackOutsideHostAllowlist(t *testing.T) {
+	for _, addr := range []string{"127.0.0.2:7878", "127.1.2.3:7878", "[::ffff:127.0.0.2]:7878"} {
+		_, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_ADDR": addr}))
+		if err == nil || !strings.Contains(err.Error(), "localhost, 127.0.0.1 or ::1") {
+			t.Fatalf("%s: %v", addr, err)
+		}
+	}
+}
+
+// VAQ-11: the port is a number from 1 to 65535.
+func TestAddrPortValidated(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:0", "127.0.0.1:65536", "127.0.0.1:-1", "127.0.0.1:http", "127.0.0.1:"} {
+		_, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_ADDR": addr}))
+		if err == nil || !strings.Contains(err.Error(), "port") {
+			t.Fatalf("%s: %v", addr, err)
+		}
+	}
+	for _, addr := range []string{"127.0.0.1:1", "127.0.0.1:65535"} {
+		if _, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_ADDR": addr})); err != nil {
+			t.Fatalf("%s: %v", addr, err)
+		}
+	}
+}
+
+// VAQ-16: a misspelt level is an error, not a silent default.
+func TestLogLevelValidated(t *testing.T) {
+	for _, l := range []string{"debug", "INFO", "Warn", "error"} {
+		if _, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_LOG_LEVEL": l})); err != nil {
+			t.Fatalf("%s: %v", l, err)
+		}
+	}
+	_, err := FromEnv(env(map[string]string{"HOME": "/h", "VQ_LOG_LEVEL": "verbose"}))
+	if err == nil || !strings.Contains(err.Error(), "VQ_LOG_LEVEL") {
+		t.Fatalf("%v", err)
+	}
+}

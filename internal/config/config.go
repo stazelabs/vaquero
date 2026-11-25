@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -80,6 +81,11 @@ func FromEnv(get func(string) string) (Config, error) {
 	if c.LogFormat != "text" && c.LogFormat != "json" {
 		errs = append(errs, fmt.Errorf("VQ_LOG_FORMAT must be text or json, not %q", c.LogFormat))
 	}
+	switch strings.ToLower(c.LogLevel) {
+	case "debug", "info", "warn", "error":
+	default:
+		errs = append(errs, fmt.Errorf("VQ_LOG_LEVEL must be debug, info, warn or error, not %q", c.LogLevel))
+	}
 	if err := checkAddr(c.Mode, c.Addr); err != nil {
 		errs = append(errs, err)
 	}
@@ -143,13 +149,18 @@ func readBlobs(c *Config, get func(string) string) error {
 	return nil
 }
 
-// checkAddr rejects an unparseable address and, in local mode, any address
-// that is not loopback: local mode has no sign-in, so it must never be
-// reachable from the network.
+// checkAddr rejects an unparseable address, a port outside 1 to 65535 (port
+// 0 too: local mode needs a port the CLI and the owner can name) and, in
+// local mode, any host the Host check would refuse. Local mode has no
+// sign-in, so it must never be reachable from the network, and an address
+// that boots but answers 403 to every request is worse than a refusal.
 func checkAddr(mode Mode, addr string) error {
-	host, _, err := net.SplitHostPort(addr)
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("VQ_ADDR %q is not host:port: %w", addr, err)
+	}
+	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+		return fmt.Errorf("VQ_ADDR %q has no usable port: the port must be a number from 1 to 65535", addr)
 	}
 	if mode != ModeLocal {
 		return nil
@@ -157,10 +168,17 @@ func checkAddr(mode Mode, addr string) error {
 	if strings.EqualFold(host, "localhost") {
 		return nil
 	}
-	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+	if ip := net.ParseIP(host); ip != nil && AllowedHostIP(ip) {
 		return nil
 	}
-	return errors.New("VQ_ADDR must be a loopback address (127.0.0.1, localhost or [::1]) in local mode; sharing on a network needs hosted mode")
+	return errors.New("VQ_ADDR must be a loopback address the server answers to (localhost, 127.0.0.1 or ::1) in local mode; sharing on a network needs hosted mode")
+}
+
+// AllowedHostIP reports whether ip is one of the two loopback addresses the
+// Host check answers to, 127.0.0.1 and ::1. Other loopback addresses, such
+// as 127.0.0.2, would boot and then be refused on every request.
+func AllowedHostIP(ip net.IP) bool {
+	return ip.Equal(net.IPv4(127, 0, 0, 1)) || ip.Equal(net.IPv6loopback)
 }
 
 // DefaultDataDir is where local mode keeps its data when VQ_DATA_DIR is

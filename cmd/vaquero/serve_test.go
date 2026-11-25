@@ -31,10 +31,16 @@ func freeAddr(t *testing.T) string {
 }
 
 func testConfig(t *testing.T, addr, dir string) config.Config {
-	cfg, err := config.FromEnv(func(k string) string { return map[string]string{"VQ_ADDR": addr, "VQ_DATA_DIR": dir}[k] })
+	// Config refuses port 0, but a test may want the system to pick one.
+	valid := strings.TrimSuffix(addr, ":0")
+	if valid != addr {
+		valid += ":7878"
+	}
+	cfg, err := config.FromEnv(func(k string) string { return map[string]string{"VQ_ADDR": valid, "VQ_DATA_DIR": dir}[k] })
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Addr = addr
 	return cfg
 }
 
