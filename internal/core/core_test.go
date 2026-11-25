@@ -42,6 +42,25 @@ type coreOp struct {
 	good, bad func(*core.Core, fixture) error
 }
 
+// lateFail replaces the ghost-actor run in the rollback test for operations
+// a missing actor does not carry as far as their event write (the ghost
+// fails them at their own first write, or at setup). Each arranges real
+// rows, calls snap, then runs the operation.
+var lateFail = map[string]func(c *core.Core, f fixture, snap func()) error{}
+
+// eventRefused is the message of the trigger that makes the next event
+// insert fail, so a rollback test knows the operation got as far as its
+// event.
+const eventRefused = "event write refused"
+
+// refuseEvents makes every later insert into events fail.
+func refuseEvents(t *testing.T, c *core.Core) {
+	t.Helper()
+	if _, err := c.DB.Exec(`CREATE TRIGGER refuse_events BEFORE INSERT ON events BEGIN SELECT RAISE(ABORT, '` + eventRefused + `'); END`); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ops lists every core operation. Each later task adds its own.
 var ops []coreOp
 
@@ -81,10 +100,17 @@ func TestEveryOperationRollsBackPartWay(t *testing.T) {
 		t.Run(op.name, func(t *testing.T) {
 			c, d, f := newFixture(t)
 			snap := snapshot(t, d)
-			ghost := f
-			ghost.Owner.ID = "no-such-actor"
-			if err := op.good(c, ghost); err == nil {
-				t.Fatal("succeeded as a missing actor")
+			if late := lateFail[op.name]; late != nil {
+				err := late(c, f, func() { snap = snapshot(t, d); refuseEvents(t, c) })
+				if err == nil || !strings.Contains(err.Error(), eventRefused) {
+					t.Fatalf("want a failure at the event write, got %v", err)
+				}
+			} else {
+				ghost := f
+				ghost.Owner.ID = "no-such-actor"
+				if err := op.good(c, ghost); err == nil {
+					t.Fatal("succeeded as a missing actor")
+				}
 			}
 			if got := snapshot(t, d); !maps.Equal(got, snap) {
 				t.Fatalf("failed operation left changes: %v → %v", snap, got)

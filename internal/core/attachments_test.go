@@ -31,6 +31,22 @@ func init() {
 			},
 			func(c *core.Core, f fixture) error { _, err := c.DeleteAttachment(bg, f.Owner.ID, "nope"); return err }},
 	)
+	// The attachment row is written, then the event refuses.
+	lateFail["AddAttachment"] = func(c *core.Core, f fixture, snap func()) error {
+		snap()
+		_, err := attach(c, f.Owner.ID, f.T1.ID, "shot.png")
+		return err
+	}
+	// The row is deleted, then the event refuses.
+	lateFail["DeleteAttachment"] = func(c *core.Core, f fixture, snap func()) error {
+		id, err := attach(c, f.Owner.ID, f.T1.ID, "a.png")
+		if err != nil {
+			return err
+		}
+		snap()
+		_, err = c.DeleteAttachment(bg, f.Owner.ID, id)
+		return err
+	}
 }
 
 func TestAddAttachmentEmitsOneEvent(t *testing.T) {
