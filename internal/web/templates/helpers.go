@@ -113,8 +113,8 @@ var shortcuts = [][2]string{
 	{"/", "Search"},
 	{"g b", "Board"},
 	{"g l", "List"},
-	{"j / k", "Next or previous card"},
-	{"enter", "Open the card"},
+	{"j / k", "Focus the next or previous card"},
+	{"enter", "Open the focused card"},
 	{"?", "This list"},
 	{"esc", "Close"},
 }
