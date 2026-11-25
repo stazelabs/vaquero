@@ -18,7 +18,7 @@ The chips under the project name narrow the board: Mine (assigned to you), Agent
 
 ## Moving cards
 
-Drag a card to another column to change its status, or within a column to reorder it. If the move is refused (the ticket changed, or the status was deleted), the board reloads and says why.
+Drag a card to another column to change its status, or within a column to reorder it. If the move is refused (the ticket changed, or the status was deleted), the board reloads and says why. If it doesn't go through at all (an error, or Vaquero isn't running), the card goes back where it was and a message says so.
 
 ## Live updates
 

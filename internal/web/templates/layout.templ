@@ -74,6 +74,11 @@ templ Shell(title string) {
 				@footer()
 			</div>
 			@shortcutsDialog()
+			// The error toast's markup, inert until app.js clones it to report
+			// a failure it sees itself (an upload, a board drop).
+			<template id="vq-toast-template">
+				@toast(flash.Flash{Kind: flash.Error})
+			</template>
 		</body>
 	</html>
 }

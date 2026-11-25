@@ -21,16 +21,74 @@
   }
 })();
 
+// vqToast shows an error toast for a failure the page sees itself (an
+// upload, a board drop), cloned from the Shell's #vq-toast-template.
+window.vqToast = function (message) {
+  var tpl = document.getElementById("vq-toast-template");
+  if (!tpl) {
+    return;
+  }
+  var old = document.getElementById("vq-toast");
+  if (old) {
+    old.remove();
+  }
+  var el = tpl.content.firstElementChild.cloneNode(true);
+  el.querySelector("[data-toast-message]").textContent = message;
+  var btn = el.querySelector("[data-toast-close]");
+  if (btn) {
+    btn.addEventListener("click", function () { el.remove(); });
+  }
+  document.body.appendChild(el);
+};
+
 // The board: every [data-board-column] list is a Sortable in one group, so
 // cards drag within and between columns. A drop posts the card's new
 // status and neighbours (by ticket key) through htmx, which swaps in the
 // board the server renders back. window.vqDragging is true mid-drag, so a
-// live refresh can wait (see the stream handler).
+// live refresh can wait (see the stream handler), and so does a drop's
+// answer: a board that arrives mid-drag isn't swapped in under the card;
+// when that drag ends without a move the board is fetched afresh, and when
+// it ends in a move that drop's answer is the latest. A drop that fails
+// (an error answer, or no answer) puts the card back, says so and fetches
+// the board again.
 window.vqDragging = false;
 (function () {
   function key(el) {
     return el && el.dataset ? el.dataset.card || "" : "";
   }
+  var deferred = false; // a board answer was held back mid-drag
+  var lastDrop = null; // {item, from, index}: where the dropped card came from
+  function refreshBoard() {
+    var board = document.getElementById("board");
+    if (board && window.htmx) {
+      window.htmx.trigger(board, "vq:change");
+    }
+  }
+  function isDrop(ev) {
+    var cfg = ev.detail && ev.detail.requestConfig;
+    return !!cfg && cfg.verb === "post" && /^\/t\/[^/]+\/move$/.test(cfg.path || "");
+  }
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    var target = ev.detail && ev.detail.target;
+    if (target && target.id === "board" && window.vqDragging && ev.detail.shouldSwap) {
+      ev.detail.shouldSwap = false;
+      deferred = true;
+    }
+  });
+  function dropFailed(ev) {
+    if (!isDrop(ev)) {
+      return;
+    }
+    var d = lastDrop;
+    lastDrop = null;
+    if (d && d.item.isConnected && !window.vqDragging) {
+      d.from.insertBefore(d.item, d.from.children[d.index] || null);
+    }
+    window.vqToast("The card couldn't be moved. Try again.");
+    refreshBoard();
+  }
+  document.body.addEventListener("htmx:responseError", dropFailed);
+  document.body.addEventListener("htmx:sendError", dropFailed);
   function init(root) {
     if (!window.Sortable || !window.htmx) {
       return;
@@ -53,9 +111,15 @@ window.vqDragging = false;
         onEnd: function (ev) {
           window.vqDragging = false;
           if (ev.from === ev.to && ev.oldIndex === ev.newIndex) {
+            if (deferred) {
+              deferred = false;
+              refreshBoard();
+            }
             document.dispatchEvent(new CustomEvent("vq:dragend"));
             return;
           }
+          deferred = false; // this drop's answer will be the latest board
+          lastDrop = { item: ev.item, from: ev.from, index: ev.oldIndex };
           var board = document.getElementById("board");
           window.htmx.ajax("POST", "/t/" + key(ev.item) + "/move", {
             target: "#board",
@@ -149,7 +213,7 @@ window.vqDragging = false;
   var scroll = 0;
   document.body.addEventListener("htmx:beforeSwap", function (ev) {
     var target = ev.detail && ev.detail.target;
-    if (!target || target.id !== "board") {
+    if (!target || target.id !== "board" || !ev.detail.shouldSwap) {
       return;
     }
     openRails = Array.prototype.map.call(target.querySelectorAll("details[data-rail][open]"), function (d) {
@@ -275,7 +339,10 @@ window.vqDragging = false;
   // A board or list refresh replaces the cards: the focused card's link is
   // focused again in the new markup, so j and k carry on from it.
   var refocus = "";
-  document.body.addEventListener("htmx:beforeSwap", function () {
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    if (!ev.detail.shouldSwap) {
+      return;
+    }
     var active = document.activeElement;
     var card = active && active.closest ? active.closest("[data-card]") : null;
     refocus = card ? card.dataset.card : "";
@@ -325,19 +392,7 @@ window.vqDragging = false;
 // survive the live refresh that replaces the attachments section.
 (function () {
   var uploadCount = 0;
-  function toast(message) {
-    var tpl = document.getElementById("vq-toast-template");
-    if (!tpl) { return; }
-    var old = document.getElementById("vq-toast");
-    if (old) { old.remove(); }
-    var el = tpl.content.firstElementChild.cloneNode(true);
-    el.querySelector("[data-toast-message]").textContent = message;
-    var btn = el.querySelector("[data-toast-close]");
-    if (btn) {
-      btn.addEventListener("click", function () { el.remove(); });
-    }
-    document.body.appendChild(el);
-  }
+  var toast = window.vqToast;
 
   function hasFiles(ev) {
     var dt = ev.dataTransfer;

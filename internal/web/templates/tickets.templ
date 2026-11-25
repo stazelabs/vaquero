@@ -4,7 +4,6 @@ import (
 	"html/template"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
-	"github.com/stazelabs/vaquero/internal/web/flash"
 )
 
 // TicketForm is the new-ticket and edit-ticket form.
@@ -82,7 +81,6 @@ templ TicketFormPage(f TicketForm) {
 			</div>
 		}
 		if f.TicketKey != "" {
-			@attachSupport()
 		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
 			if f.Version != "" {
@@ -124,7 +122,6 @@ templ TicketFormPage(f TicketForm) {
 templ TicketPage(v TicketView) {
 	@Shell(v.Key + " " + v.Ticket.Title) {
 		<span hidden data-project={ v.Project.Key }></span>
-		@attachSupport()
 		<p class="font-mono text-sm text-muted">
 			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
 		</p>
@@ -367,10 +364,3 @@ templ EventLine(e EventView) {
 	</li>
 }
 
-// attachSupport carries what app.js needs to report an upload client-side:
-// the error toast's markup, inert until it is cloned.
-templ attachSupport() {
-	<template id="vq-toast-template">
-		@toast(flash.Flash{Kind: flash.Error})
-	</template>
-}
