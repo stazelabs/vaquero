@@ -496,7 +496,9 @@ func (d *deniedStore) Put(context.Context, string, io.Reader, int64, string) err
 	return errors.New("s3 put: Access Denied.")
 }
 
-func (d *deniedStore) Delete(context.Context, string) error { return errors.New("s3 delete: Access Denied.") }
+func (d *deniedStore) Delete(context.Context, string) error {
+	return errors.New("s3 delete: Access Denied.")
+}
 
 // Bad S3 credentials stop the import at once, before the archive is unpacked
 // or a database built, rather than at the first attachment's Put.

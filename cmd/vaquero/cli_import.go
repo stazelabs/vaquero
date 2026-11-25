@@ -215,7 +215,8 @@ func importStore(ctx context.Context, cfg config.Config, instance string) (blobs
 // swap it removes the new file and every object it put.
 func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, store blobs.Store, instance string) (aside string, err error) {
 	newPath := filepath.Join(cfg.DataDir, importFile)
-	removeDatabase(newPath) // left by an interrupted import; the lock is ours
+	// A file left by an interrupted import goes; the lock is ours.
+	removeDatabase(newPath)
 	var put []string // every key put, deleted again on failure
 	var w, r *sql.DB
 	closeDB := func() {
