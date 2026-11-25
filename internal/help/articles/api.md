@@ -35,7 +35,7 @@ On this machine, a request made with your token can act as an agent by naming it
 | `GET /api/v1/projects/{key}` | One project |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
-| `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name is `422` |
+| `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets`, `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
 | `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |

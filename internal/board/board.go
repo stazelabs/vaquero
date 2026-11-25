@@ -54,8 +54,10 @@ type Board struct {
 
 func isRail(category string) bool { return category == "backlog" || category == "cancelled" }
 
-// Load builds the board as of now.
+// Load builds the board as of now. The board has no category filter (its
+// columns are the categories), so f.Category is ignored and dropped.
 func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Board, error) {
+	f.Category = ""
 	cols, err := columns(ctx, q, p, owner, f, now)
 	if err != nil {
 		return Board{}, err

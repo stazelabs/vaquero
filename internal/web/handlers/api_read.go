@@ -181,7 +181,8 @@ func summary(k board.Card, s gen.Status) api.TicketSummary {
 
 // APITickets is GET /api/v1/projects/{key}/tickets: the board's filters,
 // plus status (a status name, any case), open=1 (not done or cancelled)
-// and limit (≤ 500), in board order.
+// and limit (≤ 500), in board order. An unknown milestone, assignee or
+// category is a 422.
 func APITickets(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := apiProject(w, r, d)
@@ -198,6 +199,10 @@ func APITickets(d Deps) http.HandlerFunc {
 		}
 		if f.Assignee != "" {
 			f.Assignee = n.assignee(f.Assignee)
+		}
+		// The web filter reads an unknown category as any; the API refuses it.
+		if c := q.Get("category"); c != "" && !slices.Contains(core.Categories, c) {
+			n.fields["category"] = "No category " + c + ". Use " + orList(core.Categories) + "."
 		}
 		if n.fail(w) {
 			return
@@ -394,4 +399,12 @@ func APIEvents(d Deps) http.HandlerFunc {
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// orList joins words as "a, b or c".
+func orList(words []string) string {
+	if len(words) < 2 {
+		return strings.Join(words, "")
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
 }

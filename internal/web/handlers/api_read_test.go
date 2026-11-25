@@ -216,3 +216,27 @@ func TestAPITicketFiltersByName(t *testing.T) {
 		}
 	}
 }
+
+// category narrows to one status category; an unknown one is refused with
+// the valid ones named, never read as "any" (VAQ-39).
+func TestAPITicketsByCategory(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	tok := e.Token(t)
+	c := e.Client()
+	ticket(t, e, p, core.TicketInput{Title: "open"})
+	ticket(t, e, p, core.TicketInput{Title: "finished", StatusID: statusID(t, e, "Done")})
+	var got []api.TicketSummary
+	r := c.API("GET", "/api/v1/projects/VAQ/tickets?category=done", tok, nil)
+	decode(t, r.Body, &got)
+	if r.Status != 200 || len(got) != 1 || got[0].Title != "finished" {
+		t.Fatalf("%d %+v", r.Status, got)
+	}
+	for _, q := range []string{"nope", "DONE", "Done"} {
+		r := c.API("GET", "/api/v1/projects/VAQ/tickets?category="+q, tok, nil)
+		if r.Status != 422 || !strings.Contains(r.Body, `"category"`) ||
+			!strings.Contains(r.Body, "backlog, todo, in_progress, in_review, done or cancelled") {
+			t.Errorf("%s: %d %s", q, r.Status, r.Body)
+		}
+	}
+}

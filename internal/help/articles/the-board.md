@@ -26,7 +26,7 @@ The board, the list view and the Activity page update themselves when anything c
 
 ## The list view
 
-List shows every status, done and cancelled included, with every ticket that matches the filters. Use it to find older work. Besides the board's chips it has one per status category (Backlog, Todo, In progress, In review, Done, Cancelled), which shows only the statuses in that category; `?category=done` in the address does the same.
+List shows every status, done and cancelled included, with every ticket that matches the filters. Use it to find older work. Besides the board's chips it has one per status category (Backlog, Todo, In progress, In review, Done, Cancelled), which shows only the statuses in that category; `?category=done` in the address does the same, and a category it doesn't know shows every status. The board has no category filter, since its columns already are the categories, and ignores one in the address.
 
 ## Keys
 

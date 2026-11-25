@@ -82,7 +82,7 @@ func ProjectShow(d Deps) http.HandlerFunc {
 			return
 		}
 		base := projectPath(p, "")
-		v := templates.BoardView{Board: b, Chips: chipsFor(base, f, tagsOn([][]board.Column{b.Active, b.Rails}, f.Tag), false), Clear: base}
+		v := templates.BoardView{Board: b, Chips: chipsFor(base, b.Filter, tagsOn([][]board.Column{b.Active, b.Rails}, f.Tag), false), Clear: base}
 		render(w, r, d, http.StatusOK, templates.BoardPage(v))
 	}
 }

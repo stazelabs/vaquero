@@ -169,6 +169,12 @@ func TestOlderLinksToDoneList(t *testing.T) {
 	all := c.Get("/p/VAQ/list").Body
 	contains(t, all, `href="/p/VAQ/list?category=done"`, `href="/p/VAQ/list?category=backlog"`, "In review")
 	lacks(t, c.Get("/p/VAQ").Body, `href="/p/VAQ?category=done"`)
+	// The web filter reads an unknown category as any.
+	contains(t, c.Get("/p/VAQ/list?category=nope").Body, "long done", "in backlog")
+	// The board ignores category: every column stays, nothing to clear.
+	board := c.Get("/p/VAQ?category=done").Body
+	contains(t, board, "in backlog", `data-filter=""`)
+	lacks(t, board, "Clear filters", "category=done&amp;")
 }
 
 func TestBoardFragmentRoute(t *testing.T) {
