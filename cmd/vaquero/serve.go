@@ -276,8 +276,9 @@ func blobLocationRefusal(cfg config.Config, recorded string) error {
 		//lint:ignore ST1005 the refusal is a sentence the operator reads as is
 		return fmt.Errorf("Attachments are stored in %s; VQ_S3_ENDPOINT and VQ_S3_BUCKET name %s. Set them back to %s and %s.", recorded, now, ep, bucket)
 	}
+	was := blobs.ResolveLocation(recorded, cfg.DataDir)
 	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s. Set it back to %s.", recorded, now, recorded)
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s. Set it back to %s.", was, blobs.ResolveLocation(now, cfg.DataDir), was)
 }
 
 // TokenFile is where the local token lives in the data directory. The CLI

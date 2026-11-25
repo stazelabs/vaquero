@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -476,5 +477,75 @@ func TestInUseMessage(t *testing.T) {
 	}
 	if got := inUse("/d", 0).Error(); got != "another vaquero is using /d" {
 		t.Errorf("%q", got)
+	}
+}
+
+// VAQ-78 review: a data directory moved whole, with dir storage at its
+// default place inside it, still boots and serves its attachments: the
+// location is recorded relative to the data directory.
+func TestMovedDataDirKeepsDefaultBlobDir(t *testing.T) {
+	dataDir, addr := localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "dir")
+	runCLI(t, "projects")
+	if code, _, e := runCLI(t, "project", "create", "VAQ", "Vaquero"); code != 0 {
+		t.Fatal(e)
+	}
+	if code, _, e := runCLI(t, "ticket", "new", "VAQ", "x"); code != 0 {
+		t.Fatal(e)
+	}
+	file := filepath.Join(t.TempDir(), "note.txt")
+	if err := os.WriteFile(file, []byte("moved bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out, e := runCLI(t, "attach", "VAQ-1", file, "--json")
+	if code != 0 {
+		t.Fatal(e)
+	}
+	var atts []struct{ ID string }
+	if err := json.Unmarshal([]byte(out), &atts); err != nil || len(atts) != 1 {
+		t.Fatalf("%v %q", err, out)
+	}
+	att := atts[0]
+	if got := readSetting(t, dataDir, "blob_location"); got != "{data dir}/attachments" {
+		t.Fatalf("blob_location = %q", got)
+	}
+	runCLI(t, "stop")
+	moved := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(dataDir, moved); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VQ_DATA_DIR", moved)
+	t.Cleanup(func() { killTestServer(moved) })
+	if code, _, e := runCLI(t, "attachments", "VAQ-1"); code != 0 {
+		t.Fatalf("the moved data directory didn't serve: %s", e)
+	}
+	tok, _ := os.ReadFile(filepath.Join(moved, "token"))
+	req, _ := http.NewRequest("GET", "http://"+addr+"/api/v1/attachments/"+att.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(tok)))
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != 200 || string(body) != "moved bytes" {
+		t.Fatalf("%d %q", res.StatusCode, body)
+	}
+}
+
+// An external VQ_BLOB_DIR is recorded absolute; changing it is refused.
+func TestBlobLocationOutsideDataDirIsAbsolute(t *testing.T) {
+	dir := t.TempDir()
+	cfg := config.Config{DataDir: dir, BlobBackend: "dir", BlobDir: filepath.Join(dir, "attachments")}
+	if got := blobs.Location(cfg); got != "{data dir}/attachments" {
+		t.Fatalf("%q", got)
+	}
+	cfg.BlobDir = filepath.Join(dir, "..", filepath.Base(dir)+"-sibling")
+	if got := blobs.Location(cfg); !filepath.IsAbs(got) || strings.Contains(got, "..") {
+		t.Fatalf("%q", got)
+	}
+	if err := blobLocationRefusal(config.Config{DataDir: "/new", BlobBackend: "dir", BlobDir: "/elsewhere"}, "{data dir}/attachments"); err == nil ||
+		err.Error() != "Attachments are stored in /new/attachments; VQ_BLOB_DIR is /elsewhere. Set it back to /new/attachments." {
+		t.Fatalf("%v", err)
 	}
 }
