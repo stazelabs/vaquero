@@ -14,6 +14,11 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
    - [ ] Seamless code review, marginalia style: requirements, tests and comments shown beside the code.
    - [ ] LLMs for review and for the work itself. Catalogue the review types first. Grows out of Phase 7.
    - [ ] Project design artifacts as first-class items: specs, plans and diagrams, linkable to tickets and code.
+   - [ ] A rich content editor for descriptions and comments: fluid mixed content, with pasted images shown in place instead of as a `![name](/attachments/…)` line (owner, 2026-11-25; v0.1.0 keeps the Markdown text box). Constraints to design around:
+     - Stored text stays Markdown, because agents, the CLI and the API read and write it.
+     - Strict CSP: no inline script or style. Any editor library is vendored, like htmx and SortableJS. No React.
+     - One component serves the description, new comments and comment edits.
+     - It is likely shared with design artifacts and review comments.
 4. Design note: make each of these items linkable to tickets and commits by ID.
 
 ## Phases
