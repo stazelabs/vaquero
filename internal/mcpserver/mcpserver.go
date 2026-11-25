@@ -40,7 +40,7 @@ const Instructions = "Vaquero is a ticket tracker shared by people and agents; t
 	"To take work, call ready_tickets, then claim_ticket on one: a claim assigns it to you and lasts for a lease (15 minutes unless you ask for up to 120). " +
 	"While you work, call heartbeat before the lease ends, record progress with add_comment and update_ticket, and move_ticket it when it is done. " +
 	"Call release_ticket when you stop; a claim you stop renewing lapses and the ticket goes back to the queue. " +
-	"To work several tickets at once, bulk_update claims, updates, comments on, moves and releases up to 100 in one call, " +
+	"To work several tickets at once, bulk_update claims, renews, updates, comments on, moves and releases up to 100 in one call, " +
 	"and view \"summary\" on a write answers with a short summary instead of the whole ticket."
 
 // Handler is POST /mcp. api serves /api/v1 without the token check (the

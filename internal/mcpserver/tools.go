@@ -92,13 +92,14 @@ type (
 	}
 
 	bulkItemArgs struct {
-		Key     string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
-		Version int64      `json:"version,omitempty" jsonschema:"The version you read; the item's update is refused if the ticket changed since. Needs an update."`
-		Claim   *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket, or renew your claim on it: {} for 15 minutes."`
-		Update  *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
-		Comment *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
-		Move    string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column."`
-		Release bool       `json:"release,omitempty" jsonschema:"Give up your claim last."`
+		Key       string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
+		Version   int64      `json:"version,omitempty" jsonschema:"The version you read: if the ticket changed since, nothing in the item runs. Needs an update."`
+		Claim     *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket: {} for 15 minutes."`
+		Heartbeat *claimArgs `json:"heartbeat,omitempty" jsonschema:"Renew your claim from now, without changing the version: {} for 15 minutes."`
+		Update    *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
+		Comment   *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
+		Move      string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column."`
+		Release   bool       `json:"release,omitempty" jsonschema:"Give up your claim last; already done if an earlier action finished the ticket."`
 	}
 
 	claimArgs struct {
@@ -234,8 +235,8 @@ func addTools(s *mcp.Server, c *caller) {
 			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
 		})
 	add(s, c, "bulk_update", "Update tickets in bulk", false,
-		"Work several tickets in one call, up to 100. Each item names a ticket and any of claim, update, comment, move and release, which run in that order; "+
-			"the first that fails skips the rest of that item. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
+		"Work several tickets in one call, up to 100. Each item names a ticket and any of claim, heartbeat, update, comment, move and release, which run in that order; "+
+			"the first that fails skips the rest of that item, and a stale version runs none of it. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
 		func(in bulkArgs) request {
 			items := make([]map[string]any, len(in.Items))
 			for i, it := range in.Items {
@@ -243,10 +244,12 @@ func addTools(s *mcp.Server, c *caller) {
 				if it.Version != 0 {
 					b["version"] = it.Version
 				}
-				if it.Claim != nil {
-					b["claim"] = leaseBody(it.Claim.LeaseMinutes)
-					if b["claim"] == nil {
-						b["claim"] = map[string]any{}
+				for k, l := range map[string]*claimArgs{"claim": it.Claim, "heartbeat": it.Heartbeat} {
+					if l != nil {
+						b[k] = map[string]int64{}
+						if l.LeaseMinutes != 0 {
+							b[k] = map[string]int64{"lease_minutes": l.LeaseMinutes}
+						}
 					}
 				}
 				if it.Update != nil {

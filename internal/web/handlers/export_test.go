@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,4 +43,19 @@ func AfterSeqRead(t testing.TB, fn func()) {
 		return n, err
 	}
 	t.Cleanup(func() { readEventSeq = saved })
+}
+
+// CancelBulkAt ends a bulk call's request just before its item i runs.
+func CancelBulkAt(t testing.TB, i int) {
+	t.Helper()
+	saved := bulkStep
+	bulkStep = func(r *http.Request, n int) *http.Request {
+		if n == i {
+			ctx, cancel := context.WithCancel(r.Context())
+			cancel()
+			return r.WithContext(ctx)
+		}
+		return r
+	}
+	t.Cleanup(func() { bulkStep = saved })
 }
