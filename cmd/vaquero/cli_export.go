@@ -53,7 +53,11 @@ func (c *cmd) download(ctx context.Context, w io.Writer) (int64, error) {
 // renames it to dest.
 func exportFile(ctx context.Context, c *cmd, dest string) (int64, error) {
 	tmp := dest + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	// A .tmp left by an earlier run would keep its own mode when written over.
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("can't write %s: %w", tmp, errUnwrapped(err))
+	}
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return 0, fmt.Errorf("can't write %s: %w", tmp, errUnwrapped(err))
 	}

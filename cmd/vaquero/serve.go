@@ -277,23 +277,49 @@ const TokenFile = "token"
 
 // ensureLocalToken makes sure {dataDir}/token holds a live token for the
 // owner: one is minted ("local") and written with mode 0600 when the file
-// is missing, malformed, or names a token that is unknown or revoked.
+// is missing, malformed, or names a token that is unknown, revoked or
+// another actor's. Minting one revokes the owner's other live "local"
+// tokens, whose secret the replaced file may have held.
 func ensureLocalToken(ctx context.Context, c *core.Core, r *gen.Queries, owner gen.Actor, dataDir string) error {
 	path := filepath.Join(dataDir, TokenFile)
 	if b, err := os.ReadFile(path); err == nil {
 		raw := strings.TrimSpace(string(b))
 		if apitoken.Valid(raw) {
-			if t, err := r.GetTokenByHash(ctx, apitoken.Hash(raw)); err == nil && !t.RevokedAt.Valid {
+			if t, err := r.GetTokenByHash(ctx, apitoken.Hash(raw)); err == nil && !t.RevokedAt.Valid && t.ActorID == owner.ID {
 				return os.Chmod(path, 0o600)
 			}
 		}
 	}
-	raw, _, err := c.CreateToken(ctx, owner.ID, owner.ID, "local")
+	raw, made, err := c.CreateToken(ctx, owner.ID, owner.ID, "local")
 	if err != nil {
 		return err
 	}
+	if err := writeSecret(path, []byte(raw+"\n")); err != nil {
+		return err
+	}
+	toks, err := r.ListTokens(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range toks {
+		if t.Name == "local" && t.ActorID == owner.ID && t.ID != made.ID && !t.RevokedAt.Valid {
+			if err := c.RevokeToken(ctx, owner.ID, t.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// writeSecret writes b to path (0600) through path.tmp and a rename. A
+// .tmp left by an earlier run is removed first: writing over it would keep
+// its mode.
+func writeSecret(path string, b []byte) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(raw+"\n"), 0o600); err != nil {
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

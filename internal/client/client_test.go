@@ -236,3 +236,27 @@ func TestUpload(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// VAQ-61: the saved config is 0600 even when a readable .tmp beside it was
+// left by an earlier run.
+func TestSaveIgnoresStaleTmpMode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	path, err := client.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".tmp", []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (client.Config{Profiles: []client.Profile{{Name: "team", URL: "https://vq.example", Token: "vq_x"}}}).Save(); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v %v", st.Mode().Perm(), err)
+	}
+}

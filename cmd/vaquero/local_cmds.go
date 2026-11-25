@@ -419,9 +419,13 @@ func snapshotFile(ctx context.Context, path, dir string, kind appdb.Kind) (strin
 	return info.Name, nil
 }
 
-// copyFile writes src to path (0600) and syncs it.
+// copyFile writes src to a new file at path (0600) and syncs it. A file
+// already there is removed first: written over, it would keep its mode.
 func copyFile(path string, src io.Reader) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
