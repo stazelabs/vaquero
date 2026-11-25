@@ -19,9 +19,16 @@ import (
 // so a new key, which might hold a secret, is never exported unexamined:
 // add it to one set (TestSettingsKeysKnown finds the keys the code writes).
 var (
-	ExportedSettings = []string{}
-	InstanceSettings = []string{"instance_id", "blob_store"}
+	exportedSettings = []string{}
+	instanceSettings = []string{"instance_id", "blob_store"}
 )
+
+// ExportedSettings returns the settings keys an export carries (a copy).
+func ExportedSettings() []string { return slices.Clone(exportedSettings) }
+
+// InstanceSettings returns the settings keys that stay with this instance (a
+// copy).
+func InstanceSettings() []string { return slices.Clone(instanceSettings) }
 
 // checkSettings refuses a settings key in neither known set.
 func checkSettings(ctx context.Context, tx *sql.Tx) error {
@@ -35,7 +42,7 @@ func checkSettings(ctx context.Context, tx *sql.Tx) error {
 		if err := rows.Scan(&k); err != nil {
 			return err
 		}
-		if !slices.Contains(ExportedSettings, k) && !slices.Contains(InstanceSettings, k) {
+		if !slices.Contains(exportedSettings, k) && !slices.Contains(instanceSettings, k) {
 			return fmt.Errorf("settings key %q is neither exported nor instance-local; add it to archive.ExportedSettings or archive.InstanceSettings", k)
 		}
 	}
@@ -152,7 +159,7 @@ func dumpTable(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, enc *json.Enc
 			return err
 		}
 		q += " WHERE key IN (SELECT value FROM json_each(?))"
-		keys, _ := json.Marshal(ExportedSettings)
+		keys, _ := json.Marshal(exportedSettings)
 		args = []any{string(keys)}
 	}
 	q += " ORDER BY " + strings.Join(order, ", ")

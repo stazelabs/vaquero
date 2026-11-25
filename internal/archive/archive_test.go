@@ -307,9 +307,7 @@ func TestExportEveryColumn(t *testing.T) {
 	d, store := seeded(t)
 	// No settings key is exported yet; allow one here so the settings
 	// columns are checked too.
-	saved := archive.ExportedSettings
-	archive.ExportedSettings = []string{"example"}
-	t.Cleanup(func() { archive.ExportedSettings = saved })
+	archive.SetExportedSettings(t, "example")
 	if _, err := d.W.ExecContext(bg, "INSERT INTO settings (key, value, updated_at) VALUES ('example', 'yes', 'x')"); err != nil {
 		t.Fatal(err)
 	}
@@ -524,7 +522,7 @@ func TestSettingsKeysKnown(t *testing.T) {
 				key = c[1]
 			}
 			found++
-			if !slices.Contains(archive.ExportedSettings, key) && !slices.Contains(archive.InstanceSettings, key) {
+			if !slices.Contains(archive.ExportedSettings(), key) && !slices.Contains(archive.InstanceSettings(), key) {
 				t.Errorf("%s writes settings key %q, in neither archive.ExportedSettings nor archive.InstanceSettings", path, key)
 			}
 		}
@@ -576,5 +574,24 @@ func TestExportFractionalPosition(t *testing.T) {
 	}
 	if seen != len(want) {
 		t.Fatalf("saw %d of %d", seen, len(want))
+	}
+}
+
+// The allow-lists are read through accessors that hand out copies, so no
+// caller (or parallel test) can change what an export carries.
+func TestSettingsListsAreReadOnly(t *testing.T) {
+	ins := archive.InstanceSettings()
+	if !slices.Contains(ins, "instance_id") || !slices.Contains(ins, "blob_store") {
+		t.Fatalf("%v", ins)
+	}
+	ins[0] = "tampered"
+	if slices.Contains(archive.InstanceSettings(), "tampered") {
+		t.Fatal("InstanceSettings returned its own slice")
+	}
+	archive.SetExportedSettings(t, "example")
+	got := archive.ExportedSettings()
+	got[0] = "tampered"
+	if !slices.Equal(archive.ExportedSettings(), []string{"example"}) {
+		t.Fatalf("%v", archive.ExportedSettings())
 	}
 }

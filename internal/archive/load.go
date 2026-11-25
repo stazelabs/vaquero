@@ -316,7 +316,7 @@ func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 			}
 			slices.Sort(names)
 			if t == "settings" {
-				if k, _ := row["key"].(string); !slices.Contains(ExportedSettings, k) {
+				if k, _ := row["key"].(string); !slices.Contains(exportedSettings, k) {
 					closeAll(stmts)
 					return refuse("The export holds the setting %q, which an export never carries.", k)
 				}
