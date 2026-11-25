@@ -92,6 +92,9 @@ window.vqDragging = false;
     var d = lastDrop;
     lastDrop = null;
     if (d && d.item.isConnected && !window.vqDragging) {
+      // Out first, so the index counts the list as it was before the drag
+      // (an upward move in one column would otherwise land one too low).
+      d.item.remove();
       d.from.insertBefore(d.item, d.from.children[d.index] || null);
     }
     window.vqToast("The card couldn't be moved. Try again.");
