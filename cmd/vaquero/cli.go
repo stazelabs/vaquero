@@ -186,7 +186,7 @@ func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) er
 // fail and be retried every few seconds for as long as it ran. So wait for
 // the service first, and start one here only if it never comes.
 func startLocal(ctx context.Context, exe string, p client.Profile) error {
-	if brewService() && client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
+	if brewService(p.DataDir) && client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
 		return nil
 	}
 	return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
