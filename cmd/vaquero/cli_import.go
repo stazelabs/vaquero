@@ -131,8 +131,10 @@ func importArchive(ctx context.Context, cfg config.Config, file string, warn io.
 	if err != nil {
 		return res, notImported{err}
 	}
+	// A record that can't be cleaned stops the import: writing over it
+	// would lose track of those files.
 	if n, err := cleanPending(ctx, cfg, store, current); err != nil {
-		fmt.Fprintf(warn, "vaquero: %v\n", err)
+		return res, notImported{err}
 	} else if n > 0 {
 		fmt.Fprintf(warn, "Removed %s an interrupted import left in %s.\n", count(n, "file"), cfg.BlobBackend)
 	}

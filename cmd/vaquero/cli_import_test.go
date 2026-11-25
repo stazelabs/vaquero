@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -20,6 +21,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/archive"
 	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	appdb "github.com/stazelabs/vaquero/internal/db"
@@ -682,13 +684,14 @@ func TestImportCleansUpAKilledImport(t *testing.T) {
 	dataDir, _ := localEnv(t)
 	t.Setenv("VQ_BLOB_STORE", "dir")
 	root := filepath.Join(dataDir, "attachments")
-	leftBehind(t, dataDir, root, "01jkilledinstance000000000")
+	killed := strings.ToLower(idgen.New())
+	leftBehind(t, dataDir, root, killed)
 	file := seededArchive(t, importHeader(t, 0), nil)
 	code, out, e := runCLI(t, "import", file)
 	if code != 0 || !strings.Contains(e, "Removed 2 files an interrupted import left in dir.") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
-	if n := dirObjects(t, filepath.Join(root, "attachments", "01jkilledinstance000000000")); n != 0 {
+	if n := dirObjects(t, filepath.Join(root, "attachments", killed)); n != 0 {
 		t.Fatalf("%d objects left", n)
 	}
 	if n := dirObjects(t, root); n != 2 {
@@ -708,7 +711,7 @@ func TestServeCleansUpAKilledImport(t *testing.T) {
 	if err := bootOnce(t, dir, env); err != nil {
 		t.Fatal(err)
 	}
-	leftBehind(t, dir, root, "01jkilledinstance000000000")
+	leftBehind(t, dir, root, strings.ToLower(idgen.New()))
 	if err := bootOnce(t, dir, env); err != nil {
 		t.Fatal(err)
 	}
@@ -770,5 +773,74 @@ func TestImportRecordsPendingBeforeItsPuts(t *testing.T) {
 	}
 	if left := importLeftovers(t, dataDir); len(left) != 0 {
 		t.Fatalf("left %v", left)
+	}
+}
+
+// refusingPrefix is a store that refuses deletes under one prefix.
+type refusingPrefix struct {
+	blobs.Store
+	prefix string
+}
+
+func (r refusingPrefix) Delete(ctx context.Context, key string) error {
+	if strings.HasPrefix(key, r.prefix) {
+		return errors.New("delete refused")
+	}
+	return r.Store.Delete(ctx, key)
+}
+
+// VAQ-87 review: a killed import's files that can't be deleted stop the next
+// import, which names them and keeps the record, rather than writing over it.
+func TestImportStopsWhenCleanupFails(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	t.Setenv("VQ_BLOB_STORE", "dir")
+	root := filepath.Join(dataDir, "attachments")
+	killed := strings.ToLower(idgen.New())
+	leftBehind(t, dataDir, root, killed)
+	saved := openBlobStore
+	openBlobStore = func(cfg config.Config, w, r *sql.DB, now func() time.Time) (blobs.Store, error) {
+		s, err := saved(cfg, w, r, now)
+		return refusingPrefix{s, "attachments/" + killed + "/"}, err
+	}
+	t.Cleanup(func() { openBlobStore = saved })
+	before, _ := os.ReadFile(filepath.Join(dataDir, "import.pending"))
+	code, _, e := runCLI(t, "import", seededArchive(t, importHeader(t, 0), nil))
+	if code != 1 || !strings.Contains(e, "an interrupted import left files under attachments/"+killed+"/") ||
+		!strings.Contains(e, "remove them by hand, then delete "+filepath.Join(dataDir, "import.pending")) || !strings.Contains(e, "Nothing was imported.") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if after, _ := os.ReadFile(filepath.Join(dataDir, "import.pending")); string(after) != string(before) {
+		t.Fatalf("the record changed: %q, was %q", after, before)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "vaquero.db")); !os.IsNotExist(err) {
+		t.Fatalf("a database was made: %v", err)
+	}
+}
+
+// VAQ-87 review: a record naming something other than an instance id
+// deletes nothing.
+func TestCleanPendingRefusesABadInstance(t *testing.T) {
+	dataDir := t.TempDir()
+	root := filepath.Join(dataDir, "attachments")
+	store, err := blobs.NewDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := strings.ToLower(idgen.New())
+	if err := store.Put(t.Context(), blobs.AttachmentKey(live, strings.ToLower(idgen.New())), strings.NewReader("x"), 1, "text/plain"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{DataDir: dataDir, BlobBackend: "dir", BlobDir: root}
+	for _, bad := range []string{"", "..", live[:10], strings.ToUpper(live), "x/../" + live} {
+		rec, _ := json.Marshal(pendingImport{Instance: bad, Backend: "dir", Location: blobs.Location(cfg)})
+		if err := os.WriteFile(filepath.Join(dataDir, pendingFile), rec, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cleanPending(t.Context(), cfg, store, "other"); err == nil || !strings.Contains(err.Error(), "isn't an instance id") {
+			t.Errorf("%q: %v", bad, err)
+		}
+	}
+	if n := dirObjects(t, root); n != 1 {
+		t.Fatalf("%d objects left, want 1", n)
 	}
 }

@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
+	"github.com/stazelabs/vaquero/internal/idgen"
 )
 
 // pendingFile, in the data directory, names the instance an import is
@@ -51,10 +53,11 @@ func removePending(dataDir string) {
 // cleanPending deletes the objects a killed import left, as pendingFile
 // names them, and then the file. The caller holds the data directory's lock
 // and passes the instance the current database records (never deleted:
-// that import finished) and its store for cfg, or nil to open one. Best
-// effort: the file stays when a delete fails, so the next run tries again;
-// a store other than the configured one can't be reached, and is reported.
-// It returns how many objects it deleted.
+// that import finished) and its store for cfg, or nil to open one. On any
+// failure (a delete refused, storage other than the configured one, a
+// record that doesn't name a valid instance) the file stays and the error
+// says what to remove by hand: import stops on it, serve logs it. It
+// returns how many objects it deleted.
 func cleanPending(ctx context.Context, cfg config.Config, store blobs.Store, current string) (int, error) {
 	path := filepath.Join(cfg.DataDir, pendingFile)
 	b, err := os.ReadFile(path)
@@ -65,32 +68,42 @@ func cleanPending(ctx context.Context, cfg config.Config, store blobs.Store, cur
 		return 0, err
 	}
 	var p pendingImport
-	if err := json.Unmarshal(b, &p); err != nil || p.Instance == "" || p.Instance == current || p.Backend == "sqlite" {
-		removePending(cfg.DataDir) // unreadable, finished, or bytes that went with the import's database
+	if err := json.Unmarshal(b, &p); err != nil {
+		return 0, fmt.Errorf("%s, left by an interrupted import, can't be read; check its storage for files it left, then delete it", path)
+	}
+	if p.Instance == current || p.Backend == "sqlite" {
+		removePending(cfg.DataDir) // finished, or bytes that went with the import's database
 		return 0, nil
 	}
+	prefix := "attachments/" + p.Instance
+	if !idgen.Valid(p.Instance) || p.Instance != strings.ToLower(p.Instance) || blobs.ValidKey(prefix) != nil {
+		return 0, fmt.Errorf("%s, left by an interrupted import, names %q, which isn't an instance id; check its storage for files it left, then delete it", path, p.Instance)
+	}
+	byHand := func(why string) error {
+		return fmt.Errorf("an interrupted import left files under %s/ in %s %s (%s); remove them by hand, then delete %s",
+			prefix, p.Backend, blobs.ResolveLocation(p.Location, cfg.DataDir), why, path)
+	}
 	if p.Backend != cfg.BlobBackend || p.Location != blobs.Location(cfg) {
-		removePending(cfg.DataDir)
-		return 0, fmt.Errorf("an interrupted import left files under attachments/%s/ in %s %s, which isn't the storage configured now; remove them by hand", p.Instance, p.Backend, p.Location)
+		return 0, byHand("not the storage configured now")
 	}
 	if store == nil {
 		if store, err = openBlobStore(cfg, nil, nil, time.Now); err != nil {
-			return 0, err
+			return 0, byHand(err.Error())
 		}
 	}
 	dctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	var keys []string
-	if err := store.List(dctx, "attachments/"+p.Instance+"/", func(key string, _ time.Time) error {
+	if err := store.List(dctx, prefix+"/", func(key string, _ time.Time) error {
 		keys = append(keys, key)
 		return nil
 	}); err != nil {
-		return 0, err
+		return 0, byHand(err.Error())
 	}
 	n := 0
 	for _, k := range keys {
 		if err := store.Delete(dctx, k); err != nil {
-			return n, fmt.Errorf("delete %s, left by an interrupted import: %w", k, err)
+			return n, byHand(err.Error())
 		}
 		n++
 	}
