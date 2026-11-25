@@ -6,6 +6,7 @@ package board
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -100,7 +101,19 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 	if err != nil {
 		return nil, err
 	}
-	rows, err := q.ListBoardTickets(ctx, params(p, owner, f))
+	pr := params(p, owner, f)
+	if f.Tag != "" {
+		// The filter may be spelled in another case or normalisation than
+		// the stored tag (SQLite folds only ASCII), so use the stored name.
+		known, err := q.ListTags(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if i := slices.IndexFunc(known, func(k gen.Tag) bool { return core.SameTag(k.Name, f.Tag) }); i >= 0 {
+			pr.Tag = sql.NullString{String: known[i].Name, Valid: true}
+		}
+	}
+	rows, err := q.ListBoardTickets(ctx, pr)
 	if err != nil {
 		return nil, err
 	}

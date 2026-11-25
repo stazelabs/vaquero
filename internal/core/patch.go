@@ -138,7 +138,7 @@ func (c *Core) applyPatch(ctx context.Context, q *gen.Queries, t gen.Ticket, p T
 	}
 	in.Tags = append(in.Tags, p.AddTags...)
 	in.Tags = slices.DeleteFunc(in.Tags, func(n string) bool {
-		return slices.ContainsFunc(p.RemoveTags, func(r string) bool { return sameTag(strings.TrimSpace(r), strings.TrimSpace(n)) })
+		return slices.ContainsFunc(p.RemoveTags, func(r string) bool { return SameTag(strings.TrimSpace(r), strings.TrimSpace(n)) })
 	})
 	return in, nil
 }

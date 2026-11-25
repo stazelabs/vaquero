@@ -22,7 +22,9 @@ JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
 WHERE e.ticket_id = sqlc.arg(ticket_id)
-   OR (e.kind IN ('link.created', 'link.deleted') AND json_extract(e.payload, '$.to') = sqlc.arg(ticket_key))
+   OR (e.kind IN ('link.created', 'link.deleted') AND (
+        json_extract(e.payload, '$.to_id') = sqlc.arg(ticket_id)
+        OR (json_extract(e.payload, '$.to_id') IS NULL AND json_extract(e.payload, '$.to') = sqlc.arg(ticket_key))))
 ORDER BY e.seq DESC;
 
 -- name: CountEvents :one

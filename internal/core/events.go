@@ -20,7 +20,8 @@ import (
 //   - project.deleted: {"key", "name"}, with no project id (it is gone).
 //   - comment.*: {"comment_id"}.
 //   - attachment.added, attachment.deleted: {"attachment_id", "name"}.
-//   - link.*: {"link_id", "kind", "to": "VAQ-7"}.
+//   - link.*: {"link_id", "kind", "to": "VAQ-7", "to_id"}, the
+//     target ticket by id (events from before to_id carry only the key).
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.

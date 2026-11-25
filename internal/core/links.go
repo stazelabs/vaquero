@@ -62,7 +62,7 @@ func (c *Core) AddLink(ctx context.Context, by, fromTicketID, kind string, to Ti
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
-		return c.emit(ctx, q, by, EvLinkCreated, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": kind, "to": to.String()})
+		return c.emit(ctx, q, by, EvLinkCreated, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": kind, "to": to.String(), "to_id": target.ID})
 	})
 	return l, err
 }
@@ -92,7 +92,7 @@ func (c *Core) RemoveLink(ctx context.Context, by, linkID string) error {
 			return fmt.Errorf("delete link: %w", err)
 		}
 		key := TicketKey{Project: toProject.Key, Number: to.Number}.String()
-		return c.emit(ctx, q, by, EvLinkDeleted, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": l.Kind, "to": key})
+		return c.emit(ctx, q, by, EvLinkDeleted, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": l.Kind, "to": key, "to_id": to.ID})
 	})
 }
 

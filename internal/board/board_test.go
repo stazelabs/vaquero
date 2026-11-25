@@ -173,3 +173,18 @@ func TestMilestonePanelCounts(t *testing.T) {
 		t.Fatalf("no milestone %d", b.NoMilestone)
 	}
 }
+
+// The tag filter folds case and normalisation like tag creation does.
+func TestTagFilterFoldsUnicode(t *testing.T) {
+	e := newEnv(t)
+	e.ticket(t, core.TicketInput{Title: "schooled", Tags: []string{"école"}})
+	for _, tag := range []string{"École", "ÉCOLE", "école"} {
+		n := 0
+		for _, c := range e.load(t, any_().With("tag", tag)).Active {
+			n += len(c.Cards)
+		}
+		if n != 1 {
+			t.Errorf("tag %q found %d tickets, want 1", tag, n)
+		}
+	}
+}

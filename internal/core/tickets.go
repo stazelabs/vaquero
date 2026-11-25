@@ -40,9 +40,9 @@ type ticketFields struct {
 	tags      []gen.Tag
 }
 
-// sameTag reports whether two tag names are one tag: equal after NFC
+// SameTag reports whether two tag names are one tag: equal after NFC
 // normalisation and Unicode case folding (SQLite's NOCASE folds only ASCII).
-func sameTag(a, b string) bool {
+func SameTag(a, b string) bool {
 	return strings.EqualFold(norm.NFC.String(a), norm.NFC.String(b))
 }
 
@@ -52,7 +52,7 @@ func normTags(f fields, names []string) []string {
 	var out []string
 	for _, n := range names {
 		n = norm.NFC.String(strings.TrimSpace(n))
-		if n == "" || slices.ContainsFunc(out, func(o string) bool { return sameTag(o, n) }) {
+		if n == "" || slices.ContainsFunc(out, func(o string) bool { return SameTag(o, n) }) {
 			continue
 		}
 		if hasControl(n) {
@@ -175,7 +175,7 @@ func (c *Core) upsertTags(ctx context.Context, q *gen.Queries, names []string) (
 	for _, n := range names {
 		// An existing tag that differs only by Unicode case or
 		// normalisation is the same tag, and keeps its spelling.
-		if i := slices.IndexFunc(known, func(k gen.Tag) bool { return sameTag(k.Name, n) }); i >= 0 {
+		if i := slices.IndexFunc(known, func(k gen.Tag) bool { return SameTag(k.Name, n) }); i >= 0 {
 			tags = append(tags, known[i])
 			continue
 		}

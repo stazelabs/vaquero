@@ -245,7 +245,9 @@ JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
 WHERE e.ticket_id = ?1
-   OR (e.kind IN ('link.created', 'link.deleted') AND json_extract(e.payload, '$.to') = ?2)
+   OR (e.kind IN ('link.created', 'link.deleted') AND (
+        json_extract(e.payload, '$.to_id') = ?1
+        OR (json_extract(e.payload, '$.to_id') IS NULL AND json_extract(e.payload, '$.to') = ?2)))
 ORDER BY e.seq DESC
 `
 

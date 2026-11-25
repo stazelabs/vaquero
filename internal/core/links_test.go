@@ -147,3 +147,51 @@ func TestLinkEventsAppearInBothTicketsHistory(t *testing.T) {
 		t.Fatalf("to side: %v", got)
 	}
 }
+
+// A key freed by a rename and taken by a new project must not pull the old
+// ticket's link events into the new ticket's history.
+func TestLinkHistoryFollowsTheTicketNotItsKey(t *testing.T) {
+	c, d, f := newFixture(t)
+	if _, err := c.AddLink(bg, f.Owner.ID, f.T2.ID, "blocks", core.TicketKey{Project: "VAQ", Number: f.T1.Number}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ChangeProjectKey(bg, f.Owner.ID, f.Project.ID, "OLD"); err != nil {
+		t.Fatal(err)
+	}
+	np, err := c.CreateProject(bg, f.Owner.ID, core.ProjectInput{Key: "VAQ", Name: "Reuse"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reuse, err := c.CreateTicket(bg, f.Owner.ID, np.ID, core.TicketInput{Title: "Unrelated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// reuse is VAQ-1, as T1 once was.
+	other, err := c.CreateTicket(bg, f.Owner.ID, np.ID, core.TicketInput{Title: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AddLink(bg, f.Owner.ID, other.ID, "blocks", core.TicketKey{Project: "OLD", Number: f.T1.Number}); err != nil {
+		t.Fatal(err)
+	}
+	links := func(tk gen.Ticket, key string) int {
+		evs, err := d.RQ.ListTicketEvents(bg, gen.ListTicketEventsParams{TicketID: sql.NullString{String: tk.ID, Valid: true}, TicketKey: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, e := range evs {
+			if e.Kind == core.EvLinkCreated {
+				n++
+			}
+		}
+		return n
+	}
+	if n := links(reuse, "VAQ-1"); n != 0 {
+		t.Fatalf("a ticket that reuses the key shows %d foreign link events", n)
+	}
+	// T1 (now OLD-1) keeps the fixture link, T2's, and the new one from other.
+	if n := links(f.T1, "OLD-1"); n != 3 {
+		t.Fatalf("renamed ticket has %d link events, want 3", n)
+	}
+}
