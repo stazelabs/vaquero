@@ -134,6 +134,12 @@ func (c *Core) AddAttachment(ctx context.Context, by string, in AttachmentInput)
 	return a, err
 }
 
+// CanDeleteAttachment reports whether actor may remove a: its uploader or
+// the owner.
+func CanDeleteAttachment(actor gen.Actor, a gen.Attachment) bool {
+	return a.UploadedBy == actor.ID || (actor.Kind == "human" && actor.Name == OwnerName)
+}
+
 // DeleteAttachment removes an attachment's row and returns its blob key, so
 // the caller can delete the bytes. Only the uploader or the owner may.
 func (c *Core) DeleteAttachment(ctx context.Context, by, id string) (string, error) {
@@ -143,14 +149,12 @@ func (c *Core) DeleteAttachment(ctx context.Context, by, id string) (string, err
 		if err != nil {
 			return notFound(err, "get attachment")
 		}
-		if a.UploadedBy != by {
-			actor, err := q.GetActor(ctx, by)
-			if err != nil {
-				return notFound(err, "get actor")
-			}
-			if actor.Kind != "human" || actor.Name != OwnerName {
-				return invalid("attachment", "You can only remove your own attachments.")
-			}
+		actor, err := q.GetActor(ctx, by)
+		if err != nil {
+			return notFound(err, "get actor")
+		}
+		if !CanDeleteAttachment(actor, a) {
+			return invalid("attachment", "You can only remove your own attachments.")
 		}
 		t, err := q.GetTicket(ctx, a.TicketID)
 		if err != nil {

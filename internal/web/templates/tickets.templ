@@ -334,7 +334,7 @@ templ commentItem(key string, c CommentRow) {
 		</p>
 		if c.Editing {
 			<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID) } class="mt-2 space-y-2">
-				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4})
+				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key)})
 				<div class="flex items-center gap-4">
 					<button type="submit" class={ btnPrimary }>Save comment</button>
 					<a href={ templ.SafeURL("/t/" + key + "#c-" + c.ID) } class={ btnLink }>Cancel</a>

@@ -334,12 +334,11 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	if err != nil {
 		return v, err
 	}
-	owner := d.Actor.Kind == "human" && d.Actor.Name == core.OwnerName
 	for _, a := range atts {
 		at, _ := timefmt.Parse(a.CreatedAt)
 		v.Attachments = append(v.Attachments, templates.AttachmentRow{
 			ID: a.ID, Name: a.Name, URL: attachmentURL(gen.Attachment{ID: a.ID, Name: a.Name}), Size: units.SizeWords(a.Size),
-			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: owner || a.UploadedBy == d.Actor.ID,
+			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
 		})
 	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))

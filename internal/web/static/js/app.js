@@ -315,6 +315,7 @@ window.vqDragging = false;
 // the refusal shown as a toast). Handlers sit on the document so they
 // survive the live refresh that replaces the attachments section.
 (function () {
+  var uploadCount = 0;
   function toast(message) {
     var tpl = document.getElementById("vq-toast-template");
     if (!tpl) { return; }
@@ -344,7 +345,13 @@ window.vqDragging = false;
 
   function swapPlaceholder(box, placeholder, text) {
     var at = box.value.indexOf(placeholder);
-    if (at < 0) { return; }
+    if (at < 0) {
+      // The line was deleted mid-upload; keep the result rather than lose it.
+      if (text) {
+        box.value += (box.value === "" || box.value.slice(-1) === "\n" ? "" : "\n") + text;
+      }
+      return;
+    }
     var cursor = box.selectionStart;
     box.value = box.value.slice(0, at) + text + box.value.slice(at + placeholder.length);
     var delta = text.length - placeholder.length;
@@ -365,7 +372,8 @@ window.vqDragging = false;
       toast("Files can be at most " + Math.round(max / 1048576) + " MB.");
       return Promise.resolve();
     }
-    var placeholder = "Uploading " + name + "…";
+    uploadCount += 1;
+    var placeholder = "Uploading " + name + " (" + uploadCount + ")…";
     if (box) { insertAtCursor(box, placeholder); }
     var form = new FormData();
     form.append("file", file, name);
@@ -407,6 +415,8 @@ window.vqDragging = false;
     var box = boxOf(ev);
     var files = ev.clipboardData && ev.clipboardData.files;
     if (!box || !files || files.length === 0) { return; }
+    // A paste that carries text (a copied cell, say) keeps its default.
+    if (ev.clipboardData.getData("text/plain")) { return; }
     ev.preventDefault();
     uploadAll(box, files, box);
   });

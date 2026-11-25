@@ -1817,7 +1817,7 @@ func commentItem(key string, c CommentRow) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key)}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
