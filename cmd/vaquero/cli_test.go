@@ -199,6 +199,23 @@ func TestCLIUpgradeMessage(t *testing.T) {
 	if code != 0 || !strings.Contains(errOut, "needs vaquero 99.0.0 or newer") {
 		t.Fatalf("%d %q", code, errOut)
 	}
+	// VAQ-61: once per run, however many requests it makes.
+	var out, errBuf bytes.Buffer
+	c := newCmd(&out, &errBuf, "x")
+	if _, err := c.parse([]string{"--profile", "t"}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.connect(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := c.call(t.Context(), "GET", "/api/v1/projects", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(errBuf.String(), "needs vaquero 99.0.0 or newer"); n != 1 {
+		t.Fatalf("told %d times: %q", n, errBuf.String())
+	}
 }
 
 // Text starting with "-" (a markdown list) goes through after --, which

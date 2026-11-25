@@ -9,7 +9,6 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/client"
 	"github.com/stazelabs/vaquero/internal/units"
-	"github.com/stazelabs/vaquero/internal/version"
 )
 
 func init() { cliCommands["export"] = cmdExport }
@@ -40,9 +39,7 @@ func cmdExport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 // download streams the export to w; after it, an outdated CLI says so.
 func (c *cmd) download(ctx context.Context, w io.Writer) (int64, error) {
 	n, err := c.client.Download(ctx, "/api/v1/export", w)
-	if min, need := c.client.UpgradeNeeded(); need {
-		fmt.Fprintf(c.stderr, "This server needs vaquero %s or newer; this is %s. Upgrade vaquero.\n", min, version.Version)
-	}
+	c.tellUpgrade()
 	if _, ok := errors.AsType[*client.Error](err); ok || err == nil {
 		return n, err
 	}

@@ -61,6 +61,8 @@ type cmd struct {
 	// restartLocal starts the local server again and returns its token;
 	// set by connect for the local profile (long-running commands use it).
 	restartLocal func(ctx context.Context) (string, error)
+	// upgradeTold: the upgrade message was printed; it shows once a run.
+	upgradeTold bool
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
@@ -195,10 +197,17 @@ func startLocal(ctx context.Context, exe string, p client.Profile) error {
 // call sends one API request; after it, an outdated CLI says so.
 func (c *cmd) call(ctx context.Context, method, path string, body, out any) error {
 	err := c.client.Do(ctx, method, path, body, out)
-	if min, need := c.client.UpgradeNeeded(); need {
+	c.tellUpgrade()
+	return err
+}
+
+// tellUpgrade says, once a run, that this CLI is older than the server's
+// minimum (dev builds are never told: client.UpgradeNeeded).
+func (c *cmd) tellUpgrade() {
+	if min, need := c.client.UpgradeNeeded(); need && !c.upgradeTold {
+		c.upgradeTold = true
 		fmt.Fprintf(c.stderr, "This server needs vaquero %s or newer; this is %s. Upgrade vaquero.\n", min, version.Version)
 	}
-	return err
 }
 
 // emit prints v as JSON with --json, else calls human.
