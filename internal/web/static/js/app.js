@@ -417,9 +417,10 @@ window.vqDragging = false;
     var box = boxOf(ev);
     var files = ev.clipboardData && ev.clipboardData.files;
     if (!box || !files || files.length === 0) { return; }
-    // A paste that carries HTML (a copied document or cell) keeps its
-    // default; a file copied in the file manager has a name as text only.
-    if (ev.clipboardData.getData("text/html")) { return; }
+    // A paste that carries text (a copied document or cell) keeps its
+    // default. An image copied from a page or an app carries HTML but no
+    // text, and the browser hides a copied file's name, so both upload.
+    if ((ev.clipboardData.getData("text/plain") || "").trim()) { return; }
     ev.preventDefault();
     uploadAll(box, files, box);
   });
