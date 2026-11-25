@@ -230,6 +230,9 @@ func (c *Client) UploadAs(path, token, filename, contentType string, data []byte
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if c.Agent != "" {
+		req.Header.Set("Vaquero-Agent", c.Agent)
+	}
 	return c.do(req)
 }
 

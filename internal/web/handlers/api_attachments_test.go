@@ -7,6 +7,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
 func TestAPIAttachmentLifecycle(t *testing.T) {
@@ -100,5 +101,87 @@ func TestAPIAttachmentBadUploads(t *testing.T) {
 	}
 	if r := c.UploadAs("/api/v1/tickets/VAQ-1/attachments", tok, "empty.txt", "", nil); r.Status != 422 {
 		t.Errorf("empty: %d %s", r.Status, r.Body)
+	}
+}
+
+func TestAPIAttachmentDeletePermissions(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	upload := func(agent string) api.Attachment {
+		t.Helper()
+		c.Agent = agent
+		r := c.UploadAs("/api/v1/tickets/vaq-1/attachments", tok, "shot.png", "", pngBytes)
+		if r.Status != http.StatusCreated {
+			t.Fatalf("%d %s", r.Status, r.Body)
+		}
+		var a api.Attachment
+		decode(t, r.Body, &a)
+		return a
+	}
+	del := func(agent string, a api.Attachment) *webtest.Response {
+		t.Helper()
+		c.Agent = agent
+		return c.API("DELETE", "/api/v1/attachments/"+a.ID, tok, nil)
+	}
+
+	// An agent deletes its own upload.
+	own := upload("scribe")
+	if own.UploadedBy != "scribe" {
+		t.Fatalf("uploaded by %q", own.UploadedBy)
+	}
+	if r := del("scribe", own); r.Status != 204 {
+		t.Fatalf("own: %d %s", r.Status, r.Body)
+	}
+
+	// An agent can't delete the owner's: 422 naming the field, and the file stays.
+	owners := upload("")
+	r := del("scribe", owners)
+	if r.Status != 422 || failMessage(t, r) != "You can only remove your own attachments." {
+		t.Fatalf("not own: %d %s", r.Status, r.Body)
+	}
+	if !strings.Contains(r.Body, `"attachment"`) {
+		t.Errorf("fields: %s", r.Body)
+	}
+	c.Agent = ""
+	if r := c.API("GET", "/api/v1/attachments/"+owners.ID, tok, nil); r.Status != 200 {
+		t.Fatalf("refused delete removed it: %d", r.Status)
+	}
+	// Another agent's upload is refused the same way.
+	theirs := upload("other")
+	if r := del("scribe", theirs); r.Status != 422 {
+		t.Fatalf("other agent's: %d %s", r.Status, r.Body)
+	}
+	// The owner deletes an agent's upload, and the bytes go.
+	if r := del("", theirs); r.Status != 204 {
+		t.Fatalf("owner deletes agent's: %d %s", r.Status, r.Body)
+	}
+	if r := del("", owners); r.Status != 204 {
+		t.Fatalf("owner deletes own: %d %s", r.Status, r.Body)
+	}
+	if keys := blobKeys(t, e); len(keys) != 0 {
+		t.Errorf("bytes left: %v", keys)
+	}
+}
+
+func TestAPIAttachmentHead(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	r := c.UploadAs("/api/v1/tickets/vaq-1/attachments", tok, "shot.png", "", pngBytes)
+	var a api.Attachment
+	decode(t, r.Body, &a)
+	get := c.API("GET", "/api/v1/attachments/"+a.ID, tok, nil)
+	head := c.API("HEAD", "/api/v1/attachments/"+a.ID, tok, nil)
+	if head.Status != 200 || head.Body != "" {
+		t.Fatalf("head: %d %q", head.Status, head.Body)
+	}
+	assertAttachmentHeaders(t, head)
+	for _, h := range []string{"Content-Type", "Content-Length", "ETag", "Cache-Control", "Content-Disposition"} {
+		if head.Header.Get(h) == "" || head.Header.Get(h) != get.Header.Get(h) {
+			t.Errorf("%s: head %q, get %q", h, head.Header.Get(h), get.Header.Get(h))
+		}
+	}
+	if r := c.API("HEAD", "/api/v1/attachments/"+a.ID, "", nil); r.Status != 401 {
+		t.Errorf("no token: %d", r.Status)
+	}
+	if r := c.API("HEAD", "/api/v1/attachments/01HZZZZZZZZZZZZZZZZZZZZZZZ", tok, nil); r.Status != 404 {
+		t.Errorf("missing: %d", r.Status)
 	}
 }

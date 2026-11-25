@@ -96,7 +96,7 @@ Every refusal has the same shape:
 | 405 | `method_not_allowed` | The endpoint exists but not for that method (say, `DELETE` on a ticket) |
 | 409 | `conflict` | The ticket changed since the `version` you sent; `current` holds it as it is now |
 | 413 | `too_large` | The body is over 1 MiB, or an uploaded file is over 10 MB |
-| 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields |
+| 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields. Deleting an attachment you didn't upload (and aren't the owner) is a 422 with `fields.attachment`, not a 403 |
 | 500 | `server_error` | Something broke on the server; its log has the details |
 | 500 | `missing_file` | An export found an attachment whose file is missing from storage; `message` names it and its ticket |
 | 500 | `damaged_file` | An export found an attachment whose file in storage isn't the size its record says; `message` names it and its ticket |
