@@ -332,8 +332,6 @@ func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p
 	api.WriteJSON(w, status, out)
 }
 
-// keyID resolves a ticket key to its id, "" when it doesn't name one.
-
 // APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?, after?}.
 func APITicketMove(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

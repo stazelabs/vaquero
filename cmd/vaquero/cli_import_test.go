@@ -21,11 +21,11 @@ import (
 	"github.com/stazelabs/vaquero/internal/archive"
 	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
-	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
+	"github.com/stazelabs/vaquero/internal/idgen"
 )
 
 // importNow is the fixed clock of the seed and of both exports.
