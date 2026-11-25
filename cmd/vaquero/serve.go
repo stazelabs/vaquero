@@ -83,7 +83,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	// The instance id names blob keys; the backend lock keeps existing
 	// attachments from being stranded by a changed VQ_BLOB_STORE. Both come
 	// before anything else is written, so a refused boot changes nothing.
-	if _, err := ensureInstance(ctx, w, time.Now()); err != nil {
+	instance, err := ensureInstance(ctx, w, time.Now())
+	if err != nil {
 		return fmt.Errorf("instance id: %w", err)
 	}
 	if err := checkBlobBackend(ctx, gen.New(r), cfg.BlobBackend); err != nil {
@@ -98,7 +99,6 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err != nil {
 		return fmt.Errorf("attachment store: %w", err)
 	}
-	_ = store // Task 4 hands it to the handlers
 	owner, err := c.EnsureOwner(ctx)
 	if err != nil {
 		return fmt.Errorf("owner: %w", err)
@@ -108,6 +108,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	}
 	shutdown := make(chan struct{})
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown, Touch: gen.New(w), MCPCalls: gen.New(w),
+		Blobs: store, Instance: instance,
 		BackupDir:       filepath.Join(cfg.DataDir, "backups"),
 		RenewLocalToken: func(ctx context.Context) error { return ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir) }}
 	srv := &http.Server{
@@ -123,9 +124,11 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	srv.RegisterOnShutdown(func() { close(shutdown) })
 	served := make(chan error, 1)
 	go func() { served <- srv.Serve(ln) }()
-	// The sweep ends lapsed claims and prunes the MCP log. It stops before
-	// the drain, so nothing writes while the server winds down.
-	sweeper := &sweep.Sweeper{Core: c, DB: w, Logger: logger, Now: time.Now, Interval: sweepInterval, OnTick: sweepOnTick}
+	// The sweep ends lapsed claims, prunes the MCP log and deletes orphaned
+	// attachment bytes. It stops before the drain, so nothing writes while
+	// the server winds down.
+	sweeper := &sweep.Sweeper{Core: c, DB: w, Logger: logger, Now: time.Now, Blobs: store, Instance: instance,
+		Interval: sweepInterval, OnTick: sweepOnTick}
 	sweeper.Start()
 	defer sweeper.Stop()
 	logger.Info("vaquero is running", "url", "http://"+ln.Addr().String(), "data", cfg.DataDir, "attachments", cfg.BlobBackend, "version", version.Version)

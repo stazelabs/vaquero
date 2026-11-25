@@ -31,3 +31,36 @@ func TestBodyLimit(t *testing.T) {
 		t.Fatalf("small body: %d, read %d", rec.Code, read)
 	}
 }
+
+func TestUploadBodyLimit(t *testing.T) {
+	var limit int64
+	h := BodyLimit(MaxBody)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := io.Copy(io.Discard, r.Body)
+		limit = n
+	}))
+	// An upload route may carry MaxUpload bytes.
+	req := httptest.NewRequest("POST", "/t/VAQ-1/attachments", strings.NewReader(strings.Repeat("x", MaxBody+10)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != 200 || limit != MaxBody+10 {
+		t.Fatalf("upload: %d read %d", rec.Code, limit)
+	}
+	// Declared over MaxUpload: the API envelope with the file limit.
+	req = httptest.NewRequest("POST", "/t/VAQ-1/attachments", strings.NewReader("x"))
+	req.ContentLength = MaxUpload + 1
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge || rec.Header().Get("Content-Type") != "application/json" ||
+		!strings.Contains(rec.Body.String(), `"message": "Files can be at most 10 MB."`) {
+		t.Fatalf("declared: %d %q", rec.Code, rec.Body.String())
+	}
+	// Other routes, and other methods on the upload path, keep MaxBody.
+	for _, tc := range []struct{ method, path string }{{"POST", "/t/VAQ-1/comments"}, {"PUT", "/t/VAQ-1/attachments"}, {"POST", "/t/VAQ-1/attachments/x"}} {
+		req = httptest.NewRequest(tc.method, tc.path, strings.NewReader(strings.Repeat("x", MaxBody+1)))
+		rec = httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Fatalf("%s %s: %d", tc.method, tc.path, rec.Code)
+		}
+	}
+}

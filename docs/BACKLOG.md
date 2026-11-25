@@ -64,7 +64,7 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [ ] `/p/vaq/new?parent=VAQ-1` loses its query string on the case redirect (`ticketFromURL` keeps it) (review 1a #6)
 - [ ] Comments lose leading indentation (a comment starting with an indented code block) — trim trailing space and leading blank lines only (review 1a #7)
 - [ ] Fix stale docs: the payload list in `internal/core/events.go`; `Deps.Q` mentioned in `.claude/rules/database.md` and CLAUDE.md (review 1a #11, #12)
-- [ ] External images in markdown render broken (CSP `img-src 'self' data:`) — strip `<img>` or say so (review 1a #14)
+- [x] External images in markdown render broken (CSP `img-src 'self' data:`) — strip `<img>` or say so (review 1a #14) — Attachments: upload, serve, sweep orphans; markdown images only from attachments (Phase 3b): only `/attachments/` images render, any other becomes a link
 - [ ] Destructive buttons (comment delete, status delete, archive) act on one click with no confirmation (review 1a #16)
 - [ ] Test gaps: cross-site POST to a real mutating route with a no-write assertion; hostile markdown in a comment at page level; cross-project parent through the form (review 1a #15)
 - [ ] Tag names: `école` and `École` are one tag in the input but two in the database (SQLite NOCASE folds ASCII only) (review 1a #1, related)

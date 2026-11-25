@@ -10,3 +10,6 @@ DELETE FROM attachments WHERE id = ?;
 
 -- name: DeleteProjectAttachments :exec
 DELETE FROM attachments WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id = ?);
+
+-- name: AttachmentByBlobKey :one
+SELECT * FROM attachments WHERE blob_key = ?;

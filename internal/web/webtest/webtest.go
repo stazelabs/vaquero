@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/textproto"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
@@ -28,8 +31,12 @@ import (
 // Start is the fixed clock's reading.
 var Start = time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 
+// Instance is the test server's instance id, naming its blob keys.
+const Instance = "01jx00000000000000000test00"
+
 // Env is one test's server. Deps.Core and Deps.Actor make changes the way
-// the pages do, for arranging a test's starting state.
+// the pages do, for arranging a test's starting state; Deps.Blobs is a
+// SQLite blob store over the test database, for inspecting stored bytes.
 type Env struct {
 	DB     dbtest.DB
 	Deps   handlers.Deps
@@ -75,6 +82,8 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		Shutdown:   shutdown,
 		StreamPoll: 20 * time.Millisecond,
 		BackupDir:  filepath.Join(dir, "backups"),
+		Blobs:      blobs.NewSQLite(d.W, d.R, now),
+		Instance:   Instance,
 	}
 	srv := httptest.NewServer(web.NewRouter(deps))
 	e := &Env{DB: d, Deps: deps, Server: srv, t: t, shutdown: shutdown}
@@ -184,6 +193,34 @@ func (c *Client) API(method, path, token string, body any) *Response {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	return c.do(req)
+}
+
+// Upload posts data as the multipart part "file" named filename, the way
+// app.js uploads a pasted or dropped file. contentType is the part's
+// declared type ("" for application/octet-stream).
+func (c *Client) Upload(path, filename, contentType string, data []byte) *Response {
+	c.t.Helper()
+	var b bytes.Buffer
+	mw := multipart.NewWriter(&b)
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", `form-data; name="file"; filename="`+strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(filename)+`"`)
+	h.Set("Content-Type", contentType)
+	pw, err := mw.CreatePart(h)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	if _, err := pw.Write(data); err != nil {
+		c.t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		c.t.Fatal(err)
+	}
+	req := c.newRequest(http.MethodPost, path, &b)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
 	return c.do(req)
 }
 

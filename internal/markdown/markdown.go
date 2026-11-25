@@ -6,6 +6,11 @@
 // user-written content strips anything that could run: script, event
 // handlers, and javascript:, vbscript: or data: links (goldmark alone lets
 // a <javascript:...> autolink through). Every link gets rel="nofollow".
+//
+// Images: only the app's own attachments (a destination starting with
+// /attachments/) render as <img>. Any other image becomes a link to its URL
+// labelled with its alt text, since the page CSP loads images only from
+// 'self' and a remote image would show broken.
 package markdown
 
 import (
@@ -24,7 +29,7 @@ import (
 var (
 	md = goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(rawAsText{}, 100))),
+		goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(rawAsText{}, 100), util.Prioritized(images{}, 100))),
 	)
 	policy = func() *bluemonday.Policy {
 		p := bluemonday.UGCPolicy()
@@ -83,4 +88,68 @@ func renderRawBlock(w util.BufWriter, source []byte, n ast.Node, entering bool) 
 	}
 	_, _ = w.WriteString("</p>\n")
 	return ast.WalkContinue, nil
+}
+
+// attachmentPrefix starts the only image destinations shown as images.
+const attachmentPrefix = "/attachments/"
+
+// images renders an image as <img> for an attachment, else as a link.
+type images struct{}
+
+func (images) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindImage, renderImage)
+}
+
+func renderImage(w util.BufWriter, source []byte, node ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkContinue, nil
+	}
+	n := node.(*ast.Image)
+	dest := util.EscapeHTML(util.URLEscape(n.Destination, true))
+	alt := util.EscapeHTML(plainText(source, n))
+	if bytes.HasPrefix(n.Destination, []byte(attachmentPrefix)) {
+		_, _ = w.WriteString(`<img src="`)
+		_, _ = w.Write(dest)
+		_, _ = w.WriteString(`" alt="`)
+		_, _ = w.Write(alt)
+		_, _ = w.WriteString(`">`)
+		return ast.WalkSkipChildren, nil
+	}
+	if len(alt) == 0 {
+		alt = dest
+	}
+	// Inside a link the label alone keeps anchors from nesting.
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Kind() == ast.KindLink || p.Kind() == ast.KindAutoLink {
+			_, _ = w.Write(alt)
+			return ast.WalkSkipChildren, nil
+		}
+	}
+	// bluemonday drops an unsafe href (and then the bare <a>), keeping
+	// the label.
+	_, _ = w.WriteString(`<a href="`)
+	_, _ = w.Write(dest)
+	_, _ = w.WriteString(`">`)
+	_, _ = w.Write(alt)
+	_, _ = w.WriteString(`</a>`)
+	return ast.WalkSkipChildren, nil
+}
+
+// plainText is the text inside n, without markup: an image's alt text.
+func plainText(source []byte, n ast.Node) []byte {
+	var b []byte
+	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+		switch t := c.(type) {
+		case *ast.Text:
+			b = append(b, t.Segment.Value(source)...)
+			if t.SoftLineBreak() || t.HardLineBreak() {
+				b = append(b, ' ')
+			}
+		case *ast.String:
+			b = append(b, t.Value...)
+		default:
+			b = append(b, plainText(source, c)...)
+		}
+	}
+	return b
 }

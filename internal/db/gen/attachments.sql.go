@@ -9,6 +9,26 @@ import (
 	"context"
 )
 
+const attachmentByBlobKey = `-- name: AttachmentByBlobKey :one
+SELECT id, ticket_id, uploaded_by, name, content_type, size, blob_key, created_at FROM attachments WHERE blob_key = ?
+`
+
+func (q *Queries) AttachmentByBlobKey(ctx context.Context, blobKey string) (Attachment, error) {
+	row := q.db.QueryRowContext(ctx, attachmentByBlobKey, blobKey)
+	var i Attachment
+	err := row.Scan(
+		&i.ID,
+		&i.TicketID,
+		&i.UploadedBy,
+		&i.Name,
+		&i.ContentType,
+		&i.Size,
+		&i.BlobKey,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createAttachment = `-- name: CreateAttachment :one
 INSERT INTO attachments (id, ticket_id, uploaded_by, name, content_type, size, blob_key, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, ticket_id, uploaded_by, name, content_type, size, blob_key, created_at

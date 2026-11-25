@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -35,6 +36,10 @@ type Deps struct {
 	// BackupDir is where a snapshot is saved before a project is deleted.
 	BackupDir string
 	Now       func() time.Time
+	// Blobs holds attachment bytes, written only through it; Instance is
+	// this database's instance id, which names the blob keys.
+	Blobs    blobs.Store
+	Instance string
 
 	// Shutdown closes when the server starts shutting down, ending open
 	// live-update streams. StreamPoll is how often a stream checks for

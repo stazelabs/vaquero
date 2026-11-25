@@ -24,10 +24,11 @@ const maxNameRunes = 200
 const settingBlobStore = "blob_store"
 
 // AttachmentInput describes a file whose bytes are already in the blob
-// store under BlobKey.
+// store under BlobKey. ID is the id the caller minted for the key (the key
+// names the attachment); empty mints one.
 type AttachmentInput struct {
-	TicketID, Name, ContentType, BlobKey string
-	Size                                 int64
+	ID, TicketID, Name, ContentType, BlobKey string
+	Size                                     int64
 }
 
 // bidiOverride reports the invisible characters that reorder or hide text:
@@ -108,8 +109,12 @@ func (c *Core) AddAttachment(ctx context.Context, by string, in AttachmentInput)
 			ctype = "application/octet-stream"
 		}
 		now := timefmt.Format(c.Now())
+		id := in.ID
+		if id == "" {
+			id = idgen.New()
+		}
 		a, err = q.CreateAttachment(ctx, gen.CreateAttachmentParams{
-			ID: idgen.New(), TicketID: t.ID, UploadedBy: by, Name: name,
+			ID: id, TicketID: t.ID, UploadedBy: by, Name: name,
 			ContentType: ctype, Size: in.Size, BlobKey: in.BlobKey, CreatedAt: now,
 		})
 		if err != nil {

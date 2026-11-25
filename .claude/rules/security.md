@@ -40,7 +40,11 @@ CLAUDE.md "Hard invariants" is the authority.
 
 ## Body limits
 
-`middleware.BodyLimit(MaxBody)`: 1 MiB for every request.
+`middleware.BodyLimit(MaxBody)`: 1 MiB for every request, except a POST to an upload route (`middleware.IsUpload`, its list in bodylimit.go), which gets `MaxUpload` (10 MB plus 64 KiB of multipart framing). An upload over the limit, declared or read, answers 413 in the API envelope with "Files can be at most 10 MB." (`middleware.TooLargeUpload`), never a bare 413.
+
+## Attachments
+
+`GET /attachments/{id}/{name}` serves user bytes from the app's origin. The type is sniffed from the bytes at upload (`http.DetectContentType`), never taken from the client. Only PNG, JPEG, GIF and WebP are inline; everything else, SVG included, is `application/octet-stream` with `Content-Disposition: attachment`. Every answer from that route carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (replacing the page CSP). Markdown renders `<img>` only for `/attachments/` destinations.
 
 ## Outbound network
 

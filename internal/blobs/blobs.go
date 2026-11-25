@@ -16,10 +16,15 @@
 // Deadline rule: PutDeadline is the longest a caller should let a Put run.
 // Callers wrap their own context with it; backends do not add a deadline.
 //
-// Orphans: a database row and its object are not written atomically (except
-// in the SQLite backend's own table), so an object may briefly exist without
-// a row that wants it. Dir's interrupted writes leave dot-prefixed temp files
-// that List and Get never show.
+// Orphans: a database row and its object are not written atomically, even
+// in the SQLite backend (its Put and core's row are separate transactions).
+// An upload puts the bytes first, then core writes the attachments row; if
+// core refuses or fails, the handler deletes the object. A delete removes
+// the row first, then the handler deletes the object. Whatever still slips
+// through (a crash in between, a failed delete) is an orphan: the sweep
+// lists attachments/{instance}/ and deletes objects with no row that are
+// older than an hour. Dir's interrupted writes leave dot-prefixed temp
+// files that List and Get never show.
 //
 // Backends are tested with blobtest.Run.
 package blobs

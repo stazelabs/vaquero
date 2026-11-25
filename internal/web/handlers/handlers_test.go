@@ -25,7 +25,8 @@ func TestHandlersNeverWriteDirectly(t *testing.T) {
 		}
 		src := string(b)
 		for _, bad := range []string{"gen.New(", ".Exec(", "BeginTx(", "d.DB."} {
-			if strings.Contains(src, bad) && !(f == "misc.go" && bad == "d.DB.") {
+			// idgen.New( mints an id; it is not gen.New(.
+			if strings.Contains(strings.ReplaceAll(src, "idgen.New(", ""), bad) && !(f == "misc.go" && bad == "d.DB.") {
 				t.Errorf("%s uses %s; change the tracker through d.Core", f, bad)
 			}
 		}

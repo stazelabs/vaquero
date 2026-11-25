@@ -25,6 +25,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.SecurityHeaders(false),
 		middleware.CSP,
 		middleware.CrossOrigin(d.Logger),
+		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload.
 		middleware.BodyLimit(middleware.MaxBody),
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
@@ -66,6 +67,10 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Get("/about/licenses", handlers.Licenses(d))
 	r.Get("/help", handlers.HelpIndex(d))
 	r.Get("/help/{slug}", handlers.HelpArticle(d))
+	// Attachment bytes: no project key in the URL, so references survive a
+	// key change. The bare id redirects to the canonical name.
+	r.Get("/attachments/{id}", handlers.AttachmentServe(d))
+	r.Get("/attachments/{id}/*", handlers.AttachmentServe(d))
 	r.Get("/projects/new", handlers.ProjectNew(d))
 	r.Post("/projects", handlers.ProjectCreate(d))
 	r.Route("/p/{key}", func(r chi.Router) {
@@ -100,6 +105,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Post("/comments/{id}/delete", handlers.CommentDelete(d))
 		r.Post("/links", handlers.LinkCreate(d))
 		r.Post("/links/{id}/delete", handlers.LinkDelete(d))
+		r.Post("/attachments", handlers.AttachmentUpload(d))
+		r.Post("/attachments/{id}/delete", handlers.AttachmentDelete(d))
 	})
 	return r
 }

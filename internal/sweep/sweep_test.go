@@ -3,9 +3,11 @@ package sweep_test
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -82,5 +84,59 @@ func TestMCPLogPruned(t *testing.T) {
 	rows, _ := d.RQ.ListMCPCalls(bg, gen.ListMCPCallsParams{Lim: 10})
 	if len(rows) != 1 || rows[0].ID != "01NEW" {
 		t.Fatalf("%+v", rows)
+	}
+}
+
+// listSpy records the prefixes the sweep lists.
+type listSpy struct {
+	blobs.Store
+	prefixes []string
+}
+
+func (s *listSpy) List(ctx context.Context, prefix string, fn func(string, time.Time) error) error {
+	s.prefixes = append(s.prefixes, prefix)
+	return s.Store.List(ctx, prefix, fn)
+}
+
+func TestSweepDeletesOldOrphans(t *testing.T) {
+	d := dbtest.New(t)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	c := core.New(d.W, clock)
+	owner, _ := c.EnsureOwner(bg)
+	p, _ := c.CreateProject(bg, owner.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero"})
+	tk, _ := c.CreateTicket(bg, owner.ID, p.ID, core.TicketInput{Title: "x"})
+	store := &listSpy{Store: blobs.NewSQLite(d.W, d.R, clock)}
+	put := func(key string, age time.Duration) {
+		t.Helper()
+		was := now
+		now = now.Add(-age)
+		defer func() { now = was }()
+		if err := store.Put(bg, key, strings.NewReader("abc"), 3, "text/plain"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("attachments/inst/old", 2*time.Hour)
+	put("attachments/inst/fresh", 10*time.Minute)
+	put("attachments/inst/ref", 2*time.Hour)
+	put("attachments/other/old", 2*time.Hour)
+	if _, err := c.AddAttachment(bg, owner.ID, core.AttachmentInput{TicketID: tk.ID, Name: "ref.txt", ContentType: "text/plain", Size: 3, BlobKey: "attachments/inst/ref"}); err != nil {
+		t.Fatal(err)
+	}
+	s := &sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock, Blobs: store, Instance: "inst"}
+	if _, err := s.Tick(bg); err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	_ = store.Store.List(bg, "", func(k string, _ time.Time) error { left = append(left, k); return nil })
+	if strings.Join(left, " ") != "attachments/inst/fresh attachments/inst/ref attachments/other/old" {
+		t.Fatalf("left %v", left)
+	}
+	if len(store.prefixes) != 1 || store.prefixes[0] != "attachments/inst/" {
+		t.Fatalf("listed %v", store.prefixes)
+	}
+	// A sweeper without a store skips the pass.
+	if _, err := (&sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock}).Tick(bg); err != nil {
+		t.Fatal(err)
 	}
 }

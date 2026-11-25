@@ -65,3 +65,32 @@ func TestRawHTMLShownAsText(t *testing.T) {
 		}
 	}
 }
+
+// Only the app's own attachments render as images; any other image is a
+// link to its URL, so an external image never breaks against the CSP.
+func TestMarkdownImagesOnlyForAttachments(t *testing.T) {
+	out := string(markdown.Render("![x](/attachments/01h/x.png)"))
+	if !strings.Contains(out, `<img src="/attachments/01h/x.png" alt="x"`) {
+		t.Errorf("attachment: %s", out)
+	}
+	out = string(markdown.Render("![shot *one*](/attachments/01h/a%20b.png)"))
+	if !strings.Contains(out, `<img src="/attachments/01h/a%20b.png" alt="shot one"`) {
+		t.Errorf("alt text: %s", out)
+	}
+	out = string(markdown.Render("![x](https://e.com/x.png)"))
+	if !strings.Contains(out, `<a href="https://e.com/x.png" rel="nofollow">x</a>`) || strings.Contains(out, "<img") {
+		t.Errorf("external: %s", out)
+	}
+	for _, src := range []string{"![x](javascript:alert(1))", "![x](//e.com/x.png)", "![x](data:image/png;base64,AAAA)", `![x"><b>](/attachments/01h/x.png)`} {
+		out = string(markdown.Render(src))
+		if strings.Contains(out, "<img") && !strings.Contains(src, "/attachments/") {
+			t.Errorf("%q rendered an image: %s", src, out)
+		}
+		if strings.Contains(src, "javascript") && (strings.Contains(out, "<a") || strings.Contains(out, "javascript:")) {
+			t.Errorf("%q rendered a link: %s", src, out)
+		}
+		if strings.Contains(out, "<b>") {
+			t.Errorf("%q broke out of alt: %s", src, out)
+		}
+	}
+}
