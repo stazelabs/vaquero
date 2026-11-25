@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
-	"github.com/stazelabs/vaquero/internal/logfile"
 	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/logfile"
 	"github.com/stazelabs/vaquero/internal/version"
 )
 

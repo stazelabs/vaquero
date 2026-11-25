@@ -200,9 +200,8 @@ func TestBlockingLoopRefusedPastTheWalk(t *testing.T) {
 	core.SetMaxLoopWalk(t, 2)
 	// VAQ-1 blocks VAQ-2 blocks VAQ-3 blocks VAQ-4 blocks VAQ-5.
 	prev := f.T1
-	tks := []string{}
-	for i := 0; i < 4; i++ {
-		var next = f.T2
+	for i := range 4 {
+		next := f.T2
 		if i > 0 {
 			var err error
 			if next, err = c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Next"}); err != nil {
@@ -213,7 +212,6 @@ func TestBlockingLoopRefusedPastTheWalk(t *testing.T) {
 		if _, err := c.AddLink(bg, f.Owner.ID, prev.ID, "blocks", key(k)); err != nil {
 			t.Fatal(err)
 		}
-		tks = append(tks, k)
 		prev = next
 	}
 	_, err := c.AddLink(bg, f.Owner.ID, prev.ID, "blocks", key("VAQ-1"))
