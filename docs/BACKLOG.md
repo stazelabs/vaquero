@@ -1,25 +1,8 @@
 # Backlog
 
-Vaquero's own work list until a vaquero instance can track it (planned for Phase 3, when import arrives). Each line is a future ticket: when import exists, these move into vaquero and this file is deleted.
+Work is tracked in the VAQ project of Vaquero itself, from v0.1.0 on (moved 2026-11-25 by `scripts/backlog-import`; the undo point is an export in the owner's `backups/`). The Direction section is the VAQ project's description; every open line became a VAQ ticket tagged by its section, and Phases 4 to 7 became milestones.
 
-Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, with the commit; prune ticked lines at the end of each phase.
-
-## Direction (owner, 2026-11-25; more to come)
-
-1. First goal: self-hosting, meaning Vaquero tracks its own work. Phase 3b, then the v0.1.0 release, then the backlog move.
-2. The bigger idea is a self-contained, local-first software factory orchestrator. Vaquero, git and an LLM should be enough to build most software. This is a one-stop shop, and the growth in scope is accepted.
-3. Open threads, each to become a design of its own after self-hosting:
-   - [ ] Git and GitHub, deeply: tight integration options, growing out of Phase 5.
-   - [ ] Structured requirements: capture and manage them, and trace each one to the code, tests and reviews that satisfy it (in the BDD and traceability family).
-   - [ ] Seamless code review, marginalia style: requirements, tests and comments shown beside the code.
-   - [ ] LLMs for review and for the work itself. Catalogue the review types first. Grows out of Phase 7.
-   - [ ] Project design artifacts as first-class items: specs, plans and diagrams, linkable to tickets and code.
-   - [ ] A rich content editor for descriptions and comments: fluid mixed content, with pasted images shown in place instead of as a `![name](/attachments/…)` line (owner, 2026-11-25; v0.1.0 keeps the Markdown text box). Constraints to design around:
-     - Stored text stays Markdown, because agents, the CLI and the API read and write it.
-     - Strict CSP: no inline script or style. Any editor library is vendored, like htmx and SortableJS. No React.
-     - One component serves the description, new comments and comment edits.
-     - It is likely shared with design artifacts and review comments.
-4. Design note: make each of these items linkable to tickets and commits by ID.
+This file keeps the record of what shipped up to Phase 3b. Don't add to it: file a VAQ ticket instead.
 
 ## Phases
 
@@ -30,156 +13,51 @@ Format: `- [ ] Title — detail (source)`. Tick and keep a line when it ships, w
 - [x] Phase 2: API, CLI, MCP, coordination
   - [x] Phase 2a: REST API, tokens, the CLI as an API client, admin section
   - [x] Phase 2b: agent identity, ready queue, claims with leases, MCP at `/mcp` and `vaquero mcp`, MCP activity — plan: docs/superpowers/plans/2026-11-19-phase-2b-agents.md
-- [ ] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero)
+- [x] Phase 3: Releases and upgrades (first public release; move this backlog into vaquero) — v0.1.0, 2026-11-25
   - [x] Phase 3a: snapshot before migrating, `stop`, `backup list|restore`, upgrade fixtures, restart of a stale local server, goreleaser and the Homebrew formula from a manual workflow — plan: docs/superpowers/plans/2026-11-20-phase-3a-releases-upgrades.md
-  - [ ] Phase 3b: export and import, attachments (SQLite by default, or a directory or S3), the first release (docs/RELEASING.md), then move this backlog into the released vaquero. Design: docs/superpowers/specs/2026-11-20-phase-3b-design.md
-  - [ ] Move attachments between storage backends (deferred from 3b; until then a backend change with attachments present is refused at boot)
-  - [ ] Linear importer (deferred from 3b: its export is CSV only, by emailed link) — pick the format(s) to support; start from https://github.com/linear/linear/tree/master/packages/import. Keep project keys and ticket numbers so existing branch names and commit references still resolve. (Naming the source product is the one exception to "docs never name competing products": an importer has to say what it imports.)
-- [ ] Phase 4: Hosted mode (and the container image, moved from Phase 3)
-- [ ] Phase 5: Git integration
-- [ ] Phase 6: Notifications (attachments moved to Phase 3b)
-- [ ] Phase 7: LLM assists
+  - [x] Phase 3b: export and import, attachments (SQLite by default, or a directory or S3), the first release (docs/RELEASING.md), then move this backlog into the released vaquero. Design: docs/superpowers/specs/2026-11-20-phase-3b-design.md — v0.1.0 released 2026-11-25; backlog moved into VAQ
 
 ## Deferred from the Phase 0 review
 
 - [x] Fix the stale migration-order line in `.claude/rules/database.md` (review #3) — Phase 1a
 - [x] Make `VERSION` match its comment — the exact tag on HEAD, else 0.0.0-dev (Phase 3a); was: — `git describe` gives `0.1.0-3-gabc` on untagged commits; decide release-or-dev semantics with the Phase 3 release work (review #5)
-- [ ] Stop tightening an existing `VQ_DATA_DIR` to 0700 silently — `VQ_DATA_DIR=.` changes the working directory's permissions; decide refuse vs warn, and test it (review #6)
-- [ ] Reject loopback addresses outside the Host allowlist — `VQ_ADDR=127.0.0.2` boots, then every request gets 403 (review #7)
-- [ ] Validate the port (1–65535) and only say "is vaquero already running?" for address-in-use (review #8)
-- [ ] Assert the bound socket is loopback after `net.Listen` (review #9)
-- [ ] Release the signal handler once shutdown starts, so a second Ctrl-C exits at once (review #10)
-- [ ] Test the non-loopback refusal through `run("serve")`, including the hosted-mode pointer in the message (review #11)
-- [ ] Log Host-check refusals (review #12)
-- [ ] Small items: validate `VQ_LOG_LEVEL`; log status 200 rather than 0 for empty responses; drop the duplicate `MkdirAll` in `openDB`; remove the dbtest template directory; stop serving `input.css` (review #13)
 - [x] View the theme in dark mode and check contrast — viewed in Phase 1b by applying the dark tokens in Chrome; readable
 
 ## Deferred from Phase 1a
 
-- [ ] Tag management: rename, merge and delete tags (tags are created inline only)
-- [ ] Moving a ticket to another project (keys and numbers would change)
-- [ ] Editing an existing milestone's description (the settings form edits name and due date only)
-- [ ] A refused milestone or status form on the settings page loses the typed values (it redirects with a toast)
-- [ ] Ticket history shows "changed the description" without the old text (events record that the body changed, not its contents)
 - [x] Before Phase 2 exposes core: an empty `StatusID` on update silently moves the ticket — PatchTicket keeps unnamed fields (Phase 2a)
 - [x] Before Phase 2: link direction rules — blocking loops and two-way duplicates refused (Phase 2a)
 - [x] Before Phase 2: optimistic concurrency — ticket versions, 409 on a stale save (Phase 2a)
-- [ ] Link history is one-sided: link events attach to the "from" ticket only, so a blocked ticket's history never says it became blocked (review 1a #10)
-- [ ] `c.tx` should `defer tx.Rollback()` so a panic mid-operation can't hold the only writer connection (review 1a #4)
-- [ ] `/p/vaq/new?parent=VAQ-1` loses its query string on the case redirect (`ticketFromURL` keeps it) (review 1a #6)
-- [ ] Comments lose leading indentation (a comment starting with an indented code block) — trim trailing space and leading blank lines only (review 1a #7)
-- [ ] Fix stale docs: the payload list in `internal/core/events.go`; `Deps.Q` mentioned in `.claude/rules/database.md` and CLAUDE.md (review 1a #11, #12)
 - [x] External images in markdown render broken (CSP `img-src 'self' data:`) — strip `<img>` or say so (review 1a #14) — Attachments: upload, serve, sweep orphans; markdown images only from attachments (Phase 3b): only `/attachments/` images render, any other becomes a link
-- [ ] Destructive buttons (comment delete, status delete, archive) act on one click with no confirmation (review 1a #16)
-- [ ] Test gaps: cross-site POST to a real mutating route with a no-write assertion; hostile markdown in a comment at page level; cross-project parent through the form (review 1a #15)
-- [ ] Tag names: `école` and `École` are one tag in the input but two in the database (SQLite NOCASE folds ASCII only) (review 1a #1, related)
 
 ## Deferred from Phase 1b
 
-- [ ] The milestone panel is hidden below laptop width (`max-lg:hidden`); small screens get no milestone filter except through the URL
-- [ ] At narrow widths an open rail pushes the active columns into sideways scroll; consider overlaying it instead
-- [ ] Reordering cards writes a "reordered" history line each time; consider folding repeated reorders or leaving them out of the activity page
-- [ ] Keyboard shortcuts have no automated test (app.js is untested JavaScript); checked by hand in Chrome
-- [ ] Drag-and-drop has no automated browser test; checked by hand in Chrome with scripted pointer events (the browser tool's own drag gesture doesn't trigger Sortable)
-- [ ] Each open page polls the database once a second for the newest event; fine locally, revisit for hosted mode with many viewers (an in-process broadcast from core would replace polling)
-
-- [ ] A change between a page render and its stream connecting (or during a reconnect after a restart) isn't announced — emit `id:` and honour `Last-Event-ID` (review 1b #4)
-- [ ] A failed drop (500 or network error) leaves the card where it was dropped until the next change — refresh the board on `htmx:responseError`/`sendError` (review 1b #5)
-- [ ] A drop's response can swap the board while the next card is being dragged — defer swaps of `#board` while dragging (review 1b #6)
-- [ ] "N older" links to the whole list, not the done tickets — add a status or category filter (review 1b #7)
-- [ ] Search: decomposed accents (NFD "résumé") find nothing — normalise to NFC; terms split across a ticket and its comments never match; bm25 from two tables compared directly; title hits repeat the title as snippet; results past 50 cut silently (review 1b #8, #9)
 - [x] FTS tables key on implicit rowids — delete triggers added with project delete (0004_hard_delete.sql); VACUUM would still renumber rowids, so never VACUUM the live database in place (Snapshot uses VACUUM INTO a copy) (review 1b #10)
-- [ ] `MoveTicket` reports any `GetStatus` failure as a bad status — map only `sql.ErrNoRows` (review 1b #11)
-- [ ] Test gaps: stale before/after keys at the endpoint, the stream's ping, top-of-column drop into another column, renumber with a mid-column insert (review 1b #12)
-- [ ] Accessibility: `aria-pressed` on chip links → `aria-current`; `role="group"` on the filters; `j`/`k` should move real focus, not just a ring (review 1b #13)
-- [ ] Activity: "Nothing has happened yet." stays after the first live event (it sits outside `#feed`) (review 1b #14)
-- [ ] Filter and search clipping cuts by bytes, not characters (review 1b #15)
 
 ## Deferred from the footer, key and delete work
 
 - [x] Restoring a pre-delete backup is manual — `vaquero backup restore` (Phase 3a); was: (stop vaquero, copy `backups/vaquero-….sqlite` over `vaquero.db`); a `vaquero admin restore` command belongs with Phase 3's upgrade tooling
-- [ ] The footer's commit reads "dev" under `make dev` (air builds without ldflags); release builds stamp it
 - [x] (restore removes them, Phase 3a) When restoring a backup by hand, remove `vaquero.db-wal` and `vaquero.db-shm` first, or a stale WAL is replayed onto the restored file
-- [ ] Surviving tickets' history still names deleted or re-keyed tickets ("marked OTH-1 as blocking VAQ-1") with no "link removed" line (review fkd minor 2)
-- [ ] `TestDeleteConfirmation` should compare the whole snapshot (`maps.Equal`); extend the delete test with a parent/child pair, a soft-deleted comment, `PRAGMA foreign_key_check` and the other project's event count (review fkd minor 3)
-- [ ] Notice links for `/vN` module paths (chi v5, ulid v2, goose v3) 404 — link to pkg.go.dev instead (review fkd minor 4)
-- [ ] The bundled versions in `scripts/notices` (htmx 2.0.4, SortableJS 1.15.6, Tailwind 4.3.5) aren't checked against the files; `package.json` allows Tailwind `^4.1.0` (review fkd minor 5)
-- [ ] backup.go carries unused ports (`EffectiveKeep`, `KeepFor`, `SpaceLow`, `OpenBackup`, `ParseBackupName`) and startcase-specific comments — trim or use in Phase 3 (review fkd minor 6); Linux free space should use `Frsize` (minor 7)
-- [ ] CLAUDE.md drift: route list lacks `/about/licenses`, `POST /p/{key}/key` and `/delete`; `Shell` still says "tagline footer"; static entry lacks `logo.svg`; `Deps` list lacks `BackupDir`; backups are `.sqlite`, not `.db` as the plan says (review fkd minor 8)
-- [ ] The logo's colours are fixed in the SVG, so it doesn't follow the dark-mode accent (review fkd minor 9)
-- [ ] When sessions arrive (Phase 4), don't port startcase's snapshot `scrub` as is: its `VACUUM` can renumber the rowids the search indexes key on — scrub, then rebuild the FTS tables
 
 ## Deferred from Phase 2a
 
-- [ ] Per-token API rate limits (and on failed authentication) — with hosted mode, Phase 4
-- [ ] `vaquero tickets --milestone NAME` — the API filters milestones by internal id; accept a name
-- [ ] A JSON 500 for panics inside `/api/v1` (today Recover answers plain text)
 - [x] `vaquero stop` (Phase 3a)
-- [ ] `vaquero logs`
-- [ ] Refreshing the tokens page right after creating a token offers to resubmit the form, creating another token
-
-- [ ] Local mode trusts every process on the machine: any local program (another user's included) can reach the server and mint a token at `/admin/tokens`. Fine on a personal laptop; decide on a guard before shared machines or Phase 4 (review 2a, declined to judge)
-- [ ] Review 2a minors: project writes answer `open_count: 0`; `--version` below 1 silently skips the check; exit 3 should key on the `conflict` code, not on `current` being present; sub-tickets in the API are partial summaries; `ticketDTO` loads the whole board for one `ready`; unknown `before`/`after` keys on move are ignored rather than refused; token revoke by prefix should compare exactly (base64 is case-sensitive); `profile add` takes the token in argv (accept `-`) and doesn't check the URL; `.tmp` files keep an old mode; `ensureLocalToken` doesn't check the token's actor or revoke old "local" tokens; a lock pid of 0 reads "(pid 0)"; the loop walk caps nodes, not depth; name lookups report database errors as 422; "dev" builds count as 0.0.0 and the upgrade message repeats per request; `vaquero.log` grows without limit; create ignores `version`/`remove_tags`; docs: CLAUDE.md `Deps` lacks `Touch`/`RenewLocalToken`, handlers.md "no writer queries" vs `Deps.Touch` (extend the guard test to ban `d.Touch.`), the token-create exception to redirect-after-POST, and `VAQUERO_AGENT` is undocumented
 
 ## Icons and in-app help (requested 2026-11-19)
 
 - [x] Lucide icons through the UI; in-app help at `/help` (with markdown for agents and `vaquero docs`) — plan: docs/superpowers/plans/2026-11-19-icons-and-help.md
-- [ ] Review (icons and help) minors: the icon generator should fail on an SVG element it can't parse rather than drop it; `TestUIGlyphsAreDrawingOnly` should assert the allowlist shape; `icon.templ` says icon-only buttons use `IconLg` but the toast close uses `Icon`; `TestIconOnlyButtonsLabelled` misses an icon wrapped in a span; a shortcut added to app.js but not to `templates.shortcuts` escapes the docs test; CLI subcommands and flags have no docs guard; the Activity empty state sits outside the live-swapped feed, so it stays after the first event
-- [ ] Help: search the articles from the header search box
 
 ## Folded into Phase 2b
 
 - [x] Exit 3 keys on the `conflict` code, not on `current` being present
 - [x] `--version` below 1 is a usage error, not a skipped check
 
-## Phase 2b review minors
-
-- [ ] `Vaquero-Agent` requests open a writer transaction for `EnsureAgent` every time; look the agent up through the reader first
-- [ ] `vaquero mcp`: a stdin line over 4 MB ends the bridge without a JSON-RPC error; an in-flight request finishes before EOF is noticed
-- [ ] `/admin/mcp` filters by actor name, so an agent named "Owner" merges with the human Owner; agent names are case-sensitive
-- [ ] A `Vaquero-Agent` header on a non-owner token is ignored without a word (`vaquero mcp --agent` should say so)
-- [ ] Decide: claims are advisory for edits (anyone can update or move a claimed ticket); revisit if agents need hard locks
-
 ## Admin section (requested 2026-11-19)
 
 - [x] Phase 2a: `/admin` home (version, data directory, database size, schema version) and `/admin/tokens`
 - [x] Phase 2b: `/admin/mcp` — log and show every MCP tool call (time, agent, tool, argument summary, outcome, duration), filterable, live
-- [ ] Later: backups (list, prune, restore), API call log, users and roles (Phase 4), system details (disk space, uptime)
-
-## Deferred from Phase 3a
-
-- [ ] goreleaser's `brews` is deprecated (its replacement, casks, has no formula service block); move the formula when goreleaser removes it, or keep a hand-written formula in the tap
-- [ ] No test holds "never add push or pull_request triggers" for `.github/workflows`
-- [ ] Review 3a minors: `lockfile.Holder` briefly takes the lock, so a server starting at that instant can get `ErrLocked` (retry ~50 ms in `Acquire`), and `Acquire` writes the pid just after the flock (re-read before signalling); a theoretical double restart between the `/me` probe and `Holder`; the restart line repeats when the profile's address is served from another data directory; `brewService()` is a file check on HOME (it refuses `stop` for an unrelated instance and may miss `brew services run`); `vaquero stop` during a restore signals the restore; no directory fsync after the restore rename; workflow actions pinned by tag, not SHA
-- [ ] Seven project deletes after an upgrade can prune its pre-migration snapshot (shared keep count); pre-restore snapshots aren't pruned until the next prune
 
 ## Open questions
 
 - [x] Prevent two servers sharing one data directory — `vaquero.lock` (Phase 2a)
-- [ ] CI triggers once outside contributors send pull requests (the repo is private and workflows are manual for now)
-- [ ] Check the name `vaquero` for collisions on Homebrew and the container registry before the first public release
-- [ ] Whether local mode should ever offer a LAN bind with sign-in (current answer: use hosted mode)
 - [x] Make the repository public — done with the v0.1.0 release (2026-11-25)
-
-## Deferred from Phase 3b design (2026-11-20)
-
-- [ ] stazelabs skills adapter (`trackers/vaquero.md` in agent-workflow), this repo's profile and audit packs, and the Vaquero additions they need (ticket `url`, MCP `whoami`, `list_tags`)
-
-## Deferred from Phase 3b
-
-- [ ] Backend lock compares only the backend name — record a location fingerprint (dir path, bucket+endpoint) next to `blob_store` (review 3b)
-- [ ] Redact `Config.S3SecretAccessKey` under %v — add String, LogValue or Format (review 3b)
-- [ ] Make the AddAttachment/DeleteAttachment entries in `TestEveryOperationRollsBackPartWay` meaningful — they fail at setup under the ghost actor (review 3b)
-- [ ] Canonical attachment redirects are 301 (permanent) — revisit if renames arrive (review 3b)
-- [ ] Plain-text 413 fallback in bodylimit.go for non-upload routes (review 3b)
-- [ ] API tests: delete permissions (agent own, owner's, owner deletes agent's) and HEAD on `/api/v1/attachments/{id}`; api.md note on the 422 for a non-uploader delete (review 3b)
-- [ ] `ExportedSettings` and `InstanceSettings` are mutable exported vars — a race risk if tests go parallel (review 3b)
-- [ ] HEAD `/api/v1/export` builds export.json then discards it, and export reads every object twice — use a Stat for the pre-check (review 3b)
-- [ ] S3 bad credentials surface only at the first Put during import (review 3b)
-- [ ] A killed import (SIGKILL) leaves objects under an unrecorded instance id that no sweep sees (review 3b)
-- [ ] `swapFailed` wording should mention the -wal and -shm files; the gzip drain is unbounded (CPU only) (review 3b)
-- [ ] Import spools into `os.TempDir()` (often a small tmpfs) — spool into the data directory (review 3b)
-- [ ] `blobs.PutDeadline` of 10 s is tight for 10 MB to S3 on slow uplinks (review 3b)
-- [ ] With sqlite storage, swept blob rows don't shrink the file (no VACUUM) (review 3b)
-- [ ] A `cmd/vaquero` test leaves detached `vaquero.test serve` processes running after the suite (two found six days later, parent pid 1) — stop every server a test starts (release 3b)
-- [ ] The release workflow's `goreleaser/goreleaser-action@v6` runs on deprecated Node 20 — bump it before GitHub removes Node 20 (release 3b)
