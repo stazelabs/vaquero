@@ -11,9 +11,13 @@ import (
 
 // Event kinds. Payloads, all JSON objects:
 //
-//   - *.created: {} unless noted; ticket.created {"title"}.
+//   - project.created: {"key", "name"}. milestone.created: {"name"}.
+//     status.created: {"name", "category"}. ticket.created: {"title"}.
 //   - *.updated: {"changes": {field: {"from", "to"}}}, only changed fields;
-//     ticket tags are sorted name lists.
+//     ticket tags are sorted name lists. milestone.updated also carries
+//     {"name"}; a project key change is project.updated with a "key" change.
+//   - project.archived, project.restored, milestone.closed,
+//     milestone.reopened: {}.
 //   - status.moved: {"name", "from": position, "to": position}.
 //   - ticket.reordered: {"status": name}, a move within one column.
 //   - status.deleted: {"name"}.
