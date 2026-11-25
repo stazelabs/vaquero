@@ -193,8 +193,7 @@ func TestMoveTicketStatusLookupFailureIsNotAFieldError(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	var inv *core.Invalid
-	if errors.As(err, &inv) {
+	if _, ok := errors.AsType[*core.Invalid](err); ok {
 		t.Fatalf("a database failure was reported as a field error: %v", err)
 	}
 }
