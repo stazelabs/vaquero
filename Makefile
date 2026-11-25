@@ -21,7 +21,7 @@ SQLC_VERSION        := v1.31.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help tools gen templ sqlc css notices dev build test cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean fixture
+.PHONY: help tools gen templ sqlc css notices dev build test cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean fixture formula
 
 help: ## Show this list (the default)
 	@echo "usage: make <target>"
@@ -103,6 +103,10 @@ db-reset: ## Delete the dev data directory (./data)
 fixture: ## Write the upgrade fixture for a release: make fixture VERSION=X (commit it; never replace one)
 	@test "$(origin VERSION)" = "command line" || { echo "usage: make fixture VERSION=X (the release, like 0.1.0)" >&2; exit 2; }
 	CGO_ENABLED=0 $(GO) run ./scripts/fixture -version $(VERSION)
+
+formula: ## Print the Homebrew formula for a release from dist/checksums.txt: make formula VERSION=X
+	@test "$(origin VERSION)" = "command line" || { echo "usage: make formula VERSION=X (the release, like 0.1.0)" >&2; exit 2; }
+	@CGO_ENABLED=0 $(GO) run ./scripts/formula -version $(VERSION)
 
 ci: gen fmt vet lint test cover-check ## The full local gate: gen, fmt, vet, lint, test, cover-check
 

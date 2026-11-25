@@ -1,0 +1,4 @@
+eb61e3149a8ba4c6a90591b334879f06c8f32668c40d3fcc4269b3ebcd6320cc  vaquero_0.1.2_darwin_amd64.tar.gz
+01acd77f38b2fd3a8d635a422f59a048c4e9f57ec6c958c3bfad25b5b4654522  vaquero_0.1.2_darwin_arm64.tar.gz
+40331d78cee82322cbce3e74dc2df5501e1787a079c1c1a35cbd7fd855e17108  vaquero_0.1.2_linux_amd64.tar.gz
+d576bfca5bb29dde3a3fc001accc0479a9aa018b48ec5e8cc64d8973f631bdc5  vaquero_0.1.2_linux_arm64.tar.gz
