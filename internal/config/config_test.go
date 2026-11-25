@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -183,7 +184,16 @@ func TestSecretIsRedactedEverywhere(t *testing.T) {
 	c := Config{S3SecretAccessKey: Secret("hunter2-secret")}
 	var buf bytes.Buffer
 	slog.New(slog.NewTextHandler(&buf, nil)).Info("cfg", "cfg", c, "key", c.S3SecretAccessKey)
-	outs := []string{
+	var jb bytes.Buffer
+	slog.New(slog.NewJSONHandler(&jb, nil)).Info("cfg", "cfg", c, "key", c.S3SecretAccessKey)
+	js, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(js), "[redacted]") {
+		t.Errorf("JSON should carry the placeholder, got %s", js)
+	}
+	outs := []string{string(js), jb.String(),
 		fmt.Sprintf("%v", c), fmt.Sprintf("%+v", c), fmt.Sprintf("%#v", c),
 		fmt.Sprintf("%s", c.S3SecretAccessKey), fmt.Sprintf("%x", c.S3SecretAccessKey), fmt.Sprintf("%v", c.S3SecretAccessKey),
 		buf.String(),

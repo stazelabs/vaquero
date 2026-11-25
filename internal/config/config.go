@@ -70,6 +70,10 @@ func (Secret) GoString() string { return redacted }
 // Format implements fmt.Formatter so no verb (%x, %q, %v) shows the bytes.
 func (Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte(redacted)) }
 
+// MarshalText implements encoding.TextMarshaler, so JSON and any other text
+// encoding carry the placeholder, never the bytes.
+func (Secret) MarshalText() ([]byte, error) { return []byte(redacted), nil }
+
 // LogValue implements slog.LogValuer.
 func (Secret) LogValue() slog.Value { return slog.StringValue(redacted) }
 
