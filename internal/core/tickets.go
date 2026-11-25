@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
@@ -38,13 +40,19 @@ type ticketFields struct {
 	tags      []gen.Tag
 }
 
-// normTags trims tag names and drops blanks and case-insensitive repeats,
-// keeping the first spelling.
+// sameTag reports whether two tag names are one tag: equal after NFC
+// normalisation and Unicode case folding (SQLite's NOCASE folds only ASCII).
+func sameTag(a, b string) bool {
+	return strings.EqualFold(norm.NFC.String(a), norm.NFC.String(b))
+}
+
+// normTags trims tag names, puts them in NFC and drops blanks and
+// case-insensitive repeats, keeping the first spelling.
 func normTags(f fields, names []string) []string {
 	var out []string
 	for _, n := range names {
-		n = strings.TrimSpace(n)
-		if n == "" || slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, n) }) {
+		n = norm.NFC.String(strings.TrimSpace(n))
+		if n == "" || slices.ContainsFunc(out, func(o string) bool { return sameTag(o, n) }) {
 			continue
 		}
 		if hasControl(n) {
@@ -160,11 +168,22 @@ func checkParent(ctx context.Context, q *gen.Queries, f fields, p gen.Project, t
 // upsertTags creates any missing tags and returns them all, sorted by name.
 func (c *Core) upsertTags(ctx context.Context, q *gen.Queries, names []string) ([]gen.Tag, error) {
 	tags := make([]gen.Tag, 0, len(names))
+	known, err := q.ListTags(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list tags: %w", err)
+	}
 	for _, n := range names {
+		// An existing tag that differs only by Unicode case or
+		// normalisation is the same tag, and keeps its spelling.
+		if i := slices.IndexFunc(known, func(k gen.Tag) bool { return sameTag(k.Name, n) }); i >= 0 {
+			tags = append(tags, known[i])
+			continue
+		}
 		t, err := q.UpsertTag(ctx, gen.UpsertTagParams{ID: idgen.New(), Name: n, CreatedAt: timefmt.Format(c.Now())})
 		if err != nil {
 			return nil, fmt.Errorf("upsert tag: %w", err)
 		}
+		known = append(known, t)
 		tags = append(tags, t)
 	}
 	sortTags(tags)

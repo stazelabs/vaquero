@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
 func TestTicketNumbersIncrease(t *testing.T) {
@@ -254,5 +255,49 @@ func TestControlCharactersRefused(t *testing.T) {
 	// Tabs and newlines are ordinary text.
 	if _, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "ok", Body: "line\n\tindented\r\n"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// École, école and an NFD spelling are one tag; the first spelling stays.
+func TestUnicodeTagNamesFoldToOneTag(t *testing.T) {
+	c, d, f := newFixture(t)
+	nfd := "école"
+	a, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "a", Tags: []string{"école"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "b", Tags: []string{"École"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "e", Tags: []string{nfd, "ÉCOLE"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := d.R.QueryRow(`SELECT count(*) FROM tags WHERE lower(name) LIKE '%cole%'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("%d tags, %v", n, err)
+	}
+	for _, tk := range []gen.Ticket{a, b, e} {
+		tags, _ := d.RQ.ListTicketTags(bg, tk.ID)
+		if len(tags) != 1 || tags[0].Name != "école" {
+			t.Fatalf("%q: %+v", tk.Title, tags)
+		}
+	}
+	// A new tag given in NFD is stored in NFC.
+	g, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "g", Tags: []string{"résumé"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tags, _ := d.RQ.ListTicketTags(bg, g.ID)
+	if len(tags) != 1 || tags[0].Name != "résumé" {
+		t.Fatalf("%+v", tags)
+	}
+	// Removing by another case or spelling finds it.
+	if _, err := c.PatchTicket(bg, f.Owner.ID, a.ID, core.TicketPatch{RemoveTags: []string{"ÉCOLE"}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if tags, _ := d.RQ.ListTicketTags(bg, a.ID); len(tags) != 0 {
+		t.Fatalf("%+v", tags)
 	}
 }
