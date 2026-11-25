@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"maps"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -43,6 +44,20 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 	if _, err := attach(c, f.Owner.ID, f.O1.ID, "stays.png"); err != nil {
 		t.Fatal(err)
 	}
+	// A parent with a child, and a comment that was already soft-deleted:
+	// neither may leave a row, or a dangling foreign key, behind.
+	child, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Child", ParentID: f.T1.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone, err := c.AddComment(bg, f.Owner.ID, child.ID, "retracted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteComment(bg, f.Owner.ID, gone.ID); err != nil {
+		t.Fatal(err)
+	}
+	otherEvents := count(t, d, `SELECT count(*) FROM events WHERE project_id = ?`, f.Other.ID)
 	if err := c.DeleteProject(bg, f.Owner.ID, f.Project.ID, "vaq"); err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +95,12 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 	if hits, _ := appdb.SearchTickets(bg, d.R, `"elsewhere"*`, 10); len(hits) != 1 {
 		t.Error("the other project's ticket left the index")
 	}
+	if n := count(t, d, `SELECT count(*) FROM events WHERE project_id = ?`, f.Other.ID); n != otherEvents {
+		t.Errorf("the other project has %d events, had %d", n, otherEvents)
+	}
+	if n := count(t, d, `SELECT count(*) FROM pragma_foreign_key_check`); n != 0 {
+		t.Errorf("%d foreign key violations after the delete", n)
+	}
 	if p := lastPayload(t, c); p["key"] != "VAQ" || p["name"] != "Vaquero" {
 		t.Fatalf("%v", p)
 	}
@@ -92,7 +113,7 @@ func TestDeleteConfirmation(t *testing.T) {
 	err := c.DeleteProject(bg, f.Owner.ID, f.Project.ID, "OTH")
 	fieldErr(t, err, "confirm", "Type VAQ to confirm.")
 	fieldErr(t, c.DeleteProject(bg, f.Owner.ID, f.Project.ID, ""), "confirm", "Type VAQ to confirm.")
-	if got := snapshot(t, d); len(got) != len(snap) || got["tickets"] != snap["tickets"] {
+	if got := snapshot(t, d); !maps.Equal(got, snap) {
 		t.Fatal("refused delete changed rows")
 	}
 }
