@@ -212,9 +212,9 @@ func premigrateSnapshot(path string, applied int64) (string, bool) {
 
 // backgroundLog is a rotating writer for {dataDir}/vaquero.log when out is
 // that very file, as it is for a server the command line started in the
-// background (client.EnsureLocal); else nil. Only the log goes through it:
-// what the Go runtime itself writes to standard error (a crash) stays on
-// the file the server started with.
+// background (client.EnsureLocal); else nil. The log goes through it, and
+// each rotation points standard output and error at the new file too, so a
+// crash trace from the Go runtime lands in vaquero.log, not vaquero.log.1.
 func backgroundLog(dataDir string, out io.Writer) *logfile.Writer {
 	f, ok := out.(*os.File)
 	if !ok {
@@ -232,6 +232,10 @@ func backgroundLog(dataDir string, out io.Writer) *logfile.Writer {
 	w, err := logfile.Open(path, logfile.Max)
 	if err != nil {
 		return nil
+	}
+	w.Redirect(int(f.Fd())) //nolint:gosec // descriptors fit int
+	if st, err := os.Stdout.Stat(); err == nil && os.SameFile(st, b) {
+		w.Redirect(int(os.Stdout.Fd())) //nolint:gosec // descriptors fit int
 	}
 	return w
 }

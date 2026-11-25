@@ -38,6 +38,16 @@ type Writer struct {
 	mu   sync.Mutex
 	f    *os.File
 	size int64
+	fds  []int // descriptors pointed at each new file (Redirect)
+}
+
+// Redirect makes each rotation also point fds (a server's standard output
+// and error, which the Go runtime writes a crash trace to) at the new file,
+// so nothing is written to the old one after it moved.
+func (w *Writer) Redirect(fds ...int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.fds = append(w.fds, fds...)
 }
 
 // Open opens (or creates, 0600) the log at path for appending.
@@ -75,6 +85,9 @@ func (w *Writer) Write(p []byte) (int, error) {
 				w.f = old // keep writing where it was
 			} else {
 				old.Close()
+				for _, fd := range w.fds {
+					_ = dup(int(w.f.Fd()), fd) //nolint:gosec // descriptors fit int
+				}
 			}
 		}
 	}

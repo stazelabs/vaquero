@@ -81,3 +81,33 @@ func TestWriterRotates(t *testing.T) {
 		t.Fatalf("files %v, want only .1", left)
 	}
 }
+
+// VAQ-61 review: after a rotation the descriptors the server started with
+// (its standard output and error, where a crash trace goes) point at the
+// new file, not at vaquero.log.1.
+func TestWriterRedirectsDescriptors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "vaquero.log")
+	spare, err := os.OpenFile(filepath.Join(dir, "spare"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer spare.Close()
+	w, err := logfile.Open(path, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.Redirect(int(spare.Fd()))
+	w.Write([]byte("0123456789"))
+	w.Write([]byte("after\n")) // rotates
+	if _, err := spare.Write([]byte("crash\n")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "after\ncrash\n" {
+		t.Fatalf("vaquero.log holds %q", b)
+	}
+	if b, _ := os.ReadFile(path + ".1"); string(b) != "0123456789" {
+		t.Fatalf(".1 holds %q", b)
+	}
+}
