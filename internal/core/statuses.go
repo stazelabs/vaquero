@@ -29,7 +29,9 @@ func statusName(ctx context.Context, q *gen.Queries, f fields, projectID, except
 	return name, nil
 }
 
-// CreateStatus adds a status at the end of a project's list.
+// CreateStatus adds a status right after the last status of its category
+// or, when its category has none, after the last status of the nearest
+// earlier category (first when there is none).
 func (c *Core) CreateStatus(ctx context.Context, by, projectID, name, category string) (gen.Status, error) {
 	var s gen.Status
 	err := c.tx(ctx, func(q *gen.Queries) error {
@@ -47,17 +49,53 @@ func (c *Core) CreateStatus(ctx context.Context, by, projectID, name, category s
 		if err := f.err(); err != nil {
 			return err
 		}
-		pos, err := q.MaxStatusPosition(ctx, projectID)
+		ss, err := q.ListStatuses(ctx, projectID)
 		if err != nil {
-			return fmt.Errorf("status position: %w", err)
+			return fmt.Errorf("list statuses: %w", err)
 		}
-		s, err = q.CreateStatus(ctx, gen.CreateStatusParams{ID: idgen.New(), ProjectID: projectID, Name: name, Category: category, Position: pos + 1})
-		if err != nil {
+		at := endOfCategory(ss, category)
+		if err := renumberStatuses(ctx, q, ss, at); err != nil {
+			return err
+		}
+		if s, err = q.CreateStatus(ctx, gen.CreateStatusParams{ID: idgen.New(), ProjectID: projectID, Name: name, Category: category, Position: int64(at + 1)}); err != nil {
 			return fmt.Errorf("create status: %w", err)
 		}
 		return c.emit(ctx, q, by, EvStatusCreated, projectID, "", map[string]string{"name": name, "category": category})
 	})
 	return s, err
+}
+
+// endOfCategory is the index a new status of category takes in ss (by
+// position): after the last of its category, else after the last of the
+// nearest earlier category in Categories, else 0.
+func endOfCategory(ss []gen.Status, category string) int {
+	for k := slices.Index(Categories, category); k >= 0; k-- {
+		for i, s := range slices.Backward(ss) {
+			if s.Category == Categories[k] {
+				return i + 1
+			}
+		}
+	}
+	return 0
+}
+
+// renumberStatuses gives ss positions 1, 2, 3... in order, leaving out
+// position gap+1 for a status about to be inserted (gap -1: none), and
+// writes only the positions that change.
+func renumberStatuses(ctx context.Context, q *gen.Queries, ss []gen.Status, gap int) error {
+	for i, s := range ss {
+		pos := int64(i + 1)
+		if gap >= 0 && i >= gap {
+			pos++
+		}
+		if s.Position == pos {
+			continue
+		}
+		if err := q.SetStatusPosition(ctx, gen.SetStatusPositionParams{Position: pos, ID: s.ID}); err != nil {
+			return fmt.Errorf("renumber statuses: %w", err)
+		}
+	}
+	return nil
 }
 
 // RenameStatus changes a status's name. Its category never changes.

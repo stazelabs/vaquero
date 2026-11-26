@@ -21,6 +21,3 @@ SELECT count(*) FROM tickets WHERE status_id = ?;
 
 -- name: CountStatusesInCategory :one
 SELECT count(*) FROM statuses WHERE project_id = ? AND category = ?;
-
--- name: MaxStatusPosition :one
-SELECT CAST(coalesce(max(position), 0) AS INTEGER) FROM statuses WHERE project_id = ?;

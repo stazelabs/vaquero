@@ -16,7 +16,7 @@ import (
 type fixture struct {
 	Owner     gen.Actor
 	Project   gen.Project
-	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo)
+	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo), moved there
 	T1, T2    gen.Ticket
 	Milestone gen.Milestone
 	Other     gen.Project
@@ -41,8 +41,11 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	var err error
 	f.Project, err = c.CreateProject(ctx, owner.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero"})
 	must(err)
-	_, err = c.CreateStatus(ctx, owner.ID, f.Project.ID, "Extra", "todo")
+	extra, err := c.CreateStatus(ctx, owner.ID, f.Project.ID, "Extra", "todo")
 	must(err)
+	for range 4 { // from after Todo to the end, past In progress … Cancelled
+		must(c.MoveStatus(ctx, owner.ID, extra.ID, +1))
+	}
 	f.Statuses, err = d.RQ.ListStatuses(ctx, f.Project.ID)
 	must(err)
 	f.T1, err = c.CreateTicket(ctx, owner.ID, f.Project.ID, core.TicketInput{Title: "First", Tags: []string{"bug"}})

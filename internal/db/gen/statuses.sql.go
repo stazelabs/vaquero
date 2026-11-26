@@ -126,17 +126,6 @@ func (q *Queries) ListStatuses(ctx context.Context, projectID string) ([]Status,
 	return items, nil
 }
 
-const maxStatusPosition = `-- name: MaxStatusPosition :one
-SELECT CAST(coalesce(max(position), 0) AS INTEGER) FROM statuses WHERE project_id = ?
-`
-
-func (q *Queries) MaxStatusPosition(ctx context.Context, projectID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, maxStatusPosition, projectID)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
 const renameStatus = `-- name: RenameStatus :exec
 UPDATE statuses SET name = ? WHERE id = ?
 `
