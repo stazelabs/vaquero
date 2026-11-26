@@ -71,6 +71,17 @@ func TestCLIStatuses(t *testing.T) {
 	if code, _, _ := cli(t, "status", "move", "VAQ", "Todo", "--before", "Done", "--after", "Done"); code != 2 {
 		t.Fatalf("both: %d", code)
 	}
+	// A flag that doesn't apply to the verb is a usage error.
+	for _, args := range [][]string{
+		{"status", "rename", "VAQ", "Todo", "Ready", "--before", "Done"},
+		{"status", "delete", "VAQ", "Todo", "--after", "Done"},
+		{"status", "move", "VAQ", "Todo", "--before", "Done", "--category", "done"},
+		{"status", "rename", "VAQ", "Todo", "Ready", "--category", "todo"},
+	} {
+		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, "usage:") {
+			t.Errorf("%v: %d %q", args, code, errOut)
+		}
+	}
 	if code, _, _ := cli(t, "status", "frobnicate", "VAQ"); code != 2 {
 		t.Fatalf("unknown verb: %d", code)
 	}

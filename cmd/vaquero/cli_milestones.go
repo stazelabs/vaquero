@@ -60,13 +60,17 @@ func cmdMilestones(ctx context.Context, stdout, stderr io.Writer, args []string)
 }
 
 func cmdMilestone(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero milestone add KEY NAME [--description TEXT] [--due DATE] | edit KEY NAME [--name NEW] [--description TEXT] [--due DATE] | close KEY NAME | reopen KEY NAME"
+	const usage = "vaquero milestone add KEY NAME [--description TEXT|-] [--due DATE] | edit KEY NAME [--name NEW] [--description TEXT|-] [--due DATE] | close KEY NAME | reopen KEY NAME"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
 	due := c.fs.String("due", "", "due date, YYYY-MM-DD (\"\" for none)")
 	pos, err := c.parse(args, 3, 3)
 	if err != nil {
+		return c.finish(err)
+	}
+	takes := map[string][]string{"add": {"description", "due"}, "edit": {"name", "description", "due"}}
+	if err := c.only(pos[0], takes[pos[0]]...); err != nil {
 		return c.finish(err)
 	}
 	key, ms := pos[1], pos[2]

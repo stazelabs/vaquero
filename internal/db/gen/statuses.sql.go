@@ -128,7 +128,7 @@ func (q *Queries) GetStatus(ctx context.Context, id string) (Status, error) {
 }
 
 const listStatuses = `-- name: ListStatuses :many
-SELECT id, project_id, name, category, position FROM statuses WHERE project_id = ? ORDER BY position
+SELECT id, project_id, name, category, position FROM statuses WHERE project_id = ? ORDER BY position, id
 `
 
 func (q *Queries) ListStatuses(ctx context.Context, projectID string) ([]Status, error) {

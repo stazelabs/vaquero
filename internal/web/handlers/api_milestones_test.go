@@ -66,7 +66,7 @@ func TestAPIMilestoneUpdate(t *testing.T) {
 	}
 	seq = seqNow(t, e)
 	refused(t, c.API("PATCH", "/api/v1/projects/VAQ/milestones/GA", tok, map[string]string{"name": "beta 1"}), "name", "A milestone with that name exists.")
-	refused(t, c.API("PATCH", "/api/v1/projects/VAQ/milestones/Nope", tok, map[string]string{"name": "X"}), "milestone", "No milestone Nope in VAQ.")
+	notFound(t, c.API("PATCH", "/api/v1/projects/VAQ/milestones/Nope", tok, map[string]string{"name": "X"}), "No milestone Nope in VAQ.")
 	noEvent(t, e, seq)
 }
 
@@ -91,7 +91,7 @@ func TestAPIMilestoneCloseReopen(t *testing.T) {
 	}
 	seq = oneEvent(t, e, seq, "milestone.reopened", "Owner")
 	refused(t, c.API("POST", "/api/v1/projects/VAQ/milestones/Beta/reopen", tok, nil), "milestone", "It's already open.")
-	refused(t, c.API("POST", "/api/v1/projects/VAQ/milestones/Nope/close", tok, nil), "milestone", "No milestone Nope in VAQ.")
+	notFound(t, c.API("POST", "/api/v1/projects/VAQ/milestones/Nope/close", tok, nil), "No milestone Nope in VAQ.")
 	noEvent(t, e, seq)
 }
 

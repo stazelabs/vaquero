@@ -58,7 +58,7 @@ func writeStatus(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, 
 }
 
 // apiStatus loads the {key} project and its {name} status; an unknown name
-// is a 422 on the field "status".
+// is a 404, like any other resource named in the path.
 func apiStatus(w http.ResponseWriter, r *http.Request, d Deps) (gen.Project, gen.Status, bool) {
 	p, ok := apiProject(w, r, d)
 	if !ok {
@@ -66,15 +66,35 @@ func apiStatus(w http.ResponseWriter, r *http.Request, d Deps) (gen.Project, gen
 	}
 	n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 	s := n.statusIn("status", pathName(r))
-	if n.fail(w, r) {
+	if n.pathMiss(w, r, "status") {
 		return p, s, false
 	}
 	return p, s, true
 }
 
-// pathName is the {name} URL parameter, unescaped.
+// pathMiss answers a name in the path that matched nothing (its message in
+// n.fields[field]) as a 404, and a database error as a 500.
+func (n *names) pathMiss(w http.ResponseWriter, r *http.Request, field string) bool {
+	if n.err != nil {
+		apiFail(w, r, n.d, api.Internal(), n.err)
+		return true
+	}
+	if msg, miss := n.fields[field]; miss {
+		api.WriteFailure(w, api.NotFound(msg))
+		return true
+	}
+	return false
+}
+
+// pathName is the {name} URL parameter as the name it spells. chi gives
+// the escaped segment only when the path needed RawPath (an escaped "/" or
+// "%"); otherwise it is already unescaped, and unescaping it again would
+// turn a literal "%41" into "A".
 func pathName(r *http.Request) string {
 	raw := chi.URLParam(r, "name")
+	if r.URL.RawPath == "" {
+		return raw
+	}
 	if v, err := url.PathUnescape(raw); err == nil {
 		return v
 	}

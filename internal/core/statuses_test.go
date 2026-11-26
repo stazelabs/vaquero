@@ -204,3 +204,22 @@ func TestMoveStatusTo(t *testing.T) {
 	os, _ := d.RQ.ListStatuses(bg, other.ID)
 	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{Before: os[0].ID}), "before", "Choose a status from this project.")
 }
+
+// Tied positions (an imported database can have them) read, and so
+// renumber, in id order.
+func TestTiedStatusPositionsRenumberByID(t *testing.T) {
+	c, d, owner, p := newProject(t)
+	ss, _ := d.RQ.ListStatuses(bg, p.ID)
+	todo, inProgress := ss[1], ss[2]
+	if _, err := d.W.Exec(`UPDATE statuses SET position = 2 WHERE id IN (?, ?)`, todo.ID, inProgress.ID); err != nil {
+		t.Fatal(err)
+	}
+	first, second := todo.Name, inProgress.Name
+	if inProgress.ID < todo.ID {
+		first, second = second, first
+	}
+	if _, err := c.CreateStatus(bg, owner.ID, p.ID, "Icebox", "backlog"); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, p.ID), "Backlog", "Icebox", first, second, "In review", "Done", "Cancelled")
+}

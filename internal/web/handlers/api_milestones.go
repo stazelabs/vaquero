@@ -50,7 +50,7 @@ func writeMilestone(w http.ResponseWriter, r *http.Request, d Deps, p gen.Projec
 }
 
 // apiMilestone loads the {key} project and its {name} milestone; an
-// unknown name is a 422 on the field "milestone".
+// unknown name is a 404.
 func apiMilestone(w http.ResponseWriter, r *http.Request, d Deps) (gen.Project, gen.Milestone, bool) {
 	p, ok := apiProject(w, r, d)
 	if !ok {
@@ -58,7 +58,7 @@ func apiMilestone(w http.ResponseWriter, r *http.Request, d Deps) (gen.Project, 
 	}
 	n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 	m := n.milestoneRow(pathName(r))
-	if n.fail(w, r) {
+	if n.pathMiss(w, r, "milestone") {
 		return p, m, false
 	}
 	return p, m, true

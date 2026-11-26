@@ -59,6 +59,16 @@ func orderIs(t *testing.T, ss []api.Status, want ...string) {
 	}
 }
 
+// notFound checks a 404 with msg.
+func notFound(t *testing.T, r *webtest.Response, msg string) {
+	t.Helper()
+	var e apiErrBody
+	decode(t, r.Body, &e)
+	if r.Status != 404 || e.Error.Code != "not_found" || e.Error.Message != msg {
+		t.Fatalf("%d %s, want 404 %q", r.Status, r.Body, msg)
+	}
+}
+
 // refused checks a 422 whose message is the one field message.
 func refused(t *testing.T, r *webtest.Response, field, msg string) {
 	t.Helper()
@@ -131,7 +141,17 @@ func TestAPIStatusRename(t *testing.T) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 	refused(t, c.API("PATCH", "/api/v1/projects/VAQ/statuses/Review", tok, map[string]string{"name": "DONE"}), "name", "A status with that name exists.")
-	refused(t, c.API("PATCH", "/api/v1/projects/VAQ/statuses/Nope", tok, map[string]string{"name": "X"}), "status", "No status Nope in VAQ.")
+	notFound(t, c.API("PATCH", "/api/v1/projects/VAQ/statuses/Nope", tok, map[string]string{"name": "X"}), "No status Nope in VAQ.")
+	// A name with a literal "%41" in it, sent escaped, is that name.
+	if r := c.API("PATCH", "/api/v1/projects/VAQ/statuses/Review", tok, map[string]string{"name": "50%41"}); r.Status != 200 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	seq = oneEvent(t, e, seq, "status.updated", "Owner")
+	if r := c.API("PATCH", "/api/v1/projects/VAQ/statuses/50%2541", tok, map[string]string{"name": "Review"}); r.Status != 200 {
+		t.Fatalf("escaped %%41: %d %s", r.Status, r.Body)
+	}
+	seq = oneEvent(t, e, seq, "status.updated", "Owner")
+	notFound(t, c.API("PATCH", "/api/v1/projects/VAQ/statuses/50%41", tok, map[string]string{"name": "X"}), "No status 50A in VAQ.")
 	if r := c.API("PATCH", "/api/v1/projects/VAQ/statuses/Review", tok, map[string]string{"category": "done"}); r.Status != 400 {
 		t.Fatalf("a category change: %d %s", r.Status, r.Body)
 	}
@@ -158,7 +178,7 @@ func TestAPIStatusMove(t *testing.T) {
 	refused(t, c.API("POST", "/api/v1/projects/VAQ/statuses/Todo/move", tok, map[string]string{}), "before", "Choose a status to move it before or after.")
 	refused(t, c.API("POST", "/api/v1/projects/VAQ/statuses/Todo/move", tok, map[string]string{"before": "Todo"}), "before", "Choose another status.")
 	refused(t, c.API("POST", "/api/v1/projects/VAQ/statuses/Todo/move", tok, map[string]string{"after": "Later"}), "after", "No status Later in VAQ.")
-	refused(t, c.API("POST", "/api/v1/projects/VAQ/statuses/Later/move", tok, map[string]string{"after": "Todo"}), "status", "No status Later in VAQ.")
+	notFound(t, c.API("POST", "/api/v1/projects/VAQ/statuses/Later/move", tok, map[string]string{"after": "Todo"}), "No status Later in VAQ.")
 	noEvent(t, e, seq)
 }
 
@@ -170,7 +190,7 @@ func TestAPIStatusDelete(t *testing.T) {
 	seq := seqNow(t, e)
 	refused(t, c.API("DELETE", "/api/v1/projects/VAQ/statuses/Todo", tok, nil), "status", "Move this status's tickets first.")
 	refused(t, c.API("DELETE", "/api/v1/projects/VAQ/statuses/Backlog", tok, nil), "status", "A project needs at least one status in each category.")
-	refused(t, c.API("DELETE", "/api/v1/projects/VAQ/statuses/Nope", tok, nil), "status", "No status Nope in VAQ.")
+	notFound(t, c.API("DELETE", "/api/v1/projects/VAQ/statuses/Nope", tok, nil), "No status Nope in VAQ.")
 	noEvent(t, e, seq)
 	if r := c.API("DELETE", "/api/v1/projects/VAQ/statuses/spare", tok, nil); r.Status != 204 {
 		t.Fatalf("%d %s", r.Status, r.Body)

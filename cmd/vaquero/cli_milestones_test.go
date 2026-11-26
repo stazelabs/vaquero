@@ -58,6 +58,16 @@ func TestCLIMilestones(t *testing.T) {
 	if code, _, _ := cli(t, "milestone", "close", "VAQ"); code != 2 {
 		t.Fatalf("no name: %d", code)
 	}
+	for _, args := range [][]string{
+		{"milestone", "close", "VAQ", "Phase 4", "--due", "2027-01-01"},
+		{"milestone", "reopen", "VAQ", "Phase 4", "--description", "x"},
+		{"milestone", "close", "VAQ", "Phase 4", "--name", "x"},
+		{"milestone", "add", "VAQ", "Phase 9", "--name", "x"},
+	} {
+		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, "usage:") {
+			t.Errorf("%v: %d %q", args, code, errOut)
+		}
+	}
 	if code, _, _ := cli(t, "milestone", "delete", "VAQ", "Phase 4"); code != 2 {
 		t.Fatalf("delete: %d", code)
 	}

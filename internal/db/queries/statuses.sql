@@ -5,7 +5,7 @@ INSERT INTO statuses (id, project_id, name, category, position) VALUES (?, ?, ?,
 SELECT * FROM statuses WHERE id = ?;
 
 -- name: ListStatuses :many
-SELECT * FROM statuses WHERE project_id = ? ORDER BY position;
+SELECT * FROM statuses WHERE project_id = ? ORDER BY position, id;
 
 -- name: RenameStatus :exec
 UPDATE statuses SET name = ? WHERE id = ?;

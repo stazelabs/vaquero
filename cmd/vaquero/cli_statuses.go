@@ -77,6 +77,10 @@ func cmdStatus(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if c.set("after") {
 		place["after"] = *after
 	}
+	takes := map[string][]string{"add": {"category", "before", "after"}, "move": {"before", "after"}}
+	if err := c.only(pos[0], takes[pos[0]]...); err != nil {
+		return c.finish(err)
+	}
 	key := pos[1]
 	switch pos[0] {
 	case "add":

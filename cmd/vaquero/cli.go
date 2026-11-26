@@ -113,6 +113,23 @@ func (c *cmd) set(name string) bool {
 	return found
 }
 
+// only refuses, as a usage error, any flag given beyond the common ones
+// (--profile, --agent, --json) and those the verb takes.
+func (c *cmd) only(verb string, takes ...string) error {
+	var extra string
+	c.fs.Visit(func(f *flag.Flag) {
+		switch {
+		case extra != "", f.Name == "profile", f.Name == "agent", f.Name == "json", slices.Contains(takes, f.Name):
+		default:
+			extra = f.Name
+		}
+	})
+	if extra != "" {
+		return usageError{usage: c.usage, hint: verb + " doesn't take --" + extra}
+	}
+	return nil
+}
+
 // connect builds the client for the chosen profile. For the local server
 // it starts vaquero when it isn't running and reads the token it wrote.
 func (c *cmd) connect(ctx context.Context) error {
