@@ -12,6 +12,8 @@ type Project struct {
 	Description string `json:"description"`
 	Archived    bool   `json:"archived"`
 	OpenCount   int64  `json:"open_count"`
+	// NextNumber is the number the project's next new ticket gets.
+	NextNumber int64 `json:"next_number"`
 	// Workflow is the agent workflow switch. TierMap is the project's
 	// effective tier map, harness → tier → model: its own, else the
 	// default.

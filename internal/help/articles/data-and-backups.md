@@ -90,7 +90,7 @@ Tokens are not part of an export. Import removes the `token` file, so the next s
     vaquero import linear issues.csv
     vaquero import linear issues.csv --project OPS
 
-Each issue keeps its team key and number: ENG-123 becomes ticket ENG-123, so branch names and commit references that name it still resolve. Each team in the file becomes a project with the team's key and name. With `--project KEY`, a file with one team goes into that project instead, keeping the numbers. The project is new, or one with no tickets; a project with tickets, or an archived one, is refused. Numbering goes on after the highest imported number, and the numbers the file skips are never given.
+Each issue keeps its team key and number: ENG-123 becomes ticket ENG-123, so branch names and commit references that name it still resolve. Each team in the file becomes a project with the team's key and name. With `--project KEY`, a file with one team goes into that project instead, keeping the numbers. The project is new, or one with no tickets; a project with tickets, an archived one, or one whose numbering is already past the file's first number (its tickets moved to another project) is refused. Numbering goes on after the highest imported number, and the numbers the file skips are never given. The import runs as you, the owner: only the owner chooses a ticket's number, so it refuses `--agent` and `VAQUERO_AGENT`.
 
 What is imported, from the columns Linear documents:
 
@@ -99,9 +99,9 @@ What is imported, from the columns Linear documents:
 - `Priority`: No priority, Urgent, High, Medium and Low are the same priorities here.
 - `Labels`: each label becomes a tag.
 
-Comments, relations and attachments aren't in the CSV, so they aren't imported, and the summary says so. Neither are the other documented columns, such as the assignee, cycle, project, estimate and dates; the summary lists the ones the file had, and any column Linear doesn't document as unknown. Tickets are dated the day of the import.
+Comments, relations and attachments aren't in the CSV, so they aren't imported, and the summary says so. Neither are the other documented columns, such as the assignee, cycle, project, estimate and dates; the summary lists the ones the file had, and any column Linear doesn't document as unknown. Archived issues come in as ordinary tickets, with their status. Tickets are dated the day of the import.
 
-The whole file is checked before anything is written: a missing column the import needs (`ID`, `Team`, `Title`, `Description`, `Status`, `Priority` or `Labels`) is refused, naming each one, and so is a row with no ID, title or status, an unknown priority, a repeated ID or a label over 40 characters, naming its line. Tickets are then made one at a time, each with its own entry in the history. If the server refuses one part way, the import stops there and says which ticket it stopped at; the tickets before it stay, so fix that row and import the rest into a new project, or delete the project in its settings and import again.
+The whole file is checked before anything is written: a missing column the import needs (`ID`, `Team`, `Title`, `Description`, `Status`, `Priority` or `Labels`) is refused, naming each one, and so is a row with no ID, title or status, a title or description with hidden control characters or over its length, an unknown priority, a repeated ID or a label over 40 characters, naming its line. Projects, statuses and tickets are then made one at a time, each with its own entry in the history. If the server refuses one part way, the import stops there and says which ticket it stopped at. What it made stays, in every project it reached, teams before the one it stopped in included, and the message lists them. To start over, delete those projects in their settings (each delete saves a snapshot first) and import the file again.
 
 ## Restoring a snapshot
 

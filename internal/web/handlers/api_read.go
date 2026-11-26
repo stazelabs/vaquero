@@ -82,7 +82,7 @@ func apiTicket(w http.ResponseWriter, r *http.Request, d Deps) (gen.Ticket, gen.
 }
 
 func projectDTO(p gen.Project, open int64, links []board.ProjectLink) api.Project {
-	out := api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open,
+	out := api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open, NextNumber: p.NextNumber,
 		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap), Icon: projectIconDTO(p), Links: []api.ProjectLink{}}
 	for _, l := range links {
 		out.Links = append(out.Links, projectLinkDTO(l))

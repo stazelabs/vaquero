@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/client"
 	"github.com/stazelabs/vaquero/internal/core"
@@ -126,9 +128,11 @@ type linearProject struct {
 	Tickets     int          `json:"tickets"`
 	NewStatuses []api.Status `json:"new_statuses"`
 
-	issues   []linearIssue
-	statuses []api.Status
-	team     string
+	issues     []linearIssue
+	statuses   []api.Status
+	team       string
+	nextNumber int64
+	touched    bool // the import wrote to it
 }
 
 func cmdImportLinear(ctx context.Context, stdout, stderr io.Writer, args []string) int {
@@ -137,6 +141,10 @@ func cmdImportLinear(ctx context.Context, stdout, stderr io.Writer, args []strin
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {
 		return c.finish(err)
+	}
+	// Ruling N-R11: only the owner chooses a ticket's number.
+	if c.agent != "" || os.Getenv("VAQUERO_AGENT") != "" {
+		return c.finish(usageError{usage: linearUsage, hint: "vaquero import linear runs as the owner: leave out --agent and unset VAQUERO_AGENT"})
 	}
 	f, err := readLinear(pos[0])
 	if err != nil {
@@ -154,16 +162,40 @@ func cmdImportLinear(ctx context.Context, stdout, stderr io.Writer, args []strin
 		}
 		res := linearResult{NotImported: f.notImported, Unknown: f.unknown, NotInCSV: linearNotInCSV}
 		for i := range targets {
-			err := c.fillLinear(ctx, &targets[i])
-			res.Projects = append(res.Projects, targets[i])
-			if err != nil {
-				return err
+			if err := c.fillLinear(ctx, &targets[i]); err != nil {
+				return linearStopped(targets[:i+1], err)
 			}
+			res.Projects = append(res.Projects, targets[i])
 		}
 		c.emit(res, func() { printLinear(c.stdout, res) })
 		return nil
 	})
 }
+
+// linearStopped is an import that failed part way: what it wrote stays,
+// so the message names it and how to start again (deleting a project takes
+// a snapshot first).
+func linearStopped(done []linearProject, err error) error {
+	var made, keys []string
+	for _, lp := range done {
+		if lp.touched {
+			made = append(made, count(lp.Tickets, "ticket")+" into "+lp.Key)
+			keys = append(keys, lp.Key)
+		}
+	}
+	if len(keys) == 0 {
+		return notImported{err}
+	}
+	del := "Delete project " + keys[0] + " in its settings to start again."
+	if len(keys) > 1 {
+		del = "Delete projects " + andList(keys) + " in their settings to start again."
+	}
+	return fmt.Errorf("%s. So far it imported %s. %s", strings.TrimSuffix(err.Error(), "."), andList(made), del)
+}
+
+// linearBeforeTicket, when set, runs before each ticket is sent; tests use
+// it to change the server part way.
+var linearBeforeTicket func(key string, number int64)
 
 // printLinear is the import's summary.
 func printLinear(w io.Writer, res linearResult) {
@@ -286,8 +318,9 @@ func readLinear(path string) (linearFile, error) {
 		}
 		seen[ref] = line
 		is.team = strings.TrimSpace(linearText(get("Team")))
-		is.title = strings.TrimSpace(linearText(get("Title")))
-		is.body = linearText(get("Description"))
+		// Core stores text in NFC and measures it there.
+		is.title = norm.NFC.String(strings.TrimSpace(linearText(get("Title"))))
+		is.body = norm.NFC.String(linearText(get("Description")))
 		is.status = strings.TrimSpace(linearText(get("Status")))
 		// The checks core makes, made here so a bad row stops the import
 		// before anything is written.
@@ -296,9 +329,14 @@ func readLinear(path string) (linearFile, error) {
 			bad(line, "%s has no title", ref)
 		case n > 200:
 			bad(line, "%s's title is longer than 200 characters", ref)
+		case core.HasControl(is.title):
+			bad(line, "%s's title has hidden control characters", ref)
 		}
-		if len([]rune(is.body)) > 100000 {
+		switch {
+		case len([]rune(is.body)) > 100000:
 			bad(line, "%s's description is longer than 100,000 characters", ref)
+		case core.HasControl(is.body):
+			bad(line, "%s's description has hidden control characters", ref)
 		}
 		if is.status == "" {
 			bad(line, "%s has no status", ref)
@@ -415,6 +453,9 @@ func (c *cmd) checkLinearTarget(ctx context.Context, lp *linearProject) error {
 			return fmt.Errorf("%s already has tickets; give --project KEY for a new or empty project", lp.Key)
 		}
 	}
+	if first := lp.issues[0]; p.NextNumber > first.number {
+		return fmt.Errorf("%s numbers new tickets from %d, so %s-%d can't keep its number; give --project KEY for a new project", lp.Key, p.NextNumber, first.key, first.number)
+	}
 	return nil
 }
 
@@ -425,8 +466,9 @@ func (c *cmd) fillLinear(ctx context.Context, lp *linearProject) error {
 	if lp.Created {
 		var p api.Project
 		if err := c.call(ctx, "POST", "/api/v1/projects", map[string]string{"key": lp.Key, "name": lp.Name}, &p); err != nil {
-			return notImported{fmt.Errorf("can't make project %s: %w", lp.Key, err)}
+			return fmt.Errorf("can't make project %s: %w", lp.Key, err)
 		}
+		lp.touched = true
 		if err := c.call(ctx, "GET", statusesPath(lp.Key), nil, &lp.statuses); err != nil {
 			return err
 		}
@@ -435,8 +477,9 @@ func (c *cmd) fillLinear(ctx context.Context, lp *linearProject) error {
 	for _, s := range news {
 		var made api.Status
 		if err := c.call(ctx, "POST", statusesPath(lp.Key), map[string]string{"name": s.Name, "category": s.Category}, &made); err != nil {
-			return fmt.Errorf("can't add status %s to %s: %w. No tickets were imported into %s", s.Name, lp.Key, err, lp.Key)
+			return fmt.Errorf("can't add status %s to %s: %w", s.Name, lp.Key, err)
 		}
+		lp.touched = true
 		lp.NewStatuses = append(lp.NewStatuses, made)
 	}
 	for _, is := range lp.issues {
@@ -444,10 +487,14 @@ func (c *cmd) fillLinear(ctx context.Context, lp *linearProject) error {
 			"number": is.number, "title": is.title, "body": is.body,
 			"status": names[strings.ToLower(is.status)], "priority": is.priority, "tags": append([]string{}, is.labels...),
 		}
+		if linearBeforeTicket != nil {
+			linearBeforeTicket(is.key, is.number)
+		}
 		var tk api.Ticket
 		if err := c.call(ctx, "POST", "/api/v1/projects/"+url.PathEscape(lp.Key)+"/tickets", body, &tk); err != nil {
-			return fmt.Errorf("stopped at %s-%d (line %d): %w. %s has the %s before it", is.key, is.number, is.line, err, lp.Key, count(lp.Tickets, "ticket"))
+			return fmt.Errorf("the import stopped at %s-%d (line %d): %w", is.key, is.number, is.line, err)
 		}
+		lp.touched = true
 		lp.Tickets++
 	}
 	return nil
