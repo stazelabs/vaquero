@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -148,6 +149,44 @@ func TestAPIEventsAfter(t *testing.T) {
 	decode(t, c.API("GET", "/api/v1/events?limit=2", tok, nil).Body, &some)
 	if len(some) != 2 || some[0].Seq != all[0].Seq {
 		t.Fatalf("limit: %+v", some)
+	}
+}
+
+// Vaquero-Seq names the newest event sequence, so a poller whose after=
+// window held only reorders (advancing seq, never listed) can move past
+// them.
+func TestAPIEventsSeqHeader(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	var all []api.Event
+	r := c.API("GET", "/api/v1/events?limit=500", tok, nil)
+	decode(t, r.Body, &all)
+	last := all[len(all)-1].Seq
+	if got := r.Header.Get("Vaquero-Seq"); got != strconv.FormatInt(last, 10) {
+		t.Fatalf("Vaquero-Seq = %q, want %d", got, last)
+	}
+	// Two reorders: seq moves on, the list stays empty.
+	one, two := mustTicketID(t, e, 1), mustTicketID(t, e, 2)
+	t1, _ := e.Deps.R.GetTicket(bg, one)
+	t2, _ := e.Deps.R.GetTicket(bg, two)
+	if t1.StatusID != t2.StatusID {
+		t.Fatalf("VAQ-1 and VAQ-2 are in different statuses")
+	}
+	for _, m := range [][2]string{{one, two}, {two, one}} {
+		if _, err := e.Deps.Core.MoveTicket(bg, e.Deps.Actor.ID, m[0], t1.StatusID, m[1], ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var after []api.Event
+	r = c.API("GET", fmt.Sprintf("/api/v1/events?after=%d", last), tok, nil)
+	decode(t, r.Body, &after)
+	if len(after) != 0 {
+		t.Fatalf("reorders were listed: %+v", after)
+	}
+	if got := r.Header.Get("Vaquero-Seq"); got != strconv.FormatInt(last+2, 10) {
+		t.Fatalf("Vaquero-Seq after two reorders = %q, want %d", got, last+2)
+	}
+	if got := c.API("GET", "/api/v1/events?newest=1", tok, nil).Header.Get("Vaquero-Seq"); got != strconv.FormatInt(last+2, 10) {
+		t.Fatalf("newest=1: Vaquero-Seq = %q", got)
 	}
 }
 

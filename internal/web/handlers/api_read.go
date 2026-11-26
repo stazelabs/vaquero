@@ -346,8 +346,16 @@ func APISearch(d Deps) http.HandlerFunc {
 // instead gives the newest N, still oldest first.
 func APIEvents(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Vaquero-Seq is the newest sequence, read before the list: an
+		// empty answer to after=SEQ means nothing listable lies between
+		// SEQ and it (reorders advance seq but aren't listed), so a poller
+		// can continue from it without missing an event.
+		newestSeq, err := d.R.MaxEventSeq(r.Context())
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
 		var rows []gen.ListEventsAfterRow
-		var err error
 		if n, perr := strconv.ParseInt(r.URL.Query().Get("newest"), 10, 64); perr == nil && n > 0 {
 			var newest []gen.ListEventsNewestRow
 			newest, err = d.R.ListEventsNewest(r.Context(), min(n, maxAPIList))
@@ -384,6 +392,7 @@ func APIEvents(d Deps) http.HandlerFunc {
 			out[i] = api.Event{Seq: e.Seq, At: at, Actor: e.ActorName, Kind: e.Kind, Project: e.ProjectKey,
 				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload)}
 		}
+		w.Header().Set("Vaquero-Seq", strconv.FormatInt(newestSeq, 10))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
 }
