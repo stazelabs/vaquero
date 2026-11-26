@@ -88,11 +88,11 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 		}
 	}
 	for _, word := range []string{`"zanzibar"*`, `"first"*`} {
-		if hits, err := appdb.SearchTickets(bg, d.R, word, 10); err != nil || len(hits) != 0 {
+		if hits, err := appdb.SearchTickets(bg, d.R, []string{word}, 10); err != nil || len(hits) != 0 {
 			t.Errorf("%s: %d hits, %v", word, len(hits), err)
 		}
 	}
-	if hits, _ := appdb.SearchTickets(bg, d.R, `"elsewhere"*`, 10); len(hits) != 1 {
+	if hits, _ := appdb.SearchTickets(bg, d.R, []string{`"elsewhere"*`}, 10); len(hits) != 1 {
 		t.Error("the other project's ticket left the index")
 	}
 	if n := count(t, d, `SELECT count(*) FROM events WHERE project_id = ?`, f.Other.ID); n != otherEvents {

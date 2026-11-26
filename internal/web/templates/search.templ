@@ -1,9 +1,13 @@
 package templates
 
-import "github.com/stazelabs/vaquero/internal/search"
+import (
+	"strconv"
+
+	"github.com/stazelabs/vaquero/internal/search"
+)
 
 // SearchPage is the results of a search across tickets and comments.
-templ SearchPage(q string, hits []search.Hit) {
+templ SearchPage(q string, res search.Result) {
 	@Shell("Search") {
 		@titleWithHelp("Search", "search", "How search works")
 		<form method="get" action="/search" role="search" class="mt-4 flex max-w-xl gap-3">
@@ -14,26 +18,31 @@ templ SearchPage(q string, hits []search.Hit) {
 				Search
 			</button>
 		</form>
-		if q != "" && len(hits) == 0 {
+		if q != "" && len(res.Hits) == 0 {
 			@emptyState("no-results", "No tickets match.")
 		}
+		if res.Total > len(res.Hits) {
+			<p class="mt-4 text-sm text-muted">Showing { strconv.Itoa(len(res.Hits)) } of { strconv.Itoa(res.Total) } matching tickets. Add words to narrow the search.</p>
+		}
 		<ul class="mt-6 space-y-3">
-			for _, h := range hits {
+			for _, h := range res.Hits {
 				<li data-card={ h.Key } class={ panelClass + " p-3" }>
 					<a href={ templ.SafeURL("/t/" + h.Key) } class="flex items-baseline gap-2 hover:text-accent">
 						<span class="font-mono text-xs text-muted">{ h.Key }</span>
 						<span class="font-medium text-ink">{ h.Title }</span>
 						<span class="ml-auto text-xs text-muted">{ h.Status }</span>
 					</a>
-					<p class="mt-1 text-sm text-ink/80">
-						for _, p := range h.Snippet {
-							if p.Mark {
-								<mark class="rounded bg-accent/20 px-0.5 text-ink">{ p.Text }</mark>
-							} else {
-								{ p.Text }
+					if len(h.Snippet) > 0 {
+						<p class="mt-1 text-sm text-ink/80">
+							for _, p := range h.Snippet {
+								if p.Mark {
+									<mark class="rounded bg-accent/20 px-0.5 text-ink">{ p.Text }</mark>
+								} else {
+									{ p.Text }
+								}
 							}
-						}
-					</p>
+						</p>
+					}
 				</li>
 			}
 		</ul>

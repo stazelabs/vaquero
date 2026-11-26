@@ -310,12 +310,12 @@ func TestLoadRebuildsSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	for q, want := range map[string]int{"lasso": 1, "checklist": 1, "taken back": 0, "install guide": 1} {
-		hits, err := search.Run(bg, db.R, q, 10)
+		res, err := search.Run(bg, db.R, q, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(hits) != want {
-			t.Errorf("%q: %d hits, want %d", q, len(hits), want)
+		if len(res.Hits) != want {
+			t.Errorf("%q: %d hits, want %d", q, len(res.Hits), want)
 		}
 	}
 	var n int

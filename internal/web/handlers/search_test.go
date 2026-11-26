@@ -58,3 +58,14 @@ func TestSearchClipsCharacters(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-40: a search with more matches than it shows says so.
+func TestSearchSaysShowingOfTotal(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	for range 52 {
+		ticket(t, e, p, core.TicketInput{Title: "many"})
+	}
+	contains(t, e.Client().Get("/search?q=many").Body, "Showing 50 of 52 matching tickets.")
+	lacks(t, e.Client().Get("/search?q=nothingmatches").Body, "Showing")
+}

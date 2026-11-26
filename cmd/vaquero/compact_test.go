@@ -84,7 +84,7 @@ func dropFromSearch(t *testing.T, path string) {
 	if _, err := d.Exec(`INSERT INTO tickets_fts (tickets_fts, rowid, title, body) SELECT 'delete', rowid, title, body FROM tickets`); err != nil {
 		t.Fatal(err)
 	}
-	if hits, _ := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); len(hits) != 0 {
+	if hits, _ := appdb.SearchTickets(t.Context(), d, []string{`"lasso"*`}, 10); len(hits) != 0 {
 		t.Fatal("the ticket is still in the index")
 	}
 }
@@ -127,7 +127,7 @@ func TestCompactShrinksAndKeepsEverything(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	if hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); err != nil || len(hits) != 1 {
+	if hits, err := appdb.SearchTickets(t.Context(), d, []string{`"lasso"*`}, 10); err != nil || len(hits) != 1 {
 		t.Fatalf("search after compacting: %d hits, %v", len(hits), err)
 	}
 	if _, out, _ := runCLI(t, "tickets", "VAQ"); !strings.Contains(out, "Rope the lasso") {

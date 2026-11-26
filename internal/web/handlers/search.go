@@ -19,11 +19,11 @@ const maxQuery = 500
 func Search(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := units.Clip(r.URL.Query().Get("q"), maxQuery)
-		hits, err := search.Run(r.Context(), d.RDB, q, searchLimit)
+		res, err := search.Run(r.Context(), d.RDB, q, searchLimit)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
 		}
-		render(w, r, d, http.StatusOK, templates.SearchPage(q, hits))
+		render(w, r, d, http.StatusOK, templates.SearchPage(q, res))
 	}
 }

@@ -103,7 +103,7 @@ func TestFixturesMigrateToHead(t *testing.T) {
 				t.Error(line)
 			}
 			checkLinkTargets(t, d, targets)
-			hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10)
+			hits, err := appdb.SearchTickets(t.Context(), d, []string{`"lasso"*`}, 10)
 			if err != nil || len(hits) != 1 {
 				t.Fatalf("search for lasso: %d hits, %v", len(hits), err)
 			}

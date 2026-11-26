@@ -318,7 +318,8 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 func APISearch(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := units.Clip(r.URL.Query().Get("q"), maxQuery)
-		hits, err := search.Run(r.Context(), d.RDB, q, limitParam(r, 50, maxAPIList))
+		res, err := search.Run(r.Context(), d.RDB, q, limitParam(r, 50, maxAPIList))
+		hits := res.Hits
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

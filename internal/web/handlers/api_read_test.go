@@ -116,7 +116,9 @@ func TestAPISearch(t *testing.T) {
 	_, c, tok := apiWorld(t)
 	var hits []api.SearchHit
 	decode(t, c.API("GET", "/api/v1/search?q=column", tok, nil).Body, &hits)
-	if len(hits) != 1 || hits[0].Key != "VAQ-2" || !strings.Contains(hits[0].Snippet, "[Columns]") {
+	// A title hit's snippet comes from the description, never the title
+	// again (VAQ-40); this one has none.
+	if len(hits) != 1 || hits[0].Key != "VAQ-2" || hits[0].Title != "Columns" || hits[0].Snippet != "" {
 		t.Fatalf("%+v", hits)
 	}
 	for _, q := range []string{`"`, "AND (", ""} {
