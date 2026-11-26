@@ -34,7 +34,7 @@ func TestSettingsListsTags(t *testing.T) {
 	e := webtest.New(t)
 	_, ids := tagged(t, e)
 	body := e.Client().Get("/p/VAQ/settings").Body
-	contains(t, body, ">Tags<", "1 ticket", "2 tickets",
+	contains(t, body, `<section id="tags"`, ">Tags<", "1 ticket", "2 tickets",
 		`action="/p/VAQ/tags/`+ids["bug"]+`/rename"`, `value="bug"`,
 		`action="/p/VAQ/tags/`+ids["ui"]+`/delete"`)
 	f := formWith(body, "/p/VAQ/tags/"+ids["bug"]+"/delete")
