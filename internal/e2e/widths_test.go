@@ -39,7 +39,7 @@ func widthFixture(t *testing.T) (*webtest.Env, *fixture) {
 	// A title with a word too long for a phone, the way a code path or a
 	// URL is: it wraps rather than widening the page (VAQ-140).
 	f.ticket("Check internal/e2e/widths_test.go::TestPhoneWidthNoSidewaysScroll_at_every_phone_width", "") // WEB-7
-	f.ticket("Someday_rename_internal/web/handlers/api_search_test.go_without_any_spaces", "Backlog")     // WEB-8
+	f.ticket("Someday_rename_internal/web/handlers/api_search_test.go_without_any_spaces", "Backlog")      // WEB-8
 	return env, f
 }
 
@@ -201,6 +201,45 @@ func TestWideBoard(t *testing.T) {
 	p.key(escape)
 	if !eval[bool](p, isOpen(backlog)+` && `+isOpen(cancelled)) {
 		t.Fatal("Escape closed a rail at 1280 px")
+	}
+}
+
+// At 1280 px with the milestone panel showing and both rails open, every
+// active and done column keeps its full width; the columns scroll sideways
+// instead (VAQ-142).
+func TestWideBoardColumnsKeepTheirWidth(t *testing.T) {
+	env, f := widthFixture(t)
+	f.ticket("Shipped already", "Done")
+	f.ticket("Being reviewed", "In review")
+	p := open(t, env, 1280, 900)
+	p.goTo("/p/WEB/board")
+	p.openDetails(rail(f, "Backlog"))
+	p.openDetails(rail(f, "Cancelled"))
+	if !eval[bool](p, visible(sidePanel)) {
+		t.Fatal("want the side milestone panel at 1280 px")
+	}
+	type col struct {
+		Name  string
+		Width float64
+	}
+	cols := eval[[]col](p, `Array.prototype.map.call(document.querySelectorAll("[data-board-scroll] > section"), function (s) {
+		return {Name: s.getAttribute("aria-label"), Width: s.getBoundingClientRect().width};
+	})`)
+	if len(cols) < 4 {
+		t.Fatalf("columns = %+v, want todo, in progress, in review and done", cols)
+	}
+	// 16rem, the width a card is drawn for (w-64).
+	const minimum = 256
+	for _, c := range cols {
+		if c.Width < minimum {
+			t.Errorf("the %s column is %.0f px wide, want at least %d", c.Name, c.Width, minimum)
+		}
+	}
+	if w := eval[int64](p, `document.documentElement.scrollWidth`); w > 1280 {
+		t.Errorf("the page is %d px wide at 1280 px; the columns should scroll in their own box", w)
+	}
+	if !eval[bool](p, `(function () { var s = document.querySelector("[data-board-scroll]"); return s.scrollWidth > s.clientWidth; })()`) {
+		t.Error("the columns don't scroll sideways though they can't all fit")
 	}
 }
 
