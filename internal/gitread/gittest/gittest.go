@@ -91,7 +91,8 @@ func Clone(t testing.TB, remote *R) *R {
 // env is a fixed environment: no global or system config, no prompts, the
 // fixed author and the commit clock.
 func (r *R) env() []string {
-	at := FixedTime.Add(time.Duration(r.tick) * time.Minute).Format(time.RFC3339)
+	// git's internal date format: Unix seconds and a zone.
+	at := fmt.Sprintf("%d +0000", FixedTime.Add(time.Duration(r.tick)*time.Minute).Unix())
 	env := []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + r.Dir,
