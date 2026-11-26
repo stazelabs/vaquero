@@ -77,6 +77,7 @@ var (
 	ErrNoGit       = errors.New("gitread: git is not installed")
 	ErrNotRepo     = errors.New("gitread: not a git work tree")
 	ErrNoFile      = errors.New("gitread: no such file at that revision")
+	ErrNoRev       = errors.New("gitread: no such revision")
 	ErrNoRemote    = errors.New("gitread: no remote to fetch")
 	ErrInvalid     = errors.New("gitread: not a valid path, revision or name")
 	ErrRefused     = errors.New("gitread: refused, not a read-only git command")

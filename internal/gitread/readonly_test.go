@@ -158,6 +158,7 @@ func TestFetchIsTheOnlyNetwork(t *testing.T) {
 	g.Compare(ctx, "main", "")
 	g.RemoteTag(ctx, "v1")
 	g.Remotes(ctx)
+	g.Branches(ctx, 50)
 	g.RemoteURL(ctx)
 	g.LastFetch()
 	if len(rec.Calls()) == 0 {

@@ -131,7 +131,7 @@ func (g *Repo) commit(ctx context.Context, rev string) (string, error) {
 	out, err := g.git(ctx, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
 	if err != nil {
 		if exitCode(err) == 1 {
-			return "", fmt.Errorf("gitread: no commit %s", rev)
+			return "", fmt.Errorf("%w: %s", ErrNoRev, rev)
 		}
 		return "", err
 	}
@@ -500,6 +500,29 @@ func (g *Repo) RemoteTag(ctx context.Context, tag string) (on bool, known bool, 
 	}
 	on, err = g.refExists(ctx, remoteTags(g.Remote)+tag)
 	return on, true, err
+}
+
+// Branches is the repo's local branches, sorted by name, at most limit (1 to
+// 1000). A branch whose name ValidRev refuses is left out, so every name
+// returned can be passed back to the other reads.
+func (g *Repo) Branches(ctx context.Context, limit int) ([]string, error) {
+	limit = min(max(limit, 1), 1000)
+	out, err := g.git(ctx, "for-each-ref", "--sort=refname", "--format=%(refname)", "refs/heads/")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		name, ok := strings.CutPrefix(strings.TrimSpace(line), "refs/heads/")
+		if !ok || !ValidRev(name) {
+			continue
+		}
+		names = append(names, name)
+		if len(names) == limit {
+			break
+		}
+	}
+	return names, nil
 }
 
 // Remotes is the repo's remotes, sorted.
