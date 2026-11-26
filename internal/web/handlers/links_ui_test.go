@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -54,6 +55,14 @@ func TestLinkFormFoldsWithoutLinks(t *testing.T) {
 	links := page[strings.Index(page, "Links</h2>"):strings.Index(page, `id="attachments"`)]
 	if !regexp.MustCompile(`(?s)<details[^>]*data-link-add[^>]*>\s*<summary[^>]*>.*Add link.*</summary>.*<form method="post" action="/t/VAQ-1/links"`).MatchString(links) {
 		t.Fatalf("no folded form:\n%s", links)
+	}
+	// Opened, the button gives way to the form, and app.js puts the cursor
+	// in the ticket box.
+	if !regexp.MustCompile(`<summary[^>]*group-open:hidden`).MatchString(links) {
+		t.Error("the Add link button stays above the open form")
+	}
+	if js, err := os.ReadFile("../static/js/app.js"); err != nil || !strings.Contains(string(js), "details[data-link-add]") {
+		t.Errorf("app.js doesn't focus the opened link form: %v", err)
 	}
 	if strings.Contains(links, "No links.") {
 		t.Error("the fold says it all; no separate empty line")

@@ -369,6 +369,19 @@ window.vqDragging = false;
   });
 })();
 
+// The ticket page's folded link form: opening it hides its button (CSS),
+// so the cursor goes to the ticket box instead of being lost.
+document.addEventListener("toggle", function (ev) {
+  var d = ev.target;
+  if (!d.matches || !d.matches("details[data-link-add]") || !d.open) {
+    return;
+  }
+  var box = d.querySelector('input[name="to"]');
+  if (box) {
+    box.focus();
+  }
+}, true);
+
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
 // g b board, g l list, j/k next/previous card (enter on its focused link
 // opens it), ? shortcuts.

@@ -910,7 +910,7 @@ func TicketPage(v TicketView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var47 = []any{btnSecondary + " w-fit cursor-pointer list-none gap-1.5 [&::-webkit-details-marker]:hidden"}
+				var templ_7745c5c3_Var47 = []any{btnSecondary + " w-fit cursor-pointer list-none gap-1.5 group-open:hidden [&::-webkit-details-marker]:hidden"}
 				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var47...)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

@@ -196,7 +196,7 @@ templ TicketPage(v TicketView) {
 						// Most tickets have no links: the form folds behind one
 						// button until it's wanted (or a link was refused).
 						<details data-link-add open?={ v.LinkErr != "" } class="mt-3 group">
-							<summary class={ btnSecondary + " w-fit cursor-pointer list-none gap-1.5 [&::-webkit-details-marker]:hidden" }>
+							<summary class={ btnSecondary + " w-fit cursor-pointer list-none gap-1.5 group-open:hidden [&::-webkit-details-marker]:hidden" }>
 								@Icon("plus")
 								Add link
 							</summary>
