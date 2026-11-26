@@ -90,6 +90,13 @@ func TestAppJSHandlesConfirm(t *testing.T) {
 			t.Errorf("app.js lacks %q", want)
 		}
 	}
+	// The confirmed flag can't outlive the confirm: when requestSubmit leads
+	// to no submit (a field fails validation), a timeout clears it, so the
+	// next submit asks again. There is no JS test harness, so this holds the
+	// code's shape.
+	if !regexp.MustCompile(`(?s)setTimeout\(function \(\) \{\s*delete form\.dataset\.confirmed;`).Match(src) {
+		t.Error("app.js leaves the confirmed flag set when no submit follows")
+	}
 	if strings.Contains(string(src), "confirm(") && regexp.MustCompile(`[^.\w]confirm\(`).Match(src) {
 		t.Error("app.js calls the browser's confirm()")
 	}

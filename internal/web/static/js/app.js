@@ -360,11 +360,18 @@ window.vqDragging = false;
     if (!p || !p.form.isConnected) {
       return;
     }
-    p.form.dataset.confirmed = "1";
-    if (p.submitter && p.submitter.form === p.form) {
-      p.form.requestSubmit(p.submitter);
+    var form = p.form;
+    form.dataset.confirmed = "1";
+    // requestSubmit fires submit at once, which clears the flag; when a
+    // field fails validation no submit follows, so clear it anyway and the
+    // next submit asks again.
+    setTimeout(function () {
+      delete form.dataset.confirmed;
+    }, 0);
+    if (p.submitter && p.submitter.form === form) {
+      form.requestSubmit(p.submitter);
     } else {
-      p.form.requestSubmit();
+      form.requestSubmit();
     }
   });
 })();
