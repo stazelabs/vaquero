@@ -411,6 +411,9 @@ func APISearch(d Deps) http.HandlerFunc {
 			}
 			out[i] = api.SearchHit{Key: h.Key, Title: h.Title, Status: h.Status, Snippet: b.String()}
 		}
+		// Vaquero-Total counts every match, past the limit (VAQ-133); the
+		// body stays the bare array.
+		w.Header().Set("Vaquero-Total", strconv.Itoa(res.Total))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
 }

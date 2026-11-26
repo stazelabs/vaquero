@@ -18,3 +18,6 @@ func SetVacuumInto(f func(ctx context.Context, path, dest string) error) (restor
 
 // RealVacuumInto is the copy step Snapshot normally uses.
 var RealVacuumInto = vacuumInto
+
+// SearchSQL is the search query built for n terms.
+var SearchSQL = searchSQL

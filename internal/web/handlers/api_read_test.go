@@ -123,9 +123,26 @@ func TestAPISearch(t *testing.T) {
 		t.Fatalf("%+v", hits)
 	}
 	for _, q := range []string{`"`, "AND (", ""} {
-		if r := c.API("GET", "/api/v1/search?q="+url.QueryEscape(q), tok, nil); r.Status != 200 {
-			t.Errorf("%q: %d", q, r.Status)
+		r := c.API("GET", "/api/v1/search?q="+url.QueryEscape(q), tok, nil)
+		if r.Status != 200 || r.Header.Get("Vaquero-Total") != "0" {
+			t.Errorf("%q: %d, Vaquero-Total %q", q, r.Status, r.Header.Get("Vaquero-Total"))
 		}
+	}
+}
+
+// VAQ-133: Vaquero-Total counts every match, past the limit; the body
+// stays a bare array.
+func TestAPISearchTotalHeader(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	p, _ := e.Deps.R.GetProjectByKey(bg, "VAQ")
+	for range 3 {
+		ticket(t, e, p, core.TicketInput{Title: "Widget"})
+	}
+	r := c.API("GET", "/api/v1/search?q=widget&limit=2", tok, nil)
+	var hits []api.SearchHit
+	decode(t, r.Body, &hits)
+	if r.Status != 200 || len(hits) != 2 || r.Header.Get("Vaquero-Total") != "3" {
+		t.Fatalf("%d, %d hits, Vaquero-Total %q", r.Status, len(hits), r.Header.Get("Vaquero-Total"))
 	}
 }
 
