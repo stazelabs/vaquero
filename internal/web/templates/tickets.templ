@@ -96,7 +96,7 @@ templ TicketFormPage(f TicketForm) {
 			}
 			<div class="space-y-4 lg:col-span-2">
 				@TextInput(InputProps{Name: "title", Label: "Title", Value: f.Title, Required: true, Error: f.Errors["title"]})
-				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey)})
+				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey), Markdown: true})
 				if f.TicketKey == "" {
 					<p class="text-sm text-muted">Attach files after creating the ticket.</p>
 				} else {
@@ -254,7 +254,7 @@ templ TicketPage(v TicketView) {
 						}
 					</ul>
 					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/comments") } class="mt-4 space-y-3">
-						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key)})
+						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key), Markdown: true})
 						<button type="submit" class={ btnPrimary }>Add comment</button>
 					</form>
 				</section>
@@ -364,7 +364,7 @@ templ commentItem(key string, c CommentRow) {
 		</p>
 		if c.Editing {
 			<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID) } class="mt-2 space-y-2">
-				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key)})
+				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key), Markdown: true})
 				<div class="flex items-center gap-4">
 					<button type="submit" class={ btnPrimary }>Save comment</button>
 					<a href={ templ.SafeURL("/t/" + key + "#c-" + c.ID) } class={ btnLink }>Cancel</a>

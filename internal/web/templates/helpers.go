@@ -57,6 +57,9 @@ type InputProps struct {
 	Error string
 	// Attrs carries what the field alone needs, such as data-* hooks.
 	Attrs templ.Attributes
+	// Markdown marks a TextArea whose text renders as Markdown (ticket
+	// descriptions and comments): a link to the article goes under it.
+	Markdown bool
 }
 
 func (p InputProps) id() string {

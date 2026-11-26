@@ -340,7 +340,7 @@ func TicketFormPage(f TicketForm) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey)}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey), Markdown: true}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1223,7 +1223,7 @@ func TicketPage(v TicketView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key)}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key), Markdown: true}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1982,7 +1982,7 @@ func commentItem(key string, c CommentRow) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key)}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key), Markdown: true}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
