@@ -506,21 +506,24 @@ func TestStopClearsALockHolderWhenTheServiceHasNoPID(t *testing.T) {
 }
 
 // When the pid question gets no answer at all (a timeout, a missing
-// launchctl), stop refuses as before.
+// launchctl), stop refuses as before. On macOS the loaded and pid
+// questions are the same launchctl print, so no answer is no answer to
+// both: an unanswered question about the service's own file counts as
+// loaded (brewManaged), and its pid stays unknown.
 func TestStopRefusesWhenThePIDProbeHasNoAnswer(t *testing.T) {
 	dataDir, _ := brewEnv(t)
 	pid := serverAt(t, dataDir, version.Version)
-	calls := 0
-	old := serviceProbe
-	serviceProbe = func(name string, args ...string) ([]byte, error) {
-		calls++
-		if calls == 1 { // brewManaged: loaded
-			return old(name, args...)
-		}
-		return nil, errProbeUnknown
-	}
+	m := &fakeManager{unknown: true}
+	useManager(t, m)
 	code, _, e := runCLI(t, "stop")
-	serviceProbe = old
+	for _, c := range m.called() {
+		if !strings.HasPrefix(c, "launchctl print ") {
+			t.Fatalf("asked or touched the service: %q", c)
+		}
+	}
+	if len(m.called()) == 0 {
+		t.Fatal("the service manager was never asked")
+	}
 	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services (sh.brew.vaquero); run brew services stop vaquero.") {
 		t.Fatalf("%d %q", code, e)
 	}

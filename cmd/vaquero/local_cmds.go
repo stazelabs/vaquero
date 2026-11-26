@@ -73,7 +73,9 @@ func brewStopRefusal(label string) error {
 // failed restarts), means the holder isn't the service's current process.
 // ok is false when nothing serves, when the holder is the service's own
 // server, or when the manager gives no answer, so the caller keeps the
-// refusal. The service itself is never touched.
+// refusal. The service itself is never touched. A holder already draining
+// (signalled by a stop that timed out) exits at once on stop's SIGTERM, since
+// a second signal cuts the 30 s drain short (shutdownContext).
 func outsideService(dataDir, label string) (pid int, ok bool, err error) {
 	pid, role, running, err := lockfile.HolderRole(dataDir)
 	if err != nil || !running || role == lockfile.RoleMaintenance || pid <= 0 {
