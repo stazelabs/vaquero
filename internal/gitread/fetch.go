@@ -11,13 +11,16 @@ import (
 // Fetch updates the remote's branches and tags in Vaquero's view, the one
 // command that touches the network and the one that writes:
 //
-//	git fetch --prune --no-tags {remote} +refs/heads/*:refs/remotes/{remote}/* +refs/tags/*:refs/vaquero/remote-tags/{remote}/*
+//	git fetch --prune --no-tags --refmap= {remote} +refs/heads/*:refs/remotes/{remote}/* +refs/tags/*:refs/vaquero/remote-tags/{remote}/*
 //
 // with the guards every command has, plus --no-recurse-submodules,
 // --no-write-commit-graph, --no-auto-maintenance and
 // --upload-pack=git-upload-pack (a repo's remote.*.uploadpack can't pick the
-// program a local remote runs). Local branches, local tags and the work tree
-// are never touched: the remote's tags land in refs/vaquero/remote-tags/,
+// program a local remote runs). The empty --refmap= keeps the repo's own
+// remote.{remote}.fetch out of it: without it git also applies that
+// mapping, forced, to what it fetched, so a mirror config (+refs/*:refs/*)
+// would overwrite local branches and tags. Local branches, local tags and
+// the work tree are never touched: the remote's tags land in refs/vaquero/remote-tags/,
 // so RemoteTag is exact as of the last fetch Vaquero ran. The remote's URL
 // must be one fetchable accepts.
 //
@@ -158,7 +161,7 @@ func (g *Repo) fetch(ctx context.Context) error {
 		ctx = context.WithValue(ctx, helpersKey{}, helpers)
 	}
 	_, err = g.repos.call(ctx, g.Path, "fetch", []string{
-		"--prune", "--no-tags", "--quiet",
+		"--prune", "--no-tags", "--quiet", "--refmap=",
 		"--no-recurse-submodules", "--no-write-commit-graph", "--no-auto-maintenance",
 		"--upload-pack=git-upload-pack",
 		rm,
