@@ -229,3 +229,13 @@ func attachAttrs(ticketKey string) templ.Attributes {
 		"data-max-bytes":  strconv.Itoa(core.MaxAttachment),
 	}
 }
+
+// hasImages reports whether any attachment shows in the gallery.
+func hasImages(as []AttachmentRow) bool {
+	for _, a := range as {
+		if a.Image {
+			return true
+		}
+	}
+	return false
+}

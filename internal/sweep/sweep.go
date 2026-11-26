@@ -1,10 +1,12 @@
 // Package sweep is the background ticker of a running server: every
 // Every it ends lapsed claims (core.ExpireClaims), deletes MCP activity
-// older than KeepMCPCalls, and deletes orphaned attachment bytes: objects
-// under this instance's attachments/{instance}/ prefix with no attachments
-// row, older than OrphanAge (an upload stores its bytes before core writes
-// the row, so a younger object may be one in flight). serve starts it and
-// stops it before draining.
+// older than KeepMCPCalls, and deletes orphaned attachment objects older
+// than OrphanAge (an upload stores its bytes before core writes the row, so
+// a younger object may be one in flight): bytes under this instance's
+// attachments/{instance}/ prefix that no attachments row names, and
+// previews under thumbs/{instance}/{id} whose attachment id has no row. A
+// preview whose attachment exists is kept however old it is. serve starts
+// it and stops it before draining.
 package sweep
 
 import (
@@ -13,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,11 +70,12 @@ func (s *Sweeper) Tick(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// deleteOrphans removes this instance's attachment objects that no row
-// references and that are older than OrphanAge, at most once per OrphanAge
-// (the first tick runs it). It lists first and deletes after, so no backend
-// is changed while it is being listed. A key that can't be checked or
-// deleted is logged and skipped; the next pass tries it again.
+// deleteOrphans removes this instance's attachment bytes and previews
+// that no row references and that are older than OrphanAge, at most once
+// per OrphanAge (the first tick runs it). It lists both prefixes first and
+// deletes after, so no backend is changed while it is being listed. A key
+// that can't be checked or deleted is logged and skipped; the next pass
+// tries it again.
 func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 	if s.Blobs == nil || s.Instance == "" {
 		return nil
@@ -81,34 +85,59 @@ func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 		return nil
 	}
 	cutoff := now.Add(-OrphanAge)
-	var old []string
-	err := s.Blobs.List(ctx, "attachments/"+s.Instance+"/", func(key string, modified time.Time) error {
-		if modified.Before(cutoff) {
-			old = append(old, key)
-		}
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("list attachment objects: %w", err)
-	}
-	s.lastOrphans = now // only a listing that worked counts as the pass
 	q := gen.New(s.DB)
+	// Each pass lists one prefix; referenced reports whether a row still
+	// needs the object at key.
+	type pass struct {
+		prefix     string
+		referenced func(key string) (bool, error)
+	}
+	passes := []pass{
+		{"attachments/" + s.Instance + "/", func(key string) (bool, error) {
+			_, err := q.AttachmentByBlobKey(ctx, key)
+			return found(err)
+		}},
+		{"thumbs/" + s.Instance + "/", func(key string) (bool, error) {
+			// The last segment is the attachment id, lower case; ids are
+			// stored in upper case.
+			id := strings.ToUpper(key[strings.LastIndexByte(key, '/')+1:])
+			_, err := q.GetAttachment(ctx, id)
+			return found(err)
+		}},
+	}
+	type orphan struct {
+		key        string
+		referenced func(string) (bool, error)
+	}
+	var old []orphan
+	for _, p := range passes {
+		err := s.Blobs.List(ctx, p.prefix, func(key string, modified time.Time) error {
+			if modified.Before(cutoff) {
+				old = append(old, orphan{key, p.referenced})
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("list attachment objects: %w", err)
+		}
+	}
+	s.lastOrphans = now // only listings that worked count as the pass
 	deleted, failed := 0, 0
-	for _, key := range old {
+	for _, o := range old {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		_, err := q.AttachmentByBlobKey(ctx, key)
-		if err == nil {
-			continue
-		}
-		if !errors.Is(err, sql.ErrNoRows) {
-			s.Logger.ErrorContext(ctx, "check orphan", "key", key, "err", err)
+		ref, err := o.referenced(o.key)
+		if err != nil {
+			s.Logger.ErrorContext(ctx, "check orphan", "key", o.key, "err", err)
 			failed++
 			continue
 		}
-		if err := s.Blobs.Delete(ctx, key); err != nil {
-			s.Logger.ErrorContext(ctx, "delete orphan", "key", key, "err", err)
+		if ref {
+			continue
+		}
+		if err := s.Blobs.Delete(ctx, o.key); err != nil {
+			s.Logger.ErrorContext(ctx, "delete orphan", "key", o.key, "err", err)
 			failed++
 			continue
 		}
@@ -118,6 +147,14 @@ func (s *Sweeper) deleteOrphans(ctx context.Context) error {
 		s.Logger.InfoContext(ctx, "orphaned attachments swept", "deleted", deleted, "failed", failed)
 	}
 	return nil
+}
+
+// found turns a row lookup's error into whether the row exists.
+func found(err error) (bool, error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // Start runs Tick every Interval (Every) until Stop.

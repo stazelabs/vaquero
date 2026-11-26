@@ -21,6 +21,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/idgen"
+	"github.com/stazelabs/vaquero/internal/thumbs"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
@@ -31,6 +32,13 @@ var errTooLarge = errors.New("upload over the attachment limit")
 // attachKey is the blob key of attachment id: attachments/{instance}/{id},
 // lower case.
 func attachKey(instance, id string) string { return blobs.AttachmentKey(instance, id) }
+
+// thumbKey is the blob key of attachment id's preview:
+// thumbs/{instance}/{id}, lower case.
+func thumbKey(instance, attachmentID string) string { return blobs.ThumbKey(instance, attachmentID) }
+
+// thumbURL is the address of a's preview: /attachments/{id}/thumb.
+func thumbURL(id string) string { return "/attachments/" + id + "/thumb" }
 
 // attachmentURL is the canonical address of a: /attachments/{id}/{name},
 // the name escaped as one path segment.
@@ -50,15 +58,39 @@ func attachmentMarkdown(a gen.Attachment) string { return attachmentDTO(a, "").M
 // blobDeadline bounds deleting an attachment's bytes after its row is gone.
 const blobDeadline = 30 * time.Second
 
-// deleteBytes removes an attachment's bytes after core removed its row. It
-// outlives the request (a client that hangs up still gets the bytes
-// removed) but not forever; a failure is logged and left to the sweep.
-func deleteBytes(r *http.Request, d Deps, key string) {
+// deleteBytes removes an attachment's bytes, at key, and its preview after
+// core removed its row. It outlives the request (a client that hangs up
+// still gets the bytes removed) but not forever; a failure is logged and
+// left to the sweep.
+func deleteBytes(r *http.Request, d Deps, key, id string) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), blobDeadline)
 	defer cancel()
-	if err := d.Blobs.Delete(ctx, key); err != nil {
-		d.Logger.ErrorContext(r.Context(), "delete attachment bytes", "err", err, "key", key)
+	for _, k := range []string{key, thumbKey(d.Instance, id)} {
+		if err := d.Blobs.Delete(ctx, k); err != nil {
+			d.Logger.ErrorContext(r.Context(), "delete attachment bytes", "err", err, "key", k)
+		}
 	}
+}
+
+// makeThumb makes and stores the preview of attachment id from its bytes,
+// best effort: an image that can't be previewed stores nothing (the page
+// shows the original), and any other failure is only logged. It returns
+// the preview, or nil.
+func makeThumb(ctx context.Context, d Deps, id string, src io.Reader) ([]byte, string) {
+	data, ctype, err := thumbs.Make(src)
+	switch {
+	case errors.Is(err, thumbs.ErrUnsupported), errors.Is(err, thumbs.ErrTooLarge):
+		return nil, ""
+	case err != nil:
+		d.Logger.WarnContext(ctx, "make thumbnail", "err", err, "attachment", id)
+		return nil, ""
+	}
+	pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), blobs.PutTimeout(int64(len(data))))
+	defer cancel()
+	if err := d.Blobs.Put(pctx, thumbKey(d.Instance, id), bytes.NewReader(data), int64(len(data)), ctype); err != nil {
+		d.Logger.ErrorContext(ctx, "store thumbnail", "err", err, "attachment", id)
+	}
+	return data, ctype
 }
 
 // uploadedPart finds the multipart part "file" of an upload request, or
@@ -121,6 +153,9 @@ func storeUpload(ctx context.Context, d Deps, by, ticketID string, part io.Reade
 			d.Logger.ErrorContext(ctx, "delete refused upload", "err", derr, "key", key)
 		}
 		return gen.Attachment{}, err
+	}
+	if api.IsInlineType(ctype) {
+		makeThumb(ctx, d, a.ID, bytes.NewReader(b))
 	}
 	return a, nil
 }
@@ -214,7 +249,7 @@ func AttachmentDelete(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		deleteBytes(r, d, key)
+		deleteBytes(r, d, key, a.ID)
 		redirectWithFlash(w, r, flash.Success, "Attachment removed.", to)
 	}
 }
@@ -280,6 +315,109 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 		case err != nil:
 			serverError(w, r, d, err)
 		}
+	}
+}
+
+// AttachmentThumb serves /attachments/{id}/thumb, an image attachment's
+// preview: the stored one, or one made now from the original and kept
+// (after an import, or when the upload couldn't make it). Two first
+// requests at once may both make it; the bytes are the same. What can't be
+// previewed (not an image, WebP, over thumbs.MaxPixels, damaged) is a 302
+// to the original. The headers are the original's: the id as ETag with a
+// bodiless 304, private no-cache, nosniff and a sandbox CSP.
+func AttachmentThumb(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Content-Security-Policy", "sandbox")
+		id := chi.URLParam(r, "id")
+		a, err := d.R.GetAttachment(r.Context(), strings.ToUpper(id))
+		if errors.Is(err, sql.ErrNoRows) {
+			NotFound(d)(w, r)
+			return
+		}
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		if id != a.ID {
+			h.Set("Location", thumbURL(a.ID))
+			w.WriteHeader(http.StatusFound)
+			return
+		}
+		etag := `"` + a.ID + `"`
+		if etagMatches(r.Header.Get("If-None-Match"), etag) {
+			h.Set("ETag", etag)
+			h.Set("Cache-Control", "private, no-cache")
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		data, ctype, err := storedThumb(r.Context(), d, a.ID)
+		if errors.Is(err, blobs.ErrNotFound) && api.IsInlineType(a.ContentType) {
+			data, ctype, err = thumbFromOriginal(r, d, a)
+		}
+		if err != nil && !errors.Is(err, blobs.ErrNotFound) {
+			serverError(w, r, d, err)
+			return
+		}
+		if data == nil {
+			thumbFallback(w, r, d, a)
+			return
+		}
+		h.Set("ETag", etag)
+		h.Set("Cache-Control", "private, no-cache")
+		h.Set("Content-Type", ctype)
+		h.Set("Content-Disposition", contentDisposition("inline", a.Name))
+		h.Set("Content-Length", strconv.Itoa(len(data)))
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			_, _ = w.Write(data)
+		}
+	}
+}
+
+// storedThumb reads attachment id's kept preview and its type, sniffed
+// (only PNG or JPEG is ever stored). blobs.ErrNotFound when there is none.
+func storedThumb(ctx context.Context, d Deps, id string) ([]byte, string, error) {
+	rc, _, err := d.Blobs.Get(ctx, thumbKey(d.Instance, id))
+	if err != nil {
+		return nil, "", err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, core.MaxAttachment))
+	if err != nil {
+		return nil, "", err
+	}
+	return data, http.DetectContentType(data), nil
+}
+
+// thumbFromOriginal makes a's preview from its bytes and keeps it. A nil
+// preview with no error means a can't be previewed; blobs.ErrNotFound
+// means its bytes are gone.
+func thumbFromOriginal(r *http.Request, d Deps, a gen.Attachment) ([]byte, string, error) {
+	rc, _, err := d.Blobs.Get(r.Context(), a.BlobKey)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rc.Close()
+	data, ctype := makeThumb(r.Context(), d, a.ID, rc)
+	return data, ctype, nil
+}
+
+// thumbFallback answers for a preview there is none of: a 302 to the
+// original, or the original itself when a is named "thumb" and its address
+// is this one.
+func thumbFallback(w http.ResponseWriter, r *http.Request, d Deps, a gen.Attachment) {
+	if attachmentURL(a) != thumbURL(a.ID) {
+		w.Header().Set("Location", attachmentURL(a))
+		w.WriteHeader(http.StatusFound)
+		return
+	}
+	switch err := serveBytes(w, r, d, a); {
+	case errors.Is(err, blobs.ErrNotFound):
+		NotFound(d)(w, r)
+	case err != nil:
+		serverError(w, r, d, err)
 	}
 }
 

@@ -2,10 +2,16 @@ package handlers_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -283,4 +289,162 @@ func TestAttachmentRevalidated(t *testing.T) {
 	if res.StatusCode != 200 {
 		t.Fatalf("other etag: %d", res.StatusCode)
 	}
+}
+
+// realPNG is a w x h opaque PNG that decodes.
+func realPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.SetNRGBA(x, y, color.NRGBA{uint8(x), uint8(y), 90, 255})
+		}
+	}
+	var b bytes.Buffer
+	if err := png.Encode(&b, img); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+func thumbKeyOf(id string) string { return "thumbs/" + webtest.Instance + "/" + strings.ToLower(id) }
+
+func hasKey(t *testing.T, e *webtest.Env, key string) bool {
+	t.Helper()
+	return slices.Contains(blobKeys(t, e), key)
+}
+
+func TestThumbRouteMakesOnFirstRequestThen304(t *testing.T) {
+	e, c := attachEnv(t)
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "wide.png", "", realPNG(t, 800, 400)))
+	// The upload made it.
+	if !hasKey(t, e, thumbKeyOf(u.ID)) {
+		t.Fatalf("no thumbnail after upload: %v", blobKeys(t, e))
+	}
+	// After an import there is none: the first request makes and keeps it.
+	if err := e.Deps.Blobs.Delete(bg, thumbKeyOf(u.ID)); err != nil {
+		t.Fatal(err)
+	}
+	thumb := "/attachments/" + u.ID + "/thumb"
+	r := c.Get(thumb)
+	if r.Status != 200 || r.Header.Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("%d %q", r.Status, r.Header.Get("Content-Type"))
+	}
+	assertAttachmentHeaders(t, r)
+	etag := r.Header.Get("ETag")
+	if etag != `"`+u.ID+`"` || r.Header.Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("etag %q cache %q", etag, r.Header.Get("Cache-Control"))
+	}
+	cfg, format, err := image.DecodeConfig(strings.NewReader(r.Body))
+	if err != nil || format != "jpeg" || cfg.Width != 192 || cfg.Height != 96 {
+		t.Fatalf("%+v %s %v", cfg, format, err)
+	}
+	if !hasKey(t, e, thumbKeyOf(u.ID)) {
+		t.Fatal("the made thumbnail wasn't kept")
+	}
+	// The kept one is served again, byte for byte.
+	if again := c.Get(thumb); again.Status != 200 || again.Body != r.Body {
+		t.Fatalf("second request: %d", again.Status)
+	}
+	req, _ := http.NewRequest(http.MethodGet, e.Server.URL+thumb, nil)
+	req.Header.Set("If-None-Match", etag)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNotModified || res.Header.Get("ETag") != etag ||
+		res.Header.Get("X-Content-Type-Options") != "nosniff" || res.Header.Get("Content-Security-Policy") != "sandbox" {
+		t.Fatalf("%d %v", res.StatusCode, res.Header)
+	}
+	// Another case of the id goes to the canonical address.
+	if r := c.Get("/attachments/" + strings.ToLower(u.ID) + "/thumb"); r.Status != 302 || r.Location != thumb {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	if r := c.Head(thumb); r.Status != 200 {
+		t.Fatalf("head %d", r.Status)
+	}
+}
+
+// Review Focus 3: what can't be previewed falls back to the original, and
+// no thumbnail is stored for it.
+func TestThumbFallsBackToOriginal(t *testing.T) {
+	e, c := attachEnv(t)
+	ihdr := []byte("IHDR\x00\x00\x27\x10\x00\x00\x13\x88\x08\x06\x00\x00\x00") // 10000 x 5000
+	huge := append(append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\x0d"), ihdr...), binary.BigEndian.AppendUint32(nil, crc32.ChecksumIEEE(ihdr))...)
+	webp := []byte("RIFF\x24\x00\x00\x00WEBPVP8 \x18\x00\x00\x00" + strings.Repeat("\x00", 24))
+	full := realPNG(t, 300, 300)
+	for _, f := range []struct {
+		name string
+		data []byte
+	}{
+		{"bogus.png", pngBytes},          // sniffs as PNG, isn't one
+		{"huge.png", huge},               // 50 megapixels
+		{"photo.webp", webp},             // no standard decoder
+		{"cut.png", full[:len(full)/2]},  // truncated
+		{"notes.txt", []byte("words\n")}, // not an image at all
+	} {
+		u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", f.name, "", f.data))
+		r := c.Get("/attachments/" + u.ID + "/thumb")
+		if r.Status != http.StatusFound || r.Location != u.URL {
+			t.Errorf("%s: %d %q", f.name, r.Status, r.Location)
+		}
+		assertAttachmentHeaders(t, r)
+		if hasKey(t, e, thumbKeyOf(u.ID)) {
+			t.Errorf("%s: a thumbnail was stored", f.name)
+		}
+	}
+	// A file named "thumb" has the thumbnail's address: it is served as
+	// itself rather than redirecting to the same place.
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "thumb", "", []byte("plain words\n")))
+	if u.URL != "/attachments/"+u.ID+"/thumb" {
+		t.Fatalf("%q", u.URL)
+	}
+	if r := c.Get(u.URL); r.Status != 200 || r.Body != "plain words\n" || !strings.HasPrefix(r.Header.Get("Content-Disposition"), "attachment") {
+		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("Content-Disposition"))
+	}
+	if r := c.Get("/attachments/01JZZZZZZZZZZZZZZZZZZZZZZ9/thumb"); r.Status != http.StatusNotFound {
+		t.Fatalf("missing: %d", r.Status)
+	}
+}
+
+func TestDeletingAttachmentDeletesThumb(t *testing.T) {
+	e, c := attachEnv(t)
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "a.png", "", realPNG(t, 400, 400)))
+	if keys := blobKeys(t, e); len(keys) != 2 || !hasKey(t, e, thumbKeyOf(u.ID)) {
+		t.Fatalf("want the file and its thumbnail: %v", keys)
+	}
+	if r := c.Post("/t/VAQ-1/attachments/"+u.ID+"/delete", nil); r.Status != 303 {
+		t.Fatalf("%d", r.Status)
+	}
+	if keys := blobKeys(t, e); len(keys) != 0 {
+		t.Fatalf("left after the web delete: %v", keys)
+	}
+	if r := c.Get("/attachments/" + u.ID + "/thumb"); r.Status != http.StatusNotFound {
+		t.Fatalf("thumb after delete: %d", r.Status)
+	}
+	// The API's delete too.
+	tok := e.Token(t)
+	u = uploadOK(t, c.Upload("/t/VAQ-1/attachments", "b.png", "", realPNG(t, 400, 400)))
+	if r := c.API("DELETE", "/api/v1/attachments/"+u.ID, tok, nil); r.Status != http.StatusNoContent {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if keys := blobKeys(t, e); len(keys) != 0 {
+		t.Fatalf("left after the API delete: %v", keys)
+	}
+}
+
+// The ticket page shows images first, as previews linking to the original
+// in a new tab, then every other file as a row.
+func TestTicketPageGallery(t *testing.T) {
+	_, c := attachEnv(t)
+	doc := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "notes.txt", "", []byte("words\n")))
+	img := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "shot.png", "", realPNG(t, 300, 200)))
+	body := c.Get("/t/VAQ-1").Body
+	contains(t, body, `data-gallery`, `src="/attachments/`+img.ID+`/thumb"`, `width="96"`, `height="96"`, `loading="lazy"`,
+		`href="`+img.URL+`" target="_blank"`, `href="`+doc.URL+`"`)
+	if strings.Index(body, img.URL) > strings.Index(body, doc.URL) {
+		t.Error("the image should come before the other file")
+	}
+	lacks(t, body, `src="/attachments/`+doc.ID)
 }

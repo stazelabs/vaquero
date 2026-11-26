@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -185,4 +186,46 @@ func (c *countingStore) Stat(ctx context.Context, key string) (int64, error) {
 func (c *countingStore) Get(ctx context.Context, key string) (io.ReadCloser, int64, error) {
 	c.gets.Add(1)
 	return c.Store.Get(ctx, key)
+}
+
+// Thumbnails are derived data: an export carries the files, never their
+// previews, and export.json never names a thumbnail key.
+func TestExportHasNoThumbs(t *testing.T) {
+	e, tok := exportEnv(t)
+	c := e.Client()
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "wide.png", "", realPNG(t, 600, 300)))
+	if !slices.Contains(blobKeys(t, e), thumbKeyOf(u.ID)) {
+		t.Fatalf("no thumbnail to leave out: %v", blobKeys(t, e))
+	}
+	r := c.API("GET", "/api/v1/export", tok, nil)
+	if r.Status != 200 {
+		t.Fatalf("%d %.200s", r.Status, r.Body)
+	}
+	zr, err := gzip.NewReader(strings.NewReader(r.Body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(zr)
+	var names []string
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, h.Name)
+		b, _ := io.ReadAll(tr)
+		if h.Name == "export.json" && bytes.Contains(b, []byte("thumbs/")) {
+			t.Error("export.json names a thumbnail key")
+		}
+	}
+	if len(names) != 4 || !slices.Contains(names, "attachments/"+u.ID) {
+		t.Fatalf("want export.json and three files: %v", names)
+	}
+	for _, n := range names {
+		if strings.Contains(n, "thumb") {
+			t.Errorf("thumbnail in the archive: %s", n)
+		}
+	}
 }

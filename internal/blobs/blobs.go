@@ -4,7 +4,9 @@
 // backends' own storage.
 //
 // Key scheme: slash-separated paths of lowercase segments, minted by the app
-// as attachments/{instance}/{attachment id}. Keys are never user text.
+// as attachments/{instance}/{attachment id} for a file's bytes and
+// thumbs/{instance}/{attachment id} for an image's preview (derived data:
+// never exported, remade on demand). Keys are never user text.
 // ValidKey is the only rule: non-empty segments of [a-z0-9._-], no segment
 // that starts with a dot (so "." and ".." are impossible and a backend's
 // dot-prefixed temp files can never collide with a key), at most MaxKeyLen
@@ -23,8 +25,8 @@
 // core refuses or fails, the handler deletes the object. A delete removes
 // the row first, then the handler deletes the object. Whatever still slips
 // through (a crash in between, a failed delete) is an orphan: the sweep
-// lists attachments/{instance}/ and deletes objects with no row that are
-// older than an hour. Dir's interrupted writes leave dot-prefixed temp
+// lists attachments/{instance}/ and thumbs/{instance}/ and deletes objects
+// with no row that are older than an hour. Dir's interrupted writes leave dot-prefixed temp
 // files that List and Get never show.
 //
 // Backends are tested with blobtest.Run.
@@ -77,6 +79,12 @@ type Store interface {
 // attachments/{instance}/{id}, lower case.
 func AttachmentKey(instance, id string) string {
 	return "attachments/" + instance + "/" + strings.ToLower(id)
+}
+
+// ThumbKey is the key of attachment id's preview:
+// thumbs/{instance}/{id}, lower case.
+func ThumbKey(instance, id string) string {
+	return "thumbs/" + instance + "/" + strings.ToLower(id)
 }
 
 // ValidKey reports why key is not a legal key, or nil.
