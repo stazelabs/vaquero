@@ -137,6 +137,10 @@ func FileChanges(d Deps) http.HandlerFunc {
 			return
 		}
 		st, head, err := pinState(ctx, repo, *pin)
+		if err == nil && st.State == core.FileUnchecked {
+			show(nil, "Can't check this file against the approval.")
+			return
+		}
 		if err == nil && st.State != core.FileChanged {
 			show(nil, "No changes since approval.")
 			return

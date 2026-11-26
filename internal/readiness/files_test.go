@@ -1,6 +1,7 @@
 package readiness_test
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -379,5 +380,43 @@ func TestReadinessUncheckedIsCached(t *testing.T) {
 		if n := rec.Count(sub); n != 0 {
 			t.Fatalf("an unchecked pin ran %d %s again at the same head", n, sub)
 		}
+	}
+}
+
+// Re-review N1: a transient git failure (here injected, as gitread's own
+// timeout would be) leaves the pins unchecked for that call only: the next
+// call, main unchanged, asks git again and the ticket is ready.
+func TestReadinessTransientFailureNotCached(t *testing.T) {
+	w, r := gitWorld(t)
+	tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
+	w.ref(tk, "docs/a.md")
+	w.approve(tk)
+	r.Rename("docs/a.md", "docs/b.md")
+	r.Commit("rename") // the path left main: the check walks its history
+	var fail string    // the subcommand to fail once
+	w.c.Git.Wrap(func(next gitread.RunFunc) gitread.RunFunc {
+		return func(ctx context.Context, dir string, args []string, env []string, limit int) ([]byte, error) {
+			if fail != "" && gitread.Subcommand(args) == fail {
+				fail = ""
+				return nil, &gitread.Error{Sub: "x", Code: -1, Line: "timed out"}
+			}
+			return next(ctx, dir, args, env, limit)
+		}
+	})
+	for _, sub := range []string{"ls-tree", "log"} {
+		fail = sub
+		all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{tk.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect(t, all[tk.ID], readiness.FilesUnchecked)
+		all, err = readiness.CheckAll(bg, w.d.RQ, w.files, []string{tk.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		expect(t, all[tk.ID])
+		files(t, all[tk.ID], "docs/a.md renamed docs/b.md")
+		// Move main, so the next round starts uncached.
+		r.WriteCommit("other.md", sub+"\n", "move main")
 	}
 }

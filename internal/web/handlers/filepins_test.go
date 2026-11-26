@@ -146,3 +146,19 @@ func TestFileViewReplacedAndUnchecked(t *testing.T) {
 	contains(t, c.Get(at).Body, "data-file-since", "check this file against the approval.")
 	contains(t, c.Get("/p/VAQ/file-changes/docs/a.md?ref="+ref.ID).Body, "check this file against the approval.")
 }
+
+// Re-review m3: a pin that comes back unchecked (its commit gone after a
+// history rewrite) is never "No changes since approval." in Show changes.
+func TestFileChangesUncheckedPin(t *testing.T) {
+	_, c, _, repo, ref := pinnedWorld(t)
+	repo.Git("checkout", "-q", "--orphan", "rewritten")
+	repo.Git("rm", "-q", "-r", "-f", ".")
+	repo.WriteCommit("other.md", "o\n", "a new history")
+	repo.Git("branch", "-M", "main")
+	repo.Git("reflog", "expire", "--expire=now", "--all")
+	repo.Git("gc", "-q", "--prune=now")
+	body := c.Get("/p/VAQ/file-changes/docs/a.md?ref=" + ref.ID).Body
+	contains(t, body, "check this file against the approval.")
+	lacks(t, body, "No changes since approval.")
+	contains(t, c.Get("/p/VAQ/files/docs/a.md?ref="+ref.ID).Body, "data-file-since", "check this file against the approval.")
+}

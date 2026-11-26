@@ -31,9 +31,11 @@ type Files interface {
 const maxCached = 10000
 
 // NewFiles is the checker over r. Each Check opens the project's repo and
-// reads main's head once; every pin it has compared at that head, unchecked
-// ones included, is answered from its cache (by pin) for as long as main
-// stays there, so a list read again reads no blobs and walks no history. A
+// reads main's head once; every pin it has compared at that head (unchecked
+// ones too when the answer will repeat: a pinned commit no longer in the
+// repo) is answered from its cache (by pin) for as long as main stays
+// there, so a list read again reads no blobs and walks no history; a
+// transient failure (a timeout, a process error) is never kept. A
 // new head starts that repo's cache over. Uncached pins go to
 // core.CheckFilePins together: two ls-trees and one history walk per
 // distinct pinned commit. A nil r checks nothing.
@@ -93,7 +95,10 @@ func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin
 		return out, ctx.Err() // nothing kept from a cancelled read
 	}
 	if err != nil {
-		states = unchecked(todo) // kept for this head too: no retry per request
+		// A transient failure (gitread's timeout, a process error): the
+		// pins are unchecked this time and asked again next time; only
+		// CheckFilePins' answers, which hold while main stays put, are kept.
+		return out, nil
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()

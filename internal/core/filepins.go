@@ -81,8 +81,11 @@ func RefPaths(refs []gen.TicketRef) []FilePin {
 // pinned commit: found with the pinned content it is renamed, with other
 // content changed (Now the new path either way), not found gone. The
 // renames are walked once per distinct pinned commit (Renames), and the
-// files read in two ls-trees, however many pins. A pin whose history can't
-// be walked is unchecked; an error is the repo not readable at all.
+// files read in two ls-trees, however many pins. A pin whose commit is no
+// longer in the repo is unchecked, an answer that won't change while main
+// stays put; any other failure (a timeout, a process error, too much
+// output) is an error, the repo not readable now, so callers never keep it
+// as the pin's state.
 // Never inside a transaction.
 func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []FilePin) ([]FileState, error) {
 	out := make([]FileState, len(pins))
@@ -112,12 +115,14 @@ func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []Fil
 		list, walked := walks[p.Commit]
 		if !walked && !failed[p.Commit] {
 			list, err = g.Renames(ctx, p.Commit, head)
-			if ctx.Err() != nil {
+			switch {
+			case ctx.Err() != nil:
 				return nil, ctx.Err()
-			}
-			if err != nil {
-				failed[p.Commit] = true
-			} else {
+			case errors.Is(err, gitread.ErrNoRev), errors.Is(err, gitread.ErrInvalid):
+				failed[p.Commit] = true // the pinned commit is gone: it stays gone
+			case err != nil:
+				return nil, err // transient (a timeout, a process error): not a verdict
+			default:
 				walks[p.Commit] = list
 			}
 		}
