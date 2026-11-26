@@ -18,7 +18,7 @@ On this machine, a request made with your token can act as an agent by naming it
 
 ## Where a change came from
 
-Every change records where it came from, as the caller reports it, in the event's `meta`: `surface` (`web`, `cli`, `api` or `mcp`), and, when sent, `client` (the `Vaquero-Client` header; the command line sends `vaquero-cli/VERSION`), `harness` (`Vaquero-Harness`, the coding agent's name and version), `model` (`Vaquero-Model`) and `run` (`Vaquero-Run`). Each value is cut to 80 characters, and one not sent is left out. They are recorded as reported, never checked, and never decide who made the change: the token and `Vaquero-Agent` do. Older changes have no `meta`.
+Every change records where it came from, as the caller reports it, in the event's `meta`: `surface` (`web`, `cli`, `api` or `mcp`), and, when sent, `client` (the `Vaquero-Client` header; the command line sends `vaquero-cli/VERSION`), `harness` (`Vaquero-Harness`, the coding agent's name and version), `model` (`Vaquero-Model`) and `run` (`Vaquero-Run`). Each value is cut to 80 characters, and one not sent is left out. They are recorded as reported, never checked, and never decide who made the change: the token and `Vaquero-Agent` do. Changes Vaquero makes on its own, such as a claim lapsing or the local token minted at boot, carry no `meta`, and neither do older changes.
 
 ## Conventions
 

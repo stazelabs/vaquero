@@ -35,7 +35,7 @@ CREATE TABLE plan_revisions (
     revision INTEGER NOT NULL CHECK (revision >= 1),
     body     TEXT NOT NULL CHECK (length(body) <= 200000),
     at       TEXT NOT NULL,
-    by       TEXT NOT NULL REFERENCES actors (id),
+    actor_id TEXT NOT NULL REFERENCES actors (id),
     PRIMARY KEY (plan_id, revision)
 );
 
@@ -88,6 +88,7 @@ CREATE TABLE approvals (
     at               TEXT NOT NULL
 );
 CREATE INDEX approvals_ticket ON approvals (ticket_id, at);
+CREATE INDEX approvals_decision ON approvals (decision_id);
 
 -- +goose Down
 SELECT 1;

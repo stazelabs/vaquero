@@ -143,7 +143,7 @@ type PlanRevision struct {
 	Revision int64
 	Body     string
 	At       string
-	By       string
+	ActorID  string
 }
 
 type Project struct {
