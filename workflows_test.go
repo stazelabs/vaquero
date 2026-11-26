@@ -264,3 +264,25 @@ func TestFormulaWorkflowsShareTheScript(t *testing.T) {
 		t.Fatalf("scripts/publish-formula.sh isn't executable: %v", err)
 	}
 }
+
+// VAQ-74: with no pull request triggers, CONTRIBUTING.md is where a
+// contributor learns to run the gate locally and that a maintainer runs it
+// on the branch; the README links it.
+func TestContributingExplainsTheManualGate(t *testing.T) {
+	b, err := os.ReadFile("CONTRIBUTING.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"make ci", "ci workflow", "pull_request"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("CONTRIBUTING.md doesn't mention %q", want)
+		}
+	}
+	r, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(r), "(CONTRIBUTING.md)") {
+		t.Error("README.md doesn't link CONTRIBUTING.md")
+	}
+}

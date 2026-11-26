@@ -28,6 +28,10 @@ Requires Go 1.27 and Node (for the build-time stylesheet only).
 
 Run `make` with no target to list every target. A plain `vaquero serve` keeps its data in `~/Library/Application Support/vaquero` on macOS and `~/.local/share/vaquero` on Linux; set `VQ_DATA_DIR` to change it.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md): run `make ci` before a pull request; a maintainer runs the gate on the branch before merging.
+
 ## Releasing
 
 See docs/RELEASING.md.
