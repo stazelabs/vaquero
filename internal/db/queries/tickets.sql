@@ -52,3 +52,10 @@ UPDATE tickets SET position = ? WHERE id = ?;
 
 -- name: PlaceTicket :exec
 UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?;
+
+-- name: ListTicketKeys :many
+-- The current key of each given ticket that still exists, in one read
+-- (link targets in history, named by id).
+SELECT t.id, p.key AS project_key, t.number FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id IN (sqlc.slice('ids'));

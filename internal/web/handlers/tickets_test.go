@@ -233,8 +233,9 @@ func TestTicketHistoryShowsLinkOnBothTickets(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := e.Client()
-	contains(t, c.Get("/t/VAQ-1").Body, "marked this ticket as blocking VAQ-2")
-	contains(t, c.Get("/t/VAQ-2").Body, "marked VAQ-1 as blocking this ticket")
+	// The other ticket is named by its current key, linked (VAQ-47).
+	contains(t, c.Get("/t/VAQ-1").Body, `marked this ticket as blocking <a href="/t/VAQ-2"`)
+	contains(t, c.Get("/t/VAQ-2").Body, `marked <a href="/t/VAQ-1" class="hover:text-accent hover:underline">VAQ-1</a> as blocking this ticket`)
 }
 
 // dbCount reads one number from the database, for no-write assertions.

@@ -22,6 +22,92 @@ type EventView struct {
 	ActorID string
 	// Times is how many reorders a folded line stands for (0 or 1: one).
 	Times int
+	// Target is a link event's other ticket as it is now, looked up by
+	// payload.to_id (ResolveTargets); unset, the recorded key is shown.
+	Target LinkTarget
+}
+
+// LinkTarget is a link event's other ticket, looked up by id when the
+// history is shown. Known is false for an event with no to_id (or one not
+// looked up); Key is "" when the ticket is gone.
+type LinkTarget struct {
+	Known bool
+	Key   string
+}
+
+// TargetID is a link event's payload.to_id, "" for any other event.
+func (e EventView) TargetID() string {
+	if e.Kind != core.EvLinkCreated && e.Kind != core.EvLinkDeleted {
+		return ""
+	}
+	id, _ := e.Payload["to_id"].(string)
+	return id
+}
+
+// ResolveTargets sets Target on each link event from keys (ticket id to
+// its current key; a missing id is a deleted ticket).
+func ResolveTargets(evs []EventView, keys map[string]string) {
+	for i := range evs {
+		if id := evs[i].TargetID(); id != "" {
+			evs[i].Target = LinkTarget{Known: true, Key: keys[id]}
+		}
+	}
+}
+
+// SentencePart is a piece of an event's sentence; Href links it to a ticket.
+type SentencePart struct {
+	Text, Href string
+}
+
+// EventParts is EventSentence in pieces, with the tickets a link event
+// names linked (not "this ticket", a deleted ticket or a recorded key that
+// may no longer lead anywhere). Other events are one unlinked piece.
+func EventParts(e EventView) []SentencePart {
+	if e.Kind != core.EvLinkCreated && e.Kind != core.EvLinkDeleted {
+		return []SentencePart{{Text: EventSentence(e)}}
+	}
+	from := e.ticketPart(e.TicketKey, true)
+	to := e.targetPart()
+	if e.Kind == core.EvLinkDeleted {
+		return []SentencePart{{Text: "removed a link from "}, from, {Text: " to "}, to}
+	}
+	kind, _ := e.Payload["kind"].(string)
+	switch kind {
+	case "blocks":
+		return []SentencePart{{Text: "marked "}, from, {Text: " as blocking "}, to}
+	case "duplicates":
+		return []SentencePart{{Text: "marked "}, from, {Text: " as a duplicate of "}, to}
+	}
+	return []SentencePart{{Text: "related "}, from, {Text: " to "}, to}
+}
+
+// ticketPart names a ticket for the reader, linked when link is set and it
+// isn't the reader's own ticket.
+func (e EventView) ticketPart(key string, link bool) SentencePart {
+	name := e.side(key)
+	if !link || name != key || key == "" {
+		return SentencePart{Text: name}
+	}
+	return SentencePart{Text: key, Href: "/t/" + key}
+}
+
+// targetPart names a link event's other ticket: its current key when it was
+// looked up by id ("a deleted ticket" when gone), else the recorded key,
+// unlinked.
+func (e EventView) targetPart() SentencePart {
+	if !e.Target.Known {
+		to, _ := e.Payload["to"].(string)
+		return e.ticketPart(to, false)
+	}
+	if e.Target.Key == "" {
+		return SentencePart{Text: "a deleted ticket"}
+	}
+	return e.ticketPart(e.Target.Key, true)
+}
+
+// hasLinks reports whether any part of the sentence is linked.
+func hasLinks(parts []SentencePart) bool {
+	return slices.ContainsFunc(parts, func(p SentencePart) bool { return p.Href != "" })
 }
 
 // FoldReorders folds each run of consecutive ticket.reordered lines by the
@@ -124,18 +210,12 @@ func EventSentence(e EventView) string {
 		return "attached " + s("name") + " to " + e.TicketKey
 	case core.EvAttachmentDeleted:
 		return "removed the attachment " + s("name") + " from " + e.TicketKey
-	case core.EvLinkCreated:
-		from, to := e.side(e.TicketKey), e.side(s("to"))
-		switch s("kind") {
-		case "blocks":
-			return fmt.Sprintf("marked %s as blocking %s", from, to)
-		case "duplicates":
-			return fmt.Sprintf("marked %s as a duplicate of %s", from, to)
-		default:
-			return fmt.Sprintf("related %s to %s", from, to)
+	case core.EvLinkCreated, core.EvLinkDeleted:
+		var b strings.Builder
+		for _, p := range EventParts(e) {
+			b.WriteString(p.Text)
 		}
-	case core.EvLinkDeleted:
-		return fmt.Sprintf("removed a link from %s to %s", e.side(e.TicketKey), e.side(s("to")))
+		return b.String()
 	case core.EvActorCreated:
 		return "joined"
 	case core.EvTokenCreated:

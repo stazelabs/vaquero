@@ -360,13 +360,21 @@ func APIEvents(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		out := make([]api.Event, len(rows))
+		views := make([]templates.EventView, len(rows))
 		for i, e := range rows {
-			ev := templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
+			views[i] = templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
 				Payload: templates.ParsePayload(e.Payload)}
 			if e.TicketNumber > 0 {
-				ev.TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
+				views[i].TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
 			}
+		}
+		if err := resolveLinkTargets(r.Context(), d, views); err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		out := make([]api.Event, len(rows))
+		for i, e := range rows {
+			ev := views[i]
 			at := e.At
 			if parsed, err := timefmt.Parse(e.At); err == nil {
 				at = timefmt.Format(parsed)

@@ -139,3 +139,74 @@ func TestHistoryFoldsReorders(t *testing.T) {
 	}
 	lacks(t, page, "in In progress 3 times")
 }
+
+// linkWorld is VAQ-1 marked as blocking OTH-1.
+func linkWorld(t *testing.T) (*webtest.Env, gen.Project) {
+	t.Helper()
+	e := webtest.New(t)
+	tk := ticket(t, e, project(t, e), core.TicketInput{Title: "Here"})
+	oth, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket(t, e, oth, core.TicketInput{Title: "There"})
+	if _, err := e.Deps.Core.AddLink(bg, e.Deps.Actor.ID, tk.ID, "blocks", core.TicketKey{Project: "OTH", Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	return e, oth
+}
+
+// VAQ-47: a link's target reads with its current key, linked, on both
+// tickets' histories and the activity page.
+func TestHistoryLinkTargetFollowsRekey(t *testing.T) {
+	e, oth := linkWorld(t)
+	if _, err := e.Deps.Core.ChangeProjectKey(bg, e.Deps.Actor.ID, oth.ID, "NEW"); err != nil {
+		t.Fatal(err)
+	}
+	c := e.Client()
+	page := c.Get("/t/VAQ-1").Body
+	contains(t, page, "marked this ticket as blocking", `href="/t/NEW-1"`)
+	lacks(t, page, "OTH-1")
+	contains(t, c.Get("/t/NEW-1").Body, "as blocking this ticket", `href="/t/VAQ-1"`)
+	act := c.Get("/activity").Body
+	contains(t, act, `href="/t/NEW-1"`)
+	lacks(t, act, "OTH-1")
+	tok := e.Token(t)
+	var evs []api.Event
+	decode(t, c.API("GET", "/api/v1/events?newest=50", tok, nil).Body, &evs)
+	found := false
+	for _, ev := range evs {
+		if ev.Kind == core.EvLinkCreated {
+			found = ev.Text == "marked VAQ-1 as blocking NEW-1"
+		}
+	}
+	if !found {
+		t.Fatalf("%+v", evs)
+	}
+}
+
+// VAQ-47: a target that is gone reads "a deleted ticket", unlinked.
+func TestHistoryLinkTargetDeleted(t *testing.T) {
+	e, oth := linkWorld(t)
+	if err := e.Deps.Core.DeleteProject(bg, e.Deps.Actor.ID, oth.ID, "OTH"); err != nil {
+		t.Fatal(err)
+	}
+	page := e.Client().Get("/t/VAQ-1").Body
+	contains(t, page, "marked this ticket as blocking a deleted ticket")
+	lacks(t, page, "OTH-1")
+}
+
+// VAQ-47: an event with no to_id (from before 0.1.3, where the target
+// could not be known) keeps its recorded key, unlinked.
+func TestHistoryLinkWithoutTargetID(t *testing.T) {
+	e, oth := linkWorld(t)
+	if _, err := e.Deps.Core.DB.Exec(`UPDATE events SET payload = json_remove(payload, '$.to_id') WHERE kind = 'link.created'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.ChangeProjectKey(bg, e.Deps.Actor.ID, oth.ID, "NEW"); err != nil {
+		t.Fatal(err)
+	}
+	page := e.Client().Get("/t/VAQ-1").Body
+	contains(t, page, "marked this ticket as blocking OTH-1")
+	lacks(t, page, `href="/t/OTH-1"`)
+}

@@ -357,6 +357,9 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			Reader: v.Key, ActorID: e.ActorID,
 		})
 	}
+	if err := resolveLinkTargets(ctx, d, v.Events); err != nil {
+		return v, err
+	}
 	v.Events = templates.FoldReorders(v.Events)
 	return v, nil
 }

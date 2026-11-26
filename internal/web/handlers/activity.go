@@ -32,6 +32,10 @@ func Activity(d Deps) http.HandlerFunc {
 			}
 			events[i] = v
 		}
+		if err := resolveLinkTargets(r.Context(), d, events); err != nil {
+			serverError(w, r, d, err)
+			return
+		}
 		render(w, r, d, http.StatusOK, templates.ActivityPage(events))
 	}
 }

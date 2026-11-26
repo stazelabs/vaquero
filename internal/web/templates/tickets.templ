@@ -357,7 +357,10 @@ templ EventLine(e EventView) {
 		<span class="text-muted">
 			@Icon(EventIcon(e.Kind))
 		</span>
-		<span class="font-medium text-ink">{ e.Actor }</span> { EventSentence(e) }
+		<span class="font-medium text-ink">{ e.Actor }</span>
+		<span>
+			@sentenceParts(EventParts(e))
+		</span>
 		<span class="text-xs text-muted">· { e.Ago }</span>
 		if d := bodyChanges(e); d.Show {
 			<details class="w-full pl-6">

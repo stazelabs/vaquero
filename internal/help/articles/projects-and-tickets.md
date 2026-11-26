@@ -29,6 +29,8 @@ A ticket's page ends with its history, newest first. When the description change
 
 Dragging a card up or down its column is recorded too. Several drags in a row by the same person, with nothing else between them, read as one line, such as "reordered VAQ-4 in Todo 3 times".
 
+A line about a link names the other ticket as it is now: its current key, linked, even after its project's key changed, or "a deleted ticket" once it is gone. Links recorded before Vaquero 0.1.3 whose other ticket could not be identified keep the key they were made with.
+
 ## Links
 
 A ticket can block, relate to or duplicate another ticket, in any project. Vaquero refuses a link that would make a loop of blockers, directly or through a chain (`VAQ-1` blocks `VAQ-2` blocks `VAQ-3` blocks `VAQ-1`), and refuses two tickets duplicating each other. An open blocker keeps a ticket from being ready on the board.
