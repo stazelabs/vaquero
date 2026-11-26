@@ -74,7 +74,30 @@ func TestNoAdHocSVG(t *testing.T) {
 			t.Errorf("%s draws its own <svg>; use Icon", f)
 		}
 	}
+	// The logo is one <svg data-logo>, coloured by theme token classes
+	// only: no fill= or stroke= attribute with a colour of its own.
+	src, err := os.ReadFile("logo.templ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only the markup counts, not the doc comment that names <svg>.
+	var b []byte
+	for line := range bytes.Lines(src) {
+		if !bytes.HasPrefix(bytes.TrimSpace(line), []byte("//")) {
+			b = append(b, line...)
+		}
+	}
+	if n, logo := bytes.Count(b, []byte("<svg")), bytes.Count(b, []byte("<svg data-logo")); n != 1 || logo != 1 {
+		t.Errorf("logo.templ has %d <svg> elements, %d of them <svg data-logo; want exactly one, the logo", n, logo)
+	}
+	if m := attrRe.Find(b); m != nil {
+		t.Errorf("logo.templ sets a %q attribute; colour it with theme token classes", bytes.TrimSpace(bytes.TrimSuffix(m, []byte("="))))
+	}
 }
+
+// attrRe is a fill= or stroke= attribute (fill-accent and the like are
+// classes, not attributes).
+var attrRe = regexp.MustCompile(`\s(fill|stroke)\s*=`)
 
 func TestAdminPagesHaveIcons(t *testing.T) {
 	for _, p := range AdminPages {
