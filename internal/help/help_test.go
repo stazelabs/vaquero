@@ -146,3 +146,19 @@ func TestMCPToolsDocumented(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-60: local mode trusts every program on the machine, so the articles
+// say it is for a personal machine and a shared one needs hosted mode.
+func TestLocalModeTrustIsDocumented(t *testing.T) {
+	for _, slug := range []string{"api-tokens", "welcome"} {
+		a, ok := Get(slug)
+		if !ok {
+			t.Fatalf("no %s article", slug)
+		}
+		for _, want := range []string{"personal machine", "hosted mode"} {
+			if !strings.Contains(a.Markdown, want) {
+				t.Errorf("%s doesn't say %q", slug, want)
+			}
+		}
+	}
+}

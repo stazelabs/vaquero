@@ -10,6 +10,8 @@ Vaquero is a ticket tracker for one person or a small team, and for the agents w
 
 On your own machine Vaquero runs in local mode. The server listens only on this computer (`127.0.0.1:7878` unless you set `VQ_ADDR`), answers only requests addressed to `localhost`, `127.0.0.1` or `::1`, and has no sign-in: you are the owner. Start it with `vaquero serve`, or run any other `vaquero` command and it starts the server in the background for you.
 
+Local mode is meant for a personal machine: every program on this computer can reach the server, so on a computer other people use, Vaquero needs hosted mode, with sign-in, which comes in a later release. [API tokens](/help/api-tokens#who-can-use-the-local-server) has more.
+
 Everything lives in one data directory. [Your data and backups](/help/data-and-backups) says where it is and what is in it, and [Installing and upgrading](/help/installing-and-upgrading) how to install Vaquero and keep it current.
 
 ## The pieces

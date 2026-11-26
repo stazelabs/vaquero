@@ -24,4 +24,4 @@ The API tokens page (and `vaquero token list`) shows each token's name, the firs
 
 ## Who can use the local server
 
-In local mode there is no sign-in: the server trusts every program on this computer that can reach it. That is right for a personal machine. On a computer other people use, don't run Vaquero in local mode.
+In local mode there is no sign-in: the server trusts every program on this computer that can reach it, including programs run by other people with accounts on it, and any of them can make itself a token on the API tokens page. Local mode is meant for a personal machine. On a computer other people use, run Vaquero in hosted mode, which has sign-in; hosted mode comes in a later release, so until then, don't run Vaquero on a shared computer.
