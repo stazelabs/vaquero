@@ -146,3 +146,30 @@ func TestLinkByBareNumber(t *testing.T) {
 	}
 	contains(t, c.Follow(r).Body, "Link added.", `href="/t/VAQ-2"`)
 }
+
+// The query is put in NFC like stored titles, and a key-like query that
+// names no project searches titles instead.
+func TestLinkTargetsNormaliseAndFallBack(t *testing.T) {
+	e := webtest.New(t)
+	linkTickets(t, e)
+	p, err := e.Deps.R.GetProjectByKey(bg, "VAQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, title := range []string{"Caf\u00e9 menu", "UI-kit refresh", "Ship v2-3 notes"} {
+		if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, p.ID, core.TicketInput{Title: title}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := e.Client()
+	for _, tc := range []struct{ q, want string }{
+		{"cafe\u0301", "VAQ-13"}, // e + combining acute, NFC é
+		{"UI-", "VAQ-14"},        // no project UI: a title search
+		{"v2-3", "VAQ-15"},       // no project V2
+	} {
+		got := optionValues(c.Get("/t/VAQ-1/link-targets?to=" + url.QueryEscape(tc.q)).Body)
+		if strings.Join(got, " ") != tc.want {
+			t.Errorf("%q: %v, want %s", tc.q, got, tc.want)
+		}
+	}
+}

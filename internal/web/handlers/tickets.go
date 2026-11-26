@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -558,7 +559,7 @@ func bareNumber(s string) (string, bool) {
 // LinkTargets answers the link box as it is typed (?to=): up to ten
 // <option>s for a datalist. A number, with or without "#", matches this
 // project's tickets by number; "KEY-" and a number, or part of one, matches
-// that project's; anything else matches titles in every project, this
+// that project's (when it names one); anything else matches titles in every project, this
 // project's first. The ticket itself is never offered.
 func LinkTargets(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -566,14 +567,21 @@ func LinkTargets(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		q := units.Clip(strings.TrimSpace(r.URL.Query().Get("to")), maxTargetText)
-		arg := gen.ListLinkTargetsParams{HomeID: p.ID, SelfID: t.ID}
+		// Titles are stored in NFC; the query is put in NFC too.
+		q := units.Clip(norm.NFC.String(strings.TrimSpace(r.URL.Query().Get("to"))), maxTargetText)
+		arg := gen.ListLinkTargetsParams{HomeID: p.ID, SelfID: t.ID, Title: q}
 		if n, ok := bareNumber(q); ok {
-			arg.Key, arg.NumPrefix = p.Key, n
+			arg.Key, arg.NumPrefix, arg.Title = p.Key, n, ""
 		} else if m := partialKeyRe.FindStringSubmatch(q); m != nil {
-			arg.Key, arg.NumPrefix = strings.ToUpper(m[1]), m[2]
-		} else {
-			arg.Title = q
+			// A key-like query ("OTH-3") reads as a key only when it names
+			// a project; otherwise ("UI-", "v2-3") it is title words.
+			key := strings.ToUpper(m[1])
+			if _, err := d.R.GetProjectByKey(r.Context(), key); err == nil {
+				arg.Key, arg.NumPrefix, arg.Title = key, m[2], ""
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				serverError(w, r, d, err)
+				return
+			}
 		}
 		arg.Exact = arg.NumPrefix
 		var opts []templates.Option
