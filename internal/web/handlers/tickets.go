@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/text/unicode/norm"
@@ -374,6 +375,9 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
 		})
 	}
+	if v.Plan, err = planView(r, d, t.ID, now); err != nil {
+		return v, err
+	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))
 	if err != nil {
 		return v, err
@@ -391,6 +395,28 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 		return v, err
 	}
 	v.Events = templates.FoldReorders(v.Events)
+	return v, nil
+}
+
+// planView is the ticket's plan for its page, nil when it has none.
+func planView(r *http.Request, d Deps, ticketID string, now time.Time) (*templates.PlanView, error) {
+	ctx := r.Context()
+	pl, err := d.R.GetTicketPlan(ctx, ticketID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	at, _ := timefmt.Parse(pl.UpdatedAt)
+	v := &templates.PlanView{Body: markdown.Render(pl.Body), Revision: pl.Revision, By: pl.UpdatedByName, Ago: timefmt.Ago(at, now, nil)}
+	if pl.Revision > 1 {
+		prev, err := d.R.GetPlanRevision(ctx, gen.GetPlanRevisionParams{PlanID: pl.ID, Revision: pl.Revision - 1})
+		if err != nil {
+			return nil, err
+		}
+		v.Diff = templates.LineDiff(prev.Body, pl.Body)
+	}
 	return v, nil
 }
 

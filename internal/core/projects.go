@@ -188,8 +188,8 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 }
 
 // DeleteProject removes a project and everything in it: its tickets, their
-// tags, comments and links (including links from other projects' tickets),
-// its milestones, statuses and history. confirm must be the project's key
+// tags, comments, plans (every revision) and links (including links from
+// other projects' tickets), its milestones, statuses and history. confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
 // Callers take a backup first.
 func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string) error {
@@ -209,6 +209,8 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"comments", q.DeleteProjectComments},
 			{"attachments", q.DeleteProjectAttachments},
 			{"links", q.DeleteProjectLinks},
+			{"plan revisions", q.DeleteProjectPlanRevisions},
+			{"plans", q.DeleteProjectPlans},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))
 			}},

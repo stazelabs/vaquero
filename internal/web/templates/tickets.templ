@@ -2,6 +2,7 @@ package templates
 
 import (
 	"html/template"
+	"strconv"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
@@ -46,6 +47,16 @@ type AttachmentRow struct {
 	CanDelete                    bool
 }
 
+// PlanView is a ticket's plan on its page: the current revision rendered,
+// and Diff, the lines changed since the previous revision (nil for the
+// first).
+type PlanView struct {
+	Body          template.HTML
+	Revision      int64
+	By, Ago       string
+	Diff          []DiffLine
+}
+
 // TicketView is the ticket page.
 type TicketView struct {
 	Project                    gen.Project
@@ -61,6 +72,7 @@ type TicketView struct {
 	Links                      []LinkGroup
 	Comments                   []CommentRow
 	Attachments                []AttachmentRow
+	Plan                       *PlanView // nil when the ticket has no plan
 	Events                     []EventView
 	LinkKind, LinkTo, LinkErr  string
 	CommentBody, CommentErr    string
@@ -160,6 +172,9 @@ templ TicketPage(v TicketView) {
 						</div>
 					}
 				</section>
+				if v.Plan != nil {
+					@planSection(v.Key, *v.Plan)
+				}
 				<section>
 					<div class="flex items-center justify-between">
 						<h2 class={ h2IconClass }>
@@ -320,6 +335,31 @@ templ TicketPage(v TicketView) {
 // linkForm adds a link from this ticket, named by its key. The ticket box
 // suggests tickets as you type (GET /t/{key}/link-targets fills the
 // datalist): a number, with or without the project key, or words of a title.
+// planSection is the ticket's plan, read-only: the current revision and,
+// folded, its changes from the one before.
+templ planSection(key string, p PlanView) {
+	<section id="plan" hx-get={ "/t/" + key } hx-trigger="vq:change" hx-select="#plan" hx-swap="outerHTML" data-live>
+		<h2 class={ h2IconClass + " mb-1" }>
+			@Icon("plan")
+			Plan
+		</h2>
+		<p class="mb-2 text-xs text-muted">Revision { strconv.FormatInt(p.Revision, 10) } · { p.By } · { p.Ago }</p>
+		<div class={ proseClass }>
+			@templ.Raw(string(p.Body))
+		</div>
+		if p.Diff != nil {
+			<details data-plan-diff class="mt-2">
+				<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
+				<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+					for _, l := range p.Diff {
+						<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+					}
+				</pre>
+			</details>
+		}
+	</section>
+}
+
 templ linkForm(v TicketView) {
 	<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
 		@Select(SelectProps{Name: "kind", Label: v.Key, Selected: v.LinkKind, Options: linkKindOptions()})

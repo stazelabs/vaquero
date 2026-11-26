@@ -42,6 +42,8 @@ Each change an agent makes records where it came from, as the client reports it:
 | `update_ticket` | `key` and any fields to change (`tier` and `model` among them), plus `add_tags`, `remove_tags` and `version` |
 | `move_ticket` | `key`, `status` |
 | `add_comment` | `key`, `body` |
+| `get_plan` | A ticket's [plan](/help/agent-workflow#plans): `key`, optionally `revision` for an earlier one |
+| `save_plan` | Write or revise a plan: `key`, `body` (the whole text) and `revision`, the one you read (leave it out only for a ticket's first plan); a stale revision is refused |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |

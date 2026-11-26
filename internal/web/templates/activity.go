@@ -235,6 +235,13 @@ func EventSentence(e EventView) string {
 			return fmt.Sprintf("let the claim on %s lapse; it is back in %s", e.TicketKey, st)
 		}
 		return "let the claim on " + e.TicketKey + " lapse"
+	case core.EvPlanCreated:
+		return "wrote the plan for " + e.TicketKey
+	case core.EvPlanRevised:
+		if n, ok := e.Payload["revision"].(float64); ok {
+			return fmt.Sprintf("revised the plan for %s (revision %d)", e.TicketKey, int64(n))
+		}
+		return "revised the plan for " + e.TicketKey
 	case core.EvTagRenamed:
 		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagMerged:
@@ -317,6 +324,7 @@ var eventIcons = map[string]string{
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
 	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token", "tag": "tag",
+	"plan": "plan",
 }
 
 // EventIcon is the glyph an activity line starts with.

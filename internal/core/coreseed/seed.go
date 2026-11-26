@@ -2,7 +2,8 @@
 // can hold, through internal/core: projects, statuses, a milestone, tickets
 // with sub-tickets, tags (one renamed), a description edit, a reorder,
 // comments (one edited, one deleted), links, an agent with a claim, tokens
-// (one revoked), two attachments and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
+// (one revoked), two attachments, a plan with two revisions and an MCP log
+// row. The upgrade fixture (scripts/fixture) and the export tests use it.
 package coreseed
 
 import (
@@ -149,6 +150,13 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if err := attach(ctx, c, store, instance, agent.ID, lasso.ID, "notes.txt", "text/plain; charset=utf-8", []byte("Lasso notes.\n")); err != nil {
+		return err
+	}
+	// A plan with two revisions.
+	if _, err := c.SavePlan(ctx, by, parent.ID, "1. Cut the release branch.", 0); err != nil {
+		return err
+	}
+	if _, err := c.SavePlan(ctx, agent.ID, parent.ID, "1. Cut the release branch.\n2. Write the notes.", 1); err != nil {
 		return err
 	}
 	// Archived last: an archived project takes no new tickets or links.

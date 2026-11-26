@@ -32,3 +32,11 @@ The tier map names the model that works each tier, for each harness (the agent p
 ```
 
 Vaquero ships a default map, and settings shows the map in use. A map holds at most 20 harnesses. Edit it there and save, or send `"tier_map"` in `PATCH /api/v1/projects/{key}`. Empty the box (or send `null`) to go back to the default. The design tier normally takes the heavy model.
+
+## Plans
+
+A plan says how a ticket, or an epic and its sub-tickets, will be done. It lives in Vaquero beside the ticket, as a Markdown document, so agents can draft and revise it without touching the repository. Every revision is kept.
+
+The ticket's page shows the current plan, with its revision, who wrote it and when; "Show changes" lists the lines changed since the revision before. Read and write plans with `vaquero plan show` and `vaquero plan save` (see [the command line](/help/cli)), the API's `/plan` routes (see [the API](/help/api#reading)) or the `get_plan` and `save_plan` tools.
+
+A save sends the whole text and the revision it was based on, as ticket edits send their version. If someone saved in between, the save is refused with the plan as it is now, so no revision is lost: read it, merge, and save again. A ticket's history and the activity page record each new revision by number, never the text.

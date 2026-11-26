@@ -39,6 +39,8 @@ import (
 //     tag.deleted: {"name", "tickets", "ticket_ids"}: TagPayload, a project
 //     event (no ticket); ticket_ids names the project's tickets whose tags
 //     changed, tickets how many.
+//   - plan.created, plan.revised: PlanPayload, the plan's revision only;
+//     the text stays in plans and plan_revisions, never in an event.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -76,7 +78,14 @@ const (
 	EvTagRenamed        = "tag.renamed"
 	EvTagMerged         = "tag.merged"
 	EvTagDeleted        = "tag.deleted"
+	EvPlanCreated       = "plan.created"
+	EvPlanRevised       = "plan.revised"
 )
+
+// PlanPayload is a plan.created or plan.revised event's payload.
+type PlanPayload struct {
+	Revision int64 `json:"revision"`
+}
 
 // ClaimPayload is a ticket.claimed event's payload: the lease's end, the
 // status before and after, and whether it renewed the claimant's own claim.
@@ -131,6 +140,7 @@ func EventKinds() []string {
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
+		EvPlanCreated, EvPlanRevised,
 	}
 }
 

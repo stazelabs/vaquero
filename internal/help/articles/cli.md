@@ -42,6 +42,8 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given; `--tier ""` and `--model ""` clear them |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
 | `vaquero comment TICKET TEXT` | Add a comment |
+| `vaquero plan show TICKET [--revision N]` | A ticket's [plan](/help/agent-workflow#plans): its revision, who wrote it and when, then its text; `--revision` shows an earlier one |
+| `vaquero plan save TICKET FILE\|- [--revision N]` | Write the plan from a file, or `-` for standard input. A ticket's first plan needs no `--revision`; after that, pass the revision you read. If someone saved since, nothing is written, the plan as it is now is printed and the exit code is 3 |
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero attach TICKET FILE... [--name NAME]` | Attach files (up to 10 MB each) and print a Markdown reference for each, to paste into a description or comment; `-` reads standard input and needs `--name`. See [Attachments](/help/attachments) |
@@ -73,7 +75,7 @@ Text that starts with `-`, such as a markdown list, would read as a flag. Put `-
 | 0 | Done |
 | 1 | Failed; the reason is on standard error |
 | 2 | Used wrongly; the usage line is on standard error |
-| 3 | The ticket changed since you read it (`--version` was stale). The ticket as it is now is printed; read it, then retry |
+| 3 | The ticket changed since you read it (`--version` was stale), or its plan did (`plan save --revision` was stale). The ticket or plan as it is now is printed; read it, then retry |
 
 ## Profiles
 

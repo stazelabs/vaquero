@@ -24,7 +24,9 @@
 // int64. The only REAL column today is tickets.position. Exported tables
 // have no BLOB columns, and Write refuses one. events.meta (an event's
 // provenance, a JSON object as text) is exported like any TEXT column; an
-// export from before it loads with {}.
+// export from before it loads with {}. plans and plan_revisions (0009)
+// are exported whole, every revision's text included; an export from
+// before them has neither key and loads with no plans.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
 // entries, whatever the backend), the FTS tables, goose's table, and every
@@ -66,7 +68,8 @@ const (
 // Tables are the exported tables, parents before children.
 var Tables = []string{
 	"settings", "actors", "projects", "statuses", "milestones", "tags",
-	"tickets", "ticket_tags", "comments", "ticket_links", "attachments", "events",
+	"tickets", "ticket_tags", "comments", "ticket_links", "attachments",
+	"plans", "plan_revisions", "events",
 }
 
 // Header is export.json's first fields.

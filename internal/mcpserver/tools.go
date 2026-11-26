@@ -135,6 +135,17 @@ type (
 		View         string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 
+	getPlanArgs struct {
+		Key      string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Revision int64  `json:"revision,omitempty" jsonschema:"An earlier revision to read. Leave it out for the current plan."`
+	}
+
+	savePlanArgs struct {
+		Key      string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Body     string `json:"body" jsonschema:"The whole plan, in Markdown; it replaces the current text."`
+		Revision int64  `json:"revision,omitempty" jsonschema:"The revision you read; the save is refused if the plan changed since. Leave it out only to write a ticket's first plan."`
+	}
+
 	releaseArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
@@ -143,8 +154,8 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
-	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "search", "update_ticket",
+	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat", "link_tickets", "list_projects",
+	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "save_plan", "search", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -194,6 +205,14 @@ func addTools(s *mcp.Server, c *caller) {
 	add(s, c, "get_ticket", "Get a ticket", true,
 		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim and version.",
 		func(in keyArgs) request { return get(ticketPath(in.Key, ""), nil) })
+	add(s, c, "get_plan", "Get a plan", true,
+		"A ticket's plan, a Markdown document with every revision kept: its text, revision, who wrote it and when. Pass revision for an earlier one.",
+		func(in getPlanArgs) request {
+			if in.Revision > 0 {
+				return get(ticketPath(in.Key, "/plan/revisions/"+strconv.FormatInt(in.Revision, 10)), nil)
+			}
+			return get(ticketPath(in.Key, "/plan"), nil)
+		})
 	add(s, c, "ready_tickets", "List ready tickets", true,
 		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first.",
 		func(in readyArgs) request {
@@ -282,6 +301,15 @@ func addTools(s *mcp.Server, c *caller) {
 		"Add a comment to a ticket, in Markdown.",
 		func(in commentArgs) request {
 			return viewed(post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body}), in.View)
+		})
+	add(s, c, "save_plan", "Save a plan", false,
+		"Write a ticket's plan, or revise it: send the whole text and the revision you read. If someone saved since, nothing is written and the error says so; read it again with get_plan.",
+		func(in savePlanArgs) request {
+			b := map[string]any{"body": in.Body}
+			if in.Revision != 0 {
+				b["revision"] = in.Revision
+			}
+			return request{method: http.MethodPut, path: ticketPath(in.Key, "/plan"), body: b}
 		})
 	add(s, c, "link_tickets", "Link two tickets", false,
 		"Record that one ticket blocks, relates to or duplicates another. A blocking loop is refused.",

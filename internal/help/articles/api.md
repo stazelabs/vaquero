@@ -42,10 +42,12 @@ Every change records where it came from, as the caller reports it, in the event'
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
+| `GET /api/v1/tickets/{ticket}/plan` | The ticket's [plan](/help/agent-workflow#plans): `ticket`, `revision`, `body`, `updated_by` and `updated_at`; `404` when it has none |
+| `GET /api/v1/tickets/{ticket}/plan/revisions/{n}` | Revision `n` of the plan, the current one included, in the same shape: `updated_by` and `updated_at` are who wrote that revision and when |
 | `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |
 | `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words; a ticket found by its title alone has the start of its description, unmarked, or an empty snippet |
 | `GET /api/v1/export` | Everything, as a `.tar.gz` download (`application/gzip`); the owner's token only, `403` for anyone else, including an agent acting through it. `HEAD` makes the same checks and sends no body. See [Your data and backups](/help/data-and-backups#exporting-everything) |
-| `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. Each event's `meta` says where it came from (see [Where a change came from](#where-a-change-came-from)), left out when it has none. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
+| `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. A plan's events (`plan.created`, `plan.revised`) carry only its `revision`, never its text. Each event's `meta` says where it came from (see [Where a change came from](#where-a-change-came-from)), left out when it has none. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
 
 An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
@@ -71,6 +73,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
+| `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan; to revise it, send the revision you read. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
 | `DELETE /api/v1/comments/{id}` | Nothing; your own comments only |
 | `POST /api/v1/tickets/{ticket}/attachments` | A multipart form with the file in a part named `file`; answers `201` with the attachment. Up to 10 MB: more is `413` |
@@ -147,7 +150,7 @@ Every refusal has the same shape:
 | 403 | `forbidden` | Only the owner may do this (an export) |
 | 404 | `not_found` | No such project, ticket, comment, link or token, or no such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists but not for that method (say, `DELETE` on a ticket) |
-| 409 | `conflict` | The ticket changed since the `version` you sent (an edit, or a tag change in project settings); `current` holds it as it is now |
+| 409 | `conflict` | The ticket changed since the `version` you sent (an edit, or a tag change in project settings), or its plan since the `revision` you sent; `current` holds the ticket, or the plan, as it is now |
 | 413 | `too_large` | The body is over 1 MiB, or an uploaded file is over 10 MB |
 | 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields. Deleting an attachment you didn't upload (and aren't the owner) is a 422 with `fields.attachment`, not a 403 |
 | 500 | `server_error` | Something broke on the server; its log has the details |

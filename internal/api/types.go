@@ -130,6 +130,17 @@ type Comment struct {
 	Warning        string `json:"warning,omitempty"`
 }
 
+// Plan is a ticket's plan at one revision: the current one from GET and
+// PUT /tickets/{ticket}/plan, an earlier one from .../plan/revisions/{n}.
+// UpdatedBy and UpdatedAt are who wrote that revision, and when.
+type Plan struct {
+	Ticket    string `json:"ticket"`
+	Revision  int64  `json:"revision"`
+	Body      string `json:"body"`
+	UpdatedBy string `json:"updated_by"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 // Attachment is a file on a ticket. URL is the address of its bytes on the
 // server, as a ticket body or comment refers to it.
 type Attachment struct {
