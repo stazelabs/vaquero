@@ -261,7 +261,7 @@ func TestMoveTicketBackTakesAFreshNumber(t *testing.T) {
 	if _, err := c.MoveTicketToProject(bg, f.Owner.ID, f.T1.ID, f.Other.ID, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.RenameTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID, "defect"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID, "defect", true); err != nil {
 		t.Fatal(err)
 	}
 	back, err := c.MoveTicketToProject(bg, f.Owner.ID, f.T1.ID, f.Project.ID, 0)

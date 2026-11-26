@@ -129,7 +129,7 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	}
 	for _, t := range tags {
 		if t.Name == "docs" {
-			if err := c.RenameTag(ctx, by, vaq.ID, t.ID, "documentation"); err != nil {
+			if err := c.RenameTag(ctx, by, vaq.ID, t.ID, "documentation", true); err != nil {
 				return err
 			}
 		}

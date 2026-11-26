@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -101,14 +102,25 @@ func APITagUpdate(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		if merging && !in.Merge {
+		refuse := func(into gen.ListProjectTagsRow) {
 			f := api.Fail(http.StatusConflict, "conflict",
 				p.Key+" already has the tag "+into.Name+". Merge the two, or choose another name.")
 			f.Current = tagDTO(into)
 			api.WriteFailure(w, f)
+		}
+		if merging && !in.Merge {
+			refuse(into)
 			return
 		}
-		if err := d.Core.RenameTag(r.Context(), apiActor(r).ID, p.ID, t.ID, *in.Name); err != nil {
+		// Core decides the merge again inside its transaction: a tag that
+		// took the name since mergeTarget read is refused there too.
+		if err := d.Core.RenameTag(r.Context(), apiActor(r).ID, p.ID, t.ID, *in.Name, in.Merge); err != nil {
+			if _, ok := errors.AsType[*core.MergeRefused](err); ok {
+				if into, merging, rerr := mergeTarget(r, d, p, t.ID, *in.Name); rerr == nil && merging {
+					refuse(into)
+					return
+				}
+			}
 			apiCoreFail(w, r, d, p, err)
 			return
 		}

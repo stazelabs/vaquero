@@ -102,10 +102,20 @@ func (c *Core) dropTag(ctx context.Context, q *gen.Queries, projectID, tagID str
 	return nil
 }
 
+// MergeRefused is a rename onto a name another of the project's tags has,
+// sent without merge: Into is that tag's name.
+type MergeRefused struct{ Project, Into string }
+
+func (e *MergeRefused) Error() string {
+	return e.Project + " already has the tag " + e.Into + ". Merge the two, or choose another name."
+}
+
 // RenameTag renames a tag in a project. When another tag of the project
-// already has the name (by SameTag) the two are merged, as MergeTag does.
-// The same name again changes nothing and writes nothing.
-func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string) error {
+// already has the name (by SameTag) the two are merged, as MergeTag does,
+// if merge is set; otherwise the rename is a *MergeRefused, decided inside
+// the transaction so a caller's earlier look can't be stale. The same name
+// again changes nothing and writes nothing.
+func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string, merge bool) error {
 	return c.tx(ctx, func(q *gen.Queries) error {
 		f := fields{}
 		name = tagName(f, name)
@@ -132,6 +142,13 @@ func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string)
 				return fmt.Errorf("count tag: %w", err)
 			}
 			if m > 0 {
+				if !merge {
+					p, err := q.GetProject(ctx, projectID)
+					if err != nil {
+						return fmt.Errorf("get project: %w", err)
+					}
+					return &MergeRefused{Project: p.Key, Into: other.Name}
+				}
 				return c.merge(ctx, q, by, projectID, tag, other, ids)
 			}
 			// Only other projects use that name: this project's tickets

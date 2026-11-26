@@ -136,7 +136,7 @@ func TestTagChangesInTicketHistory(t *testing.T) {
 	e := webtest.New(t)
 	p, ids := tagged(t, e)
 	by := e.Deps.Actor.ID
-	if err := e.Deps.Core.RenameTag(bg, by, p.ID, ids["bug"], "defect"); err != nil {
+	if err := e.Deps.Core.RenameTag(bg, by, p.ID, ids["bug"], "defect", true); err != nil {
 		t.Fatal(err)
 	}
 	rows, _ := e.Deps.R.ListProjectTags(bg, p.ID)

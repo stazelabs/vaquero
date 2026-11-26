@@ -635,8 +635,16 @@ func TagRename(d Deps) http.HandlerFunc {
 		if merging {
 			msg = "Tags merged."
 		}
-		settingsForm(w, r, d, p, msg, sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditTag = f }, func() error {
-			return d.Core.RenameTag(r.Context(), d.Actor.ID, p.ID, id, sf.Values["name"])
+		mergeInto := ""
+		settingsForm(w, r, d, p, msg, sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditTag, v.MergeInto = f, mergeInto }, func() error {
+			err := d.Core.RenameTag(r.Context(), d.Actor.ID, p.ID, id, sf.Values["name"], r.PostFormValue("merge") == "1")
+			// A tag that took the name since the check above: core refused
+			// the merge, and the form offers it.
+			if mr, ok := errors.AsType[*core.MergeRefused](err); ok {
+				mergeInto = mr.Into
+				return &core.Invalid{Fields: map[string]string{"name": mr.Error()}}
+			}
+			return err
 		})
 	}
 }
