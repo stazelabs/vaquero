@@ -23,6 +23,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero import linear FILE.csv [--project KEY]` | Make tickets from Linear's issue export, keeping team keys and issue numbers, into a new or empty project. See [Importing from Linear](/help/data-and-backups#importing-from-linear) |
 | `vaquero logs [-n 100] [-f] [--path]` | The last lines of the server's log (100 unless `-n`); `-f` keeps printing new lines, across the log's move to `.1` at 10 MB, until Ctrl-C; `--path` prints only where the log is. Reads `vaquero.log` in the data directory, or the service's log under `brew services`; needs no server. See [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
+| `vaquero me [--name NAME] [--avatar FILE \| --remove-avatar]` | Show your [profile](/help/your-profile), or change it: `--name` sets the display name (empty shows Owner again), `--avatar` uploads a PNG, JPEG or WebP image of up to 256 KB, `--remove-avatar` goes back to your initials. Only you, not an agent, change it |
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |
 | `vaquero project show KEY` | Show a project |

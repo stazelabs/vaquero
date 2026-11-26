@@ -33,7 +33,7 @@ func filterBar(r *http.Request, d Deps, p gen.Project, base string, f board.Filt
 	}
 	if f.Assignee != "" {
 		if a, err := d.R.GetActor(r.Context(), f.Assignee); err == nil {
-			b.AssigneeName = a.Name
+			b.AssigneeName = core.ActorName(a)
 		}
 	}
 	return b, nil

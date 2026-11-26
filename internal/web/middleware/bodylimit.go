@@ -33,12 +33,14 @@ type upload struct {
 }
 
 // uploadRoutes are the routes whose body limit isn't MaxBody: attachments
-// may be larger, icons are smaller.
+// may be larger, icons and avatars (VAQ-149) are smaller.
 var uploadRoutes = []upload{
 	{http.MethodPost, "/t/*/attachments", MaxUpload, "Files can be at most 10 MB.", false},
 	{http.MethodPost, "/api/v1/tickets/*/attachments", MaxUpload, "Files can be at most 10 MB.", false},
 	{http.MethodPost, "/p/*/icon", MaxIconUpload, IconTooLargeMessage, true},
 	{http.MethodPut, "/api/v1/projects/*/icon", MaxIconUpload, IconTooLargeMessage, false},
+	{http.MethodPost, "/profile/avatar", MaxIconUpload, IconTooLargeMessage, true},
+	{http.MethodPut, "/api/v1/profile/avatar", MaxIconUpload, IconTooLargeMessage, false},
 }
 
 // IconTooLargeMessage is the refusal of an icon image over core.MaxIcon.

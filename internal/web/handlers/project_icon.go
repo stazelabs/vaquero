@@ -11,7 +11,6 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
-	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 	"github.com/stazelabs/vaquero/internal/web/templates"
@@ -227,22 +226,23 @@ func ProjectIconServe(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		serveIcon(w, r, d, icon)
+		serveImage(w, r, d, "project", icon.ProjectID, icon.Type, icon.Data, icon.Etag)
 	}
 }
 
-// serveIcon answers icon's bytes, or a 304 when the browser has them.
+// serveImage answers a stored image's bytes (a project icon, or an avatar:
+// owner names which, id its row), or a 304 when the browser has them.
 // Stored data that doesn't decode is logged and answered 404, like a
 // missing image: the page shows a broken image, not an error.
-func serveIcon(w http.ResponseWriter, r *http.Request, d Deps, icon gen.ProjectIcon) {
-	b, err := base64.StdEncoding.DecodeString(icon.Data)
+func serveImage(w http.ResponseWriter, r *http.Request, d Deps, owner, id, typ, data, etag string) {
+	b, err := base64.StdEncoding.DecodeString(data)
 	if err != nil {
-		d.Logger.WarnContext(r.Context(), "undecodable project icon", "project", icon.ProjectID, "err", err)
+		d.Logger.WarnContext(r.Context(), "undecodable stored image", owner, id, "err", err)
 		http.NotFound(w, r)
 		return
 	}
 	h := w.Header()
-	etag := `"` + icon.Etag + `"`
+	etag = `"` + etag + `"`
 	h.Set("ETag", etag)
 	h.Set("Cache-Control", "private, no-cache")
 	h.Set("X-Content-Type-Options", "nosniff")
@@ -251,7 +251,7 @@ func serveIcon(w http.ResponseWriter, r *http.Request, d Deps, icon gen.ProjectI
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	h.Set("Content-Type", icon.Type)
+	h.Set("Content-Type", typ)
 	h.Set("Content-Length", strconv.Itoa(len(b)))
 	w.WriteHeader(http.StatusOK)
 	if r.Method != http.MethodHead {

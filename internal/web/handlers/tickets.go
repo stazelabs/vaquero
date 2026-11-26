@@ -95,7 +95,7 @@ func formChoices(ctx context.Context, d Deps, p gen.Project, f *templates.Ticket
 	}
 	f.Assignees = []templates.Option{{Value: "", Label: "Unassigned"}}
 	for _, a := range actors {
-		f.Assignees = append(f.Assignees, templates.Option{Value: a.ID, Label: a.Name})
+		f.Assignees = append(f.Assignees, templates.Option{Value: a.ID, Label: core.ActorName(a)})
 	}
 	milestones, err := d.R.ListMilestones(ctx, p.ID)
 	if err != nil {
@@ -246,7 +246,7 @@ func claimNote(r *http.Request, d Deps, t gen.Ticket) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return templates.ClaimNote(a.ID, a.Name, t.ClaimExpiresAt.String, d.Actor.ID, d.Now(), ""), nil
+	return templates.ClaimNote(a.ID, core.ActorName(a), t.ClaimExpiresAt.String, d.Actor.ID, d.Now(), ""), nil
 }
 
 // TicketUpdate saves the edit form.
@@ -334,7 +334,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 		if err != nil {
 			return v, err
 		}
-		v.Assignee = a.Name
+		v.Assignee, v.AssigneeID = core.ActorName(a), a.ID
 		v.AssigneeIsAgent = a.Kind == "agent"
 	}
 	if t.MilestoneID.Valid {
@@ -395,7 +395,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	for _, c := range comments {
 		at, _ := timefmt.Parse(c.CreatedAt)
 		v.Comments = append(v.Comments, templates.CommentRow{
-			ID: c.ID, Author: c.AuthorName, Raw: c.Body, Body: markdown.Render(c.Body),
+			ID: c.ID, Author: c.AuthorName, AuthorID: c.AuthorID, Raw: c.Body, Body: markdown.Render(c.Body),
 			Ago: timefmt.Ago(at, now, nil), Mine: c.AuthorID == d.Actor.ID,
 			Editing: c.ID == editing && c.AuthorID == d.Actor.ID, Edited: c.UpdatedAt != c.CreatedAt,
 		})

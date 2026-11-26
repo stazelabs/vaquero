@@ -237,12 +237,12 @@ templ cardItem(k board.Card, class string) {
 				if showAssignee(k) {
 					if k.AssigneeIsAgent {
 						<span class="ml-auto inline-flex items-center gap-0.5 rounded-full border border-accent px-1.5 text-[10px] text-accent">
-							@IconClass("agent", "h-3 w-3 shrink-0")
+							@cardFace(k.AssigneeID, k.Assignee, "agent", "h-3 w-3 shrink-0")
 							{ k.Assignee }
 						</span>
 					} else {
 						<span class="ml-auto inline-flex items-center gap-0.5 text-[10px] text-muted">
-							@IconClass("person", "h-3 w-3 shrink-0")
+							@cardFace(k.AssigneeID, k.Assignee, "person", "h-3 w-3 shrink-0")
 							{ k.Assignee }
 						</span>
 					}
@@ -422,9 +422,9 @@ templ listRow(k board.Card) {
 		if showAssignee(k) {
 			<span class="inline-flex items-center gap-1 text-xs text-muted">
 				if k.AssigneeIsAgent {
-					@IconClass("agent", "h-3.5 w-3.5 shrink-0")
+					@cardFace(k.AssigneeID, k.Assignee, "agent", "h-3.5 w-3.5 shrink-0")
 				} else {
-					@IconClass("person", "h-3.5 w-3.5 shrink-0")
+					@cardFace(k.AssigneeID, k.Assignee, "person", "h-3.5 w-3.5 shrink-0")
 				}
 				{ k.Assignee }
 			</span>
@@ -437,12 +437,22 @@ templ listRow(k board.Card) {
 templ claimChip(k board.Card, class, glyph string) {
 	<span class={ class } title={ "Claimed by " + k.ClaimedBy }>
 		if k.ClaimantIsAgent {
-			@IconClass("agent", glyph)
+			@cardFace(k.ClaimantID, k.ClaimedBy, "agent", glyph)
 		} else {
-			@IconClass("person", glyph)
+			@cardFace(k.ClaimantID, k.ClaimedBy, "person", glyph)
 		}
 		{ k.ClaimedBy }
 		@IconClass("lease", glyph)
 		<span data-claim-expires={ k.ClaimExpiresAt }>{ claimUntil(k.ClaimExpiresAt) }</span>
 	</span>
+}
+
+// cardFace is the avatar beside a name on a card (VAQ-149), or, for a
+// card without the actor's id, the glyph for its kind.
+templ cardFace(id, name, glyph, class string) {
+	if id != "" {
+		@Avatar(ActorOf(ctx, id, name), "sm")
+	} else {
+		@IconClass(glyph, class)
+	}
 }

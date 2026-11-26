@@ -1,0 +1,35 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/core"
+
+// avatarBox is an avatar's size: "sm" 18px beside a name, "md" 48px on the
+// profile page.
+func avatarBox(size string) string {
+	if size == "md" {
+		return "size-12 text-base"
+	}
+	return "size-[18px] text-[8px]"
+}
+
+// avatarPx is the avatar's side in pixels, for an image's width and height.
+func avatarPx(size string) string {
+	if size == "md" {
+		return "48"
+	}
+	return "18"
+}
+
+// avatarMonogram is the two letters of an actor's tile.
+func avatarMonogram(a ActorView) string { return core.Monogram(a.Name, a.Name) }
+
+// Avatar draws an actor beside its name at size "sm" or "md" (VAQ-149): its
+// uploaded image (square-cropped, round), else its monogram on a tile
+// coloured by its id (core.TileColor), so each agent keeps its colour. It is
+// decoration beside the name, so it is hidden from screen readers.
+templ Avatar(a ActorView, size string) {
+	if a.Image {
+		<img src={ templ.SafeURL(AvatarURL(a.ID)) } alt="" width={ avatarPx(size) } height={ avatarPx(size) } class={ "inline-block shrink-0 rounded-full object-cover " + avatarBox(size) } aria-hidden="true"/>
+	} else {
+		<span class={ "inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold leading-none " + avatarBox(size) + " " + tileClass(a.ID) } aria-hidden="true" data-avatar-monogram={ avatarMonogram(a) }>{ avatarMonogram(a) }</span>
+	}
+}

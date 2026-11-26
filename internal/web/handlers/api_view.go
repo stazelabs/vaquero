@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
@@ -62,7 +63,7 @@ func ticketClaim(r *http.Request, d Deps, t gen.Ticket) (claimant, expires, warn
 	if err != nil {
 		return "", "", "", err
 	}
-	return a.Name, t.ClaimExpiresAt.String, claimWarning(r, d, a.ID, a.Name, t.ClaimExpiresAt.String), nil
+	return core.ActorName(a), t.ClaimExpiresAt.String, claimWarning(r, d, a.ID, core.ActorName(a), t.ClaimExpiresAt.String), nil
 }
 
 // writeTicketView answers a write with t: the short answer when summary,

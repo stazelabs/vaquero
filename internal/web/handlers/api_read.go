@@ -305,7 +305,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		if err != nil {
 			return out, err
 		}
-		out.Assignee = a.Name
+		out.Assignee = core.ActorName(a)
 	}
 	former, err := d.R.ListTicketOldKeys(ctx, t.ID)
 	if err != nil {

@@ -334,7 +334,7 @@ func decisionDTOs(ctx context.Context, d Deps, decs []gen.Decision) ([]api.Decis
 			if !ok {
 				return "", fmt.Errorf("decision %s: no actor %s: %w", dec.ID, id, sql.ErrNoRows)
 			}
-			return a.Name, nil
+			return core.ActorName(a), nil
 		}
 		o := api.Decision{
 			ID: dec.ID, Project: key, Tickets: []string{}, Run: dec.RunID.String, Kind: dec.Kind, Subject: dec.Subject,

@@ -71,6 +71,23 @@ type ProjectIcon struct {
 	URL   string `json:"url,omitempty"`
 }
 
+// Profile is the owner's profile (VAQ-149): Name the actor's name, its
+// identity ("Owner"); DisplayName what the owner chose ("" for none); and
+// ShownName what every answer and page shows. Avatar is the uploaded image,
+// null when the monogram shows.
+type Profile struct {
+	Name        string         `json:"name"`
+	DisplayName string         `json:"display_name"`
+	Shown       string         `json:"shown_name"`
+	Avatar      *ProfileAvatar `json:"avatar"`
+}
+
+// ProfileAvatar is an uploaded avatar: its address and etag.
+type ProfileAvatar struct {
+	URL  string `json:"url"`
+	Etag string `json:"etag"`
+}
+
 type Status struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`

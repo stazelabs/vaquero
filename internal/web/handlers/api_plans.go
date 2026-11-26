@@ -121,7 +121,7 @@ func APIPlanSave(d Deps) http.HandlerFunc {
 func planDTO(r *http.Request, d Deps, p gen.Project, t gen.Ticket, pl gen.Plan) api.Plan {
 	out := api.Plan{Ticket: ticketKey(p, t.Number), Revision: pl.Revision, Body: pl.Body, UpdatedAt: pl.UpdatedAt}
 	if a, err := d.R.GetActor(r.Context(), pl.UpdatedBy); err == nil {
-		out.UpdatedBy = a.Name
+		out.UpdatedBy = core.ActorName(a)
 	}
 	return out
 }

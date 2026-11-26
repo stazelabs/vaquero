@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
@@ -45,7 +46,7 @@ func APITokenCreate(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, gen.Project{}, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, api.Token{Name: t.Name, Prefix: t.Prefix, Actor: a.Name, CreatedAt: t.CreatedAt, Token: raw})
+		api.WriteJSON(w, http.StatusCreated, api.Token{Name: t.Name, Prefix: t.Prefix, Actor: core.ActorName(a), CreatedAt: t.CreatedAt, Token: raw})
 	}
 }
 

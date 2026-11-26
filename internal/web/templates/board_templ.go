@@ -1219,7 +1219,7 @@ func cardItem(k board.Card, class string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = IconClass("agent", "h-3 w-3 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = cardFace(k.AssigneeID, k.Assignee, "agent", "h-3 w-3 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1241,7 +1241,7 @@ func cardItem(k board.Card, class string) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = IconClass("person", "h-3 w-3 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = cardFace(k.AssigneeID, k.Assignee, "person", "h-3 w-3 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2149,12 +2149,12 @@ func listRow(k board.Card) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if k.AssigneeIsAgent {
-				templ_7745c5c3_Err = IconClass("agent", "h-3.5 w-3.5 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = cardFace(k.AssigneeID, k.Assignee, "agent", "h-3.5 w-3.5 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = IconClass("person", "h-3.5 w-3.5 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = cardFace(k.AssigneeID, k.Assignee, "person", "h-3.5 w-3.5 shrink-0").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -2240,12 +2240,12 @@ func claimChip(k board.Card, class, glyph string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if k.ClaimantIsAgent {
-			templ_7745c5c3_Err = IconClass("agent", glyph).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = cardFace(k.ClaimantID, k.ClaimedBy, "agent", glyph).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = IconClass("person", glyph).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = cardFace(k.ClaimantID, k.ClaimedBy, "person", glyph).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2292,6 +2292,44 @@ func claimChip(k board.Card, class, glyph string) templ.Component {
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</span></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// cardFace is the avatar beside a name on a card (VAQ-149), or, for a
+// card without the actor's id, the glyph for its kind.
+func cardFace(id, name, glyph, class string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var113 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var113 == nil {
+			templ_7745c5c3_Var113 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		if id != "" {
+			templ_7745c5c3_Err = Avatar(ActorOf(ctx, id, name), "sm").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = IconClass(glyph, class).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		return nil
 	})

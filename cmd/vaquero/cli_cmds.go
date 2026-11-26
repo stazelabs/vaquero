@@ -310,6 +310,12 @@ const errIconTooLarge = "Use an image of 256 KB or less."
 // uploadIcon sends file as the project icon image at path, after checking
 // it is a file of at most core.MaxIcon bytes.
 func uploadIcon(ctx context.Context, c *cmd, path, file string, out *api.Project) error {
+	return uploadImage(ctx, c, path, file, out)
+}
+
+// uploadImage sends file as an icon or avatar image at path (a PUT), after
+// checking it is a file of at most core.MaxIcon bytes; out takes the answer.
+func uploadImage(ctx context.Context, c *cmd, path, file string, out any) error {
 	st, err := os.Stat(file)
 	if err != nil {
 		return fmt.Errorf("can't read %s: %w", file, errUnwrapped(err))

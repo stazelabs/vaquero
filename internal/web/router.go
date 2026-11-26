@@ -31,6 +31,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 		// Provenance for every change: the surface and the Vaquero-Client,
 		// -Harness, -Model and -Run headers, as reported (core.Origin).
 		middleware.Origin,
+		// Names and avatars, read on a page's first use (VAQ-149).
+		handlers.Faces(d),
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
 		chimw.GetHead,
@@ -62,6 +64,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Get("/thumbs/{id}", handlers.AttachmentThumb(d))
 	r.Get("/attachments/{id}", handlers.AttachmentServe(d))
 	r.Get("/attachments/{id}/*", handlers.AttachmentServe(d))
+	r.Get("/avatars/{actor}", handlers.AvatarServe(d))
 	// Pages: each records the newest event sequence before it reads
 	// anything, for its live stream (handlers.PageSeq); so does a form POST
 	// whose refusal re-renders its page (fs).
@@ -77,6 +80,10 @@ func NewRouter(d handlers.Deps) http.Handler {
 		})
 
 		r.Get("/", handlers.ProjectList(d))
+		r.Get("/profile", handlers.Profile(d))
+		r.With(fs).Post("/profile", handlers.ProfileSave(d))
+		r.Post("/profile/avatar", handlers.ProfileAvatarSave(d))
+		r.Post("/profile/avatar/delete", handlers.ProfileAvatarRemove(d))
 		r.Get("/activity", handlers.Activity(d))
 		r.Get("/search", handlers.Search(d))
 		r.Get("/about/licenses", handlers.Licenses(d))
@@ -151,6 +158,10 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.NotFound(handlers.APINotFound)
 	r.MethodNotAllowed(handlers.APIMethodNotAllowed)
 	r.Get("/me", handlers.APIMe(d))
+	r.Get("/profile", handlers.APIProfile(d))
+	r.Patch("/profile", handlers.APIProfileUpdate(d))
+	r.Put("/profile/avatar", handlers.APIProfileAvatarUpload(d))
+	r.Delete("/profile/avatar", handlers.APIProfileAvatarDelete(d))
 	r.Get("/export", handlers.APIExport(d))
 	r.Get("/projects", handlers.APIProjects(d))
 	r.Get("/projects/{key}", handlers.APIProject(d))

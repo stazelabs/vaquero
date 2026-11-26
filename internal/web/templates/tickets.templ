@@ -43,6 +43,7 @@ type LinkGroup struct {
 // CommentRow is one comment in the thread.
 type CommentRow struct {
 	ID, Author, Raw, Ago string
+	AuthorID             string // the author's avatar
 	Body                 template.HTML
 	Mine, Editing        bool
 	Edited               bool
@@ -74,6 +75,7 @@ type TicketView struct {
 	Body                      template.HTML
 	Status                    gen.Status
 	Assignee, Milestone       string
+	AssigneeID                string // the assignee's avatar
 	AssigneeIsAgent           bool
 	Parent                    *TicketRef
 	Tags                      []string
@@ -369,10 +371,21 @@ templ TicketPage(v TicketView) {
 			<aside class={ panelClass + " h-fit space-y-3 text-sm" }>
 				@iconField("Status", v.Status.Name, CategoryIcon(v.Status.Category), categoryTint(v.Status.Category))
 				@iconField("Priority", PriorityLabel(v.Ticket.Priority), PriorityIcon(v.Ticket.Priority), "text-muted")
-				if v.AssigneeIsAgent {
-					@iconField("Assignee", v.Assignee, "agent", "text-accent")
+				if v.AssigneeID != "" {
+					<div data-assignee={ v.Assignee }>
+						<p class={ labelClass }>Assignee</p>
+						<p class="flex items-center gap-1.5 text-ink">
+							@Avatar(ActorOf(ctx, v.AssigneeID, v.Assignee), "sm")
+							{ v.Assignee }
+							if v.AssigneeIsAgent {
+								<span class="text-accent" title="Agent">
+									@IconClass("agent", "h-3.5 w-3.5")
+								</span>
+							}
+						</p>
+					</div>
 				} else {
-					@iconField("Assignee", orNone(v.Assignee, "Unassigned"), "person", "text-muted")
+					@iconField("Assignee", "Unassigned", "person", "text-muted")
 				}
 				@iconField("Milestone", orNone(v.Milestone, "None"), "milestone", "text-muted")
 				<div>
@@ -515,7 +528,8 @@ templ refLink(t TicketRef) {
 
 templ commentItem(key string, c CommentRow) {
 	<li id={ "c-" + c.ID } class={ panelClass }>
-		<p class="text-xs text-muted">
+		<p class="flex flex-wrap items-center gap-x-1.5 text-xs text-muted">
+			@Avatar(ActorOf(ctx, c.AuthorID, c.Author), "sm")
 			<span class="font-medium text-ink">{ c.Author }</span> · { c.Ago }
 			if c.Edited {
 				· edited
@@ -551,6 +565,7 @@ templ EventLine(e EventView) {
 		<span class="text-muted">
 			@Icon(EventIcon(e.Kind))
 		</span>
+		@Avatar(ActorOf(ctx, e.ActorID, e.Actor), "sm")
 		<span class="font-medium text-ink">{ e.Actor }</span>
 		<span class="min-w-0 wrap-anywhere">
 			@sentenceParts(EventParts(e))

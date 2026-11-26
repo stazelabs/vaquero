@@ -23,7 +23,7 @@ Every change records where it came from, as the caller reports it, in the event'
 ## Conventions
 
 - Projects are named by key (`VAQ`), tickets by key (`VAQ-12`), in any case.
-- Statuses, assignees and milestones are sent and returned by name; names match in any case within the ticket's project.
+- Statuses, assignees and milestones are sent and returned by name; names match in any case within the ticket's project. Names are returned as shown: the owner's [display name](/help/your-profile) when one is set. An assignee may be sent as either Owner or the display name.
 - Priorities are numbers: 0 none, 1 urgent, 2 high, 3 medium, 4 low.
 - Times are text in UTC, such as `2026-11-19T14:05:00.000Z`.
 - A request body is one JSON object; unknown fields are refused, and bodies over 1 MiB get `413` (an upload may be 10 MB).
@@ -103,6 +103,17 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 Statuses, milestones and tags are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
 
 A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"milestone"`, `"parent"`) to clear one; `"tags"` replaces the whole list, while `add_tags` and `remove_tags` change it one tag at a time.
+
+## Your profile
+
+The owner's [profile](/help/your-profile): the display name every answer shows, and the avatar. Only the owner, not an agent acting through the `Vaquero-Agent` header or MCP, changes it; an agent gets `422`.
+
+| Request | Body |
+|---|---|
+| `GET /api/v1/profile` | No body. The answer is `{"name", "display_name", "shown_name", "avatar"}`: `name` is the account's name, Owner; `display_name` what was chosen (`""` for none); `shown_name` what answers and pages show; `avatar` is `{"url", "etag"}`, or `null` while the initials show |
+| `PATCH /api/v1/profile` | `{"display_name"}`: up to 80 characters, no line breaks or control characters; `""` shows Owner again. The answer is the profile |
+| `PUT /api/v1/profile/avatar` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the avatar, and the answer is the profile. Up to 256 KB: more is `413`, and another type (SVG and GIF included) is `422` |
+| `DELETE /api/v1/profile/avatar` | No body. Remove the avatar, so the initials show again; the answer is the profile. With none stored nothing changes |
 
 ## Short answers
 

@@ -74,8 +74,15 @@ func (n *names) assignee(name string) string {
 	if !n.lookup(err) {
 		return ""
 	}
+	// By name first, then by display name (ruling P-R3), so an agent's
+	// name is never shadowed by the owner's display name.
 	for _, a := range as {
 		if strings.EqualFold(a.Name, strings.TrimSpace(name)) {
+			return a.ID
+		}
+	}
+	for _, a := range as {
+		if a.DisplayName != "" && strings.EqualFold(a.DisplayName, strings.TrimSpace(name)) {
 			return a.ID
 		}
 	}

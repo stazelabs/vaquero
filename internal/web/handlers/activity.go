@@ -25,7 +25,7 @@ func Activity(d Deps) http.HandlerFunc {
 			at, _ := timefmt.Parse(e.At)
 			v := templates.EventView{
 				Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
-				Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
+				Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil), ActorID: e.ActorID,
 			}
 			if e.TicketNumber > 0 {
 				v.TicketKey = core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String()
