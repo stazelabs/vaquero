@@ -32,10 +32,12 @@ func MatchQuery(typed string) string {
 // or other syntax.
 //
 // NFC is applied here, on the query side, and by core when it writes
-// titles, descriptions and comments. Text stored decomposed before core
-// normalised still matches: the indexes' unicode61 tokenizer with
-// remove_diacritics 2 drops combining marks, so both spellings index as the
-// same token, and no migration or reindex is needed.
+// titles, descriptions and comments. Accented Latin text stored decomposed
+// before core normalised still matches: the indexes' unicode61 tokenizer
+// with remove_diacritics 2 folds Latin letters' diacritics, so both
+// spellings index as the same token, and no migration or reindex is
+// needed. Decomposed text in other scripts isn't folded that way and may
+// not match until it is saved again.
 func Terms(typed string) []string {
 	typed = norm.NFC.String(typed)
 	words := strings.FieldsFunc(typed, func(r rune) bool {
