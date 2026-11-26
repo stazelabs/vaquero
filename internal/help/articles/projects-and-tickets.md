@@ -15,6 +15,7 @@ The projects page shows each active project as a card, or as a row in a list: sw
 - **Counts**: tickets ready to start (by the same rule as the board's ready cards, and with the [agent workflow](/help/agent-workflow) on, its readiness too), in review, and open (everything not done or cancelled).
 - **Milestone**: the open milestone due soonest (else the first open one), with how many of its tickets are done, or "No open milestone".
 - **Last change**: when anything in the project last changed.
+- **Links**: the projects it depends on, the projects that depend on it ("used by") and the ones it relates to, when it has any. See [Project links](#project-links).
 
 The "⋯" button opens quick settings in place: the project's name and description, and its icon. Saving brings you back to the projects page. "All settings →" opens the project's full settings. Archived projects are listed under Archived at the end.
 
@@ -65,6 +66,12 @@ A line about a link names the other ticket as it is now: its current key, linked
 A ticket can block, relate to or duplicate another ticket, in any project. Vaquero refuses a link that would make a loop of blockers, directly or through a chain (`VAQ-1` blocks `VAQ-2` blocks `VAQ-3` blocks `VAQ-1`), and refuses two tickets duplicating each other. An open blocker keeps a ticket from being ready on the board.
 
 On a ticket with no links yet, the form sits behind an "Add link" button. In the ticket box, type a number for a ticket of the same project (`12` or `#12`), a full key for another project's (`OTH-3`), or words of a title; Vaquero suggests up to ten matching tickets as you type.
+
+## Project links
+
+A project can depend on another project, or relate to one. A mobile app that uses a web app's API depends on the web app; the web app is then "used by" the mobile app. Add and remove links in project settings, under Links, or with `vaquero project link` and `vaquero project unlink` (see [The command line](/help/cli)). They show on the projects page and in the project's API answer.
+
+Links only describe how projects fit together: they don't hold up any work. To say that one piece of work waits on another, link the two tickets with "blocks", in any project. Vaquero refuses a project linking to itself, the same link twice (two projects relate either way round), and a loop of "depends on", directly or through a chain. Deleting a project removes its links.
 
 ## Milestones
 

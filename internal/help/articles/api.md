@@ -36,7 +36,7 @@ Every change records where it came from, as the caller reports it, in the event'
 |---|---|
 | `GET /api/v1/me` | The actor the token belongs to |
 | `GET /api/v1/projects` | Every project, with `open_count` and `icon` |
-| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
+| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on), `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default, and `links`, its [project links](/help/projects-and-tickets#project-links) as `[{"id", "kind", "direction", "key", "name"}]`: `kind` is `depends on` or `relates`, `direction` is `out` (this project depends on or relates to `key`) or `in` (`key` depends on or relates to this one). `GET /api/v1/projects` carries `links` too |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tags` | The tags its tickets carry, by name, each with its `ticket_count` (this project's tickets only) |
@@ -64,6 +64,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map", "icon"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default; `icon` is `{"kind": "monogram"}`, `{"kind": "glyph", "glyph": "rocket"}` (a name from [the list](/help/projects-and-tickets#project-icons)), or `{"kind": "image"}` for the image already uploaded |
 | `PUT /api/v1/projects/{key}/icon` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the project's icon, and the answer is the project. Up to 256 KB: more is `413`, and another type (SVG included) is `422` |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
+| `POST /api/v1/projects/{key}/links` | `{"kind", "project"}`: `depends on` (or `depends-on`) or `relates`, and the other project's key. Answers `201` with the link as this project sees it |
+| `DELETE /api/v1/projects/{key}/links/{id}` | Nothing; removes a link of the project's, from either end. Answers `204` |
 | `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
 | `POST /api/v1/projects/{key}/statuses/{name}/move` | `{"before"}` or `{"after"}`: another status's name; the status moves there in one step. Answers with the status and its new `position` |
