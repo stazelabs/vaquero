@@ -286,3 +286,56 @@ func TestContributingExplainsTheManualGate(t *testing.T) {
 		t.Error("README.md doesn't link CONTRIBUTING.md")
 	}
 }
+
+// tagCheck is the run script of the "Tag is a release number" step in a
+// workflow.
+func tagCheck(t *testing.T, file string) (script, shell string) {
+	t.Helper()
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name  string `yaml:"name"`
+				Run   string `yaml:"run"`
+				Shell string `yaml:"shell"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range doc.Jobs {
+		for _, s := range j.Steps {
+			if s.Name == "Tag is a release number" {
+				return s.Run, s.Shell
+			}
+		}
+	}
+	t.Fatalf("%s has no tag check", file)
+	return "", ""
+}
+
+// The tag check takes only one line that is a release number: grep would
+// pass a multi-line input with one good line.
+func TestTagCheck(t *testing.T) {
+	for _, f := range []string{".github/workflows/release.yml", ".github/workflows/formula.yml"} {
+		script, shell := tagCheck(t, f)
+		if shell != "bash" {
+			t.Errorf("%s: the tag check runs in %q, not bash", f, shell)
+		}
+		for tag, want := range map[string]bool{
+			"v0.1.3": true, "v10.20.30": true,
+			"0.1.3": false, "v0.1": false, "v0.1.3-rc1": false, "v0.1.3\nv0.1.4": false, "x\nv0.1.3": false, "v0.1.3\n": false, "": false,
+		} {
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Env = append(os.Environ(), "TAG="+tag)
+			err := cmd.Run()
+			if (err == nil) != want {
+				t.Errorf("%s: tag %q: passed %v, want %v", f, tag, err == nil, want)
+			}
+		}
+	}
+}

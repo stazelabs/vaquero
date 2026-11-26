@@ -19,8 +19,9 @@ jobs:
       - name: Tag is a release number
         env:
           TAG: ${{ inputs.tag }}
+        shell: bash
         run: |
-          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "tag must look like v0.1.0, got $TAG"; exit 1; }
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag must look like v0.1.0, got $TAG"; exit 1; }
       - name: Released from main
         if: github.ref != 'refs/heads/main'
         run: |
