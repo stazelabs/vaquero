@@ -277,14 +277,15 @@ func decisionEvent(ids []string) string {
 }
 
 // createDecision writes d and its tickets. A plan approval pins, for each
-// ticket, the RequirementHash and plan revision it asks about, so the
-// answer approves what was asked (ruling L-R7).
+// ticket, what it asks about: the RequirementHash, the plan revision, the
+// parent and the sub-tickets with their RequirementHash, so the answer
+// approves exactly what was asked (rulings L-R7 and L-R9).
 func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets []string) error {
 	if err := q.CreateDecision(ctx, gen.CreateDecisionParams(d)); err != nil {
 		return fmt.Errorf("create decision: %w", err)
 	}
 	for _, id := range tickets {
-		row := gen.AddDecisionTicketParams{DecisionID: d.ID, TicketID: id}
+		row := gen.AddDecisionTicketParams{DecisionID: d.ID, TicketID: id, Children: "[]"}
 		if d.Kind == DecisionApproval && d.Subject == "plan" {
 			t, err := q.GetTicket(ctx, id)
 			if err != nil {
@@ -294,6 +295,10 @@ func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets
 				return err
 			}
 			row.RequirementHash = RequirementHash(t.Title, t.Body)
+			row.ParentID = t.ParentID.String
+			if row.Children, err = childPins(ctx, q, id); err != nil {
+				return err
+			}
 		}
 		if err := q.AddDecisionTicket(ctx, row); err != nil {
 			return fmt.Errorf("add decision ticket: %w", err)
@@ -302,24 +307,50 @@ func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets
 	return nil
 }
 
-// askedUnchanged refuses an Approve of plan approval d when a ticket's
-// requirement or plan changed since it was asked.
-func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) error {
+// childPins is ticketID's sub-tickets with their RequirementHash, by id, as
+// JSON: what a plan approval asks about and pins of them.
+func childPins(ctx context.Context, q *gen.Queries, ticketID string) (string, error) {
+	subs, err := q.ListSubTickets(ctx, sql.NullString{String: ticketID, Valid: true})
+	if err != nil {
+		return "", fmt.Errorf("list sub-tickets: %w", err)
+	}
+	pins := []PinnedChild{}
+	for _, c := range subs {
+		pins = append(pins, PinnedChild{ID: c.ID, RequirementHash: RequirementHash(c.Title, c.Body)})
+	}
+	slices.SortFunc(pins, func(a, b PinnedChild) int { return strings.Compare(a.ID, b.ID) })
+	b, err := json.Marshal(pins)
+	if err != nil {
+		return "", fmt.Errorf("child pins: %w", err)
+	}
+	return string(b), nil
+}
+
+// askedUnchanged is what plan approval d asked about for each ticket,
+// refusing an Approve when any of it changed since: the ticket's
+// requirement, its plan revision, its parent, or its sub-tickets (one
+// added, removed, or with its requirement changed).
+func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) ([]gen.ListDecisionTicketPinsRow, error) {
 	pins, err := q.ListDecisionTicketPins(ctx, d.ID)
 	if err != nil {
-		return fmt.Errorf("decision pins: %w", err)
+		return nil, fmt.Errorf("decision pins: %w", err)
 	}
 	for _, p := range pins {
 		rev, err := planRevision(ctx, q, p.TicketID)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if rev != p.PlanRevision || RequirementHash(p.Title, p.Body) != p.RequirementHash {
+		children, err := childPins(ctx, q, p.TicketID)
+		if err != nil {
+			return nil, err
+		}
+		if rev != p.PlanRevision || RequirementHash(p.Title, p.Body) != p.RequirementHash ||
+			p.CurrentParentID != p.ParentID || children != p.Children {
 			key := TicketKey{Project: p.ProjectKey, Number: p.Number}.String()
-			return invalid("answer", "The plan or requirement for "+key+" changed since this was asked; ask again.")
+			return nil, invalid("answer", "The plan or requirement for "+key+" changed since this was asked; ask again.")
 		}
 	}
-	return nil
+	return pins, nil
 }
 
 // AskDecision records a question for the owner, or asks for an approval
@@ -399,9 +430,12 @@ func (c *Core) RecordRuling(ctx context.Context, by string, in DecisionInput, a 
 // which it then needs. Without it the answer is direct, and carries no
 // words. Through MCP (the Origin's surface) an answer must be relayed: the
 // bridge without an agent can't answer directly. An approval of a plan
-// answered Approve writes one approvals row per ticket, pinning each
-// ticket's RequirementHash and its own plan's revision (0 with none: a
-// sub-ticket then leans on its epic's own approval). An answered approval
+// answered Approve writes one approvals row per ticket from what was asked
+// (createDecision): the ticket's RequirementHash, its own plan's revision
+// (0 with none: a sub-ticket then leans on its epic's own approval) and its
+// sub-tickets with theirs. The Approve is refused when any of that, or the
+// ticket's parent, changed since it was asked (askedUnchanged); any other
+// answer is taken. An answered approval
 // is final; a later approval answered otherwise takes its place. One
 // decision.answered event either way, the group's ticket_ids in it. The
 // project must not be archived.
@@ -462,8 +496,9 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 		if err != nil {
 			return err
 		}
+		var asked []gen.ListDecisionTicketPinsRow
 		if d.Kind == DecisionApproval && d.Subject == "plan" && approves(opts, index) {
-			if err := askedUnchanged(ctx, q, d); err != nil {
+			if asked, err = askedUnchanged(ctx, q, d); err != nil {
 				return err
 			}
 		}
@@ -493,11 +528,9 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 		}
 		if d.Kind == DecisionApproval && approves(opts, index) {
 			pl.Approved = true
-			if d.Subject == "plan" {
-				for _, id := range ids {
-					if err := c.approve(ctx, q, d.ID, id, now); err != nil {
-						return err
-					}
+			for _, p := range asked { // a plan approval's tickets
+				if err := approve(ctx, q, d.ID, p, now); err != nil {
+					return err
 				}
 			}
 		}
@@ -509,40 +542,28 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 	return d, nil
 }
 
-// ApprovalPins is an approval row's pins: the ids of the ticket's
-// sub-tickets when it was approved, the only children its approval covers
-// (ruling L-R8). Repo pins arrive in part 2.
+// ApprovalPins is an approval row's pins: the ticket's sub-tickets as the
+// owner was asked about them, the only children its approval covers, each
+// with its requirement then (rulings L-R8 and L-R9). Repo pins arrive in
+// part 2.
 type ApprovalPins struct {
-	Children []string `json:"children"`
+	Children []PinnedChild `json:"children"`
 }
 
-// approve writes one ticket's approval row for decision decisionID,
-// pinning its current sub-tickets.
-func (c *Core) approve(ctx context.Context, q *gen.Queries, decisionID, ticketID, at string) error {
-	t, err := q.GetTicket(ctx, ticketID)
-	if err != nil {
-		return fmt.Errorf("get ticket: %w", err)
-	}
-	rev, err := planRevision(ctx, q, t.ID)
-	if err != nil {
-		return err
-	}
-	subs, err := q.ListSubTickets(ctx, sql.NullString{String: t.ID, Valid: true})
-	if err != nil {
-		return fmt.Errorf("list sub-tickets: %w", err)
-	}
-	pins := ApprovalPins{Children: []string{}}
-	for _, c := range subs {
-		pins.Children = append(pins.Children, c.ID)
-	}
-	slices.Sort(pins.Children)
-	pinsJSON, err := json.Marshal(pins)
-	if err != nil {
-		return fmt.Errorf("approval pins: %w", err)
-	}
+// PinnedChild is a sub-ticket an approval covers, with its RequirementHash
+// as asked.
+type PinnedChild struct {
+	ID              string `json:"id"`
+	RequirementHash string `json:"requirement_hash"`
+}
+
+// approve writes one ticket's approval row for decision decisionID from
+// what was asked, which askedUnchanged found still current.
+func approve(ctx context.Context, q *gen.Queries, decisionID string, p gen.ListDecisionTicketPinsRow, at string) error {
 	if err := q.AddApproval(ctx, gen.AddApprovalParams{
-		ID: idgen.New(), TicketID: t.ID, DecisionID: decisionID,
-		RequirementHash: RequirementHash(t.Title, t.Body), PlanRevision: rev, Pins: string(pinsJSON), At: at,
+		ID: idgen.New(), TicketID: p.TicketID, DecisionID: decisionID,
+		RequirementHash: p.RequirementHash, PlanRevision: p.PlanRevision,
+		Pins: `{"children":` + p.Children + `}`, At: at,
 	}); err != nil {
 		return fmt.Errorf("add approval: %w", err)
 	}

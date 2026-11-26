@@ -51,7 +51,7 @@ A decision is a question parked for the owner, a ruling an agent made, or an app
 
 When the owner answers in conversation, the agent records the answer as relayed, quoting the owner's words; an answer given without an agent, in the command line or the API, is direct. Through MCP every answer is relayed, so run `vaquero mcp` with `--agent NAME`. Both count the same, and each decision shows which it was. Until Vaquero has sign-in, every agent on this machine uses your token, so this rests on trust.
 
-Asking for a plan approval notes each ticket's requirement and plan revision as they stand. If either changes before the answer, Approve is refused ("The plan or requirement for VAQ-12 changed since this was asked; ask again."), so an approval always approves what you were shown; Request changes is still taken. Approving a plan, with Approve, records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, the revision of the ticket's own plan (none, for a sub-ticket without one: it relies on its epic's own approval), and the ticket's sub-tickets at that moment. One approval can cover several tickets. Any other answer records no approval.
+Asking for a plan approval notes, for each ticket, its requirement, its plan revision, its epic, and its sub-tickets with their requirements, as they stand. If any of that changes before the answer (a sub-ticket added, removed or edited, or the ticket moved to another epic), Approve is refused ("The plan or requirement for VAQ-12 changed since this was asked; ask again."), so an approval always approves what you were shown; Request changes is still taken. Approving a plan, with Approve, records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, the revision of the ticket's own plan (none, for a sub-ticket without one: it relies on its epic's own approval), and the ticket's sub-tickets as you were asked about them. One approval can cover several tickets. Any other answer records no approval.
 
 An answered approval is final. To take one back, ask for a new plan approval and answer it Request changes: the latest answered plan approval of a ticket is the one that counts. Editing the ticket's requirement or plan also leaves the approval behind.
 
@@ -65,8 +65,8 @@ With the workflow on, a ticket is ready to build only when it is clear enough an
 Which approval counts:
 
 - **A ticket with its own plan** needs its own approval of that plan. Its epic's plan doesn't cover it, and editing the epic leaves it alone.
-- **A sub-ticket without a plan** relies on its epic's approval. Editing the epic's title, description or plan makes every such sub-ticket not ready until the epic is approved again. One approved together with its epic needs its own title and description unchanged too.
-- **An epic's approval covers the sub-tickets it had when it was approved.** A sub-ticket added later, or an existing ticket moved under the epic, is not covered until the epic is approved again.
+- **A sub-ticket with no plan and no approval of its own** relies on its epic's approval, which covers the sub-tickets you were asked about with the epic, each as it was then. A sub-ticket added later, or an existing ticket moved under the epic, is not covered until the epic is approved again; nor is one whose title or description changed since ("Requirement changed since approval."). Editing the epic's title, description or plan makes every such sub-ticket not ready until the epic is approved again.
+- **A sub-ticket with an approval of its own but no plan** needs its own title and description unchanged, and its epic's approval to be current, though the epic's approval need not list it. Without an approved epic, the reason is "Epic's plan not approved."
 - **A ticket with no plan and no epic** can be approved as it is, for a small change.
 
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that fails this. Every ticket in the API answer, and the summary of a todo ticket in a list, then carries `readiness`: `ready`, and the `reasons` it is not, in this order:
@@ -74,7 +74,7 @@ The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool)
 - Not a todo.
 - No tier.
 - Plan not approved.
-- Epic's plan not approved. (The sub-ticket's own approval holds, but its epic's doesn't, or doesn't cover it.)
+- Epic's plan not approved. (The sub-ticket's own approval holds, but its epic has no current approval.)
 - Requirement changed since approval.
 - Plan changed since approval.
 - Epic's requirement changed since approval.

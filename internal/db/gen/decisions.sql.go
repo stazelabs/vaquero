@@ -39,7 +39,8 @@ func (q *Queries) AddApproval(ctx context.Context, arg AddApprovalParams) error 
 }
 
 const addDecisionTicket = `-- name: AddDecisionTicket :exec
-INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision) VALUES (?, ?, ?, ?)
+INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type AddDecisionTicketParams struct {
@@ -47,6 +48,8 @@ type AddDecisionTicketParams struct {
 	TicketID        string
 	RequirementHash string
 	PlanRevision    int64
+	ParentID        string
+	Children        string
 }
 
 func (q *Queries) AddDecisionTicket(ctx context.Context, arg AddDecisionTicketParams) error {
@@ -55,6 +58,8 @@ func (q *Queries) AddDecisionTicket(ctx context.Context, arg AddDecisionTicketPa
 		arg.TicketID,
 		arg.RequirementHash,
 		arg.PlanRevision,
+		arg.ParentID,
+		arg.Children,
 	)
 	return err
 }
@@ -323,7 +328,8 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string)
 }
 
 const listDecisionTicketPins = `-- name: ListDecisionTicketPins :many
-SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, t.title, t.body, p.key AS project_key, t.number
+SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children,
+       t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
@@ -335,8 +341,11 @@ type ListDecisionTicketPinsRow struct {
 	TicketID        string
 	RequirementHash string
 	PlanRevision    int64
+	ParentID        string
+	Children        string
 	Title           string
 	Body            string
+	CurrentParentID string
 	ProjectKey      string
 	Number          int64
 }
@@ -355,8 +364,11 @@ func (q *Queries) ListDecisionTicketPins(ctx context.Context, decisionID string)
 			&i.TicketID,
 			&i.RequirementHash,
 			&i.PlanRevision,
+			&i.ParentID,
+			&i.Children,
 			&i.Title,
 			&i.Body,
+			&i.CurrentParentID,
 			&i.ProjectKey,
 			&i.Number,
 		); err != nil {

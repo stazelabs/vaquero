@@ -199,8 +199,10 @@ func TestChildInheritsEpicApproval(t *testing.T) {
 	expect(t, w.check(child), readiness.PlanNotApproved)
 	w.approve(epic)
 	expect(t, w.check(child))
-	// The child's own edits don't matter: the epic's approval pinned the epic.
+	// The epic's approval pinned the child's requirement too (ruling L-R9).
 	w.edit(child, core.TicketPatch{Body: new("Columns, sorted.")})
+	expect(t, w.check(child), readiness.RequirementChanged)
+	w.approve(epic)
 	expect(t, w.check(child))
 	// The epic's latest answer counts for the child too.
 	w.answer("Request changes", epic)
@@ -327,8 +329,27 @@ func TestEpicApprovalCoversOnlyItsChildrenThen(t *testing.T) {
 	expect(t, w.check(moved))
 }
 
-// Ruling L-R6: a sub-ticket whose own approval is current but whose epic's
-// approval doesn't cover it is told it's the epic's plan.
+// Ruling L-R9: a covered child moved away, edited and moved back is not
+// ready: its requirement is not the one the epic's approval pinned.
+func TestCoveredChildMovedAwayAndBackNotReady(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	other := w.ticket(core.TicketInput{Title: "Other"})
+	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(epic, "1. Columns.", 0)
+	w.approve(epic)
+	expect(t, w.check(child))
+	w.edit(child, core.TicketPatch{ParentID: new(other.ID)})
+	w.edit(child, core.TicketPatch{Body: new("Columns, and more.")})
+	w.edit(child, core.TicketPatch{ParentID: new(epic.ID)})
+	expect(t, w.check(child), readiness.RequirementChanged)
+	// Moved back unchanged, it is covered again.
+	w.edit(child, core.TicketPatch{Body: new("")})
+	expect(t, w.check(child))
+}
+
+// Rulings L-R6 and L-R8: a sub-ticket whose own approval is current needs
+// its epic's approval to be current, but not to list it.
 func TestEpicPlanNotApproved(t *testing.T) {
 	w := newWorld(t)
 	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
@@ -339,12 +360,18 @@ func TestEpicPlanNotApproved(t *testing.T) {
 	w.approve(own)
 	expect(t, w.check(own), readiness.EpicPlanNotApproved)
 
-	// The epic's approval came before the sub-ticket was moved under it.
+	// The epic's approval came before the sub-ticket was moved under it,
+	// so it doesn't list it; the sub-ticket's own approval covers it.
 	w.approve(epic)
 	expect(t, w.check(own))
 	moved := w.ticket(core.TicketInput{Title: "Rails", Tier: "light"})
 	w.approve(moved)
 	expect(t, w.check(moved)) // no parent: its own approval is enough
 	w.edit(moved, core.TicketPatch{ParentID: new(epic.ID)})
+	expect(t, w.check(moved))
+
+	// A request for changes on the epic leaves it with no current approval.
+	w.answer("Request changes", epic)
+	expect(t, w.check(own), readiness.EpicPlanNotApproved)
 	expect(t, w.check(moved), readiness.EpicPlanNotApproved)
 }

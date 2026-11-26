@@ -95,6 +95,8 @@ type DecisionTicket struct {
 	TicketID        string
 	RequirementHash string
 	PlanRevision    int64
+	ParentID        string
+	Children        string
 }
 
 type Event struct {

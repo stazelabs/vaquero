@@ -67,14 +67,18 @@ CREATE TABLE decisions (
 );
 CREATE INDEX decisions_project ON decisions (project_id, state);
 
--- requirement_hash and plan_revision are what a plan approval asked about
--- for each ticket, pinned when asked: an Approve is refused if either has
--- changed since. Other decisions leave them '' and 0.
+-- requirement_hash, plan_revision, parent_id and children are what a plan
+-- approval asked about for each ticket, pinned when asked: its requirement
+-- hash, its plan revision, its parent's id ('' for none) and its
+-- sub-tickets as a JSON list of {"id", "requirement_hash"}. An Approve is
+-- refused if any has changed since. Other decisions leave the defaults.
 CREATE TABLE decision_tickets (
     decision_id      TEXT NOT NULL REFERENCES decisions (id),
     ticket_id        TEXT NOT NULL REFERENCES tickets (id),
     requirement_hash TEXT NOT NULL DEFAULT '',
     plan_revision    INTEGER NOT NULL DEFAULT 0 CHECK (plan_revision >= 0),
+    parent_id        TEXT NOT NULL DEFAULT '',
+    children         TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(children) AND json_type(children) = 'array'),
     PRIMARY KEY (decision_id, ticket_id)
 );
 CREATE INDEX decision_tickets_ticket ON decision_tickets (ticket_id);
@@ -82,8 +86,9 @@ CREATE INDEX decision_tickets_ticket ON decision_tickets (ticket_id);
 -- An approval of a ticket's requirement and plan, as they stood when the
 -- owner approved: requirement_hash is hex(sha256(NFC(title) + "\n" +
 -- NFC(description))), plan_revision the plan approved (0: no plan), pins
--- a JSON value: {"children": [ticket ids]}, the sub-tickets it had when
--- approved, the only ones its approval covers (repo pins arrive in part 2).
+-- a JSON value: {"children": [{"id", "requirement_hash"}]}, the
+-- sub-tickets it was asked about, the only ones its approval covers, each
+-- with its requirement as asked (repo pins arrive in part 2).
 CREATE TABLE approvals (
     id               TEXT PRIMARY KEY,
     ticket_id        TEXT NOT NULL REFERENCES tickets (id),

@@ -427,7 +427,7 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		hash, pins string
 		rev        int64
 	}{
-		f.T1.ID:  {sum("First\n"), `{"children":["` + child.ID + `"]}`, 2},
+		f.T1.ID:  {sum("First\n"), `{"children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}]}`, 2},
 		child.ID: {sum("Café\nCafé menu."), `{"children":[]}`, 0},
 		f.T2.ID:  {sum("Second\n"), `{"children":[]}`, 0},
 	} {
@@ -484,6 +484,45 @@ func TestApproveRefusedWhenChangedSinceAsked(t *testing.T) {
 	// Asked again, it approves.
 	q3, _ := c.AskDecision(bg, a.ID, planApproval(f, f.T2.ID))
 	if _, err := c.AnswerDecision(bg, f.Owner.ID, q3.ID, core.Answer{Option: "Approve"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Ruling L-R9: the approval covers the children and parent asked about
+// too. A child added or edited, or the ticket moved to another parent,
+// between the ask and the answer refuses an Approve.
+func TestApproveRefusedWhenFamilyChangedSinceAsked(t *testing.T) {
+	c, _, f := newFixture(t)
+	a := builder(t, c, f)
+	refused := func(q gen.Decision, key string) {
+		t.Helper()
+		_, err := c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"})
+		fieldErr(t, err, "answer", "The plan or requirement for "+key+" changed since this was asked; ask again.")
+	}
+	q, _ := c.AskDecision(bg, a.ID, planApproval(f, f.T1.ID))
+	child, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Child", ParentID: f.T1.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refused(q, "VAQ-1") // a child added
+
+	q, _ = c.AskDecision(bg, a.ID, planApproval(f, f.T1.ID))
+	body := "A child, rewritten."
+	if _, err := c.PatchTicket(bg, f.Owner.ID, child.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+		t.Fatal(err)
+	}
+	refused(q, "VAQ-1") // a child edited
+
+	q, _ = c.AskDecision(bg, a.ID, planApproval(f, child.ID))
+	parent := f.T2.ID
+	if _, err := c.PatchTicket(bg, f.Owner.ID, child.ID, core.TicketPatch{ParentID: &parent}, 0); err != nil {
+		t.Fatal(err)
+	}
+	refused(q, core.TicketKey{Project: "VAQ", Number: child.Number}.String()) // the asked ticket re-parented
+
+	// Nothing changed: it approves, pinning the children as asked.
+	q, _ = c.AskDecision(bg, a.ID, planApproval(f, f.T2.ID))
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"}); err != nil {
 		t.Fatal(err)
 	}
 }
