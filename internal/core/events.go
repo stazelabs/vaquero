@@ -35,6 +35,9 @@ import (
 //     "to_id"}, on the link's from project: kind is "depends on" or
 //     "relates", to the other project's key then and to_id its id.
 //   - actor.created: {"kind", "name"}.
+//   - actor.updated: {"changes": {"display_name": {"from", "to"}}} or
+//     {"changes": {"avatar": {"from", "to"}}}, the avatar by etag (null for
+//     none); the event's actor is the owner, whose profile it is (VAQ-149).
 //   - token.created, token.revoked: {"name", "prefix"}.
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
 //   - ticket.claim_lapsed: {"status"}, the status the ticket was left in;
@@ -89,6 +92,7 @@ const (
 	EvLinkCreated       = "link.created"
 	EvLinkDeleted       = "link.deleted"
 	EvActorCreated      = "actor.created"
+	EvActorUpdated      = "actor.updated"
 	EvTokenCreated      = "token.created"
 	EvTokenRevoked      = "token.revoked"
 	EvTicketClaimed     = "ticket.claimed"
@@ -180,7 +184,7 @@ func EventKinds() []string {
 		EvCommentCreated, EvCommentUpdated, EvCommentDeleted,
 		EvAttachmentAdded, EvAttachmentDeleted,
 		EvLinkCreated, EvLinkDeleted,
-		EvActorCreated, EvTokenCreated, EvTokenRevoked,
+		EvActorCreated, EvActorUpdated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
 		EvPlanCreated, EvPlanRevised, EvTicketMoved, EvRefAdded, EvRefRemoved,

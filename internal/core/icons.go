@@ -79,15 +79,16 @@ func TileColor(projectID string) int {
 type storedIcon struct{ typ, data, etag string }
 
 // checkIconImage refuses an image that isn't a PNG, JPEG or WebP of at most
-// MaxIcon bytes, by its bytes alone.
-func checkIconImage(f fields, img *IconImage) *storedIcon {
+// MaxIcon bytes, by its bytes alone, against field: a project icon's and an
+// avatar's check alike (VAQ-149).
+func checkIconImage(f fields, field string, img *IconImage) *storedIcon {
 	if len(img.Data) > MaxIcon {
-		f.add("icon", "Use an image of 256 KB or less.")
+		f.add(field, "Use an image of 256 KB or less.")
 		return nil
 	}
 	typ := http.DetectContentType(img.Data)
 	if !slices.Contains(iconTypes, typ) {
-		f.add("icon", "Use a PNG, JPEG or WebP image.")
+		f.add(field, "Use a PNG, JPEG or WebP image.")
 		return nil
 	}
 	sum := sha256.Sum256(img.Data)
@@ -120,7 +121,7 @@ func applyIcon(ctx context.Context, q *gen.Queries, f fields, p *gen.Project, ki
 		f.add("icon", "Choose a monogram, a glyph or an image.")
 	}
 	if kind == IconKindImage && img != nil {
-		stored = checkIconImage(f, img)
+		stored = checkIconImage(f, "icon", img)
 	}
 	var oldEtag string
 	if kind == IconKindImage && len(f) == 0 {

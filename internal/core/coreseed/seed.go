@@ -177,6 +177,13 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if err := attach(ctx, c, store, instance, agent.ID, lasso.ID, "notes.txt", "text/plain; charset=utf-8", []byte("Lasso notes.\n")); err != nil {
 		return err
 	}
+	// The owner's profile: a display name and an avatar (VAQ-149).
+	if _, err := c.UpdateProfile(ctx, by, new("Rancher")); err != nil {
+		return err
+	}
+	if _, err := c.SetAvatar(ctx, by, "image/png", tinyPNG); err != nil {
+		return err
+	}
 	// Icons: VAQ an uploaded image, OLD a glyph.
 	if _, err := c.SetProjectIcon(ctx, by, vaq.ID, core.IconKindImage, "", &core.IconImage{Data: tinyPNG}); err != nil {
 		return err

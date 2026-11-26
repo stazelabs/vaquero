@@ -9,7 +9,7 @@ SELECT * FROM api_tokens WHERE id = ?;
 SELECT * FROM api_tokens WHERE token_hash = ?;
 
 -- name: ListTokens :many
-SELECT t.*, a.name AS actor_name FROM api_tokens t JOIN actors a ON a.id = t.actor_id
+SELECT t.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name FROM api_tokens t JOIN actors a ON a.id = t.actor_id
 ORDER BY t.revoked_at IS NOT NULL, t.created_at DESC;
 
 -- name: RevokeToken :exec

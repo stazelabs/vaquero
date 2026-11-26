@@ -88,7 +88,7 @@ func (q *Queries) GetTokenByHash(ctx context.Context, tokenHash string) (ApiToke
 }
 
 const listTokens = `-- name: ListTokens :many
-SELECT t.id, t.actor_id, t.name, t.prefix, t.token_hash, t.created_at, t.last_used_at, t.revoked_at, a.name AS actor_name FROM api_tokens t JOIN actors a ON a.id = t.actor_id
+SELECT t.id, t.actor_id, t.name, t.prefix, t.token_hash, t.created_at, t.last_used_at, t.revoked_at, coalesce(nullif(a.display_name, ''), a.name) AS actor_name FROM api_tokens t JOIN actors a ON a.id = t.actor_id
 ORDER BY t.revoked_at IS NOT NULL, t.created_at DESC
 `
 

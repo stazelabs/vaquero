@@ -66,7 +66,7 @@ func (q *Queries) GetComment(ctx context.Context, id string) (Comment, error) {
 }
 
 const listComments = `-- name: ListComments :many
-SELECT c.id, c.ticket_id, c.author_id, c.body, c.created_at, c.updated_at, c.deleted_at, a.name AS author_name, a.kind AS author_kind
+SELECT c.id, c.ticket_id, c.author_id, c.body, c.created_at, c.updated_at, c.deleted_at, coalesce(nullif(a.display_name, ''), a.name) AS author_name, a.kind AS author_kind
 FROM comments c JOIN actors a ON a.id = c.author_id
 WHERE c.ticket_id = ? AND c.deleted_at IS NULL
 ORDER BY c.created_at, c.id

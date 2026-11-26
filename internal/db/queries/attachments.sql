@@ -15,7 +15,7 @@ DELETE FROM attachments WHERE ticket_id IN (SELECT id FROM tickets WHERE project
 SELECT * FROM attachments WHERE blob_key = ?;
 
 -- name: ListTicketAttachments :many
-SELECT a.*, u.name AS uploader_name
+SELECT a.*, coalesce(nullif(u.display_name, ''), u.name) AS uploader_name
 FROM attachments a JOIN actors u ON u.id = a.uploaded_by
 WHERE a.ticket_id = ?
 ORDER BY a.created_at, a.id;

@@ -563,7 +563,7 @@ func (q *Queries) ListTicketOldKeys(ctx context.Context, ticketID string) ([]Lis
 
 const listTicketsByProject = `-- name: ListTicketsByProject :many
 SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, t.version, t.claimed_by, t.claim_expires_at, t.claim_prev_status_id, t.tier, t.model, s.name AS status_name, s.category AS status_category,
-       coalesce(a.name, '') AS assignee_name
+       coalesce(nullif(a.display_name, ''), a.name, '') AS assignee_name
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors a ON a.id = t.assignee_id

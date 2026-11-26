@@ -6,7 +6,7 @@ VALUES (?, ?, ?, ?, ?, ?) RETURNING *;
 SELECT * FROM comments WHERE id = ?;
 
 -- name: ListComments :many
-SELECT c.*, a.name AS author_name, a.kind AS author_kind
+SELECT c.*, coalesce(nullif(a.display_name, ''), a.name) AS author_name, a.kind AS author_kind
 FROM comments c JOIN actors a ON a.id = c.author_id
 WHERE c.ticket_id = ? AND c.deleted_at IS NULL
 ORDER BY c.created_at, c.id;

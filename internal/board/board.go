@@ -23,6 +23,8 @@ type Card struct {
 	ID                     string // the ticket's id, for the Focus view's reasons
 	Key, Title, Assignee   string
 	AssigneeIsAgent, Ready bool
+	// AssigneeID and ClaimantID are the actors' ids, for their avatars.
+	AssigneeID, ClaimantID string
 	Priority, Version      int64
 	Tags                   []string
 	// ClaimedBy is the claimant's name while a claim is held (it may have
@@ -180,6 +182,8 @@ func columns(ctx context.Context, q *gen.Queries, files readiness.Files, p gen.P
 			Key:             core.TicketKey{Project: p.Key, Number: r.Number}.String(),
 			Title:           r.Title,
 			Assignee:        r.AssigneeName,
+			AssigneeID:      r.AssigneeID,
+			ClaimantID:      r.ClaimantID,
 			AssigneeIsAgent: r.AssigneeKind == "agent",
 			Ready:           r.Ready,
 			Priority:        r.Priority,

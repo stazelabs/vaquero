@@ -102,7 +102,7 @@ func (q *Queries) GetPlanByTicket(ctx context.Context, ticketID string) (Plan, e
 }
 
 const getPlanRevision = `-- name: GetPlanRevision :one
-SELECT r.plan_id, r.revision, r.body, r.at, r.actor_id, a.name AS actor_name
+SELECT r.plan_id, r.revision, r.body, r.at, r.actor_id, coalesce(nullif(a.display_name, ''), a.name) AS actor_name
 FROM plan_revisions r JOIN actors a ON a.id = r.actor_id
 WHERE r.plan_id = ? AND r.revision = ?
 `
@@ -136,7 +136,7 @@ func (q *Queries) GetPlanRevision(ctx context.Context, arg GetPlanRevisionParams
 }
 
 const getTicketPlan = `-- name: GetTicketPlan :one
-SELECT p.id, p.ticket_id, p.revision, p.body, p.created_at, p.updated_at, p.updated_by, a.name AS updated_by_name
+SELECT p.id, p.ticket_id, p.revision, p.body, p.created_at, p.updated_at, p.updated_by, coalesce(nullif(a.display_name, ''), a.name) AS updated_by_name
 FROM plans p JOIN actors a ON a.id = p.updated_by
 WHERE p.ticket_id = ?
 `

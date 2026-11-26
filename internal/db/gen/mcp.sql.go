@@ -11,7 +11,7 @@ import (
 )
 
 const listMCPCallActors = `-- name: ListMCPCallActors :many
-SELECT DISTINCT a.id, a.name, a.kind FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY a.name, a.kind, a.id
+SELECT DISTINCT a.id, coalesce(nullif(a.display_name, ''), a.name) AS name, a.kind FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY 2, a.kind, a.id
 `
 
 type ListMCPCallActorsRow struct {
@@ -72,7 +72,7 @@ func (q *Queries) ListMCPCallTools(ctx context.Context) ([]string, error) {
 
 const listMCPCalls = `-- name: ListMCPCalls :many
 SELECT c.id, c.at, c.token_prefix, c.tool, c.args, c.outcome, c.message, c.duration_ms,
-       coalesce(a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
+       coalesce(nullif(a.display_name, ''), a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
 FROM mcp_calls c
 LEFT JOIN actors a ON a.id = c.actor_id
 WHERE (?1 IS NULL OR a.id = ?1)

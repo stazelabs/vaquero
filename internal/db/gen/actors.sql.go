@@ -39,6 +39,15 @@ func (q *Queries) CreateActor(ctx context.Context, arg CreateActorParams) (Actor
 	return i, err
 }
 
+const deleteActorAvatar = `-- name: DeleteActorAvatar :exec
+DELETE FROM actor_avatars WHERE actor_id = ?
+`
+
+func (q *Queries) DeleteActorAvatar(ctx context.Context, actorID string) error {
+	_, err := q.db.ExecContext(ctx, deleteActorAvatar, actorID)
+	return err
+}
+
 const getActor = `-- name: GetActor :one
 SELECT id, kind, name, created_at, display_name FROM actors WHERE id = ?
 `
@@ -54,6 +63,34 @@ func (q *Queries) GetActor(ctx context.Context, id string) (Actor, error) {
 		&i.DisplayName,
 	)
 	return i, err
+}
+
+const getActorAvatar = `-- name: GetActorAvatar :one
+SELECT actor_id, content_type, data, etag, updated_at FROM actor_avatars WHERE actor_id = ?
+`
+
+func (q *Queries) GetActorAvatar(ctx context.Context, actorID string) (ActorAvatar, error) {
+	row := q.db.QueryRowContext(ctx, getActorAvatar, actorID)
+	var i ActorAvatar
+	err := row.Scan(
+		&i.ActorID,
+		&i.ContentType,
+		&i.Data,
+		&i.Etag,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getActorAvatarEtag = `-- name: GetActorAvatarEtag :one
+SELECT etag FROM actor_avatars WHERE actor_id = ?
+`
+
+func (q *Queries) GetActorAvatarEtag(ctx context.Context, actorID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getActorAvatarEtag, actorID)
+	var etag string
+	err := row.Scan(&etag)
+	return etag, err
 }
 
 const getActorByKindName = `-- name: GetActorByKindName :one
@@ -76,6 +113,50 @@ func (q *Queries) GetActorByKindName(ctx context.Context, arg GetActorByKindName
 		&i.DisplayName,
 	)
 	return i, err
+}
+
+const listActorFaces = `-- name: ListActorFaces :many
+SELECT a.id, a.kind, a.name, a.display_name, coalesce(v.etag, '') AS avatar_etag
+FROM actors a LEFT JOIN actor_avatars v ON v.actor_id = a.id
+`
+
+type ListActorFacesRow struct {
+	ID          string
+	Kind        string
+	Name        string
+	DisplayName string
+	AvatarEtag  string
+}
+
+// Every actor's shown name and avatar etag (” for none), for drawing
+// avatars beside names; the table is small (the owner and its agents).
+func (q *Queries) ListActorFaces(ctx context.Context) ([]ListActorFacesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActorFaces)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActorFacesRow{}
+	for rows.Next() {
+		var i ListActorFacesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Name,
+			&i.DisplayName,
+			&i.AvatarEtag,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActors = `-- name: ListActors :many
@@ -153,4 +234,44 @@ func (q *Queries) ListActorsByIDs(ctx context.Context, ids []string) ([]Actor, e
 		return nil, err
 	}
 	return items, nil
+}
+
+const saveActorAvatar = `-- name: SaveActorAvatar :exec
+INSERT INTO actor_avatars (actor_id, content_type, data, etag, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (actor_id) DO UPDATE SET content_type = excluded.content_type, data = excluded.data,
+    etag = excluded.etag, updated_at = excluded.updated_at
+`
+
+type SaveActorAvatarParams struct {
+	ActorID     string
+	ContentType string
+	Data        string
+	Etag        string
+	UpdatedAt   string
+}
+
+func (q *Queries) SaveActorAvatar(ctx context.Context, arg SaveActorAvatarParams) error {
+	_, err := q.db.ExecContext(ctx, saveActorAvatar,
+		arg.ActorID,
+		arg.ContentType,
+		arg.Data,
+		arg.Etag,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const setActorDisplayName = `-- name: SetActorDisplayName :exec
+UPDATE actors SET display_name = ? WHERE id = ?
+`
+
+type SetActorDisplayNameParams struct {
+	DisplayName string
+	ID          string
+}
+
+// Only internal/core writes actors (VAQ-149: the owner's profile).
+func (q *Queries) SetActorDisplayName(ctx context.Context, arg SetActorDisplayNameParams) error {
+	_, err := q.db.ExecContext(ctx, setActorDisplayName, arg.DisplayName, arg.ID)
+	return err
 }

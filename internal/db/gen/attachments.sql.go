@@ -109,7 +109,7 @@ func (q *Queries) GetAttachment(ctx context.Context, id string) (Attachment, err
 }
 
 const listTicketAttachments = `-- name: ListTicketAttachments :many
-SELECT a.id, a.ticket_id, a.uploaded_by, a.name, a.content_type, a.size, a.blob_key, a.created_at, u.name AS uploader_name
+SELECT a.id, a.ticket_id, a.uploaded_by, a.name, a.content_type, a.size, a.blob_key, a.created_at, coalesce(nullif(u.display_name, ''), u.name) AS uploader_name
 FROM attachments a JOIN actors u ON u.id = a.uploaded_by
 WHERE a.ticket_id = ?
 ORDER BY a.created_at, a.id

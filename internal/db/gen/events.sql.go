@@ -89,7 +89,7 @@ func (q *Queries) GetTicketEvent(ctx context.Context, arg GetTicketEventParams) 
 }
 
 const listEvents = `-- name: ListEvents :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
@@ -158,7 +158,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 }
 
 const listEventsAfter = `-- name: ListEventsAfter :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
@@ -232,7 +232,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 }
 
 const listEventsNewest = `-- name: ListEventsNewest :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
@@ -301,7 +301,7 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 }
 
 const listTicketEvents = `-- name: ListTicketEvents :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM (

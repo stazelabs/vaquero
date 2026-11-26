@@ -12,7 +12,7 @@ SELECT * FROM tickets WHERE project_id = ? AND number = ?;
 
 -- name: ListTicketsByProject :many
 SELECT t.*, s.name AS status_name, s.category AS status_category,
-       coalesce(a.name, '') AS assignee_name
+       coalesce(nullif(a.display_name, ''), a.name, '') AS assignee_name
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors a ON a.id = t.assignee_id

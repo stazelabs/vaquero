@@ -37,6 +37,9 @@
 // none. project_links (0011, VAQ-119) is exported whole; an export from
 // before it loads with no project links. ticket_refs (0012, VAQ-136) is
 // exported whole; an export from before it loads with no references.
+// actor_avatars (0013, VAQ-149) is exported whole like project_icons, and
+// actors carry their display_name; an export from before them loads with
+// no avatars and no display names.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
 // entries, whatever the backend), the FTS tables, goose's table, and every
@@ -77,7 +80,7 @@ const (
 
 // Tables are the exported tables, parents before children.
 var Tables = []string{
-	"settings", "actors", "projects", "project_links", "statuses", "milestones", "tags",
+	"settings", "actors", "actor_avatars", "projects", "project_links", "statuses", "milestones", "tags",
 	"tickets", "ticket_refs", "ticket_old_keys", "ticket_tags", "comments", "ticket_links", "attachments",
 	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "project_icons", "events",
 }

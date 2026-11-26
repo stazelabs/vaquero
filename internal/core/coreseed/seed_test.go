@@ -12,7 +12,8 @@ import (
 
 // The seed carries every event payload shape this release writes, so the
 // upgrade fixture made from it does too: a description edit with its
-// before and after text, a tag rename naming its tickets, and a reorder.
+// before and after text, a tag rename naming its tickets, a reorder, and
+// the owner's profile (a display name and an avatar, VAQ-149).
 func TestSeedCarriesThisReleasesPayloads(t *testing.T) {
 	d := dbtest.New(t)
 	now := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
@@ -27,6 +28,10 @@ func TestSeedCarriesThisReleasesPayloads(t *testing.T) {
 		"a tag rename naming its tickets": `SELECT count(*) FROM events WHERE kind = 'tag.renamed'
 			AND json_array_length(json_extract(payload, '$.ticket_ids')) = 1`,
 		"a reorder": `SELECT count(*) FROM events WHERE kind = 'ticket.reordered'`,
+		"a display name": `SELECT count(*) FROM events WHERE kind = 'actor.updated'
+			AND json_extract(payload, '$.changes.display_name') IS NOT NULL`,
+		"an avatar": `SELECT count(*) FROM events WHERE kind = 'actor.updated'
+			AND json_extract(payload, '$.changes.avatar') IS NOT NULL`,
 	} {
 		var n int
 		if err := d.R.QueryRowContext(t.Context(), query).Scan(&n); err != nil {

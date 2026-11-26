@@ -15,12 +15,12 @@ UPDATE plans SET revision = ?, body = ?, updated_at = ?, updated_by = ? WHERE id
 INSERT INTO plan_revisions (plan_id, revision, body, at, actor_id) VALUES (?, ?, ?, ?, ?);
 
 -- name: GetTicketPlan :one
-SELECT p.*, a.name AS updated_by_name
+SELECT p.*, coalesce(nullif(a.display_name, ''), a.name) AS updated_by_name
 FROM plans p JOIN actors a ON a.id = p.updated_by
 WHERE p.ticket_id = ?;
 
 -- name: GetPlanRevision :one
-SELECT r.*, a.name AS actor_name
+SELECT r.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name
 FROM plan_revisions r JOIN actors a ON a.id = r.actor_id
 WHERE r.plan_id = ? AND r.revision = ?;
 

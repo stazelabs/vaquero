@@ -5,10 +5,11 @@
 -- ticket or one ticket's sub-tickets, for the API's ticket answer.
 SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version, t.tier,
        s.name AS status_name, s.category AS status_category,
-       coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
-       coalesce(ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,
+       coalesce(nullif(a.display_name, ''), a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
+       coalesce(nullif(ca.display_name, ''), ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,
        coalesce(t.claim_expires_at, '') AS claim_expires_at,
        coalesce(t.claimed_by, '') AS claimant_id,
+       coalesce(t.assignee_id, '') AS assignee_id,
        CAST(s.category = 'todo' AND t.assignee_id IS NULL AND t.claimed_by IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM ticket_links l

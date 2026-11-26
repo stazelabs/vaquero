@@ -9,7 +9,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- Newest first, optionally one actor (by id) and one tool, older than
 -- the call with id before (ULIDs sort by time).
 SELECT c.id, c.at, c.token_prefix, c.tool, c.args, c.outcome, c.message, c.duration_ms,
-       coalesce(a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
+       coalesce(nullif(a.display_name, ''), a.name, '') AS actor_name, coalesce(a.kind, '') AS actor_kind
 FROM mcp_calls c
 LEFT JOIN actors a ON a.id = c.actor_id
 WHERE (sqlc.narg(actor) IS NULL OR a.id = sqlc.narg(actor))
@@ -19,7 +19,7 @@ ORDER BY c.id DESC
 LIMIT sqlc.arg(lim);
 
 -- name: ListMCPCallActors :many
-SELECT DISTINCT a.id, a.name, a.kind FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY a.name, a.kind, a.id;
+SELECT DISTINCT a.id, coalesce(nullif(a.display_name, ''), a.name) AS name, a.kind FROM mcp_calls c JOIN actors a ON a.id = c.actor_id ORDER BY 2, a.kind, a.id;
 
 -- name: ListMCPCallTools :many
 SELECT DISTINCT tool FROM mcp_calls ORDER BY tool;

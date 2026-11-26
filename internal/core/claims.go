@@ -59,13 +59,13 @@ func (k claimed) live(now string) bool {
 	return k.t.ClaimedBy.Valid && k.t.ClaimExpiresAt.String > now
 }
 
-// holderName is the claimant's name.
+// holderName is the claimant's shown name (ActorName).
 func holderName(ctx context.Context, q *gen.Queries, id string) (string, error) {
 	a, err := q.GetActor(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("get claimant: %w", err)
 	}
-	return a.Name, nil
+	return ActorName(a), nil
 }
 
 // untilText is a lease's end as people read it.

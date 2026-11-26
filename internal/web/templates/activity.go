@@ -238,6 +238,8 @@ func EventSentence(e EventView) string {
 		return "removed the " + s("kind") + " reference " + refTarget(e) + " from " + e.TicketKey
 	case core.EvActorCreated:
 		return "joined"
+	case core.EvActorUpdated:
+		return actorUpdated(e)
 	case core.EvTokenCreated:
 		return fmt.Sprintf("created API token %s (%s…)", s("name"), s("prefix"))
 	case core.EvTokenRevoked:
@@ -455,7 +457,7 @@ func refTarget(e EventView) string {
 var eventIcons = map[string]string{
 	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved", core.EvTicketMoved: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
-	core.EvLinkDeleted: "delete", core.EvRefRemoved: "delete", core.EvActorCreated: "person",
+	core.EvLinkDeleted: "delete", core.EvRefRemoved: "delete", core.EvActorCreated: "person", core.EvActorUpdated: "person",
 	core.EvProjectLinked: "link", core.EvProjectUnlinked: "delete",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
 	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
@@ -478,4 +480,26 @@ func EventIcon(kind string) string {
 		return i
 	}
 	return "activity"
+}
+
+// actorUpdated is an actor.updated sentence (VAQ-149): a display name set
+// or cleared, or an avatar added, replaced or removed.
+func actorUpdated(e EventView) string {
+	if _, to, ok := change(e.Payload, "display_name"); ok {
+		if to == "" {
+			return "cleared their display name"
+		}
+		return "changed their display name to " + to
+	}
+	changes, _ := e.Payload["changes"].(map[string]any)
+	if c, ok := changes["avatar"].(map[string]any); ok {
+		switch {
+		case c["to"] == nil:
+			return "removed their avatar"
+		case c["from"] == nil:
+			return "added an avatar"
+		}
+		return "changed their avatar"
+	}
+	return "updated their profile"
 }

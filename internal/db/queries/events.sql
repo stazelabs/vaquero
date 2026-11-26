@@ -5,7 +5,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq;
 -- name: ListEvents :many
 -- The activity feed, newest first. Reorders within a column are left out
 -- (they are still events, and still advance the sequence).
-SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
@@ -27,7 +27,7 @@ LIMIT ?;
 -- event_tickets' key), never a scan of events; a link never names its own
 -- ticket, and event_tickets never holds an event's own ticket, so no event
 -- comes twice.
-SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM (
@@ -62,7 +62,7 @@ SELECT CAST(coalesce(max(seq), 0) AS INTEGER) FROM events;
 -- name: ListEventsAfter :many
 -- Events after a sequence number, oldest first, for clients that poll;
 -- reorders left out, as on the activity feed.
-SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
@@ -77,7 +77,7 @@ LIMIT ?;
 -- name: ListEventsNewest :many
 -- The newest events, newest first (callers reverse them); reorders left
 -- out, as on the activity feed.
-SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.*, coalesce(nullif(a.display_name, ''), a.name) AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
 FROM events e
