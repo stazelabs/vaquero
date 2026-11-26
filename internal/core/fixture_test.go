@@ -26,6 +26,8 @@ type fixture struct {
 	Link      gen.TicketLink // T2 relates to T1
 	Token     gen.ApiToken   // the owner's, live
 	Bug, UI   gen.Tag        // T1's and T2's tags
+	// ProjectLink: VAQ relates to OTH.
+	ProjectLink gen.ProjectLink
 }
 
 func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
@@ -74,6 +76,8 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	f.Link, err = c.AddLink(ctx, owner.ID, f.T2.ID, "relates", core.TicketKey{Project: "VAQ", Number: 1})
 	must(err)
 	_, f.Token, err = c.CreateToken(ctx, owner.ID, owner.ID, "fixture")
+	must(err)
+	f.ProjectLink, err = c.AddProjectLink(ctx, owner.ID, f.Project.ID, "relates", "OTH")
 	must(err)
 	return c, d, f
 }

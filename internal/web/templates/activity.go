@@ -168,6 +168,16 @@ func EventSentence(e EventView) string {
 		return "restored project " + e.ProjectKey
 	case core.EvProjectDeleted:
 		return "deleted project " + s("key")
+	case core.EvProjectLinked, core.EvProjectUnlinked:
+		verb := "depends on"
+		if s("kind") == "relates" {
+			verb = "relates to"
+		}
+		said := e.ProjectKey + " " + verb + " " + s("to")
+		if e.Kind == core.EvProjectUnlinked {
+			return "removed the note that " + said
+		}
+		return "noted that " + said
 	case core.EvStatusCreated:
 		return fmt.Sprintf("added status %s to %s", s("name"), e.ProjectKey)
 	case core.EvStatusUpdated:
@@ -427,6 +437,7 @@ var eventIcons = map[string]string{
 	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved", core.EvTicketMoved: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
 	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+	core.EvProjectLinked: "link", core.EvProjectUnlinked: "delete",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
 	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
 }

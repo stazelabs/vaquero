@@ -223,7 +223,8 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 // tags, comments, plans (every revision) and links (including links from
 // other projects' tickets), its decisions with their tickets and approvals,
 // its icon, milestones, statuses and history, and the old keys of tickets
-// that moved in or out (VAQ-18). A ticket that moved away keeps its
+// that moved in or out (VAQ-18), and its project links either way round
+// (VAQ-119). A ticket that moved away keeps its
 // history: its events from its time here go with it to its project now.
 // confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
@@ -252,6 +253,7 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"decision tickets", q.DeleteProjectDecisionTickets},
 			{"decisions", q.DeleteProjectDecisions},
 			{"old keys", q.DeleteProjectOldKeys},
+			{"project links", q.DeleteProjectProjectLinks},
 			{"moved tickets' events", func(ctx context.Context, id string) error {
 				return q.RehomeMovedTicketEvents(ctx, nullString(id))
 			}},

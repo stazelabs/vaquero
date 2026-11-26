@@ -170,3 +170,21 @@ func TestMovedWording(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// VAQ-119: a project link reads as what it says about the two projects.
+func TestProjectLinkWording(t *testing.T) {
+	for _, tc := range []struct{ kind, link, want string }{
+		{core.EvProjectLinked, "depends on", "noted that VAQ depends on OTH"},
+		{core.EvProjectLinked, "relates", "noted that VAQ relates to OTH"},
+		{core.EvProjectUnlinked, "depends on", "removed the note that VAQ depends on OTH"},
+		{core.EvProjectUnlinked, "relates", "removed the note that VAQ relates to OTH"},
+	} {
+		e := EventView{Kind: tc.kind, ProjectKey: "VAQ", Payload: map[string]any{"kind": tc.link, "to": "OTH"}}
+		if got := EventSentence(e); got != tc.want {
+			t.Errorf("%s %s: %q", tc.kind, tc.link, got)
+		}
+	}
+	if EventIcon(core.EvProjectLinked) != "link" || EventIcon(core.EvProjectUnlinked) != "delete" {
+		t.Fatal("icon")
+	}
+}

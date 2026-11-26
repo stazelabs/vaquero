@@ -30,6 +30,9 @@ import (
 //   - link.*: {"link_id", "kind", "to": "VAQ-7", "to_id"}, the
 //     target ticket by id (migration 0008 gave older events theirs where
 //     it could be known; a ticket's history matches link events by to_id).
+//   - project.linked, project.unlinked: {"link_id", "kind", "to": "OTH",
+//     "to_id"}, on the link's from project: kind is "depends on" or
+//     "relates", to the other project's key then and to_id its id.
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
@@ -64,6 +67,8 @@ const (
 	EvProjectArchived   = "project.archived"
 	EvProjectRestored   = "project.restored"
 	EvProjectDeleted    = "project.deleted"
+	EvProjectLinked     = "project.linked"
+	EvProjectUnlinked   = "project.unlinked"
 	EvStatusCreated     = "status.created"
 	EvStatusUpdated     = "status.updated"
 	EvStatusMoved       = "status.moved"
@@ -149,6 +154,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 func EventKinds() []string {
 	return []string{
 		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored, EvProjectDeleted,
+		EvProjectLinked, EvProjectUnlinked,
 		EvStatusCreated, EvStatusUpdated, EvStatusMoved, EvStatusDeleted,
 		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
 		EvTicketCreated, EvTicketUpdated, EvTicketReordered,

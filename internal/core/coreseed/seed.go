@@ -113,6 +113,10 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if _, err := c.AddLink(ctx, by, done.ID, "duplicates", core.TicketKey{Project: "OLD", Number: 1}); err != nil {
 		return err
 	}
+	// A project link (VAQ-119).
+	if _, err := c.AddProjectLink(ctx, by, vaq.ID, "depends on", "OLD"); err != nil {
+		return err
+	}
 	// This release's event payloads: a description edit (body_before and
 	// body_after), a tag rename (ticket_ids) and a reorder.
 	body := "Everything **needed** for v0.1.0, and a checklist."
