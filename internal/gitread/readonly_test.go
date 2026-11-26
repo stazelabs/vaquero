@@ -51,6 +51,24 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		{"log", "--output", "/tmp/x"},
 		{"diff", "--output=x", "HEAD"},
 		{"diff", "--no-index", "/etc/passwd", "/dev/null"},
+		// diff, log and show without both guards: git's defaults run a
+		// repo's diff.external and textconv.
+		{"diff", "HEAD", "HEAD"},
+		{"diff", "--no-ext-diff", "HEAD", "HEAD"},
+		{"diff", "--no-textconv", "HEAD", "HEAD"},
+		{"log", "-p", "-1"},
+		{"log", "-p", "-1", "--no-ext-diff"},
+		{"show", "HEAD"},
+		{"show", "--no-textconv", "HEAD"},
+		// Paths outside the work tree make diff a no-index diff by itself.
+		{"diff", "--no-ext-diff", "--no-textconv", "/etc/hosts", "/dev/null"},
+		{"diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "/etc/hosts"},
+		{"diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "../x"},
+		{"log", "--no-ext-diff", "--no-textconv", "--end-of-options", "/etc/hosts"},
+		{"show", "--no-ext-diff", "--no-textconv", "HEAD:a.md"},
+		{"rev-parse", "--no-index"},
+		{"rev-parse", "--", "--no-index"},
+		{"log", "--no-ext-diff", "--no-textconv", "--", "--no-index"},
 		{"show", "--output=x"},
 		{"rev-list", "--output=x", "HEAD"},
 		{"log", "-o", "x"},
@@ -76,6 +94,12 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 	if _, err := gitread.RunRaw(rs, ctx, r.Dir, argv); !errors.Is(err, gitread.ErrRefused) {
 		t.Errorf("extra -c: %v", err)
 	}
+	// The user's credential.helper reads run only from Fetch.
+	for _, read := range gitread.HelperReads {
+		if _, err := gitread.RunRaw(rs, ctx, "/", read); !errors.Is(err, gitread.ErrRefused) {
+			t.Errorf("git %q outside Fetch: %v", read, err)
+		}
+	}
 	if n := len(rec.Calls()); n != 0 {
 		t.Fatalf("%d refused commands reached git: %q", n, rec.Calls())
 	}
@@ -85,7 +109,10 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		{"tag", "--list"},
 		{"remote"},
 		{"remote", "get-url", "origin"},
-		{"log", "-1", "--format=%H"},
+		{"log", "-1", "--format=%H", "--no-ext-diff", "--no-textconv"},
+		{"diff", "--no-ext-diff", "--no-textconv", "HEAD", "HEAD", "--", "a.md"},
+		{"diff", "--no-ext-diff", "--no-textconv", "--end-of-options", "HEAD..HEAD", "--"},
+		{"show", "--no-ext-diff", "--no-textconv", "--format=", "HEAD"},
 	} {
 		if _, err := gitread.RunCommand(rs, ctx, r.Dir, args[0], args[1:]...); err != nil {
 			t.Errorf("git %q: %v", args, err)

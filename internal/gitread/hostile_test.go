@@ -60,6 +60,10 @@ func arm(t *testing.T, r *gittest.R, tr trap) {
 		}
 	}
 	s := tr.script
+	signers := filepath.Join(t.TempDir(), "allowed_signers")
+	if err := os.WriteFile(signers, []byte("a@example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	for _, kv := range [][2]string{
 		{"core.fsmonitor", s},
 		{"core.pager", s},
@@ -81,6 +85,8 @@ func arm(t *testing.T, r *gittest.R, tr trap) {
 		{"log.showSignature", "true"},
 		{"gpg.program", s},
 		{"gpg.ssh.program", s},
+		{"gpg.x509.program", s},
+		{"gpg.ssh.allowedSignersFile", signers},
 		{"credential.helper", "!" + s},
 		{"remote.origin.uploadpack", s},
 		{"protocol.ext.allow", "always"},
@@ -174,6 +180,33 @@ func TestHostileRepoConfig(t *testing.T) {
 	check("RemoteURL", err)
 	g.LastFetch()
 	check("LastFetch", nil)
+	// Diffs as later reads will run them: the guards keep the repo's
+	// diff.external, diff driver and textconv from running.
+	head := r.Head()
+	for _, args := range [][]string{
+		{"diff", "--no-ext-diff", "--no-textconv", "--stat", c, head, "--"},
+		{"diff", "--no-ext-diff", "--no-textconv", c, head, "--", "docs/a.md"},
+		{"log", "-p", "--no-ext-diff", "--no-textconv", "--no-show-signature", "-2"},
+		{"show", "--no-ext-diff", "--no-textconv", "--no-show-signature", head},
+	} {
+		_, err := gitread.RunCommand(rs, ctx, g.Path, args[0], args[1:]...)
+		check("git "+strings.Join(args, " "), err)
+	}
+	// Signed commits, one per signature program: a format atom that
+	// verifies a signature runs gpg.program, gpg.ssh.program or
+	// gpg.x509.program unless the guards override them.
+	for _, armor := range []string{"PGP SIGNATURE", "SSH SIGNATURE", "SIGNED MESSAGE"} {
+		signed := signedCommit(t, r, armor)
+		r.Try("log", "-1", "--format=%G?", signed)
+		if tr.sprung() == "" {
+			t.Fatalf("the trap didn't spring for a plain signature check of a %s", armor)
+		}
+		tr.reset(t)
+		for _, format := range []string{"--format=%G?", "--format=%GG", "--format=%GS"} {
+			gitread.RunCommand(rs, ctx, g.Path, "log", "-1", "--no-ext-diff", "--no-textconv", "--no-show-signature", format, signed)
+			check("git log "+format+" of a "+armor, nil)
+		}
+	}
 	// O-R6: no read touches the network.
 	if n := rec.Count("fetch"); n != 0 {
 		t.Fatalf("%d fetches among the reads", n)
@@ -234,6 +267,11 @@ func TestHostileRepoConfig(t *testing.T) {
 // hardened checks one command carries every guard.
 func hardened(t *testing.T, args []string) {
 	t.Helper()
+	for _, read := range gitread.HelperReads {
+		if slices.Equal(args, read) {
+			return // the fixed read of the user's own credential.helper
+		}
+	}
 	if len(args) < 2 || args[0] != "-C" {
 		t.Fatalf("not git -C: %q", args)
 	}
@@ -244,9 +282,13 @@ func hardened(t *testing.T, args []string) {
 	}
 	switch sub := gitread.Subcommand(args); sub {
 	case "log", "show", "diff":
-		for _, want := range []string{"--no-textconv", "--no-ext-diff", "--no-show-signature"} {
-			if !slices.Contains(args, want) {
-				t.Errorf("%s missing from git %s: %q", want, sub, args)
+		want := []string{"--no-textconv", "--no-ext-diff"}
+		if sub != "diff" {
+			want = append(want, "--no-show-signature")
+		}
+		for _, w := range want {
+			if !slices.Contains(args, w) {
+				t.Errorf("%s missing from git %s: %q", w, sub, args)
 			}
 		}
 	case "":
@@ -312,4 +354,20 @@ func TestCommandEnvironment(t *testing.T) {
 	if !sawFetch {
 		t.Fatal("no fetch recorded")
 	}
+}
+
+// signedCommit writes a commit object carrying a (fake) signature in
+// armor ("PGP SIGNATURE", "SSH SIGNATURE" or "SIGNED MESSAGE", which pick
+// gpg.program, gpg.ssh.program or gpg.x509.program) and returns its hash.
+func signedCommit(t *testing.T, r *gittest.R, armor string) string {
+	t.Helper()
+	tree := r.Git("rev-parse", "HEAD^{tree}")
+	obj := "tree " + tree + "\nparent " + r.Head() + "\n" +
+		"author A <a@example.com> 1795708800 +0000\ncommitter A <a@example.com> 1795708800 +0000\n" +
+		"gpgsig -----BEGIN " + armor + "-----\n \n iQEzBAABCAAdFiEE\n -----END " + armor + "-----\n\nsigned " + armor + "\n"
+	path := filepath.Join(t.TempDir(), "commit")
+	if err := os.WriteFile(path, []byte(obj), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return r.Git("hash-object", "-t", "commit", "-w", path)
 }

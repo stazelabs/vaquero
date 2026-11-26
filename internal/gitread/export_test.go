@@ -14,4 +14,7 @@ func RunRaw(r *Repos, ctx context.Context, dir string, argv []string) ([]byte, e
 }
 
 // Prefix is the guard arguments every command starts with.
-func Prefix(r *Repos, dir string) []string { return r.prefix(dir) }
+func Prefix(r *Repos, dir string) []string { return r.prefix(dir, nil) }
+
+// HelperReads are the two fixed config reads Fetch runs.
+var HelperReads = helperReads

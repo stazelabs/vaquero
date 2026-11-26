@@ -67,19 +67,20 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 	if remote != "" && !validRemote(remote) {
 		return nil, fmt.Errorf("%w: remote %q", ErrInvalid, remote)
 	}
-	g := &Repo{Path: path, Main: mainBranch, repos: r}
-	out, err := g.git(ctx, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir")
+	g := &Repo{Path: filepath.Clean(path), Main: mainBranch, repos: r}
+	out, err := g.git(ctx, "rev-parse", "--is-inside-work-tree", "--absolute-git-dir", "--show-toplevel", "--show-prefix")
 	if err != nil {
 		if errors.Is(err, ErrNoGit) {
 			return nil, err
 		}
 		return nil, fmt.Errorf("%w: %w", ErrNotRepo, err)
 	}
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	if len(lines) != 2 || lines[0] != "true" {
+	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(lines) != 4 || lines[0] != "true" || lines[2] == "" {
 		return nil, ErrNotRepo
 	}
 	g.gitDir = lines[1]
+	g.Path = workTreeRoot(g.Path, lines[2], lines[3])
 	remotes, err := g.Remotes(ctx)
 	if err != nil {
 		return nil, err
@@ -91,6 +92,21 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 		g.Remote = "origin"
 	}
 	return g, nil
+}
+
+// workTreeRoot is the work tree's root for a path inside it: the path as
+// given, less its prefix (rev-parse --show-prefix), so the root keeps the
+// spelling the owner typed; else git's toplevel (symlinks resolved).
+// Every read is relative to the root.
+func workTreeRoot(path, toplevel, prefix string) string {
+	prefix = strings.TrimSuffix(prefix, "/")
+	if prefix == "" {
+		return path
+	}
+	if root, ok := strings.CutSuffix(path, "/"+prefix); ok && root != "" {
+		return root
+	}
+	return toplevel
 }
 
 // git runs a read in the repo.

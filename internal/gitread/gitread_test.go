@@ -111,10 +111,49 @@ func TestOpen(t *testing.T) {
 	if err != nil || !slices.Equal(remotes, []string{"origin", "upstream"}) {
 		t.Fatalf("remotes %v %v", remotes, err)
 	}
-	sub := r.Dir + "/sub"
-	r.Write("sub/x.md", "x")
-	if g, err = rs.Open(ctx, sub, "main", ""); err != nil || g.Path != sub {
-		t.Fatalf("a directory inside the work tree: %+v %v", g, err)
+}
+
+// A repo path inside a work tree opens at the root, and every read takes
+// paths from there.
+func TestOpenSubdirectory(t *testing.T) {
+	r := gittest.Repo(t)
+	r.Write("sub/deep/x.md", "x\n")
+	c := r.WriteCommit("docs/a.md", "a\n", "one")
+	r.WriteCommit("docs/a.md", "a2\n", "two")
+	rs := gitread.New()
+	ctx := t.Context()
+	for _, dir := range []string{r.Dir + "/sub", r.Dir + "/sub/deep", r.Dir + "/sub/", r.Dir} {
+		g, err := rs.Open(ctx, dir, "main", "")
+		if err != nil || g.Path != r.Dir {
+			t.Fatalf("Open(%s) = %+v, %v; want the root %s", dir, g, err, r.Dir)
+		}
+		f, err := g.Show(ctx, "main", "docs/a.md")
+		if err != nil || f.Text != "a2\n" {
+			t.Fatalf("%s: Show %+v %v", dir, f, err)
+		}
+		blob, err := g.Blob(ctx, "main", "docs/a.md")
+		if err != nil || blob != f.Blob {
+			t.Fatalf("%s: Blob %q %v", dir, blob, err)
+		}
+		log, err := g.PathLog(ctx, "docs/a.md", c, 10)
+		if err != nil || len(log) != 1 || log[0].Subject != "two" {
+			t.Fatalf("%s: PathLog %+v %v", dir, log, err)
+		}
+		if cur, gone, err := g.Follow(ctx, "sub/deep/x.md", c); err != nil || gone || cur != "sub/deep/x.md" {
+			t.Fatalf("%s: Follow %q %v %v", dir, cur, gone, err)
+		}
+	}
+	// diff.relative in the repo's config doesn't make paths relative to
+	// the directory opened.
+	r.Git("config", "diff.relative", "true")
+	r.Rename("sub/deep/x.md", "sub/deep/y.md")
+	r.Commit("rename x")
+	g, err := rs.Open(ctx, r.Dir+"/sub", "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cur, gone, err := g.Follow(ctx, "sub/deep/x.md", c); err != nil || gone || cur != "sub/deep/y.md" {
+		t.Fatalf("Follow under diff.relative: %q %v %v", cur, gone, err)
 	}
 }
 
@@ -313,8 +352,13 @@ func TestFirstTagContaining(t *testing.T) {
 	c2 := r.WriteCommit("a", "2", "two")
 	r.Tag("v0.1.10")
 	c3 := r.WriteCommit("a", "3", "three")
+	r.Tag("v0.2.0")
+	// A repo that lays out listings in columns still gives one tag.
+	r.Git("config", "column.ui", "always")
+	r.Git("config", "color.ui", "always")
+	c4 := r.WriteCommit("a", "4", "four")
 	_, g := open(t, r)
-	for c, want := range map[string]string{c1: "v0.1.9", c2: "v0.1.10", c3: ""} {
+	for c, want := range map[string]string{c1: "v0.1.9", c2: "v0.1.10", c3: "v0.2.0", c4: ""} {
 		got, err := g.FirstTagContaining(t.Context(), c)
 		if err != nil || got != want {
 			t.Errorf("FirstTagContaining(%s) = %q, %v; want %q", c[:7], got, err, want)

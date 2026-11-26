@@ -3,6 +3,7 @@ package gitread
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Fetch updates the remote's branches and tags in Vaquero's view, the one
@@ -16,7 +17,19 @@ import (
 // program a local remote runs). Local branches, local tags and the work tree
 // are never touched: the remote's tags land in refs/vaquero/remote-tags/,
 // so RemoteTag is exact as of the last fetch Vaquero ran. The remote's URL
-// must be one fetchable accepts. One fetch per repo runs at a time; a
+// must be one fetchable accepts.
+//
+// Credentials: the repo's own credential.helper never runs (every command
+// resets the list with -c credential.helper=). Fetch then re-adds the
+// user's helpers, read with git config --system --get-all
+// credential.helper and git config --global --get-all credential.helper
+// (from /, never --local, so no repo config or include is read), as
+// -c credential.helper=<value> after the reset, in git's own order (system,
+// then global; an empty value resets the list, as in git); with
+// credential.interactive=never, GIT_TERMINAL_PROMPT=0 and an empty askpass
+// nothing ever prompts. So a private https remote fetches with the user's
+// keychain helper, and a repo can't add a program of its own.
+// One fetch per repo runs at a time; a
 // second caller waits for it and gets its answer. ErrNoRemote when the repo
 // has none.
 func (g *Repo) Fetch(ctx context.Context) error {
@@ -61,6 +74,9 @@ func (g *Repo) fetch(ctx context.Context) error {
 	}
 	rm := g.Remote
 	ctx = context.WithValue(ctx, fetchKey{}, true)
+	if helpers := g.repos.userHelpers(ctx); len(helpers) > 0 {
+		ctx = context.WithValue(ctx, helpersKey{}, helpers)
+	}
 	_, err = g.repos.call(ctx, g.Path, "fetch", []string{
 		"--prune", "--no-tags", "--quiet",
 		"--no-recurse-submodules", "--no-write-commit-graph", "--no-auto-maintenance",
@@ -78,3 +94,28 @@ func (r *Repos) hasFetched(path, remote string) bool {
 	defer r.mu.Unlock()
 	return r.fetched[path+"\x00"+remote]
 }
+
+// userHelpers is the user's credential.helper values in git's order:
+// system config, then global, each in its file's order, an empty value
+// resetting the list. A read that fails adds none (no helper is safe: the
+// fetch then just can't authenticate).
+func (r *Repos) userHelpers(ctx context.Context) []string {
+	var out []string
+	for _, read := range [][]string{helperReads[1], helperReads[0]} {
+		b, err := r.run(ctx, "/", read, maxHelpers)
+		if err != nil {
+			continue
+		}
+		for line := range strings.SplitSeq(strings.TrimSuffix(string(b), "\n"), "\n") {
+			if line == "" {
+				out = nil
+				continue
+			}
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// maxHelpers bounds the helper config read.
+const maxHelpers = 64 << 10

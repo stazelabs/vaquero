@@ -5,11 +5,13 @@
 //
 // The repository's content and its own config are untrusted. Every command
 // is git -C {repo} with guard options that turn off what a repo's config
-// could make git run: core.fsmonitor, hooks, pagers, credential helpers,
-// askpass, external diff and textconv drivers, signature checks, the
-// alternate refs command, cookie files, automatic gc and maintenance,
-// submodule recursion and every transport but file, http, https and ssh
-// (guardConfig, guardOptions). The environment is the server's without any
+// could make git run: core.fsmonitor, hooks, pagers, the repo's credential
+// helpers (Fetch re-adds the user's own, from global and system config
+// only), askpass, signature programs (gpg.program, gpg.ssh.program,
+// gpg.x509.program), the alternate refs command, cookie files, automatic gc
+// and maintenance, submodule recursion and every transport but file, http,
+// https and ssh; it also fixes what would change the output's shape
+// (column.ui, color.ui, diff.relative) (guardConfig, guardOptions). The environment is the server's without any
 // GIT_ variable or SSH_ASKPASS, plus GIT_TERMINAL_PROMPT=0,
 // GIT_OPTIONAL_LOCKS=0, GIT_PAGER=cat and LC_ALL=C; fetch alone adds
 // GIT_SSH_COMMAND="ssh -o BatchMode=yes", so a remote that wants a password
@@ -20,9 +22,16 @@
 // Only these subcommands run (Allowed): rev-parse, show, cat-file, log,
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
 // the list and get-url) and diff, which read; and fetch, which only Fetch
-// runs. No option that writes a file (--output), reads outside the repo
-// (diff --no-index) or applies a repo's drivers (--textconv, --filters,
-// --ext-diff) passes. Fetch is the one
+// runs, with the two fixed reads of the user's credential.helper (git
+// config --global and --system --get-all credential.helper, never the
+// repo's). diff, log and show run only with --no-ext-diff and
+// --no-textconv (both on by default in git, so a repo's diff.external or
+// textconv would run), and their positional arguments must be revisions,
+// with paths only after "--" and each a ValidPath (two paths outside the
+// work tree would turn diff into --no-index by itself). No option that
+// writes a file (--output), reads outside the repo (--no-index, anywhere)
+// or applies a repo's drivers (--textconv, --filters, --ext-diff) passes.
+// Fetch is the one
 // command that touches the network and the one that writes: remote-tracking
 // refs under refs/remotes/{remote}/ and the remote's tags under
 // refs/vaquero/remote-tags/{remote}/, never local branches, local tags or
@@ -142,11 +151,18 @@ var guardConfig = []string{
 	"core.hooksPath=/dev/null",
 	"credential.interactive=never",
 	"credential.helper=",
+	// Fetch's user helpers go here (prefix).
 	"core.askPass=",
 	"core.pager=cat",
 	"core.alternateRefsCommand=true",
 	"core.untrackedCache=false",
 	"log.showSignature=false",
+	"gpg.program=false",
+	"gpg.ssh.program=false",
+	"gpg.x509.program=false",
+	"column.ui=never",
+	"color.ui=never",
+	"diff.relative=false",
 	"http.saveCookies=false",
 	"http.cookieFile=",
 	"gc.auto=0",
@@ -167,14 +183,38 @@ var guardConfig = []string{
 // guardOptions follow the -c options, before the subcommand.
 var guardOptions = []string{"--no-pager", "--literal-pathspecs", "--no-replace-objects", "--no-optional-locks"}
 
-// prefix is every command's start: -C dir and the guards.
-func (r *Repos) prefix(dir string) []string {
+// prefix is every command's start: -C dir and the guards, with helpers
+// (Fetch's user credential helpers) right after the credential.helper reset.
+func (r *Repos) prefix(dir string, helpers []string) []string {
 	out := []string{"-C", dir}
 	for _, c := range guardConfig {
 		out = append(out, "-c", c)
+		if c == "credential.helper=" {
+			for _, h := range helpers {
+				out = append(out, "-c", "credential.helper="+h)
+			}
+		}
 	}
 	return append(out, guardOptions...)
 }
+
+// helpersKey carries Fetch's user credential helpers on its context.
+type helpersKey struct{}
+
+func helpersFrom(ctx context.Context) []string {
+	h, _ := ctx.Value(helpersKey{}).([]string)
+	return h
+}
+
+// helperReads are the only config commands: the user's credential.helper
+// from global and system config, run from / so no repo is in view.
+var helperReads = [][]string{
+	{"-C", "/", "--no-pager", "config", "--global", "--get-all", "credential.helper"},
+	{"-C", "/", "--no-pager", "config", "--system", "--get-all", "credential.helper"},
+}
+
+// diffLike run only with --no-ext-diff and --no-textconv.
+var diffLike = []string{"diff", "log", "show"}
 
 // Subcommand is the git subcommand in args (everything after "git"): the
 // first argument that isn't a global option or an option's value.
@@ -205,13 +245,33 @@ type fetchKey struct{}
 // prefix, then an allowed subcommand, then arguments that neither write
 // nor apply a repo's drivers.
 func (r *Repos) check(ctx context.Context, dir string, args []string) error {
-	pre := r.prefix(dir)
+	for _, read := range helperReads {
+		if slices.Equal(args, read) {
+			if ctx.Value(fetchKey{}) == nil {
+				return fmt.Errorf("%w: git config runs only from Fetch", ErrRefused)
+			}
+			return nil
+		}
+	}
+	helpers := helpersFrom(ctx)
+	if len(helpers) > 0 && ctx.Value(fetchKey{}) == nil {
+		return fmt.Errorf("%w: credential helpers only for Fetch", ErrRefused)
+	}
+	pre := r.prefix(dir, helpers)
 	if len(args) <= len(pre) || !slices.Equal(args[:len(pre)], pre) {
 		return fmt.Errorf("%w: missing the guard options", ErrRefused)
 	}
 	sub, rest := args[len(pre)], args[len(pre)+1:]
 	if !slices.Contains(allowed, sub) {
 		return fmt.Errorf("%w: %q", ErrRefused, sub)
+	}
+	if slices.Contains(rest, "--no-index") {
+		return fmt.Errorf("%w: git %s --no-index", ErrRefused, sub)
+	}
+	if slices.Contains(diffLike, sub) {
+		if err := checkDiffLike(sub, rest); err != nil {
+			return err
+		}
 	}
 	for _, a := range rest {
 		if a == "--" || a == "--end-of-options" {
@@ -244,6 +304,48 @@ func (r *Repos) check(ctx context.Context, dir string, args []string) error {
 	return nil
 }
 
+// checkDiffLike holds diff, log and show to --no-ext-diff and
+// --no-textconv, revisions as positional arguments, and ValidPaths after
+// "--".
+func checkDiffLike(sub string, rest []string) error {
+	opts, paths := true, false
+	var ext, tc bool
+	for _, a := range rest {
+		switch {
+		case paths:
+			if !ValidPath(a) {
+				return fmt.Errorf("%w: git %s path %q", ErrRefused, sub, a)
+			}
+		case a == "--":
+			paths = true
+		case a == "--end-of-options":
+			opts = false
+		case opts && strings.HasPrefix(a, "-"):
+			ext = ext || a == "--no-ext-diff"
+			tc = tc || a == "--no-textconv"
+		default:
+			if !revArg(a) {
+				return fmt.Errorf("%w: git %s argument %q", ErrRefused, sub, a)
+			}
+		}
+	}
+	if !ext || !tc {
+		return fmt.Errorf("%w: git %s without --no-ext-diff and --no-textconv", ErrRefused, sub)
+	}
+	return nil
+}
+
+// revArg is a revision argument: a ValidRev, ^rev, or rev..rev / rev...rev.
+func revArg(a string) bool {
+	a = strings.TrimPrefix(a, "^")
+	for _, sep := range []string{"...", ".."} {
+		if l, r, ok := strings.Cut(a, sep); ok {
+			return ValidRev(l) && ValidRev(r)
+		}
+	}
+	return ValidRev(a)
+}
+
 // environ is the server's environment without any GIT_ variable or
 // SSH_ASKPASS, plus the guards; fetch adds GIT_SSH_COMMAND.
 func environ(fetch bool) []string {
@@ -264,7 +366,7 @@ func environ(fetch bool) []string {
 
 // call runs git sub args in dir with the guards.
 func (r *Repos) call(ctx context.Context, dir, sub string, args []string, limit int) ([]byte, error) {
-	return r.run(ctx, dir, append(append(r.prefix(dir), sub), args...), limit)
+	return r.run(ctx, dir, append(append(r.prefix(dir, helpersFrom(ctx)), sub), args...), limit)
 }
 
 // run checks args, then runs them through the runner and its wrappers,
