@@ -43,6 +43,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `move_ticket` | `key`, `status` |
 | `add_comment` | `key`, `body` |
 | `get_plan` | A ticket's [plan](/help/agent-workflow#plans): `key`, optionally `revision` for an earlier one |
+| `read_file` | A file in the project's [repository](/help/repositories#reading-files-and-commits): `project`, `path`, optionally `at` (a branch, tag or commit hash; the main branch when left out). Answers the same as `GET /api/v1/projects/{key}/files/{path}`; use it to read a ticket's references |
 | `save_plan` | Write or revise a plan: `key`, `body` (the whole text) and `revision`, the one you read (leave it out only for a ticket's first plan); a stale revision is refused |
 | `ask_decision` | Park a [decision](/help/agent-workflow#decisions): `project`, `kind` (`question`, `approval` or `ruling`), `question`, and optionally `tickets`, `subject` (an approval's `plan`, `merge` or `release`), `options` (each a `label` and `tradeoff`), `recommendation`, `why` and `run`. A ruling is your own call, recorded answered: give `answer` (an option's label, or words) and `note` |
 | `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted. The answer is recorded as relayed by the agent `vaquero mcp --agent NAME` (or `Vaquero-Agent`) names; without an agent, or without `words`, it is refused. An agent never answers as itself |

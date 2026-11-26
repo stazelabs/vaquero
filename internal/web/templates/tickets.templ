@@ -80,6 +80,7 @@ type TicketView struct {
 	Subs                      []TicketRef
 	Links                     []LinkGroup
 	References                []RefRow // the section shows only when there are some
+	Commits                   CommitsView
 	Comments                  []CommentRow
 	Attachments               []AttachmentRow
 	Plan                      *PlanView // nil when the ticket has no plan
@@ -269,6 +270,7 @@ templ TicketPage(v TicketView) {
 						</ul>
 					</section>
 				}
+				@CommitsSection(v.Commits)
 				<section id="attachments" hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#attachments" hx-swap="outerHTML" data-live>
 					<h2 class={ h2IconClass }>
 						@Icon("attachment")

@@ -29,9 +29,17 @@ The ticket page lists them under References: a repo path opens the file view, a 
 
 From the command line, `vaquero ref add TICKET KIND TARGET --anchor A --label L` and `vaquero ref remove TICKET ID`; `vaquero ticket show` lists a ticket's references with their ids. Agents use the `add_reference` and `remove_reference` [tools](/help/mcp). The [API](/help/api) has `POST /api/v1/tickets/{ticket}/refs` and `DELETE /api/v1/tickets/{ticket}/refs/{id}`, and a ticket's answer has `references`.
 
+## Reading files and commits
+
+A repo path reference opens the file view, `/p/{key}/files/{path}`: the file as it is on the main branch, or at a branch, tag or commit hash with `?at=`. A Markdown file (`.md`, `.markdown`) is rendered the same safe way as a ticket's description; anything else is shown as plain text. Files over 512 KiB, and files that aren't text, aren't shown. A path or revision that could make git do something other than read (`..`, a leading `-`, `HEAD@{1}` and the like) is refused before git runs.
+
+A ticket's page lists its commits under Commits: the commits on the main branch whose message names the ticket in parentheses, `(VAQ-12)` but not `(VAQ-123)`, newest first, at most 50, with the lines they added and removed, the files they touched, and the first release tag that contains them. A ticket moved from another project keeps the commits made under its old key. The list is read after the page loads, so a slow repository never holds the page up.
+
+From the command line, `vaquero file KEY PATH --at REV` prints a file and `vaquero commits TICKET` lists the commits. Agents read files with the `read_file` [tool](/help/mcp). The [API](/help/api) has `GET /api/v1/projects/{key}/files/{path}`, `GET /api/v1/tickets/{ticket}/commits` and `GET /api/v1/projects/{key}/repo/status`, which compares the main branch and the local branches with the remote's as of the last fetch, without contacting it.
+
 ## When git is missing
 
-Without git installed, the section says "Git isn't installed, so repository features are off." and its fields are disabled. Nothing else in Vaquero depends on git.
+Without git installed, the section says "Git isn't installed, so repository features are off." and its fields are disabled, and the file view and a ticket's Commits say "Git isn't installed." Nothing else in Vaquero depends on git.
 
 ## What stays local
 

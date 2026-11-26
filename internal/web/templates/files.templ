@@ -1,0 +1,196 @@
+package templates
+
+import (
+	"html/template"
+	"strconv"
+
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+// FileView is the file view (/p/{key}/files/{path}): a repo file at main,
+// or at a revision. The repo's content is untrusted: Markdown is rendered
+// through internal/markdown into Body, anything else is Text, escaped in a
+// <pre>. Problem replaces the file when it can't be shown (no repository,
+// no git, no such file).
+type FileView struct {
+	Project   gen.Project
+	Path      string
+	At        string // "" for main
+	Main      string // the main branch's name
+	MainURL   string // this file at main
+	Problem   string
+	Body      template.HTML // a Markdown file, rendered
+	Text      string        // any other text file
+	Markdown  bool
+	TooLarge  bool
+	Binary    bool
+	Size      string
+	// Since is how the file stands against a ticket's approval, for the
+	// view opened from a reference (?ref=ID); nil when not asked. The
+	// approval pins fill it.
+	Since *FileSince
+}
+
+// FileSince is a file against the version an approval pinned: State is
+// "changed" (DiffURL reads the diff when opened), "renamed" (to NewPath)
+// or "gone".
+type FileSince struct {
+	State, NewPath, DiffURL string
+}
+
+// FilePage shows one repo file.
+templ FilePage(v FileView) {
+	@Shell(v.Path + " · " + v.Project.Key) {
+		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(v.Project), "sm")
+			<span><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / files</span>
+		</p>
+		<h1 data-file-path class={ h1Class + " flex min-w-0 items-start gap-2 font-mono text-xl break-all" }>
+			<span class="mt-1 text-muted">
+				@Icon("file")
+			</span>
+			<span class="min-w-0">{ v.Path }</span>
+		</h1>
+		<p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+			if v.At == "" {
+				<span>
+					On <span class="font-mono">{ v.Main }</span>
+				</span>
+			} else {
+				<span class="min-w-0 break-all">
+					At <span class="font-mono">{ v.At }</span>
+				</span>
+				<span aria-hidden="true">·</span>
+				<a href={ templ.SafeURL(v.MainURL) } class={ btnLink }>Show on { v.Main }</a>
+			}
+			if v.Problem == "" && v.Size != "" {
+				<span aria-hidden="true">·</span>
+				<span>{ v.Size }</span>
+			}
+		</p>
+		@fileSince(v.Since)
+		<div class="mt-6">
+			if v.Problem != "" {
+				@emptyState("file", v.Problem)
+			} else if v.TooLarge {
+				@emptyState("file", "This file is too large to show ("+v.Size+"). Open it in the repository instead.")
+			} else if v.Binary {
+				@emptyState("file", "This file isn't text, so it isn't shown.")
+			} else if v.Markdown {
+				<article data-file-body class={ panelClass + " min-w-0 " + proseClass }>
+					@templ.Raw(string(v.Body))
+				</article>
+			} else {
+				<pre data-file-body class="overflow-x-auto rounded-lg border border-line bg-paper-alt p-4 font-mono text-xs leading-relaxed text-ink">{ v.Text }</pre>
+			}
+		</div>
+	}
+}
+
+// fileSince is the note on a file opened from an approved ticket's
+// reference, when it changed since.
+templ fileSince(s *FileSince) {
+	if s != nil {
+		<div data-file-since class="mt-4 flex flex-wrap items-center gap-x-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink" role="status">
+			switch s.State {
+				case "changed":
+					<span>Changed since approval</span>
+					if s.DiffURL != "" {
+						<a href={ templ.SafeURL(s.DiffURL) } class={ btnLink }>Show changes</a>
+					}
+				case "renamed":
+					<span class="min-w-0 break-all">Renamed to { s.NewPath } since approval</span>
+				case "gone":
+					<span>Removed from main since approval</span>
+			}
+		</div>
+	}
+}
+
+// CommitsView is a ticket's commits on main, for its page: Lazy (the page
+// itself) asks for them once loaded, from URL; the fragment fills the rest.
+// Problem replaces the list when there's no repository or no git.
+type CommitsView struct {
+	Key, ProjectKey string
+	Lazy            bool
+	URL             string
+	Problem         string
+	Commits         []CommitRow
+	Added, Removed  int
+	Files           []CommitFile
+	Released        string
+}
+
+// CommitRow is one commit in the list.
+type CommitRow struct {
+	Short, Subject, Author, Ago string
+}
+
+// CommitFile is a file the commits touched, linking to the file view.
+type CommitFile struct {
+	Path, URL string
+}
+
+// CommitsSection is the ticket page's Commits section, and the fragment
+// GET /t/{ticket}/commits answers.
+templ CommitsSection(v CommitsView) {
+	if v.Lazy {
+		<section id="commits" hx-get={ v.URL } hx-trigger="load" hx-swap="outerHTML">
+			@commitsHeading()
+			<p class="mt-2 text-sm text-muted">Reading commits…</p>
+		</section>
+	} else {
+		<section id="commits">
+			@commitsHeading()
+			if v.Problem != "" {
+				<p class="mt-2 text-sm text-muted">{ v.Problem }</p>
+			} else if len(v.Commits) == 0 {
+				<p class="mt-2 text-sm text-muted">No commits mention { v.Key } on main.</p>
+			} else {
+				<p data-diffstat class="mt-2 flex flex-wrap items-center gap-x-2 text-sm text-muted">
+					<span class="font-mono text-ink">+{ strconv.Itoa(v.Added) }</span>
+					<span class="font-mono text-ink">−{ strconv.Itoa(v.Removed) }</span>
+					<span>in { filesWord(len(v.Files)) }</span>
+					if v.Released != "" {
+						<span aria-hidden="true">·</span>
+						<span>{ "Released in " + v.Released }</span>
+					}
+				</p>
+				<ul class="mt-2 space-y-1">
+					for _, c := range v.Commits {
+						<li class="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
+							<span class="font-mono text-xs text-muted">{ c.Short }</span>
+							<span class="min-w-0 wrap-anywhere text-ink">{ c.Subject }</span>
+							<span class="text-xs text-muted">{ c.Author } · { c.Ago }</span>
+						</li>
+					}
+				</ul>
+				<details class="mt-2 text-sm">
+					<summary class="cursor-pointer text-muted hover:text-accent">Files</summary>
+					<ul class="mt-1 space-y-1">
+						for _, f := range v.Files {
+							<li class="min-w-0 break-all font-mono text-xs">
+								<a href={ templ.SafeURL(f.URL) } class="hover:text-accent">{ f.Path }</a>
+							</li>
+						}
+					</ul>
+				</details>
+			}
+		</section>
+	}
+}
+
+templ commitsHeading() {
+	<h2 class={ h2IconClass }>
+		@Icon("commit")
+		Commits
+	</h2>
+}
+
+// filesWord is "1 file", "2 files".
+func filesWord(n int) string {
+	if n == 1 {
+		return "1 file"
+	}
+	return strconv.Itoa(n) + " files"
+}

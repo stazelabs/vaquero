@@ -195,6 +195,12 @@ type (
 		Limit   int64  `json:"limit,omitempty" jsonschema:"At most this many, up to 500. Leave it out for 100."`
 	}
 
+	readFileArgs struct {
+		Project string `json:"project" jsonschema:"The project's key, such as VAQ."`
+		Path    string `json:"path" jsonschema:"The file's path in the project's repository, such as docs/design.md."`
+		At      string `json:"at,omitempty" jsonschema:"A branch, tag or commit hash to read it at. Leave it out for the main branch."`
+	}
+
 	releaseArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
@@ -204,7 +210,7 @@ type (
 // toolNames is every tool, sorted.
 var toolNames = []string{
 	"add_comment", "add_reference", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
-	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket",
+	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "release_ticket",
 	"remove_reference", "save_plan", "search", "update_ticket",
 }
 
@@ -264,6 +270,15 @@ func addTools(s *mcp.Server, c *caller) {
 				return get(ticketPath(in.Key, "/plan/revisions/"+strconv.FormatInt(in.Revision, 10)), nil)
 			}
 			return get(ticketPath(in.Key, "/plan"), nil)
+		})
+	add(s, c, "read_file", "Read a repository file", true,
+		"A file in the project's repository, at the main branch or at a revision: its path, the revision, blob id, size and text (left out when it is too large, over 512 KiB, or isn't text). Use it to read a ticket's references.",
+		func(in readFileArgs) request {
+			var q url.Values
+			if in.At != "" {
+				q = url.Values{"at": {in.At}}
+			}
+			return get("/projects/"+url.PathEscape(in.Project)+"/files/"+(&url.URL{Path: in.Path}).EscapedPath(), q)
 		})
 	add(s, c, "list_decisions", "List decisions", true,
 		"Questions, rulings and approvals, newest first, each with its options, state, answer (direct from the owner or relayed), and for an approved plan the approvals it pinned.",

@@ -43,6 +43,8 @@ tickets:
   link         link two tickets (blocks, relates, duplicates)
   unlink       remove the links between two tickets
   ref          add or remove a ticket's references
+  file         print a file from a project's repository
+  commits      list the commits on main that name a ticket
   attach       attach files to a ticket
   attachments  list a ticket's files
   detach       remove an attachment

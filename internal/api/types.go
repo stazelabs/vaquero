@@ -206,6 +206,67 @@ type Ref struct {
 	Warning string `json:"warning,omitempty"` // on a new reference's answer, as on Ticket
 }
 
+// File is a repo file at a revision (GET /api/v1/projects/{key}/files/*).
+// At is the revision as asked, the main branch's name when none was.
+// Text is left out when the file is TooLarge (over 512 KiB) or Binary
+// (it has a NUL byte or isn't UTF-8). Markdown says the file view renders
+// it as Markdown (a .md or .markdown name).
+type File struct {
+	Path     string  `json:"path"`
+	At       string  `json:"at"`
+	Blob     string  `json:"blob"`
+	Size     int64   `json:"size"`
+	Text     *string `json:"text,omitempty"`
+	TooLarge bool    `json:"too_large"`
+	Binary   bool    `json:"binary,omitempty"`
+	Markdown bool    `json:"markdown"`
+}
+
+// Commit is one commit on main. At is its author date.
+type Commit struct {
+	Hash    string `json:"hash"`
+	Short   string `json:"short"`
+	Subject string `json:"subject"`
+	Author  string `json:"author"`
+	At      string `json:"at"`
+}
+
+// Diffstat is the lines a set of commits added and removed and the files
+// they touched.
+type Diffstat struct {
+	Added   int      `json:"added"`
+	Removed int      `json:"removed"`
+	Files   []string `json:"files"`
+}
+
+// TicketCommits is GET /api/v1/tickets/{ticket}/commits: the commits on
+// main whose message names the ticket, newest first, their diffstat, and
+// Released, the first version tag that contains the newest of them.
+type TicketCommits struct {
+	Commits  []Commit `json:"commits"`
+	Diffstat Diffstat `json:"diffstat"`
+	Released string   `json:"released,omitempty"`
+}
+
+// BranchStatus is a local branch against its remote-tracking branch, as of
+// the last fetch: the commits it has that the remote hasn't (Ahead) and the
+// reverse. Tracked is false when the remote has no such branch.
+type BranchStatus struct {
+	Name    string `json:"name,omitempty"`
+	Ahead   int    `json:"ahead"`
+	Behind  int    `json:"behind"`
+	Tracked bool   `json:"tracked"`
+}
+
+// RepoStatus is GET /api/v1/projects/{key}/repo/status, read without any
+// network: main against the remote, and the local branches that aren't
+// pushed (no remote-tracking branch, or ahead of it), at most 50.
+type RepoStatus struct {
+	Main             BranchStatus   `json:"main"`
+	UnpushedBranches []BranchStatus `json:"unpushed_branches"`
+	LastFetchAt      *string        `json:"last_fetch_at,omitempty"`
+}
+
 type Comment struct {
 	ID        string `json:"id"`
 	Author    string `json:"author"`

@@ -386,6 +386,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	for _, x := range refs {
 		v.References = append(v.References, refRow(p, x))
 	}
+	v.Commits = commitsView(d, p, v.Key)
 	comments, err := d.R.ListComments(ctx, t.ID)
 	if err != nil {
 		return v, err
