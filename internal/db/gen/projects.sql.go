@@ -464,6 +464,25 @@ func (q *Queries) SetProjectKey(ctx context.Context, arg SetProjectKeyParams) er
 	return err
 }
 
+const takeTicketNumber = `-- name: TakeTicketNumber :execrows
+UPDATE projects SET next_number = ?1 WHERE id = ?2 AND next_number < ?1
+`
+
+type TakeTicketNumberParams struct {
+	Next int64
+	ID   string
+}
+
+// TakeTicketNumber gives an imported ticket the number before next and
+// numbers on from next; it changes no row when that number was given before.
+func (q *Queries) TakeTicketNumber(ctx context.Context, arg TakeTicketNumberParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, takeTicketNumber, arg.Next, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateProject = `-- name: UpdateProject :exec
 UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?, updated_at = ? WHERE id = ?
 `

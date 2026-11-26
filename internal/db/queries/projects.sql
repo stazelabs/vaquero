@@ -27,6 +27,11 @@ UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?;
 -- name: NextTicketNumber :one
 UPDATE projects SET next_number = next_number + 1 WHERE id = ? RETURNING next_number - 1;
 
+-- TakeTicketNumber gives an imported ticket the number before next and
+-- numbers on from next; it changes no row when that number was given before.
+-- name: TakeTicketNumber :execrows
+UPDATE projects SET next_number = sqlc.arg(next) WHERE id = sqlc.arg(id) AND next_number < sqlc.arg(next);
+
 -- name: SetProjectKey :exec
 UPDATE projects SET key = ?, updated_at = ? WHERE id = ?;
 

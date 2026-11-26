@@ -285,6 +285,13 @@ func (in ticketRequest) patch(n *names) core.TicketPatch {
 	return p
 }
 
+// createRequest is a new ticket: its fields, and optionally the number it
+// keeps from another tracker (vaquero import linear; core.ImportTicket).
+type createRequest struct {
+	ticketRequest
+	Number *int64 `json:"number"`
+}
+
 // APITicketCreate is POST /api/v1/projects/{key}/tickets.
 func APITicketCreate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -292,8 +299,9 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		var in ticketRequest
-		if f := api.Decode(r, &in); f != nil {
+		var cr createRequest
+		in := &cr.ticketRequest
+		if f := api.Decode(r, &cr); f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
@@ -325,7 +333,13 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 			input.Priority = *pt.Priority
 		}
 		input.Tags = append(pt.Tags, pt.AddTags...)
-		t, err := d.Core.CreateTicket(r.Context(), apiActor(r).ID, p.ID, input)
+		var t gen.Ticket
+		var err error
+		if cr.Number != nil {
+			t, err = d.Core.ImportTicket(r.Context(), apiActor(r).ID, p.ID, *cr.Number, input)
+		} else {
+			t, err = d.Core.CreateTicket(r.Context(), apiActor(r).ID, p.ID, input)
+		}
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
 			return

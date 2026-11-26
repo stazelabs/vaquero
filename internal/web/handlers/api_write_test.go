@@ -162,3 +162,31 @@ func TestAPINameRefusalMessage(t *testing.T) {
 		t.Fatalf("%d %+v", r.Status, e)
 	}
 }
+
+// A create may keep a number from another tracker (vaquero import linear);
+// a number already given is a 422, and a patch or bulk update has no number.
+func TestAPICreateTicketWithNumber(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	r := c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Kept", "number": 120})
+	var tk api.Ticket
+	decode(t, r.Body, &tk)
+	if r.Status != 201 || tk.Key != "VAQ-120" {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	r = c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Next"})
+	decode(t, r.Body, &tk)
+	if r.Status != 201 || tk.Key != "VAQ-121" {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	for _, n := range []int{1, 121, 0, -3} {
+		r = c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Again", "number": n})
+		var e apiErrBody
+		decode(t, r.Body, &e)
+		if r.Status != 422 || e.Error.Fields["number"] == "" {
+			t.Fatalf("%d: %d %s", n, r.Status, r.Body)
+		}
+	}
+	if r := c.API("PATCH", "/api/v1/tickets/VAQ-1", tok, map[string]any{"number": 300}); r.Status != 400 {
+		t.Fatalf("patch: %d %s", r.Status, r.Body)
+	}
+}
