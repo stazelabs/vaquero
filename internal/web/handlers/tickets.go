@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -494,6 +495,10 @@ func LinkCreate(d Deps) http.HandlerFunc {
 			})
 		}
 		k, parsed := core.ParseTicketKey(to)
+		if n, ok := bareNumber(to); ok {
+			// A number alone is a ticket of this project.
+			k, parsed = core.ParseTicketKey(p.Key + "-" + n)
+		}
 		if !parsed {
 			refuse("That isn't a ticket key.")
 			return
@@ -534,3 +539,55 @@ func LinkDelete(d Deps) http.HandlerFunc {
 }
 
 func sqlNull(s string) sql.NullString { return sql.NullString{String: s, Valid: s != ""} }
+
+var (
+	bareNumberRe  = regexp.MustCompile(`^#?0*([1-9][0-9]{0,17})$`)
+	partialKeyRe  = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9]{0,9})-#?0*([0-9]{0,18})$`)
+	maxTargetText = 80
+)
+
+// bareNumber is the ticket number in "12" or "#12", without leading zeros.
+func bareNumber(s string) (string, bool) {
+	m := bareNumberRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// LinkTargets answers the link box as it is typed (?to=): up to ten
+// <option>s for a datalist. A number, with or without "#", matches this
+// project's tickets by number; "KEY-" and a number, or part of one, matches
+// that project's; anything else matches titles in every project, this
+// project's first. The ticket itself is never offered.
+func LinkTargets(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, p, ok := ticketFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		q := units.Clip(strings.TrimSpace(r.URL.Query().Get("to")), maxTargetText)
+		arg := gen.ListLinkTargetsParams{HomeID: p.ID, SelfID: t.ID}
+		if n, ok := bareNumber(q); ok {
+			arg.Key, arg.NumPrefix = p.Key, n
+		} else if m := partialKeyRe.FindStringSubmatch(q); m != nil {
+			arg.Key, arg.NumPrefix = strings.ToUpper(m[1]), m[2]
+		} else {
+			arg.Title = q
+		}
+		arg.Exact = arg.NumPrefix
+		var opts []templates.Option
+		if q != "" {
+			rows, err := d.R.ListLinkTargets(r.Context(), arg)
+			if err != nil {
+				serverError(w, r, d, err)
+				return
+			}
+			for _, row := range rows {
+				key := core.TicketKey{Project: row.ProjectKey, Number: row.Number}.String()
+				opts = append(opts, templates.Option{Value: key, Label: key + " " + row.Title})
+			}
+		}
+		render(w, r, d, http.StatusOK, templates.LinkTargetOptions(opts))
+	}
+}

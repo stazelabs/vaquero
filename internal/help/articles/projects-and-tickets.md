@@ -45,6 +45,8 @@ A line about a link names the other ticket as it is now: its current key, linked
 
 A ticket can block, relate to or duplicate another ticket, in any project. Vaquero refuses a link that would make a loop of blockers, directly or through a chain (`VAQ-1` blocks `VAQ-2` blocks `VAQ-3` blocks `VAQ-1`), and refuses two tickets duplicating each other. An open blocker keeps a ticket from being ready on the board.
 
+On a ticket with no links yet, the form sits behind an "Add link" button. In the ticket box, type a number for a ticket of the same project (`12` or `#12`), a full key for another project's (`OTH-3`), or words of a title; Vaquero suggests up to ten matching tickets as you type.
+
 ## Milestones
 
 A milestone is a named goal with a description and an optional due date. The board's side panel shows each open milestone's progress, and clicking one shows only its tickets. Close a milestone when it ships. Milestones are added and changed in project settings, or with `vaquero milestone` and [the API](/help/api).

@@ -179,9 +179,6 @@ templ TicketPage(v TicketView) {
 						@Icon("link")
 						Links
 					</h2>
-					if len(v.Links) == 0 {
-						<p class="mt-2 text-sm text-muted">No links.</p>
-					}
 					for _, g := range v.Links {
 						<h3 class="mt-3 text-sm font-medium text-ink">{ g.Label }</h3>
 						<ul class="mt-1 space-y-1">
@@ -195,13 +192,19 @@ templ TicketPage(v TicketView) {
 							}
 						</ul>
 					}
-					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
-						@Select(SelectProps{Name: "kind", Label: "This ticket", Selected: v.LinkKind, Options: linkKindOptions()})
-						<div class="flex-1">
-							@TextInput(InputProps{Name: "to", Label: "Ticket", Value: v.LinkTo, Placeholder: v.Project.Key + "-12", Required: true, Error: v.LinkErr})
-						</div>
-						<button type="submit" class={ btnSecondary }>Add link</button>
-					</form>
+					if len(v.Links) == 0 {
+						// Most tickets have no links: the form folds behind one
+						// button until it's wanted (or a link was refused).
+						<details data-link-add open?={ v.LinkErr != "" } class="mt-3 group">
+							<summary class={ btnSecondary + " w-fit cursor-pointer list-none gap-1.5 [&::-webkit-details-marker]:hidden" }>
+								@Icon("plus")
+								Add link
+							</summary>
+							@linkForm(v)
+						</details>
+					} else {
+						@linkForm(v)
+					}
 				</section>
 				<section id="attachments" hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#attachments" hx-swap="outerHTML" data-live>
 					<h2 class={ h2IconClass }>
@@ -297,6 +300,28 @@ templ TicketPage(v TicketView) {
 				</div>
 			</aside>
 		</div>
+	}
+}
+
+// linkForm adds a link from this ticket, named by its key. The ticket box
+// suggests tickets as you type (GET /t/{key}/link-targets fills the
+// datalist): a number, with or without the project key, or words of a title.
+templ linkForm(v TicketView) {
+	<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
+		@Select(SelectProps{Name: "kind", Label: v.Key, Selected: v.LinkKind, Options: linkKindOptions()})
+		<div class="flex-1">
+			@TextInput(InputProps{Name: "to", Label: "Ticket", Value: v.LinkTo, Placeholder: "12, " + v.Project.Key + "-12 or words of a title", Required: true, Error: v.LinkErr, Attrs: linkTargetAttrs(v.Key)})
+			<datalist id="link-targets"></datalist>
+		</div>
+		<button type="submit" class={ btnSecondary }>Add link</button>
+	</form>
+}
+
+// LinkTargetOptions are the link box's suggestions: each ticket's key, with
+// its title in the label.
+templ LinkTargetOptions(opts []Option) {
+	for _, o := range opts {
+		<option value={ o.Value } label={ o.Label }></option>
 	}
 }
 

@@ -113,6 +113,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Post("/comments/{id}/delete", handlers.CommentDelete(d))
 			r.With(fs).Post("/links", handlers.LinkCreate(d))
 			r.Post("/links/{id}/delete", handlers.LinkDelete(d))
+			r.Get("/link-targets", handlers.LinkTargets(d))
 			r.Post("/attachments", handlers.AttachmentUpload(d))
 			r.Post("/attachments/{id}/delete", handlers.AttachmentDelete(d))
 		})

@@ -19,7 +19,7 @@ templ TextInput(p InputProps) {
 				aria-invalid="true"
 				aria-describedby={ p.id() + "-error" }
 			}
-			class={ inputClass }
+			class={ fieldClass }
 			{ p.attrs()... }
 		/>
 		@FieldError(p.id()+"-error", p.Error)
@@ -62,7 +62,7 @@ templ Select(p SelectProps) {
 				aria-invalid="true"
 				aria-describedby={ "f-" + p.Name + "-error" }
 			}
-			class={ inputClass }
+			class={ fieldClass }
 		>
 			for _, o := range p.Options {
 				<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>
