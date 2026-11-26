@@ -9,7 +9,6 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/client"
 	"github.com/stazelabs/vaquero/internal/units"
-	"github.com/stazelabs/vaquero/internal/version"
 )
 
 func init() { cliCommands["export"] = cmdExport }
@@ -40,9 +39,7 @@ func cmdExport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 // download streams the export to w; after it, an outdated CLI says so.
 func (c *cmd) download(ctx context.Context, w io.Writer) (int64, error) {
 	n, err := c.client.Download(ctx, "/api/v1/export", w)
-	if min, need := c.client.UpgradeNeeded(); need {
-		fmt.Fprintf(c.stderr, "This server needs vaquero %s or newer; this is %s. Upgrade vaquero.\n", min, version.Version)
-	}
+	c.tellUpgrade()
 	if _, ok := errors.AsType[*client.Error](err); ok || err == nil {
 		return n, err
 	}
@@ -53,7 +50,11 @@ func (c *cmd) download(ctx context.Context, w io.Writer) (int64, error) {
 // renames it to dest.
 func exportFile(ctx context.Context, c *cmd, dest string) (int64, error) {
 	tmp := dest + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	// A .tmp left by an earlier run would keep its own mode when written over.
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return 0, fmt.Errorf("can't write %s: %w", tmp, errUnwrapped(err))
+	}
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return 0, fmt.Errorf("can't write %s: %w", tmp, errUnwrapped(err))
 	}

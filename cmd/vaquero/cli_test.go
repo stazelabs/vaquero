@@ -141,6 +141,39 @@ func TestCLIProfileCommands(t *testing.T) {
 	}
 }
 
+// VAQ-61: profile add reads the token from standard input for "-", so it
+// stays out of the shell's history and the process list, and refuses a URL
+// that isn't an http or https server address.
+func TestCLIProfileAddTokenFromStdinAndURLCheck(t *testing.T) {
+	cliEnv(t)
+	old := stdin
+	stdin = strings.NewReader("vq_fromstdin\n")
+	t.Cleanup(func() { stdin = old })
+	mustCLI(t, "profile", "add", "team", "https://vq.example/", "-")
+	cfg, err := client.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var team client.Profile
+	for _, p := range cfg.Profiles {
+		if p.Name == "team" {
+			team = p
+		}
+	}
+	if team.Token != "vq_fromstdin" || team.URL != "https://vq.example" {
+		t.Fatalf("%+v", cfg.Profiles)
+	}
+	for _, bad := range []string{"vq.example", "ftp://vq.example", "https://", "https://vq.example/?x=1", "https://vq.example/#top"} {
+		if code, _, errOut := cli(t, "profile", "add", "other", bad, "vq_x"); code != 1 || !strings.Contains(errOut, "isn't a server address") {
+			t.Errorf("%s: exit %d %q", bad, code, errOut)
+		}
+	}
+	stdin = strings.NewReader("")
+	if code, _, errOut := cli(t, "profile", "add", "other", "https://vq.example", "-"); code != 1 || !strings.Contains(errOut, "No token on standard input.") {
+		t.Errorf("empty stdin: exit %d %q", code, errOut)
+	}
+}
+
 func TestCLITokens(t *testing.T) {
 	cliEnv(t)
 	out := mustCLI(t, "token", "create", "ci")
@@ -165,6 +198,23 @@ func TestCLIUpgradeMessage(t *testing.T) {
 	code, _, errOut := cli(t, "projects")
 	if code != 0 || !strings.Contains(errOut, "needs vaquero 99.0.0 or newer") {
 		t.Fatalf("%d %q", code, errOut)
+	}
+	// VAQ-61: once per run, however many requests it makes.
+	var out, errBuf bytes.Buffer
+	c := newCmd(&out, &errBuf, "x")
+	if _, err := c.parse([]string{"--profile", "t"}, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.connect(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := c.call(t.Context(), "GET", "/api/v1/projects", nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := strings.Count(errBuf.String(), "needs vaquero 99.0.0 or newer"); n != 1 {
+		t.Fatalf("told %d times: %q", n, errBuf.String())
 	}
 }
 
@@ -241,6 +291,17 @@ func TestCLIVersionMustBePositive(t *testing.T) {
 	for _, bad := range []string{"0", "-3"} {
 		if code, _, errOut := cli(t, "ticket", "edit", "VAQ-1", "--title", "y", "--version", bad); code != 2 || !strings.Contains(errOut, "usage") {
 			t.Errorf("--version %s: exit %d %q", bad, code, errOut)
+		}
+	}
+}
+
+// VAQ-61: ticket new has no version to check and no tags to remove.
+func TestCLINewRefusesEditOnlyFlags(t *testing.T) {
+	cliEnv(t)
+	for _, flag := range [][]string{{"--version", "2"}, {"--remove-tag", "ui"}} {
+		args := append([]string{"ticket", "new", "VAQ", "x"}, flag...)
+		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, flag[0]+" is for ticket edit") {
+			t.Errorf("%s: exit %d %q", flag[0], code, errOut)
 		}
 	}
 }

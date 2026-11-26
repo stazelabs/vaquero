@@ -66,7 +66,15 @@ type (
 	}
 
 	updateArgs struct {
-		Key        string   `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Key string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		fieldArgs
+		Version int64  `json:"version,omitempty" jsonschema:"The version you read; the update is refused if the ticket changed since."`
+		View    string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
+	}
+
+	// fieldArgs are a ticket's fields to change, in update_ticket and in a
+	// bulk_update item's update.
+	fieldArgs struct {
 		Title      *string  `json:"title,omitempty" jsonschema:"A new title."`
 		Body       *string  `json:"body,omitempty" jsonschema:"A new description, in Markdown."`
 		Status     *string  `json:"status,omitempty" jsonschema:"A status name."`
@@ -77,17 +85,37 @@ type (
 		Tags       []string `json:"tags,omitempty" jsonschema:"Replace every tag with these."`
 		AddTags    []string `json:"add_tags,omitempty" jsonschema:"Tags to add."`
 		RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"Tags to remove."`
-		Version    int64    `json:"version,omitempty" jsonschema:"The version you read; the update is refused if the ticket changed since."`
+	}
+
+	bulkArgs struct {
+		Items []bulkItemArgs `json:"items" jsonschema:"1 to 100 items, run in order; each stands alone, so one refused item doesn't stop the others."`
+	}
+
+	bulkItemArgs struct {
+		Key       string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
+		Version   int64      `json:"version,omitempty" jsonschema:"The version you read: if the ticket changed since, nothing in the item runs. Needs an update."`
+		Claim     *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket: {} for 15 minutes. Not with heartbeat."`
+		Heartbeat *claimArgs `json:"heartbeat,omitempty" jsonschema:"Renew your claim from now, without changing the version: {} for 15 minutes."`
+		Update    *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
+		Comment   *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
+		Move      string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column; its own status changes nothing."`
+		Release   bool       `json:"release,omitempty" jsonschema:"Give up your claim last; already done if an earlier action finished the ticket."`
+	}
+
+	claimArgs struct {
+		LeaseMinutes int64 `json:"lease_minutes,omitempty" jsonschema:"How long to hold it, 1 to 120 minutes. Leave it out for 15."`
 	}
 
 	moveArgs struct {
 		Key    string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		Status string `json:"status" jsonschema:"The status to move it to, by name."`
+		View   string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 
 	commentArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		Body string `json:"body" jsonschema:"The comment, in Markdown."`
+		View string `json:"view,omitempty" jsonschema:"summary for a short answer: the comment's id and the ticket's key, status, category, version, assignee and claim. Leave it out for the comment."`
 	}
 
 	linkArgs struct {
@@ -99,12 +127,18 @@ type (
 	leaseArgs struct {
 		Key          string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		LeaseMinutes int64  `json:"lease_minutes,omitempty" jsonschema:"How long to hold it, 1 to 120 minutes. Leave it out for 15."`
+		View         string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
+	}
+
+	releaseArgs struct {
+		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 )
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
+	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
 	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "search", "update_ticket",
 }
 
@@ -123,6 +157,14 @@ func get(path string, q url.Values) request {
 }
 func post(path string, body any) request {
 	return request{method: http.MethodPost, path: path, body: body}
+}
+
+// viewed is rq asking for view (?view=), when one is given.
+func viewed(rq request, view string) request {
+	if view != "" {
+		rq.query = url.Values{"view": {view}}
+	}
+	return rq
 }
 
 // ticketPath is a ticket key's API path.
@@ -186,34 +228,55 @@ func addTools(s *mcp.Server, c *caller) {
 	add(s, c, "update_ticket", "Update a ticket", false,
 		"Change only the fields given. Pass the version you read to have the change refused if someone else changed the ticket since.",
 		func(in updateArgs) request {
-			b := map[string]any{}
-			for k, v := range map[string]*string{"title": in.Title, "body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent} {
-				if v != nil {
-					b[k] = *v
-				}
-			}
-			if in.Priority != nil {
-				b["priority"] = *in.Priority
-			}
-			for k, v := range map[string][]string{"tags": in.Tags, "add_tags": in.AddTags, "remove_tags": in.RemoveTags} {
-				if v != nil {
-					b[k] = v
-				}
-			}
+			b := in.body()
 			if in.Version != 0 {
 				b["version"] = in.Version
 			}
-			return request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}
+			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
+		})
+	add(s, c, "bulk_update", "Update tickets in bulk", false,
+		"Work several tickets in one call, up to 100. Each item names a ticket and any of claim, heartbeat, update, comment, move and release, which run in that order; "+
+			"the first that fails skips the rest of that item, and a stale version runs none of it. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
+		func(in bulkArgs) request {
+			items := make([]map[string]any, len(in.Items))
+			for i, it := range in.Items {
+				b := map[string]any{"key": it.Key}
+				if it.Version != 0 {
+					b["version"] = it.Version
+				}
+				for k, l := range map[string]*claimArgs{"claim": it.Claim, "heartbeat": it.Heartbeat} {
+					if l != nil {
+						b[k] = map[string]int64{}
+						if l.LeaseMinutes != 0 {
+							b[k] = map[string]int64{"lease_minutes": l.LeaseMinutes}
+						}
+					}
+				}
+				if it.Update != nil {
+					b["update"] = it.Update.body()
+				}
+				if it.Comment != nil {
+					b["comment"] = *it.Comment
+				}
+				if it.Move != "" {
+					b["move"] = it.Move
+				}
+				if it.Release {
+					b["release"] = true
+				}
+				items[i] = b
+			}
+			return post("/tickets/bulk", map[string]any{"items": items})
 		})
 	add(s, c, "move_ticket", "Move a ticket", false,
 		"Move a ticket to another status, at the end of its column.",
 		func(in moveArgs) request {
-			return post(ticketPath(in.Key, "/move"), map[string]string{"status": in.Status})
+			return viewed(post(ticketPath(in.Key, "/move"), map[string]string{"status": in.Status}), in.View)
 		})
 	add(s, c, "add_comment", "Add a comment", false,
 		"Add a comment to a ticket, in Markdown.",
 		func(in commentArgs) request {
-			return post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body})
+			return viewed(post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body}), in.View)
 		})
 	add(s, c, "link_tickets", "Link two tickets", false,
 		"Record that one ticket blocks, relates to or duplicates another. A blocking loop is refused.",
@@ -222,13 +285,37 @@ func addTools(s *mcp.Server, c *caller) {
 		})
 	add(s, c, "claim_ticket", "Claim a ticket", false,
 		"Claim a ticket to work on it: it is assigned to you and moved to in progress, and no one else can claim it until your lease ends. Claiming your own claim renews it.",
-		func(in leaseArgs) request { return post(ticketPath(in.Key, "/claim"), leaseBody(in.LeaseMinutes)) })
+		func(in leaseArgs) request {
+			return viewed(post(ticketPath(in.Key, "/claim"), leaseBody(in.LeaseMinutes)), in.View)
+		})
 	add(s, c, "heartbeat", "Renew a claim", false,
 		"Extend your claim on a ticket from now, so it doesn't lapse while you work.",
-		func(in leaseArgs) request { return post(ticketPath(in.Key, "/heartbeat"), leaseBody(in.LeaseMinutes)) })
+		func(in leaseArgs) request {
+			return viewed(post(ticketPath(in.Key, "/heartbeat"), leaseBody(in.LeaseMinutes)), in.View)
+		})
 	add(s, c, "release_ticket", "Release a claim", false,
 		"Give up your claim on a ticket, leaving its status and assignee as they are.",
-		func(in keyArgs) request { return post(ticketPath(in.Key, "/release"), nil) })
+		func(in releaseArgs) request { return viewed(post(ticketPath(in.Key, "/release"), nil), in.View) })
+}
+
+// body is the fields as the API's ticket request names them; only those
+// given are sent.
+func (f fieldArgs) body() map[string]any {
+	b := map[string]any{}
+	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent} {
+		if v != nil {
+			b[k] = *v
+		}
+	}
+	if f.Priority != nil {
+		b["priority"] = *f.Priority
+	}
+	for k, v := range map[string][]string{"tags": f.Tags, "add_tags": f.AddTags, "remove_tags": f.RemoveTags} {
+		if v != nil {
+			b[k] = v
+		}
+	}
+	return b
 }
 
 func set(q url.Values, k, v string) {

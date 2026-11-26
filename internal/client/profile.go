@@ -70,6 +70,10 @@ func (c Config) Save() error {
 		return err
 	}
 	tmp := path + ".tmp"
+	// A .tmp left by an earlier run would keep its own mode when written over.
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
 		return err
 	}

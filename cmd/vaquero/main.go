@@ -17,6 +17,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/logfile"
 	"github.com/stazelabs/vaquero/internal/version"
 )
 
@@ -83,7 +84,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		ctx, stop := shutdownContext()
 		defer stop()
-		if err := serve(ctx, cfg, newLogger(cfg, stderr)); err != nil {
+		out := stderr
+		if w := backgroundLog(cfg.DataDir, stderr); w != nil {
+			defer w.Close()
+			out = w
+		}
+		if err := serve(ctx, cfg, newLogger(cfg, out)); err != nil {
 			fmt.Fprintln(stderr, "serve:", err)
 			return 1
 		}
@@ -202,6 +208,36 @@ func premigrateSnapshot(path string, applied int64) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// backgroundLog is a rotating writer for {dataDir}/vaquero.log when out is
+// that very file, as it is for a server the command line started in the
+// background (client.EnsureLocal); else nil. The log goes through it, and
+// each rotation points standard output and error at the new file too, so a
+// crash trace from the Go runtime lands in vaquero.log, not vaquero.log.1.
+func backgroundLog(dataDir string, out io.Writer) *logfile.Writer {
+	f, ok := out.(*os.File)
+	if !ok {
+		return nil
+	}
+	path := filepath.Join(dataDir, "vaquero.log")
+	a, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	b, err := os.Stat(path)
+	if err != nil || !os.SameFile(a, b) {
+		return nil
+	}
+	w, err := logfile.Open(path, logfile.Max)
+	if err != nil {
+		return nil
+	}
+	w.Redirect(int(f.Fd())) //nolint:gosec // descriptors fit int
+	if st, err := os.Stdout.Stat(); err == nil && os.SameFile(st, b) {
+		w.Redirect(int(os.Stdout.Fd())) //nolint:gosec // descriptors fit int
+	}
+	return w
 }
 
 // newLogger builds the process logger: JSON when cfg.LogFormat is "json",

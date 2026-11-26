@@ -92,7 +92,9 @@ func (rd *Reader) Close() error {
 // Read reads an export written by Write, spooling the attachment bytes into a
 // new directory under dir (SpoolPrefix and a random suffix), removed again
 // when Read fails or the Reader closes. Before spooling it checks that dir's
-// filesystem has room for every attachment. It refuses, with a *Refused, a file
+// filesystem has room for copies copies of every attachment (the spool, and
+// the store when it shares the volume) and for export.json's size again,
+// for the rows it becomes. It refuses, with a *Refused, a file
 // that isn't an export, an export.json over MaxDocument, a format version
 // other than FormatVersion, a schema newer than this build's, a table this
 // build doesn't know, an attachment whose id isn't a ULID (or equals
@@ -101,7 +103,7 @@ func (rd *Reader) Close() error {
 // its record or of another size than its record says, any other entry, more
 // than MaxTrailing bytes after the tar's end, and a stream whose gzip
 // checksum fails (read to the end to check it).
-func Read(r io.Reader, dir string) (_ *Reader, err error) {
+func Read(r io.Reader, dir string, copies int) (_ *Reader, err error) {
 	zr, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, errNotExport
@@ -149,8 +151,8 @@ func Read(r io.Reader, dir string) (_ *Reader, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("free space in %s: %w", dir, err)
 	}
-	if free < total {
-		return nil, refuse("Unpacking the export's attachments needs %s free in %s, and %s is free.", units.SizeWords(total), dir, units.SizeWords(free))
+	if need := total*int64(max(copies, 1)) + h.Size; free < need {
+		return nil, refuse("Importing the export needs %s free in %s, and %s is free.", units.SizeWords(need), dir, units.SizeWords(free))
 	}
 	if rd.dir, err = os.MkdirTemp(dir, SpoolPrefix); err != nil {
 		return nil, err
@@ -314,7 +316,8 @@ func decodeRows(raw json.RawMessage) ([]map[string]any, error) {
 // refused, naming its table); a column the export lacks takes its default.
 // Foreign keys are checked at commit (tickets refer to their parents in id
 // order). Attachments keep the blob_key the export gives (the entry name);
-// the caller rewrites it to its own instance's keys. Last, the search
+// the caller rewrites it to its own instance's keys. Link events without
+// to_id get it as on upgrade (appdb.BackfillLinkTargets). Last, the search
 // indexes are rebuilt, leaving deleted comments out as the triggers do.
 func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 	if _, err := tx.ExecContext(ctx, "PRAGMA defer_foreign_keys = ON"); err != nil {
@@ -376,17 +379,12 @@ func Load(ctx context.Context, tx *sql.Tx, rd *Reader) error {
 		}
 		closeAll(stmts)
 	}
-	for _, q := range []string{
-		"INSERT INTO tickets_fts (tickets_fts) VALUES ('rebuild')",
-		// A rebuild indexes every comment; the triggers index only live ones.
-		"INSERT INTO comments_fts (comments_fts) VALUES ('rebuild')",
-		"INSERT INTO comments_fts (comments_fts, rowid, body) SELECT 'delete', rowid, body FROM comments WHERE deleted_at IS NOT NULL",
-	} {
-		if _, err := tx.ExecContext(ctx, q); err != nil {
-			return fmt.Errorf("rebuild the search index: %w", err)
-		}
+	// An export from v0.1.x has link events without to_id; fill them in as
+	// migration 0008 did on upgrade.
+	if err := appdb.BackfillLinkTargets(ctx, tx); err != nil {
+		return err
 	}
-	return nil
+	return appdb.RebuildSearch(ctx, tx)
 }
 
 func closeAll(stmts map[string]*sql.Stmt) {

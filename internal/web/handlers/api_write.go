@@ -35,15 +35,26 @@ type names struct {
 	d      Deps
 	p      gen.Project
 	fields map[string]string
+	err    error // a database error: the answer is a 500, not a field message
+}
+
+// lookup records a failed read: a database error as n.err, so it isn't
+// reported as a name that matches nothing.
+func (n *names) lookup(err error) bool {
+	if err != nil && n.err == nil {
+		n.err = err
+	}
+	return err == nil
 }
 
 func (n *names) status(name string) string {
 	ss, err := n.d.R.ListStatuses(n.ctx, n.p.ID)
-	if err == nil {
-		for _, s := range ss {
-			if strings.EqualFold(s.Name, strings.TrimSpace(name)) {
-				return s.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, s := range ss {
+		if strings.EqualFold(s.Name, strings.TrimSpace(name)) {
+			return s.ID
 		}
 	}
 	n.fields["status"] = "No status " + name + " in " + n.p.Key + "."
@@ -55,11 +66,12 @@ func (n *names) assignee(name string) string {
 		return ""
 	}
 	as, err := n.d.R.ListActors(n.ctx)
-	if err == nil {
-		for _, a := range as {
-			if strings.EqualFold(a.Name, strings.TrimSpace(name)) {
-				return a.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, a := range as {
+		if strings.EqualFold(a.Name, strings.TrimSpace(name)) {
+			return a.ID
 		}
 	}
 	n.fields["assignee"] = "No one is called " + name + "."
@@ -71,47 +83,75 @@ func (n *names) milestone(name string) string {
 		return ""
 	}
 	ms, err := n.d.R.ListMilestones(n.ctx, n.p.ID)
-	if err == nil {
-		for _, m := range ms {
-			if strings.EqualFold(m.Name, strings.TrimSpace(name)) {
-				return m.ID
-			}
+	if !n.lookup(err) {
+		return ""
+	}
+	for _, m := range ms {
+		if strings.EqualFold(m.Name, strings.TrimSpace(name)) {
+			return m.ID
 		}
 	}
 	n.fields["milestone"] = "No milestone " + name + " in " + n.p.Key + "."
 	return ""
 }
 
-func (n *names) parent(key string) string {
+func (n *names) parent(key string) string { return n.ticket("parent", key) }
+
+// ticket resolves the ticket key in field ("" is none).
+func (n *names) ticket(field, key string) string {
 	if strings.TrimSpace(key) == "" {
 		return ""
 	}
 	k, ok := core.ParseTicketKey(key)
 	if !ok {
-		n.fields["parent"] = "That isn't a ticket key."
+		n.fields[field] = "That isn't a ticket key."
 		return ""
 	}
 	t, _, err := n.d.Core.ResolveTicket(n.ctx, n.d.R, k)
-	if err != nil {
-		n.fields["parent"] = "No ticket " + k.String() + "."
+	if errors.Is(err, core.ErrNotFound) {
+		n.fields[field] = "No ticket " + k.String() + "."
+		return ""
+	}
+	if !n.lookup(err) {
 		return ""
 	}
 	return t.ID
 }
 
-func (n *names) fail(w http.ResponseWriter) bool {
-	if len(n.fields) == 0 {
-		return false
+// failure is the lookups' failure, if any: a database error as a 500
+// (n.err is its cause), names that match nothing as a 422 with a message
+// per field.
+func (n *names) failure() *api.Failure {
+	if n.err != nil {
+		return api.Internal()
 	}
-	msg := "Some names don't match anything."
-	if len(n.fields) == 1 {
-		for _, m := range n.fields {
+	if len(n.fields) == 0 {
+		return nil
+	}
+	return invalidFields(n.fields, "Some names don't match anything.")
+}
+
+// invalidFields is a 422 naming fields: the one message when there is
+// one, else several.
+func invalidFields(fields map[string]string, several string) *api.Failure {
+	msg := several
+	if len(fields) == 1 {
+		for _, m := range fields {
 			msg = m
 		}
 	}
 	f := api.Fail(http.StatusUnprocessableEntity, "invalid", msg)
-	f.Fields = n.fields
-	api.WriteFailure(w, f)
+	f.Fields = fields
+	return f
+}
+
+// fail answers the lookups' failure, if any.
+func (n *names) fail(w http.ResponseWriter, r *http.Request) bool {
+	f := n.failure()
+	if f == nil {
+		return false
+	}
+	apiFail(w, r, n.d, f, n.err)
 	return true
 }
 
@@ -156,7 +196,7 @@ func APIProjectUpdate(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, projectDTO(np, 0))
+		writeProject(w, r, d, np, http.StatusOK)
 	}
 }
 
@@ -177,7 +217,7 @@ func APIProjectKey(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, projectDTO(np, 0))
+		writeProject(w, r, d, np, http.StatusOK)
 	}
 }
 
@@ -231,7 +271,15 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		pt := in.patch(n)
-		if n.fail(w) {
+		// A patch's fields that mean nothing for a new ticket are refused,
+		// not ignored.
+		if in.Version != 0 {
+			n.fields["version"] = "A new ticket has no version to check."
+		}
+		if len(in.RemoveTags) > 0 {
+			n.fields["remove_tags"] = "A new ticket has no tags to remove."
+		}
+		if n.fail(w, r) {
 			return
 		}
 		input := core.TicketInput{}
@@ -264,9 +312,13 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 
 // APITicketPatch is PATCH /api/v1/tickets/{ticket}: only the fields sent
 // change; with version, a stale save is refused with 409 and the current
-// ticket.
+// ticket. ?view=summary answers with the short answer.
 func APITicketPatch(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -278,7 +330,7 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		pt := in.patch(n)
-		if n.fail(w) {
+		if n.fail(w, r) {
 			return
 		}
 		nt, err := d.Core.PatchTicket(r.Context(), apiActor(r).ID, t.ID, pt, in.Version)
@@ -286,7 +338,7 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		writeTicket(w, r, d, nt, p, http.StatusOK)
+		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
 }
 
@@ -299,22 +351,14 @@ func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p
 	api.WriteJSON(w, status, out)
 }
 
-// keyID resolves a ticket key to its id, "" when it doesn't name one.
-func keyID(r *http.Request, d Deps, key string) string {
-	k, ok := core.ParseTicketKey(key)
-	if !ok {
-		return ""
-	}
-	t, _, err := d.Core.ResolveTicket(r.Context(), d.R, k)
-	if err != nil {
-		return ""
-	}
-	return t.ID
-}
-
-// APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?, after?}.
+// APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?,
+// after?}; ?view=summary answers with the short answer.
 func APITicketMove(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -326,15 +370,16 @@ func APITicketMove(d Deps) http.HandlerFunc {
 		}
 		n := &names{ctx: r.Context(), d: d, p: p, fields: map[string]string{}}
 		status := n.status(in.Status)
-		if n.fail(w) {
+		before, after := n.ticket("before", in.Before), n.ticket("after", in.After)
+		if n.fail(w, r) {
 			return
 		}
-		nt, err := d.Core.MoveTicket(r.Context(), apiActor(r).ID, t.ID, status, keyID(r, d, in.Before), keyID(r, d, in.After))
+		nt, err := d.Core.MoveTicket(r.Context(), apiActor(r).ID, t.ID, status, before, after)
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		writeTicket(w, r, d, nt, p, http.StatusOK)
+		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
 }
 
@@ -342,9 +387,14 @@ func commentDTO(c gen.Comment, author string) api.Comment {
 	return api.Comment{ID: c.ID, Author: author, Body: c.Body, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 }
 
-// APICommentCreate is POST /api/v1/tickets/{ticket}/comments {body}.
+// APICommentCreate is POST /api/v1/tickets/{ticket}/comments {body};
+// ?view=summary answers with the ticket's short answer and the comment's id.
 func APICommentCreate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
 		t, p, ok := apiTicket(w, r, d)
 		if !ok {
 			return
@@ -358,6 +408,16 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 		c, err := d.Core.AddComment(r.Context(), a.ID, t.ID, in.Body)
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
+			return
+		}
+		if short {
+			b, err := ticketBrief(r, d, t, p)
+			if err != nil {
+				apiFail(w, r, d, api.Internal(), err)
+				return
+			}
+			b.ID = c.ID
+			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
 		api.WriteJSON(w, http.StatusCreated, commentDTO(c, a.Name))

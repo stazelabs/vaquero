@@ -23,6 +23,9 @@ const maxNameRunes = 200
 // settingBlobStore records which backend holds the attachment bytes.
 const settingBlobStore = "blob_store"
 
+// settingBlobLocation records where that backend keeps them.
+const settingBlobLocation = "blob_location"
+
 // AttachmentInput describes a file whose bytes are already in the blob
 // store under BlobKey. ID is the id the caller minted for the key (the key
 // names the attachment); empty mints one.
@@ -82,7 +85,8 @@ func CleanName(name string) string {
 
 // AddAttachment records a file on a ticket. The caller has already stored
 // the bytes under in.BlobKey. The first attachment also records the backend
-// (Core.BlobStore) in settings, so a later change of backend is caught.
+// (Core.BlobStore) and its location (Core.BlobLocation) in settings, so a
+// later change of either is caught.
 func (c *Core) AddAttachment(ctx context.Context, by string, in AttachmentInput) (gen.Attachment, error) {
 	var a gen.Attachment
 	err := c.tx(ctx, func(q *gen.Queries) error {
@@ -124,6 +128,9 @@ func (c *Core) AddAttachment(ctx context.Context, by string, in AttachmentInput)
 			if _, err := q.GetSetting(ctx, settingBlobStore); errors.Is(err, sql.ErrNoRows) {
 				if err := q.PutSetting(ctx, gen.PutSettingParams{Key: settingBlobStore, Value: c.BlobStore, UpdatedAt: now}); err != nil {
 					return fmt.Errorf("record blob store: %w", err)
+				}
+				if err := q.PutSetting(ctx, gen.PutSettingParams{Key: settingBlobLocation, Value: c.BlobLocation, UpdatedAt: now}); err != nil {
+					return fmt.Errorf("record blob location: %w", err)
 				}
 			} else if err != nil {
 				return fmt.Errorf("get blob store: %w", err)

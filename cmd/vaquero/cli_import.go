@@ -37,7 +37,9 @@ const importFile = "vaquero.import.db"
 // at {data dir}/vaquero.import.db (attachment bytes put into the configured
 // store first, under a fresh instance id), checked, and only then swapped
 // in by swapDatabase. Until the swap, any failure deletes the new file and
-// every object put, and the current database is never written.
+// every object put, and the current database is never written. A kill
+// (no cleanup) leaves import.pending for the next import or serve
+// (cleanPending).
 func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	c := newCmd(stdout, stderr, "vaquero import FILE")
 	pos, err := c.parse(args, 1, 1)
@@ -50,7 +52,7 @@ func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if err != nil {
 		return c.finish(err)
 	}
-	res, err := importArchive(ctx, cfg, pos[0])
+	res, err := importArchive(ctx, cfg, pos[0], c.stderr)
 	if err != nil {
 		return c.finish(err)
 	}
@@ -99,7 +101,9 @@ func (e notImported) Error() string {
 }
 func (e notImported) Unwrap() error { return e.err }
 
-func importArchive(ctx context.Context, cfg config.Config, file string) (importResult, error) {
+// importArchive runs the import; warn gets the lines about an earlier,
+// interrupted import's leftovers.
+func importArchive(ctx context.Context, cfg config.Config, file string, warn io.Writer) (importResult, error) {
 	res := importResult{Backend: cfg.BlobBackend}
 	f, err := os.Open(file)
 	if err != nil {
@@ -118,12 +122,24 @@ func importArchive(ctx context.Context, cfg config.Config, file string) (importR
 		return res, err
 	}
 	instance := strings.ToLower(idgen.New())
-	store, err := importStore(ctx, cfg, instance)
+	store, err := importStore(ctx, cfg)
 	if err != nil {
 		return res, notImported{err}
 	}
+	// What an import killed before it finished left in the store.
+	current, err := currentInstance(ctx, cfg.DBPath)
+	if err != nil {
+		return res, notImported{err}
+	}
+	// A record that can't be cleaned stops the import: writing over it
+	// would lose track of those files.
+	if n, err := cleanPending(ctx, cfg, store, current); err != nil {
+		return res, notImported{err}
+	} else if n > 0 {
+		fmt.Fprintf(warn, "Removed %s an interrupted import left in %s.\n", count(n, "file"), cfg.BlobBackend)
+	}
 	removeSpools(cfg.DataDir)
-	rd, err := archive.Read(f, cfg.DataDir)
+	rd, err := archive.Read(f, cfg.DataDir, importCopies(cfg))
 	if err != nil {
 		return res, notImported{err}
 	}
@@ -165,6 +181,27 @@ func checkEmpty(ctx context.Context, path string) error {
 	return nil
 }
 
+// currentInstance is the instance id the database at path records, or ""
+// when there is no database or no id yet.
+func currentInstance(ctx context.Context, path string) (string, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	db, err := appdb.OpenReader(path, 1)
+	if err != nil {
+		return "", fmt.Errorf("couldn't read the current database: %w", err)
+	}
+	defer db.Close()
+	s, err := gen.New(db).GetSetting(ctx, "instance_id")
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("couldn't read the current database: %w", err)
+	}
+	return s.Value, nil
+}
+
 // removeSpools deletes the attachment spools an interrupted import left in
 // dataDir; the caller holds its lock, so none is in use.
 func removeSpools(dataDir string) {
@@ -181,14 +218,36 @@ func removeDatabase(path string) {
 	}
 }
 
+// sameFilesystem is appdb.SameFilesystem, replaceable by a test.
+var sameFilesystem = appdb.SameFilesystem
+
+// importCopies is how many times an import puts the attachment bytes on the
+// data directory's volume: the spool, then the new database (SQLite
+// storage) or the store directory when it is on the same volume.
+func importCopies(cfg config.Config) int {
+	switch cfg.BlobBackend {
+	case "sqlite":
+		return 2
+	case "dir":
+		if same, err := sameFilesystem(cfg.DataDir, cfg.BlobDir); err != nil || same {
+			return 2 // when in doubt, ask for the room
+		}
+	}
+	return 1
+}
+
+// importProbeKey is the empty object importStore puts and deletes. One
+// fixed key, outside every instance, so a store that refuses the delete
+// keeps one probe however often the import is retried.
+const importProbeKey = "attachments/import-probe"
+
 // importStore opens the directory or S3 store and checks it takes a write,
 // before the archive is read or anything written: bad credentials or a
 // read-only bucket stop the import at once, not at the first attachment. The
-// check puts and deletes attachments/{instance}/probe, an empty object. When
-// the delete fails the import stops, and the probe stays under an instance
-// id no database records (the error says the store refused the delete). For
-// SQLite storage, the new database file itself, it returns nil.
-func importStore(ctx context.Context, cfg config.Config, instance string) (blobs.Store, error) {
+// check puts and deletes importProbeKey. When the delete fails the import
+// stops and the error names the key to remove by hand. For SQLite storage,
+// the new database file itself, it returns nil.
+func importStore(ctx context.Context, cfg config.Config) (blobs.Store, error) {
 	if cfg.BlobBackend == "sqlite" {
 		return nil, nil
 	}
@@ -196,17 +255,13 @@ func importStore(ctx context.Context, cfg config.Config, instance string) (blobs
 	if err != nil {
 		return nil, fmt.Errorf("attachment store: %w", err)
 	}
-	key := blobs.AttachmentKey(instance, "probe")
 	pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(0))
 	defer cancel()
-	if err := store.Put(pctx, key, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
+	if err := store.Put(pctx, importProbeKey, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
 		return nil, fmt.Errorf("attachment store: can't write to it (%w)", err)
 	}
-	if err := store.Delete(pctx, key); err != nil {
-		return nil, fmt.Errorf("attachment store: can't delete from it (%w)", err)
-	}
-	if cfg.BlobBackend == "dir" {
-		_ = os.Remove(filepath.Join(cfg.BlobDir, "attachments", instance)) // only when empty
+	if err := store.Delete(pctx, importProbeKey); err != nil {
+		return nil, fmt.Errorf("attachment store: can't delete from it (%w); remove %s from it by hand", err, importProbeKey)
 	}
 	return store, nil
 }
@@ -244,11 +299,17 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		// Ctrl-C may have ended ctx; the cleanup must still run.
 		dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancel()
+		clean := true
 		for _, k := range put {
-			_ = store.Delete(dctx, k)
+			if err := store.Delete(dctx, k); err != nil && !errors.Is(err, blobs.ErrNotFound) {
+				clean = false
+			}
 		}
 		if cfg.BlobBackend == "dir" {
 			_ = os.Remove(filepath.Join(cfg.BlobDir, "attachments", instance)) // only when empty
+		}
+		if clean {
+			removePending(cfg.DataDir) // else the next import or serve tries again
 		}
 	}()
 
@@ -266,6 +327,13 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 	}
 
 	atts := rd.Tables["attachments"]
+	if cfg.BlobBackend != "sqlite" && len(atts) > 0 {
+		// Before the first put: a kill from here on leaves the bytes for
+		// the next import or serve to delete.
+		if err = writePending(cfg, instance); err != nil {
+			return "", err
+		}
+	}
 	for _, a := range atts {
 		id := a["id"].(string) // Read checked it
 		body, size, _ := rd.Blob(id)
@@ -283,7 +351,7 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		}
 	}
 
-	if err = fill(ctx, w, rd, instance, cfg.BlobBackend); err != nil {
+	if err = fill(ctx, w, rd, instance, cfg); err != nil {
 		return "", err
 	}
 	if err = checkDatabase(ctx, w); err != nil {
@@ -305,12 +373,13 @@ func buildAndSwap(ctx context.Context, cfg config.Config, rd *archive.Reader, st
 		return "", err
 	}
 	swapped = true
+	removePending(cfg.DataDir)
 	return aside, nil
 }
 
 // fill loads rd in one transaction, keys the attachments under instance
-// and records the instance and its blob backend.
-func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance, backend string) error {
+// and records the instance, its blob backend and that backend's location.
+func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance string, cfg config.Config) error {
 	tx, err := w.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -330,7 +399,10 @@ func fill(ctx context.Context, w *sql.DB, rd *archive.Reader, instance, backend 
 	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "instance_id", Value: instance, UpdatedAt: now}); err != nil {
 		return err
 	}
-	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_store", Value: backend, UpdatedAt: now}); err != nil {
+	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_store", Value: cfg.BlobBackend, UpdatedAt: now}); err != nil {
+		return err
+	}
+	if err := q.PutSetting(ctx, gen.PutSettingParams{Key: "blob_location", Value: blobs.Location(cfg), UpdatedAt: now}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

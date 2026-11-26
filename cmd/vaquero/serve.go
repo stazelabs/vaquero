@@ -71,7 +71,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	// last, after the WAL checkpoint (defers run in reverse).
 	release, held, err := lockfile.Acquire(cfg.DataDir)
 	if errors.Is(err, lockfile.ErrLocked) {
-		return fmt.Errorf("another vaquero is using %s (pid %d)", cfg.DataDir, held)
+		return inUse(cfg.DataDir, held)
 	}
 	if err != nil {
 		return fmt.Errorf("data directory lock: %w", err)
@@ -91,6 +91,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 
 	c := core.New(w, time.Now)
 	c.BlobStore = cfg.BlobBackend
+	c.BlobLocation = blobs.Location(cfg)
 	// The instance id names blob keys; the backend lock keeps existing
 	// attachments from being stranded by a changed VQ_BLOB_STORE. Both come
 	// before anything else is written, so a refused boot changes nothing.
@@ -98,17 +99,29 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err != nil {
 		return fmt.Errorf("instance id: %w", err)
 	}
-	if err := checkBlobBackend(ctx, gen.New(r), cfg.BlobBackend); err != nil {
+	if err := checkBlobBackend(ctx, gen.New(r), cfg); err != nil {
 		return err
 	}
+	// Both are recorded on every boot that passes the check: unchanged with
+	// attachments, free to change without them, and a location missing
+	// from an older database is recorded here rather than refused.
 	if err := gen.New(w).PutSetting(ctx, gen.PutSettingParams{Key: settingBlobStore, Value: cfg.BlobBackend, UpdatedAt: timefmt.Format(time.Now())}); err != nil {
 		return fmt.Errorf("blob store setting: %w", err)
+	}
+	if err := gen.New(w).PutSetting(ctx, gen.PutSettingParams{Key: settingBlobLocation, Value: c.BlobLocation, UpdatedAt: timefmt.Format(time.Now())}); err != nil {
+		return fmt.Errorf("blob location setting: %w", err)
 	}
 	// Opening checks the configuration now, so a bad directory or S3 setting
 	// stops the boot instead of the first upload.
 	store, err := blobs.Open(cfg, w, r, time.Now)
 	if err != nil {
 		return fmt.Errorf("attachment store: %w", err)
+	}
+	// What an import killed before it finished left in the store.
+	if n, err := cleanPending(ctx, cfg, store, instance); err != nil {
+		logger.Warn("interrupted import cleanup", "err", err)
+	} else if n > 0 {
+		logger.Info("removed files an interrupted import left", "count", n, "backend", cfg.BlobBackend)
 	}
 	owner, err := c.EnsureOwner(ctx)
 	if err != nil {
@@ -185,10 +198,20 @@ func prepareDataDir(dir string, logger *slog.Logger) error {
 	return nil
 }
 
+// inUse is the refusal of a second server on dir, whose lock pid holds (0:
+// a pid that couldn't be read, left out).
+func inUse(dir string, pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("another vaquero is using %s", dir)
+	}
+	return fmt.Errorf("another vaquero is using %s (pid %d)", dir, pid)
+}
+
 // Settings keys written by serve.
 const (
-	settingInstanceID = "instance_id"
-	settingBlobStore  = "blob_store"
+	settingInstanceID   = "instance_id"
+	settingBlobStore    = "blob_store"
+	settingBlobLocation = "blob_location"
 )
 
 // ensureInstance returns the instance id, minting a lower-case ULID on the
@@ -209,16 +232,26 @@ func ensureInstance(ctx context.Context, w *sql.DB, now time.Time) (string, erro
 	return id, nil
 }
 
-// checkBlobBackend refuses a boot whose configured backend differs from the
-// one recorded in settings while attachments exist, since their bytes would
-// be unreachable.
-func checkBlobBackend(ctx context.Context, r *gen.Queries, configured string) error {
-	s, err := r.GetSetting(ctx, settingBlobStore)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && s.Value == configured) {
+// checkBlobBackend refuses a boot whose configured backend, or the place it
+// keeps the bytes (blobs.Location), differs from the one recorded in
+// settings while attachments exist, since their bytes would be unreachable.
+// A location not recorded yet (a database from before it was) is no
+// refusal.
+func checkBlobBackend(ctx context.Context, r *gen.Queries, cfg config.Config) error {
+	store, err := r.GetSetting(ctx, settingBlobStore)
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
+	}
+	loc, err := r.GetSetting(ctx, settingBlobLocation)
+	locChanged := err == nil && store.Value == cfg.BlobBackend && loc.Value != blobs.Location(cfg)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if store.Value == cfg.BlobBackend && !locChanged {
+		return nil
 	}
 	n, err := r.CountAttachments(ctx)
 	if err != nil {
@@ -227,8 +260,25 @@ func checkBlobBackend(ctx context.Context, r *gen.Queries, configured string) er
 	if n == 0 {
 		return nil
 	}
+	if locChanged {
+		return blobLocationRefusal(cfg, loc.Value)
+	}
 	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s. Set it back to %s.", s.Value, configured, s.Value)
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s. Set it back to %s.", store.Value, cfg.BlobBackend, store.Value)
+}
+
+// blobLocationRefusal says the attachments are in recorded, not where the
+// configuration points, and which settings to put back.
+func blobLocationRefusal(cfg config.Config, recorded string) error {
+	now := blobs.Location(cfg)
+	if cfg.BlobBackend == "s3" {
+		ep, bucket, _ := strings.Cut(recorded, "/")
+		//lint:ignore ST1005 the refusal is a sentence the operator reads as is
+		return fmt.Errorf("Attachments are stored in %s; VQ_S3_ENDPOINT and VQ_S3_BUCKET name %s. Set them back to %s and %s.", recorded, now, ep, bucket)
+	}
+	was := blobs.ResolveLocation(recorded, cfg.DataDir)
+	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s. Set it back to %s.", was, blobs.ResolveLocation(now, cfg.DataDir), was)
 }
 
 // TokenFile is where the local token lives in the data directory. The CLI
@@ -237,23 +287,49 @@ const TokenFile = "token"
 
 // ensureLocalToken makes sure {dataDir}/token holds a live token for the
 // owner: one is minted ("local") and written with mode 0600 when the file
-// is missing, malformed, or names a token that is unknown or revoked.
+// is missing, malformed, or names a token that is unknown, revoked or
+// another actor's. Minting one revokes the owner's other live "local"
+// tokens, whose secret the replaced file may have held.
 func ensureLocalToken(ctx context.Context, c *core.Core, r *gen.Queries, owner gen.Actor, dataDir string) error {
 	path := filepath.Join(dataDir, TokenFile)
 	if b, err := os.ReadFile(path); err == nil {
 		raw := strings.TrimSpace(string(b))
 		if apitoken.Valid(raw) {
-			if t, err := r.GetTokenByHash(ctx, apitoken.Hash(raw)); err == nil && !t.RevokedAt.Valid {
+			if t, err := r.GetTokenByHash(ctx, apitoken.Hash(raw)); err == nil && !t.RevokedAt.Valid && t.ActorID == owner.ID {
 				return os.Chmod(path, 0o600)
 			}
 		}
 	}
-	raw, _, err := c.CreateToken(ctx, owner.ID, owner.ID, "local")
+	raw, made, err := c.CreateToken(ctx, owner.ID, owner.ID, "local")
 	if err != nil {
 		return err
 	}
+	if err := writeSecret(path, []byte(raw+"\n")); err != nil {
+		return err
+	}
+	toks, err := r.ListTokens(ctx)
+	if err != nil {
+		return err
+	}
+	for _, t := range toks {
+		if t.Name == "local" && t.ActorID == owner.ID && t.ID != made.ID && !t.RevokedAt.Valid {
+			if err := c.RevokeToken(ctx, owner.ID, t.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// writeSecret writes b to path (0600) through path.tmp and a rename. A
+// .tmp left by an earlier run is removed first: writing over it would keep
+// its mode.
+func writeSecret(path string, b []byte) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(raw+"\n"), 0o600); err != nil {
+	if err := os.Remove(tmp); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

@@ -44,8 +44,10 @@ By default, in the database file, with everything else. Two settings move them, 
 | `VQ_S3_SECRET_ACCESS_KEY` | For `s3`: the secret; never logged |
 | `VQ_S3_REGION` | For `s3`: the region; default `auto` |
 
-All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, saying which one the files are in, since their bytes would be out of reach.
+All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, or the same one pointed somewhere else (another `VQ_BLOB_DIR`, or another S3 endpoint or bucket), saying where the files are, since their bytes would be out of reach. To move attachments to other storage, export, then import into an empty instance with the new setting; see [Your data and backups](/help/data-and-backups#importing-an-export).
 
 ## Backups
 
 Snapshots and `vaquero backup restore` cover the database. With `sqlite` storage that includes every attachment. With `dir` or `s3` storage the files are not in the database, so a snapshot holds only the records of them: backing up the directory or the bucket is yours to do. Restoring an older snapshot makes the files of newer attachments orphans, which the sweep deletes after an hour, so undoing that restore leaves records without files. See [Your data and backups](/help/data-and-backups#backups).
+
+With `sqlite` storage, deleting an attachment doesn't shrink the database file; `vaquero backup compact` gives the space back. See [Your data and backups](/help/data-and-backups#compacting-the-database).

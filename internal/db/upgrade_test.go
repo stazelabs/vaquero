@@ -18,6 +18,14 @@ import (
 // manual steps.
 const fixtureDir = "../../testdata/upgrade"
 
+// backfilled are the values a migration fills in on purpose, by table and
+// column: the dump reads each through its expression, which leaves out what
+// the backfill adds, and backfillChecks then checks what it added. 0008 gives
+// v0.1.x link events their target's id (payload.to_id).
+var backfilled = map[string]map[string]string{
+	"events": {"payload": `CASE WHEN kind IN ('link.created', 'link.deleted') THEN json_remove(payload, '$.to_id') ELSE payload END`},
+}
+
 // grownTables may hold more rows after migrating than the fixture recorded,
 // because a later migration seeds them. Empty until one does.
 var grownTables = map[string]bool{}
@@ -61,6 +69,7 @@ func TestFixturesMigrateToHead(t *testing.T) {
 				t.Fatalf("fixture is at schema %d, its JSON says %d", v, info.Schema)
 			}
 			before := dumpTables(t, d, nil)
+			targets := linkTargets(t, d)
 			if err := appdb.Migrate(d); err != nil {
 				t.Fatalf("migrate: %v", err)
 			}
@@ -93,6 +102,7 @@ func TestFixturesMigrateToHead(t *testing.T) {
 			for _, line := range tableDiff(before, dumpTables(t, d, columnsOf(before))) {
 				t.Error(line)
 			}
+			checkLinkTargets(t, d, targets)
 			hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10)
 			if err != nil || len(hits) != 1 {
 				t.Fatalf("search for lasso: %d hits, %v", len(hits), err)
@@ -144,7 +154,11 @@ func dumpTables(t *testing.T, d *sql.DB, cols map[string][]string) dump {
 	for table, cs := range cols {
 		quoted := make([]string, len(cs))
 		for i, c := range cs {
-			quoted[i] = "quote(" + c + ")"
+			expr := c
+			if e, ok := backfilled[table][c]; ok {
+				expr = e
+			}
+			quoted[i] = "quote(" + expr + ")"
 		}
 		rows, err := d.Query("SELECT " + strings.Join(quoted, " || '|' || ") + " FROM " + table + " ORDER BY " + orderOf(t, d, table))
 		if err != nil {
@@ -182,6 +196,54 @@ func orderOf(t *testing.T, d *sql.DB, table string) string {
 		return "rowid"
 	}
 	return strings.Join(pk, ", ")
+}
+
+// linkTargets is each link event's payload to_id, by seq ("" for none).
+func linkTargets(t *testing.T, d *sql.DB) map[int64]string {
+	t.Helper()
+	rows, err := d.Query(`SELECT seq, coalesce(json_extract(payload, '$.to_id'), '') FROM events WHERE kind IN ('link.created', 'link.deleted')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var seq int64
+		var to string
+		if err := rows.Scan(&seq, &to); err != nil {
+			t.Fatal(err)
+		}
+		out[seq] = to
+	}
+	return out
+}
+
+// checkLinkTargets is the rule for the one payload value a migration
+// changes: a to_id a link event had stays as it was, and one 0008 added is
+// the target of the event's link row (every fixture link still exists).
+func checkLinkTargets(t *testing.T, d *sql.DB, before map[int64]string) {
+	t.Helper()
+	after := linkTargets(t, d)
+	if len(after) != len(before) || len(after) == 0 {
+		t.Fatalf("%d link events after migrating, %d before", len(after), len(before))
+	}
+	for seq, was := range before {
+		got := after[seq]
+		if was != "" {
+			if got != was {
+				t.Errorf("event %d: to_id %q became %q", seq, was, got)
+			}
+			continue
+		}
+		var want string
+		err := d.QueryRow(`SELECT l.to_id FROM events e JOIN ticket_links l ON l.id = json_extract(e.payload, '$.link_id') WHERE e.seq = ?`, seq).Scan(&want)
+		if err != nil {
+			t.Fatalf("event %d: its link: %v", seq, err)
+		}
+		if got != want {
+			t.Errorf("event %d: backfilled to_id %q, want the link's target %q", seq, got, want)
+		}
+	}
 }
 
 func columnsOf(d dump) map[string][]string { return d.cols }

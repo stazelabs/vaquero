@@ -1,7 +1,8 @@
 -- name: ListBoardTickets :many
 -- A project's tickets for the board and list views. Every filter is
 -- optional (NULL means any). ready: a todo ticket, unassigned and unclaimed, with no open
--- blocker and no open sub-ticket.
+-- blocker and no open sub-ticket. ticket_id and parent_id narrow it to one
+-- ticket or one ticket's sub-tickets, for the API's ticket answer.
 SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
@@ -23,6 +24,8 @@ JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors a ON a.id = t.assignee_id
 LEFT JOIN actors ca ON ca.id = t.claimed_by
 WHERE t.project_id = sqlc.arg(project_id)
+  AND (sqlc.narg(ticket_id) IS NULL OR t.id = sqlc.narg(ticket_id))
+  AND (sqlc.narg(parent_id) IS NULL OR t.parent_id = sqlc.narg(parent_id))
   AND (sqlc.narg(assignee_id) IS NULL OR t.assignee_id = sqlc.narg(assignee_id))
   AND (sqlc.narg(assignee_kind) IS NULL OR a.kind = sqlc.narg(assignee_kind))
   AND (sqlc.narg(priority) IS NULL OR t.priority = sqlc.narg(priority))

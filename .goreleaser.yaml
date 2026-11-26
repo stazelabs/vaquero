@@ -1,6 +1,10 @@
 # Release builds: run by .github/workflows/release.yml (by hand, never on
 # push). Check locally with: goreleaser check, and
 # goreleaser release --snapshot --clean --skip=publish
+#
+# No `brews`: goreleaser deprecated it, and casks have no service block. The
+# workflow renders the Homebrew formula from packaging/homebrew/vaquero.rb.tmpl
+# and dist/checksums.txt (scripts/formula) and pushes it to the tap.
 version: 2
 
 project_name: vaquero
@@ -33,26 +37,6 @@ checksum:
 changelog:
   sort: asc
   use: github
-
-brews:
-  - name: vaquero
-    repository:
-      owner: stazelabs
-      name: homebrew-vaquero
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: https://github.com/stazelabs/vaquero
-    description: Local-first ticket tracker with coordination for agents
-    license: Apache-2.0
-    install: |
-      bin.install "vaquero"
-    service: |
-      run [opt_bin/"vaquero", "serve"]
-      keep_alive true
-      log_path var/"log/vaquero.log"
-      error_log_path var/"log/vaquero.log"
-    test: |
-      assert_match version.to_s, shell_output("#{bin}/vaquero version")
 
 release:
   github:

@@ -1,0 +1,58 @@
+# typed: false
+# frozen_string_literal: true
+
+# Generated from packaging/homebrew/vaquero.rb.tmpl in stazelabs/vaquero by
+# scripts/formula, run by the release workflow. DO NOT EDIT.
+class Vaquero < Formula
+  desc "Local-first ticket tracker with coordination for agents"
+  homepage "https://github.com/stazelabs/vaquero"
+  version "0.1.2"
+  license "Apache-2.0"
+
+  on_macos do
+    if Hardware::CPU.intel?
+      url "https://github.com/stazelabs/vaquero/releases/download/v0.1.2/vaquero_0.1.2_darwin_amd64.tar.gz"
+      sha256 "eb61e3149a8ba4c6a90591b334879f06c8f32668c40d3fcc4269b3ebcd6320cc"
+
+      define_method(:install) do
+        bin.install "vaquero"
+      end
+    end
+    if Hardware::CPU.arm?
+      url "https://github.com/stazelabs/vaquero/releases/download/v0.1.2/vaquero_0.1.2_darwin_arm64.tar.gz"
+      sha256 "01acd77f38b2fd3a8d635a422f59a048c4e9f57ec6c958c3bfad25b5b4654522"
+
+      define_method(:install) do
+        bin.install "vaquero"
+      end
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
+      url "https://github.com/stazelabs/vaquero/releases/download/v0.1.2/vaquero_0.1.2_linux_amd64.tar.gz"
+      sha256 "40331d78cee82322cbce3e74dc2df5501e1787a079c1c1a35cbd7fd855e17108"
+      define_method(:install) do
+        bin.install "vaquero"
+      end
+    end
+    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+      url "https://github.com/stazelabs/vaquero/releases/download/v0.1.2/vaquero_0.1.2_linux_arm64.tar.gz"
+      sha256 "d576bfca5bb29dde3a3fc001accc0479a9aa018b48ec5e8cc64d8973f631bdc5"
+      define_method(:install) do
+        bin.install "vaquero"
+      end
+    end
+  end
+
+  service do
+    run [opt_bin/"vaquero", "serve"]
+    keep_alive true
+    log_path var/"log/vaquero.log"
+    error_log_path var/"log/vaquero.log"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/vaquero version")
+  end
+end

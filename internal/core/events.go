@@ -25,7 +25,8 @@ import (
 //   - comment.*: {"comment_id"}.
 //   - attachment.added, attachment.deleted: {"attachment_id", "name"}.
 //   - link.*: {"link_id", "kind", "to": "VAQ-7", "to_id"}, the
-//     target ticket by id (events from before to_id carry only the key).
+//     target ticket by id (migration 0008 gave older events theirs where
+//     it could be known; a ticket's history matches link events by to_id).
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.

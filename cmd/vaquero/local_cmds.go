@@ -53,15 +53,44 @@ func brewServiceFile(home, goos string) string {
 	return filepath.Join(home, ".config", "systemd", "user", "homebrew.vaquero.service")
 }
 
-// brewService reports whether Vaquero runs under brew services, which
-// restarts it whenever it stops.
-func brewService() bool {
-	home, err := os.UserHomeDir()
+// brewService reports whether the server on dataDir is the one brew
+// services runs, which restarts it whenever it stops.
+func brewService(dataDir string) bool {
+	return brewManaged(serviceOS, dataDir, os.Getenv)
+}
+
+// brewManaged reports whether brew services runs Vaquero on dataDir: the
+// service file exists, and dataDir is the default data directory, the one
+// the formula's service uses (it sets no VQ_DATA_DIR). An instance with a
+// data directory of its own is never the service's, so stop and upgrades
+// treat it as any other.
+func brewManaged(goos, dataDir string, get func(string) string) bool {
+	home := get("HOME")
+	if home == "" {
+		return false
+	}
+	if _, err := os.Stat(brewServiceFile(home, goos)); err != nil {
+		return false
+	}
+	def, err := config.DefaultDataDir(goos, get)
 	if err != nil {
 		return false
 	}
-	_, err = os.Stat(brewServiceFile(home, serviceOS))
-	return err == nil
+	return sameDir(dataDir, def)
+}
+
+// sameDir reports whether a and b name the same directory: the same file
+// when both exist (a symlink is followed), else the same clean absolute
+// path.
+func sameDir(a, b string) bool {
+	if sa, err := os.Stat(a); err == nil {
+		if sb, err := os.Stat(b); err == nil {
+			return os.SameFile(sa, sb)
+		}
+	}
+	aa, err1 := filepath.Abs(a)
+	ab, err2 := filepath.Abs(b)
+	return err1 == nil && err2 == nil && aa == ab
 }
 
 // message is an error that is a full sentence for the person running the
@@ -80,15 +109,15 @@ var errBrewServices = message("Vaquero runs under brew services; run brew servic
 //
 // expect, when not 0, is the pid of the server the caller meant to stop (the
 // one that answered its probe): if another holds the lock by now, it was
-// already replaced and nothing is stopped. A restore or import holds the
-// lock too, and is never signalled.
+// already replaced and nothing is stopped. A restore, import or compaction
+// holds the lock too, and is never signalled.
 func stopLocal(ctx context.Context, dataDir string, wait time.Duration, expect int) (stopped bool, err error) {
 	pid, role, running, err := lockfile.HolderRole(dataDir)
 	if err != nil || !running {
 		return false, err
 	}
 	if role == lockfile.RoleMaintenance {
-		return false, message("A restore or import is replacing the database in " + dataDir + "; wait for it to finish.")
+		return false, message("A restore, import or compaction is replacing the database in " + dataDir + "; wait for it to finish.")
 	}
 	if expect != 0 && pid != expect {
 		return false, nil
@@ -125,7 +154,7 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	if err != nil {
 		return c.finish(err)
 	}
-	if brewService() {
+	if brewService(cfg.DataDir) {
 		return c.finish(errBrewServices)
 	}
 	stopped, err := stopLocal(ctx, cfg.DataDir, stopWait, 0)
@@ -140,9 +169,10 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	return exitOK
 }
 
-const backupUsage = "vaquero backup list | vaquero backup restore NAME"
+const backupUsage = "vaquero backup list | vaquero backup restore NAME | vaquero backup compact"
 
-// cmdBackup is `vaquero backup list` and `vaquero backup restore NAME`.
+// cmdBackup is `vaquero backup list`, `vaquero backup restore NAME` and
+// `vaquero backup compact`.
 func cmdBackup(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	c := newCmd(stdout, stderr, backupUsage)
 	pos, err := c.parse(args, 1, 2)
@@ -159,6 +189,8 @@ func cmdBackup(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		return c.finish(backupList(c, dir))
 	case pos[0] == "restore" && len(pos) == 2:
 		return c.finish(backupRestore(ctx, c, cfg, dir, pos[1]))
+	case pos[0] == "compact" && len(pos) == 1:
+		return c.finish(backupCompact(ctx, c, cfg, dir))
 	}
 	return c.finish(usageError{usage: backupUsage})
 }
@@ -185,7 +217,7 @@ func backupList(c *cmd, dir string) error {
 func lockStopped(dataDir string) (release func(), err error) {
 	release, _, err = lockfile.AcquireRole(dataDir, lockfile.RoleMaintenance)
 	if errors.Is(err, lockfile.ErrLocked) {
-		if brewService() {
+		if brewService(dataDir) {
 			return nil, message("Stop vaquero first: brew services stop vaquero")
 		}
 		return nil, message("Stop vaquero first: vaquero stop")
@@ -218,6 +250,12 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 	if err := copyFile(tmp, src); err != nil {
 		_ = os.Remove(tmp)
 		return err
+	}
+	// A snapshot is a VACUUM INTO copy, which may renumber the rowids the
+	// search indexes are keyed on.
+	if err := appdb.RebuildSearchFile(ctx, tmp); err != nil {
+		removeDatabase(tmp)
+		return fmt.Errorf("couldn't rebuild search in %s, so nothing changed: %w", name, err)
 	}
 	aside, err := swapDatabase(ctx, cfg, tmp)
 	if err != nil {
@@ -265,6 +303,13 @@ func swapDatabase(ctx context.Context, cfg config.Config, newPath string) (aside
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
+	return installDatabase(cfg, newPath, aside, moved)
+}
+
+// installDatabase renames the closed database file at newPath over the
+// current one, whose copy the caller has saved at aside (moved: moved there
+// whole). An error after that is a *swapFailed saying where it is.
+func installDatabase(cfg config.Config, newPath, aside string, moved bool) (string, error) {
 	fail := func(err error) (string, error) {
 		if aside == "" {
 			return "", err
@@ -374,9 +419,13 @@ func snapshotFile(ctx context.Context, path, dir string, kind appdb.Kind) (strin
 	return info.Name, nil
 }
 
-// copyFile writes src to path (0600) and syncs it.
+// copyFile writes src to a new file at path (0600) and syncs it. A file
+// already there is removed first: written over, it would keep its mode.
 func copyFile(path string, src io.Reader) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,8 @@ package blobs
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/config"
@@ -22,4 +24,46 @@ func Open(cfg config.Config, w, r *sql.DB, now func() time.Time) (Store, error) 
 	default:
 		return nil, fmt.Errorf("blobs: unknown backend %q", cfg.BlobBackend)
 	}
+}
+
+// DataDirMarker starts a dir location inside the data directory.
+const DataDirMarker = "{data dir}"
+
+// Location names where the configured store keeps its bytes, recorded in
+// settings beside the backend (blob_location) so a boot pointed at another
+// directory or bucket is caught. For dir it is the directory relative to the
+// data directory when inside it ("{data dir}/attachments", so a data
+// directory moved whole keeps matching), else absolute; for s3,
+// "endpoint/bucket" with the endpoint in lower case; for sqlite "", since
+// its bytes are in the database itself.
+func Location(cfg config.Config) string {
+	switch cfg.BlobBackend {
+	case "dir":
+		dir := absClean(cfg.BlobDir)
+		if cfg.DataDir != "" {
+			if rel, err := filepath.Rel(absClean(cfg.DataDir), dir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return DataDirMarker + "/" + filepath.ToSlash(rel)
+			}
+		}
+		return dir
+	case "s3":
+		return strings.ToLower(strings.TrimSuffix(cfg.S3Endpoint, "/")) + "/" + cfg.S3Bucket
+	}
+	return ""
+}
+
+// ResolveLocation turns a dir location back into a path under dataDir, for
+// messages; any other location is returned as is.
+func ResolveLocation(loc, dataDir string) string {
+	if rel, ok := strings.CutPrefix(loc, DataDirMarker+"/"); ok {
+		return filepath.Join(absClean(dataDir), filepath.FromSlash(rel))
+	}
+	return loc
+}
+
+func absClean(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return filepath.Clean(p)
 }

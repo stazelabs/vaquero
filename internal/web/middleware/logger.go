@@ -54,13 +54,17 @@ func Logger(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// maxLoggedPath is the most of a path a log line keeps: the client chose
+// it, and a scanner's can be long.
+const maxLoggedPath = 200
+
 // redactPath drops anything after a "?" so a query string never reaches a
-// log line. Callers pass
+// log line, and cuts the rest to maxLoggedPath characters. Callers pass
 // r.URL.Path, which has none; the cut guards a caller that passes a
 // RequestURI.
 func redactPath(p string) string {
 	path, _, _ := strings.Cut(p, "?")
-	return path
+	return cut(path, maxLoggedPath)
 }
 
 // RedactPath is redactPath for handlers that log a request path.

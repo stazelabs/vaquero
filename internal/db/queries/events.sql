@@ -14,17 +14,21 @@ LIMIT ?;
 
 -- name: ListTicketEvents :many
 -- A ticket's history: its own events, and link events that name it as the
--- "to" side (a link is one event, recorded on the "from" ticket).
+-- "to" side by id (a link is one event, recorded on the "from" ticket).
+-- Two indexed lookups (events_ticket, events_link_to), never a scan; a
+-- link never names its own ticket, so no event comes twice.
 SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
-FROM events e
+FROM (
+    SELECT o.seq FROM events o WHERE o.ticket_id = sqlc.arg(ticket_id)
+    UNION ALL
+    SELECT l.seq FROM events l
+    WHERE l.kind IN ('link.created', 'link.deleted') AND json_extract(l.payload, '$.to_id') = sqlc.arg(ticket_id)
+) m
+JOIN events e ON e.seq = m.seq
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.ticket_id = sqlc.arg(ticket_id)
-   OR (e.kind IN ('link.created', 'link.deleted') AND (
-        json_extract(e.payload, '$.to_id') = sqlc.arg(ticket_id)
-        OR (json_extract(e.payload, '$.to_id') IS NULL AND json_extract(e.payload, '$.to') = sqlc.arg(ticket_key))))
 ORDER BY e.seq DESC;
 
 -- name: CountEvents :one

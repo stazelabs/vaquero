@@ -344,7 +344,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
 		})
 	}
-	events, err := d.R.ListTicketEvents(ctx, gen.ListTicketEventsParams{TicketID: sqlNull(t.ID), TicketKey: v.Key})
+	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))
 	if err != nil {
 		return v, err
 	}

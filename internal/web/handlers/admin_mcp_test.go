@@ -110,3 +110,17 @@ func TestAdminMCPFilterByActorNotName(t *testing.T) {
 		t.Errorf("human filter:\n%s", byHuman)
 	}
 }
+
+// VAQ-113: an agent id that matches nothing, such as an old name-based link,
+// says so and offers the full list rather than an empty log.
+func TestAdminMCPUnknownAgent(t *testing.T) {
+	e, tok := agentEnv(t)
+	mcpCall(t, mcpConnect(t, e, tok, "builder"), "ready_tickets", map[string]any{})
+	page := e.Client().Get("/admin/mcp?agent=builder&tool=ready_tickets").Body
+	if !strings.Contains(page, "No agent with that id has made MCP calls.") || !strings.Contains(page, `href="/admin/mcp?tool=ready_tickets"`) || !strings.Contains(page, `>Show every agent</a>`) {
+		t.Errorf("unknown agent:\n%s", page)
+	}
+	if strings.Contains(page, "No MCP calls match.") {
+		t.Error("the plain empty state shows too")
+	}
+}

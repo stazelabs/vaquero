@@ -240,21 +240,18 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 const listTicketEvents = `-- name: ListTicketEvents :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
-FROM events e
+FROM (
+    SELECT o.seq FROM events o WHERE o.ticket_id = ?1
+    UNION ALL
+    SELECT l.seq FROM events l
+    WHERE l.kind IN ('link.created', 'link.deleted') AND json_extract(l.payload, '$.to_id') = ?1
+) m
+JOIN events e ON e.seq = m.seq
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.ticket_id = ?1
-   OR (e.kind IN ('link.created', 'link.deleted') AND (
-        json_extract(e.payload, '$.to_id') = ?1
-        OR (json_extract(e.payload, '$.to_id') IS NULL AND json_extract(e.payload, '$.to') = ?2)))
 ORDER BY e.seq DESC
 `
-
-type ListTicketEventsParams struct {
-	TicketID  sql.NullString
-	TicketKey string
-}
 
 type ListTicketEventsRow struct {
 	Seq          int64
@@ -271,9 +268,11 @@ type ListTicketEventsRow struct {
 }
 
 // A ticket's history: its own events, and link events that name it as the
-// "to" side (a link is one event, recorded on the "from" ticket).
-func (q *Queries) ListTicketEvents(ctx context.Context, arg ListTicketEventsParams) ([]ListTicketEventsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTicketEvents, arg.TicketID, arg.TicketKey)
+// "to" side by id (a link is one event, recorded on the "from" ticket).
+// Two indexed lookups (events_ticket, events_link_to), never a scan; a
+// link never names its own ticket, so no event comes twice.
+func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString) ([]ListTicketEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTicketEvents, ticketID)
 	if err != nil {
 		return nil, err
 	}

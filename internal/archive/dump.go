@@ -20,7 +20,7 @@ import (
 // add it to one set (TestSettingsKeysKnown finds the keys the code writes).
 var (
 	exportedSettings = []string{}
-	instanceSettings = []string{"instance_id", "blob_store"}
+	instanceSettings = []string{"instance_id", "blob_store", "blob_location"}
 )
 
 // ExportedSettings returns the settings keys an export carries (a copy).

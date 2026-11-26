@@ -136,15 +136,8 @@ func TestConcurrentStaleRestart(t *testing.T) {
 }
 
 func TestStaleRestartUnderBrewServices(t *testing.T) {
-	dataDir, addr := localEnv(t)
+	dataDir, addr := brewEnv(t)
 	before := serverAt(t, dataDir, "0.1.0")
-	home, _ := os.UserHomeDir()
-	p := brewServiceFile(home, "darwin")
-	os.MkdirAll(filepath.Dir(p), 0o700)
-	os.WriteFile(p, nil, 0o600)
-	old := serviceOS
-	serviceOS = "darwin"
-	t.Cleanup(func() { serviceOS = old })
 	asRelease(t, "0.2.0")
 	// The fake service manager: once the old server stops, start the new
 	// one, a moment later, as launchd would.
@@ -174,14 +167,7 @@ func TestStaleRestartUnderBrewServices(t *testing.T) {
 // manager instead of starting its own, which would hold the lock and leave
 // launchd's copy failing to start, again and again.
 func TestBrewServiceStartIsLeftToTheManager(t *testing.T) {
-	dataDir, addr := localEnv(t)
-	home, _ := os.UserHomeDir()
-	p := brewServiceFile(home, "darwin")
-	os.MkdirAll(filepath.Dir(p), 0o700)
-	os.WriteFile(p, nil, 0o600)
-	old := serviceOS
-	serviceOS = "darwin"
-	t.Cleanup(func() { serviceOS = old })
+	dataDir, addr := brewEnv(t)
 	// The fake service manager starts its server, stamped so it can be
 	// told apart, a second late.
 	go func() {
@@ -203,6 +189,30 @@ func TestBrewServiceStartIsLeftToTheManager(t *testing.T) {
 	}
 	if v := serverVersion(t); v != "9.9.9-svc" {
 		t.Fatalf("the server running is %q, not the service manager's", v)
+	}
+}
+
+// An instance with its own data directory isn't the service's: after an
+// upgrade the command restarts it itself, without waiting for brew
+// services to.
+func TestStaleRestartWithOwnDataDirUnderBrewServices(t *testing.T) {
+	dataDir, _ := localEnv(t)
+	brewServiceFileExists(t)
+	before := serverAt(t, dataDir, "0.1.0")
+	asRelease(t, "0.2.0")
+	start := time.Now()
+	code, _, e := runCLI(t, "projects")
+	if code != 0 || !strings.Contains(e, restartLine) {
+		t.Fatalf("%d %q", code, e)
+	}
+	if took := time.Since(start); took >= brewRestartWait {
+		t.Fatalf("waited %v for brew services", took)
+	}
+	if after, running, _ := lockfile.Holder(dataDir); !running || after == before {
+		t.Fatal("server not replaced")
+	}
+	if v := serverVersion(t); v != "0.2.0" {
+		t.Fatalf("server runs %q", v)
 	}
 }
 
@@ -260,7 +270,7 @@ func TestStopLeavesAMaintenanceHolderAlone(t *testing.T) {
 	defer release()
 	// The holder is this process: a signal would end the test.
 	stopped, err := stopLocal(t.Context(), dir, time.Second, 0)
-	if stopped || err == nil || !strings.Contains(err.Error(), "restore or import") {
+	if stopped || err == nil || !strings.Contains(err.Error(), "restore, import or compaction") {
 		t.Fatalf("stopped %v, err %v", stopped, err)
 	}
 }

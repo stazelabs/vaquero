@@ -44,19 +44,23 @@ JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors a ON a.id = t.assignee_id
 LEFT JOIN actors ca ON ca.id = t.claimed_by
 WHERE t.project_id = ?1
-  AND (?2 IS NULL OR t.assignee_id = ?2)
-  AND (?3 IS NULL OR a.kind = ?3)
-  AND (?4 IS NULL OR t.priority = ?4)
-  AND (?5 IS NULL OR t.milestone_id = ?5)
-  AND (CAST(?6 AS BOOLEAN) = 0 OR t.milestone_id IS NULL)
-  AND (?7 IS NULL OR EXISTS (
+  AND (?2 IS NULL OR t.id = ?2)
+  AND (?3 IS NULL OR t.parent_id = ?3)
+  AND (?4 IS NULL OR t.assignee_id = ?4)
+  AND (?5 IS NULL OR a.kind = ?5)
+  AND (?6 IS NULL OR t.priority = ?6)
+  AND (?7 IS NULL OR t.milestone_id = ?7)
+  AND (CAST(?8 AS BOOLEAN) = 0 OR t.milestone_id IS NULL)
+  AND (?9 IS NULL OR EXISTS (
         SELECT 1 FROM ticket_tags tt JOIN tags g ON g.id = tt.tag_id
-        WHERE tt.ticket_id = t.id AND g.name = ?7))
+        WHERE tt.ticket_id = t.id AND g.name = ?9))
 ORDER BY s.position, t.position
 `
 
 type ListBoardTicketsParams struct {
 	ProjectID    string
+	TicketID     interface{}
+	ParentID     interface{}
 	AssigneeID   interface{}
 	AssigneeKind interface{}
 	Priority     interface{}
@@ -86,10 +90,13 @@ type ListBoardTicketsRow struct {
 
 // A project's tickets for the board and list views. Every filter is
 // optional (NULL means any). ready: a todo ticket, unassigned and unclaimed, with no open
-// blocker and no open sub-ticket.
+// blocker and no open sub-ticket. ticket_id and parent_id narrow it to one
+// ticket or one ticket's sub-tickets, for the API's ticket answer.
 func (q *Queries) ListBoardTickets(ctx context.Context, arg ListBoardTicketsParams) ([]ListBoardTicketsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listBoardTickets,
 		arg.ProjectID,
+		arg.TicketID,
+		arg.ParentID,
 		arg.AssigneeID,
 		arg.AssigneeKind,
 		arg.Priority,

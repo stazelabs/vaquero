@@ -17,6 +17,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero stop` | Stop the server running in the background on this machine |
 | `vaquero backup list` | The database snapshots in the data directory, newest first; needs no server |
 | `vaquero backup restore NAME` | Put a snapshot in place of the database, saving the current one as a snapshot first; stop the server first. See [Your data and backups](/help/data-and-backups#restoring-a-snapshot) |
+| `vaquero backup compact` | Shrink the database to what it holds (deleted attachments leave space behind), saving it as a snapshot first; all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#compacting-the-database) |
 | `vaquero export FILE\|-` | Write all your data to a `.tar.gz`, or with `-` to standard output; the owner only. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `vaquero import FILE` | Restore an export into an empty instance, all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#importing-an-export) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
@@ -44,7 +45,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero release TICKET` | Give up your claim; the status and assignee stay |
 | `vaquero mcp [--agent NAME]` | An MCP server on standard input and output, for agent clients that launch one; see [MCP](/help/mcp) |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
-| `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to |
+| `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to; `-` as the token reads it from standard input, keeping it out of your shell history |
 
 Priorities are `none`, `urgent`, `high`, `medium` and `low`. Statuses, assignees and milestones are given by name, in any case.
 

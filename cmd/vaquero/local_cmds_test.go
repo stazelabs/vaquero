@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/lockfile"
 )
@@ -52,10 +54,11 @@ func TestStopEndsBackgroundServer(t *testing.T) {
 	}
 }
 
-func TestStopUnderBrewServices(t *testing.T) {
-	localEnv(t)
-	home, _ := os.UserHomeDir()
-	p := brewServiceFile(home, "darwin")
+// brewServiceFileExists writes the file brew services keeps for Vaquero
+// under the test's HOME, as for macOS.
+func brewServiceFileExists(t *testing.T) {
+	t.Helper()
+	p := brewServiceFile(os.Getenv("HOME"), "darwin")
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +68,101 @@ func TestStopUnderBrewServices(t *testing.T) {
 	old := serviceOS
 	serviceOS = "darwin"
 	t.Cleanup(func() { serviceOS = old })
+}
+
+// brewEnv is localEnv for the instance brew services runs: the service file
+// exists and the data directory is the default one under the test's HOME
+// (set in VQ_DATA_DIR too, so a server started here uses it on any OS).
+func brewEnv(t *testing.T) (dataDir, addr string) {
+	t.Helper()
+	_, addr = localEnv(t)
+	home := os.Getenv("HOME")
+	dataDir, err := config.DefaultDataDir("darwin", os.Getenv)
+	if err != nil || !strings.HasPrefix(dataDir, home+string(filepath.Separator)) || home == "" {
+		t.Fatalf("default data dir %q is not under the test HOME %q: %v", dataDir, home, err)
+	}
+	t.Setenv("VQ_DATA_DIR", dataDir)
+	t.Cleanup(func() { killTestServer(dataDir) })
+	brewServiceFileExists(t)
+	return dataDir, addr
+}
+
+// Only the default data directory's instance is the service's: the formula
+// sets no VQ_DATA_DIR.
+func TestBrewManaged(t *testing.T) {
+	home := t.TempDir()
+	env := func(kv ...string) func(string) string {
+		m := map[string]string{"HOME": home}
+		for i := 0; i+1 < len(kv); i += 2 {
+			m[kv[i]] = kv[i+1]
+		}
+		return func(k string) string { return m[k] }
+	}
+	mac := filepath.Join(home, "Library", "Application Support", "vaquero")
+	linux := filepath.Join(home, ".local", "share", "vaquero")
+	if brewManaged("darwin", mac, env()) {
+		t.Fatal("managed without a service file")
+	}
+	for _, goos := range []string{"darwin", "linux"} {
+		p := brewServiceFile(home, goos)
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, c := range map[string]struct {
+		goos, dir string
+		get       func(string) string
+		want      bool
+	}{
+		"mac default":          {"darwin", mac, env(), true},
+		"mac default, slash":   {"darwin", mac + "/", env(), true},
+		"mac custom":           {"darwin", filepath.Join(home, "other"), env(), false},
+		"linux default":        {"linux", linux, env(), true},
+		"linux custom":         {"linux", filepath.Join(home, "other"), env(), false},
+		"linux XDG default":    {"linux", filepath.Join(home, "xdg", "vaquero"), env("XDG_DATA_HOME", filepath.Join(home, "xdg")), true},
+		"linux XDG, plain dir": {"linux", linux, env("XDG_DATA_HOME", filepath.Join(home, "xdg")), false},
+		"no HOME":              {"darwin", mac, func(string) string { return "" }, false},
+	} {
+		if got := brewManaged(c.goos, c.dir, c.get); got != c.want {
+			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// A symlinked spelling of the default directory is the same directory.
+func TestBrewManagedSymlink(t *testing.T) {
+	home := t.TempDir()
+	get := func(k string) string {
+		if k == "HOME" {
+			return home
+		}
+		return ""
+	}
+	p := brewServiceFile(home, "darwin")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	def := filepath.Join(home, "Library", "Application Support", "vaquero")
+	if err := os.MkdirAll(def, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, "link")
+	if err := os.Symlink(def, link); err != nil {
+		t.Fatal(err)
+	}
+	if !brewManaged("darwin", link, get) {
+		t.Fatal("symlink to the default directory not recognised")
+	}
+}
+
+func TestStopUnderBrewServices(t *testing.T) {
+	brewEnv(t)
 	code, _, e := runCLI(t, "stop")
 	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services; run brew services stop vaquero.") {
 		t.Fatalf("%d %q", code, e)
@@ -121,6 +219,41 @@ func TestBackupListEmptyAndSorted(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) != 2 || !strings.HasPrefix(lines[0], b) || !strings.HasPrefix(lines[1], a) {
 		t.Fatalf("want %s then %s, got:\n%s", b, a, out)
+	}
+}
+
+// An instance with its own data directory isn't the service's, even when
+// brew services runs Vaquero too: stop stops it.
+func TestStopWithOwnDataDirUnderBrewServices(t *testing.T) {
+	dataDir := startBackground(t)
+	brewServiceFileExists(t)
+	code, out, e := runCLI(t, "stop")
+	if code != 0 || strings.TrimSpace(out) != "Vaquero stopped." {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if _, running, _ := lockfile.Holder(dataDir); running {
+		t.Fatal("server still holds the lock")
+	}
+}
+
+// The restore refusal names the command that stops this instance.
+func TestRestoreRefusedNamesBrewServices(t *testing.T) {
+	brewEnv(t)
+	if code, _, e := runCLI(t, "projects"); code != 0 {
+		t.Fatalf("projects: %s", e)
+	}
+	code, _, e := runCLI(t, "backup", "restore", "vaquero-20261118-120000.sqlite")
+	if code != 1 || !strings.Contains(e, "Stop vaquero first: brew services stop vaquero") {
+		t.Fatalf("%d %q", code, e)
+	}
+}
+
+func TestRestoreRefusedWithOwnDataDirUnderBrewServices(t *testing.T) {
+	startBackground(t)
+	brewServiceFileExists(t)
+	code, _, e := runCLI(t, "backup", "restore", "vaquero-20261118-120000.sqlite")
+	if code != 1 || !strings.Contains(e, "Stop vaquero first: vaquero stop") {
+		t.Fatalf("%d %q", code, e)
 	}
 }
 
@@ -261,5 +394,71 @@ func TestSyncDir(t *testing.T) {
 	}
 	if err := syncDir(filepath.Join(t.TempDir(), "absent")); err == nil {
 		t.Fatal("a missing directory synced")
+	}
+}
+
+// A snapshot is a VACUUM INTO copy, which may renumber the rowids the search
+// indexes are keyed on, so a restore rebuilds both before the swap.
+func TestRestoreRebuildsSearch(t *testing.T) {
+	dataDir := seedData(t)
+	runCLI(t, "projects")
+	if code, _, e := runCLI(t, "ticket", "new", "VAQ", "Rope the lasso"); code != 0 {
+		t.Fatalf("ticket new: %s", e)
+	}
+	runCLI(t, "stop")
+	path := filepath.Join(dataDir, "vaquero.db")
+	dropFromSearch(t, path) // the snapshot carries a stale index
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	name := snapshotNow(t, dataDir)
+	setNow(t, time.Date(2026, 11, 18, 12, 0, 5, 0, time.UTC))
+	if code, out, e := runCLI(t, "backup", "restore", name); code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if left, _ := filepath.Glob(path + ".restore*"); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+	d, err := appdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); err != nil || len(hits) != 1 {
+		t.Fatalf("search after restoring: %d hits, %v", len(hits), err)
+	}
+}
+
+// A snapshot whose search can't be rebuilt isn't restored: the database
+// stays the very file it was, and the copy is removed.
+func TestRestoreRebuildFailureChangesNothing(t *testing.T) {
+	dataDir := seedData(t)
+	name := appdb.BackupNameKind(appdb.KindPreDelete, time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC))
+	if err := os.MkdirAll(filepath.Join(dataDir, "backups"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	bad, err := sql.Open("sqlite", filepath.Join(dataDir, "backups", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.Exec(`CREATE TABLE x (y)`); err != nil { // no search tables
+		t.Fatal(err)
+	}
+	bad.Close()
+	path := filepath.Join(dataDir, "vaquero.db")
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, _, e := runCLI(t, "backup", "restore", name)
+	if code != 1 || !strings.Contains(e, "couldn't rebuild search in "+name+", so nothing changed") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, err := os.Stat(path); err != nil || !os.SameFile(st, now) {
+		t.Fatalf("the database file was replaced (%v)", err)
+	}
+	if left, _ := filepath.Glob(path + ".restore*"); len(left) != 0 {
+		t.Fatalf("left behind: %v", left)
+	}
+	if _, out, _ := runCLI(t, "projects"); !strings.Contains(out, "VAQ") {
+		t.Fatalf("projects:\n%s", out)
 	}
 }

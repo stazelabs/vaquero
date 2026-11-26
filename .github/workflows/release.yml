@@ -15,7 +15,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Tag is a release number
         env:
           TAG: ${{ inputs.tag }}
@@ -44,10 +44,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
       - name: Create the tag (or reuse it, when re-running a failed release)
@@ -63,10 +63,39 @@ jobs:
             git tag -a "$TAG" -m "Vaquero $TAG"
             git push origin "$TAG"
           fi
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      # The formula is rendered from packaging/homebrew/vaquero.rb.tmpl and
+      # this release's checksums, then written to the tap through the
+      # contents API. A re-run with the same tag updates the file in place,
+      # or leaves it alone when it is already this release's.
+      - name: Publish the Homebrew formula
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          go run ./scripts/formula -version "$TAG" -checksums dist/checksums.txt -o dist/vaquero.rb
+          path=repos/stazelabs/homebrew-vaquero/contents/Formula/vaquero.rb
+          # The file's blob sha, empty when it doesn't exist yet. On an error gh
+          # prints the error body to stdout (skipping --jq), so only a real 404
+          # counts as missing; any other error stops here.
+          err=$(mktemp)
+          if out=$(gh api "$path" --jq .sha 2>"$err"); then
+            sha=$out
+          elif grep -q 'HTTP 404' "$err"; then
+            sha=
+          else
+            cat "$err" >&2
+            exit 1
+          fi
+          if [ "$sha" = "$(git hash-object dist/vaquero.rb)" ]; then
+            echo "Formula/vaquero.rb is already the $TAG formula"
+            exit 0
+          fi
+          args=(--method PUT "$path" -f message="vaquero $TAG" -f content="$(base64 -w0 dist/vaquero.rb)")
+          if [ -n "$sha" ]; then args+=(-f sha="$sha"); fi
+          gh api "${args[@]}" --jq '"Formula/vaquero.rb updated: " + .commit.html_url'

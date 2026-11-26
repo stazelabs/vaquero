@@ -26,7 +26,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.CSP,
 		middleware.CrossOrigin(d.Logger),
 		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload.
-		middleware.BodyLimit(middleware.MaxBody),
+		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
 		chimw.GetHead,
@@ -136,6 +136,7 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.Patch("/projects/{key}", handlers.APIProjectUpdate(d))
 	r.Post("/projects/{key}/key", handlers.APIProjectKey(d))
 	r.Post("/projects/{key}/tickets", handlers.APITicketCreate(d))
+	r.Post("/tickets/bulk", handlers.APITicketsBulk(d))
 	r.Patch("/tickets/{ticket}", handlers.APITicketPatch(d))
 	r.Post("/tickets/{ticket}/move", handlers.APITicketMove(d))
 	r.Get("/ready", handlers.APIReady(d))

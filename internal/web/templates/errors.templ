@@ -15,3 +15,12 @@ templ NotFoundPage() {
 		<a href="/" class={ "mt-6 " + btnSecondary }>Go home</a>
 	}
 }
+
+// TooLargePage is the 413 for a web form body over the size limit.
+templ TooLargePage() {
+	@Shell("Request too large") {
+		<h1 class={ h1Class }>Request too large</h1>
+		<p class="mt-3 text-sm text-ink/70">That request is too large. Go back and send less.</p>
+		<a href="/" class={ "mt-6 " + btnSecondary }>Go home</a>
+	}
+}

@@ -27,6 +27,9 @@ type Core struct {
 	// BlobStore names the attachment backend ("sqlite", "dir" or "s3"). The
 	// first attachment records it in settings when nothing has yet.
 	BlobStore string
+	// BlobLocation is where that backend keeps the bytes (blobs.Location),
+	// recorded with BlobStore as blob_location.
+	BlobLocation string
 }
 
 // New returns a Core writing through db.

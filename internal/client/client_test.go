@@ -1,6 +1,7 @@
 package client_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/client"
+	"github.com/stazelabs/vaquero/internal/logfile"
 )
 
 // TestMain doubles as a fake `vaquero serve` for TestEnsureLocalStarts:
@@ -174,11 +176,19 @@ func TestEnsureLocalStarts(t *testing.T) {
 	t.Setenv("VQ_FAKE_SERVE", "1")
 	exe, _ := os.Executable()
 	dir := t.TempDir()
+	// VAQ-61: a log at the limit moves to vaquero.log.1 before the start.
+	full := bytes.Repeat([]byte("x"), logfile.Max)
+	if err := os.WriteFile(filepath.Join(dir, "vaquero.log"), full, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := client.EnsureLocal(context.Background(), exe, "http://"+addr, dir, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "vaquero.log")); err != nil {
-		t.Fatal("no log file")
+	if st, err := os.Stat(filepath.Join(dir, "vaquero.log")); err != nil || st.Size() >= logfile.Max {
+		t.Fatalf("log not rotated: %v", err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "vaquero.log.1")); err != nil || st.Size() != logfile.Max {
+		t.Fatalf("no vaquero.log.1: %v", err)
 	}
 }
 
@@ -234,5 +244,29 @@ func TestUpload(t *testing.T) {
 	err := c.Upload(t.Context(), "/up", "refuse.txt", strings.NewReader("x"), nil)
 	if !errors.As(err, &apiErr) || apiErr.Status != 413 || apiErr.Message != "Files can be at most 10 MB." {
 		t.Fatalf("%v", err)
+	}
+}
+
+// VAQ-61: the saved config is 0600 even when a readable .tmp beside it was
+// left by an earlier run.
+func TestSaveIgnoresStaleTmpMode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", home)
+	path, err := client.ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+".tmp", []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (client.Config{Profiles: []client.Profile{{Name: "team", URL: "https://vq.example", Token: "vq_x"}}}).Save(); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(path); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v %v", st.Mode().Perm(), err)
 	}
 }

@@ -32,6 +32,10 @@ func TestCLIExport(t *testing.T) {
 	cliEnv(t)
 	mustCLI(t, "ticket", "new", "VAQ", "Exported")
 	file := filepath.Join(t.TempDir(), "out.tar.gz")
+	// VAQ-61: a readable .tmp left by an earlier run doesn't lend its mode.
+	if err := os.WriteFile(file+".tmp", []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	out := mustCLI(t, "export", file)
 	if !strings.Contains(out, file) {
 		t.Fatalf("%q", out)

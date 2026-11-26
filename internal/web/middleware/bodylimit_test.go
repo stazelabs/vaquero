@@ -10,7 +10,7 @@ import (
 
 func TestBodyLimit(t *testing.T) {
 	var read int
-	h := BodyLimit(10)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := BodyLimit(10, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		read = len(b)
 	}))
@@ -34,7 +34,7 @@ func TestBodyLimit(t *testing.T) {
 
 func TestUploadBodyLimit(t *testing.T) {
 	var limit int64
-	h := BodyLimit(MaxBody)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := BodyLimit(MaxBody, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, _ := io.Copy(io.Discard, r.Body)
 		limit = n
 	}))
@@ -72,7 +72,7 @@ func TestUploadBodyLimit(t *testing.T) {
 }
 
 func TestTooLargeAnswersByRoute(t *testing.T) {
-	h := BodyLimit(10)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	h := BodyLimit(10, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	for _, p := range []string{"/api/v1/tickets", "/mcp"} {
 		req := httptest.NewRequest("POST", p, strings.NewReader("x"))
 		req.ContentLength = 11

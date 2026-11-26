@@ -17,7 +17,7 @@ That is all: run any `vaquero` command and the server starts in the background. 
 
     brew services start vaquero
 
-`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again.
+`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again. The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual.
 
 ## Installing from a release archive
 
