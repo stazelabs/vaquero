@@ -60,3 +60,10 @@ UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_a
 SELECT t.id, p.key AS project_key, t.number FROM tickets t
 JOIN projects p ON p.id = t.project_id
 WHERE t.id IN (sqlc.slice('ids'));
+
+-- name: ListTicketBriefs :many
+-- The key and title of each given ticket that still exists, in one read
+-- (what a plan approval asked about).
+SELECT t.id, p.key AS project_key, t.number, t.title FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id IN (sqlc.slice('ids'));

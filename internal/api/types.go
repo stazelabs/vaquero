@@ -187,6 +187,26 @@ type Decision struct {
 	AskedBy        string             `json:"asked_by"`
 	AskedAt        string             `json:"asked_at"`
 	Approvals      []DecisionApproval `json:"approvals,omitempty"`
+	// Asked is, for a plan approval, what each ticket was asked about: its
+	// plan revision, its epic and its sub-tickets then. An Approve covers
+	// exactly these, and is refused if any changed since.
+	Asked []DecisionAsked `json:"asked,omitempty"`
+}
+
+// DecisionAsked is one plan-approval ticket as asked: Parent is its epic's
+// key (absent for none), Children its sub-tickets, by key and title. A
+// ticket deleted since is left out.
+type DecisionAsked struct {
+	Ticket       string         `json:"ticket"`
+	PlanRevision int64          `json:"plan_revision"`
+	Parent       string         `json:"parent,omitempty"`
+	Children     []DecisionItem `json:"children"`
+}
+
+// DecisionItem is a ticket a decision names, by key and title.
+type DecisionItem struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
 }
 
 // DecisionOption is one answer a decision offers, and what it costs.

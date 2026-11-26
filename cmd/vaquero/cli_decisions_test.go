@@ -86,3 +86,16 @@ func TestCLIDecisionAnswer(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIDecisionShowsWhatApprovingCovers(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Board")
+	mustCLI(t, "ticket", "new", "VAQ", "Columns", "--parent", "VAQ-1")
+	id := strings.TrimSpace(mustCLI(t, "decision", "ask", "VAQ", "Approve the board plan?", "--approval", "plan", "--ticket", "VAQ-1", "--ticket", "VAQ-2"))
+	show := mustCLI(t, "decision", "show", id)
+	for _, want := range []string{"Approving covers:", "  VAQ-1 at plan revision 0\n    VAQ-2  Columns\n", "  VAQ-2 at plan revision 0, under VAQ-1\n"} {
+		if !strings.Contains(show, want) {
+			t.Errorf("show lacks %q:\n%s", want, show)
+		}
+	}
+}

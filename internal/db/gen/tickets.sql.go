@@ -303,6 +303,59 @@ func (q *Queries) ListSubTickets(ctx context.Context, parentID sql.NullString) (
 	return items, nil
 }
 
+const listTicketBriefs = `-- name: ListTicketBriefs :many
+SELECT t.id, p.key AS project_key, t.number, t.title FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id IN (/*SLICE:ids*/?)
+`
+
+type ListTicketBriefsRow struct {
+	ID         string
+	ProjectKey string
+	Number     int64
+	Title      string
+}
+
+// The key and title of each given ticket that still exists, in one read
+// (what a plan approval asked about).
+func (q *Queries) ListTicketBriefs(ctx context.Context, ids []string) ([]ListTicketBriefsRow, error) {
+	query := listTicketBriefs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTicketBriefsRow{}
+	for rows.Next() {
+		var i ListTicketBriefsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectKey,
+			&i.Number,
+			&i.Title,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketKeys = `-- name: ListTicketKeys :many
 SELECT t.id, p.key AS project_key, t.number FROM tickets t
 JOIN projects p ON p.id = t.project_id

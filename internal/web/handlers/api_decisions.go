@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -326,6 +327,64 @@ func decisionDTO(ctx context.Context, d Deps, dec gen.Decision) (api.Decision, e
 		out.Approvals = append(out.Approvals, api.DecisionApproval{
 			Ticket: core.TicketKey{Project: a.ProjectKey, Number: a.Number}.String(), RequirementHash: a.RequirementHash, PlanRevision: a.PlanRevision, At: a.At,
 		})
+	}
+	if dec.Kind == core.DecisionApproval && dec.Subject == "plan" {
+		if out.Asked, err = decisionAsked(ctx, d, dec.ID); err != nil {
+			return api.Decision{}, err
+		}
+	}
+	return out, nil
+}
+
+// decisionAsked is what plan approval decisionID asked about for each of
+// its tickets, in two reads: the pins, then the keys and titles they name.
+func decisionAsked(ctx context.Context, d Deps, decisionID string) ([]api.DecisionAsked, error) {
+	pins, err := d.R.ListDecisionTicketPins(ctx, decisionID)
+	if err != nil {
+		return nil, err
+	}
+	children := make([][]core.PinnedChild, len(pins))
+	var ids []string
+	for i, p := range pins {
+		if err := json.Unmarshal([]byte(p.Children), &children[i]); err != nil {
+			return nil, err
+		}
+		if p.ParentID != "" {
+			ids = append(ids, p.ParentID)
+		}
+		for _, c := range children[i] {
+			ids = append(ids, c.ID)
+		}
+	}
+	type brief struct {
+		item   api.DecisionItem
+		number int64
+	}
+	briefs := map[string]brief{}
+	if len(ids) > 0 {
+		rows, err := d.R.ListTicketBriefs(ctx, ids)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			briefs[r.ID] = brief{api.DecisionItem{Key: core.TicketKey{Project: r.ProjectKey, Number: r.Number}.String(), Title: r.Title}, r.Number}
+		}
+	}
+	out := []api.DecisionAsked{}
+	for i, p := range pins {
+		a := api.DecisionAsked{Ticket: core.TicketKey{Project: p.ProjectKey, Number: p.Number}.String(), PlanRevision: p.PlanRevision,
+			Parent: briefs[p.ParentID].item.Key, Children: []api.DecisionItem{}}
+		var kids []brief // in ticket number order (sub-tickets share the epic's project)
+		for _, c := range children[i] {
+			if b, ok := briefs[c.ID]; ok {
+				kids = append(kids, b)
+			}
+		}
+		slices.SortFunc(kids, func(x, y brief) int { return cmp.Compare(x.number, y.number) })
+		for _, k := range kids {
+			a.Children = append(a.Children, k.item)
+		}
+		out = append(out, a)
 	}
 	return out, nil
 }

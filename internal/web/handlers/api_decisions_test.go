@@ -277,3 +277,30 @@ func TestMCPAnswerNeedsAnAgent(t *testing.T) {
 		t.Fatalf("answered: %s", got)
 	}
 }
+
+// A plan approval's answer lists what an Approve covers: each ticket's
+// plan revision, epic and sub-tickets as asked.
+func TestAPIDecisionShowsWhatWasAsked(t *testing.T) {
+	_, c, tok := apiWorld(t) // VAQ-1 "Board work" with sub-ticket VAQ-2 "Columns"
+	r := c.API("POST", "/api/v1/decisions", tok, map[string]any{
+		"project": "VAQ", "tickets": []string{"VAQ-1", "VAQ-2"}, "kind": "approval", "subject": "plan", "question": "Approve the board plan?",
+	})
+	if r.Status != 201 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	var d api.Decision
+	decode(t, r.Body, &d)
+	if len(d.Asked) != 2 {
+		t.Fatalf("%+v", d.Asked)
+	}
+	one, two := d.Asked[0], d.Asked[1]
+	if one.Ticket != "VAQ-1" || one.Parent != "" || len(one.Children) != 1 || one.Children[0] != (api.DecisionItem{Key: "VAQ-2", Title: "Columns"}) ||
+		two.Ticket != "VAQ-2" || two.Parent != "VAQ-1" || len(two.Children) != 0 || two.Children == nil {
+		t.Fatalf("%+v", d.Asked)
+	}
+	// Other decisions carry none.
+	r = c.API("POST", "/api/v1/decisions", tok, map[string]any{"project": "VAQ", "tickets": []string{"VAQ-1"}, "kind": "question", "question": "Which?"})
+	if strings.Contains(r.Body, `"asked"`) {
+		t.Fatalf("%s", r.Body)
+	}
+}

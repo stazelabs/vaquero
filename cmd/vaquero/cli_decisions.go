@@ -192,6 +192,20 @@ func printDecision(w io.Writer, d api.Decision) {
 			}
 		}
 	}
+	if len(d.Asked) > 0 {
+		// What an Approve covers, as asked.
+		fmt.Fprintln(w, "\nApproving covers:")
+		for _, a := range d.Asked {
+			line := fmt.Sprintf("  %s at plan revision %d", a.Ticket, a.PlanRevision)
+			if a.Parent != "" {
+				line += ", under " + a.Parent
+			}
+			fmt.Fprintln(w, line)
+			for _, c := range a.Children {
+				fmt.Fprintf(w, "    %s  %s\n", c.Key, c.Title)
+			}
+		}
+	}
 	if d.Recommendation != "" {
 		fmt.Fprintf(w, "\nRecommended: %s\n", d.Recommendation)
 	}
