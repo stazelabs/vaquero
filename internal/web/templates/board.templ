@@ -291,7 +291,7 @@ templ milestoneLinks(b board.Board) {
 			if m.Due != "" {
 				<span class="text-muted">· { m.Due }</span>
 			}
-			<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="mt-1 block h-1.5 w-full accent-accent">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
+			<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="progress-vq mt-1 block h-1.5 w-full">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
 			<span class="text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
 		</a>
 	}

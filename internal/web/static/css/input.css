@@ -62,6 +62,33 @@
   .prose-vq th, .prose-vq td { @apply border border-line px-2 py-1 text-left align-top; }
 }
 
+/* Progress bars (milestones). Chrome and Safari on macOS ignore
+   accent-color on <progress> and draw the system colour, so the bar drops
+   its native look and takes the theme: the track in line, the value in
+   accent, in light and dark alike. */
+@layer components {
+  .progress-vq {
+    appearance: none;
+    border: 0;
+    border-radius: 9999px;
+    overflow: hidden;
+    background-color: var(--color-line);
+    color: var(--color-accent);
+  }
+  .progress-vq::-webkit-progress-bar {
+    background-color: var(--color-line);
+    border-radius: 9999px;
+  }
+  .progress-vq::-webkit-progress-value {
+    background-color: var(--color-accent);
+    border-radius: 9999px;
+  }
+  .progress-vq::-moz-progress-bar {
+    background-color: var(--color-accent);
+    border-radius: 9999px;
+  }
+}
+
 /* htmx shows these while its request is in flight (its own injected styles
    are blocked by the CSP: includeIndicatorStyles is false). */
 .htmx-indicator {
