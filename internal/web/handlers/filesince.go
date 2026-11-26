@@ -64,8 +64,9 @@ func pinState(ctx context.Context, repo *gitread.Repo, pin core.FilePin) (core.F
 
 // fileSince is the file view's note for a file opened from an approved
 // ticket's reference (?ref=ID): changed, renamed or gone since the
-// approval pinned it; nil when it is as approved, or there is no such
-// approval. A read that fails leaves the note out.
+// approval pinned it, or that it can't be checked (a read that fails, or
+// a pin taken against other repo settings); nil when it is as approved,
+// or there is no such approval.
 func fileSince(ctx context.Context, d Deps, repo *gitread.Repo, p gen.Project, path, refID string) *templates.FileSince {
 	pin, err := approvedPin(ctx, d, p, path, refID)
 	if err != nil {
@@ -75,19 +76,23 @@ func fileSince(ctx context.Context, d Deps, repo *gitread.Repo, p gen.Project, p
 	if pin == nil {
 		return nil
 	}
+	unchecked := &templates.FileSince{State: core.FileUnchecked}
+	if !core.PinMatches(*pin, p) {
+		return unchecked // pinned against other repo settings
+	}
 	st, _, err := pinState(ctx, repo, *pin)
 	if err != nil {
 		if ctx.Err() == nil {
 			d.Logger.WarnContext(ctx, "file since approval", "project", p.Key, "err", err)
 		}
-		return nil
+		return unchecked
 	}
 	s := &templates.FileSince{State: st.State, NewPath: st.Now}
 	switch st.State {
 	case core.FileChanged:
 		u := url.URL{Path: "/p/" + p.Key + "/file-changes/" + path, RawQuery: url.Values{"ref": {refID}}.Encode()}
 		s.DiffURL = u.String()
-	case core.FileRenamed, core.FileGone:
+	case core.FileRenamed, core.FileGone, core.FileUnchecked:
 	default:
 		return nil
 	}
@@ -125,6 +130,10 @@ func FileChanges(d Deps) http.HandlerFunc {
 		}
 		if pin == nil {
 			show(nil, "This file has no approved version to compare with.")
+			return
+		}
+		if !core.PinMatches(*pin, p) {
+			show(nil, "Can't check this file against the approval.")
 			return
 		}
 		st, head, err := pinState(ctx, repo, *pin)

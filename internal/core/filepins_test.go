@@ -182,3 +182,44 @@ func TestAnswerRefusesFileChangedSinceAsked(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Review I1: a pinned file renamed away, then replaced at its path by
+// other content, between the ask and the answer refuses an Approve.
+func TestAnswerRefusesFileReplacedAfterRename(t *testing.T) {
+	c, _, f, r := pinFixture(t)
+	q, err := c.AskDecision(bg, f.Owner.ID, planApproval(f, f.T1.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Rename("docs/a.md", "docs/moved.md")
+	r.Commit("rename")
+	r.WriteCommit("docs/a.md", "# Something else\n", "a new a")
+	_, err = c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"})
+	fieldErr(t, err, "answer", "A file VAQ-1 references changed since this was asked; ask again.")
+}
+
+// Ruling M3: pins record the repo and main branch they were read from; an
+// Approve after either changed is refused, even when the new repo holds
+// the same content.
+func TestPinsRecordTheRepo(t *testing.T) {
+	c, d, f, _ := pinFixture(t)
+	q, err := c.AskDecision(bg, f.Owner.ID, planApproval(f, f.T1.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range askedFiles(t, d, q.ID, f.T1.ID) {
+		if p.RepoPath != f.Project.RepoPath || p.MainBranch != "main" {
+			t.Fatalf("pin %+v", p)
+		}
+	}
+	clone := gittest.Repo(t)
+	clone.Write("docs/a.md", "# A\n")
+	clone.Write("docs/b.md", "# B\n")
+	clone.Commit("docs")
+	dir := clone.Dir
+	if _, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, core.ProjectPatch{RepoPath: &dir}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"})
+	fieldErr(t, err, "answer", "A file VAQ-1 references changed since this was asked; ask again.")
+}

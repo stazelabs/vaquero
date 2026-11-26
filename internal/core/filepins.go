@@ -14,13 +14,26 @@ import (
 
 // FilePin is a repo file a plan approval pins (ruling P2-R2): the
 // reference that named it, its path, main's commit when asked and the
-// file's blob id there. One per path: two references to one file (with
-// different anchors) are one pin, named by the first.
+// file's blob id there, and the repository (the project's repo path, its
+// work tree's root) and main branch it was read from. One per path: two
+// references to one file (with different anchors) are one pin, named by
+// the first. A pin is checked only against the repository and branch it
+// was taken from: with either setting changed since, it is unchecked
+// (PinMatches), never compared with some other tree that happens to hold
+// the same content.
 type FilePin struct {
-	RefID  string `json:"ref_id"`
-	Path   string `json:"path"`
-	Commit string `json:"commit"`
-	Blob   string `json:"blob"`
+	RefID      string `json:"ref_id"`
+	Path       string `json:"path"`
+	Commit     string `json:"commit"`
+	Blob       string `json:"blob"`
+	RepoPath   string `json:"repo_path"`
+	MainBranch string `json:"main_branch"`
+}
+
+// PinMatches reports whether pin was taken against p's repository and main
+// branch as they are set now.
+func PinMatches(pin FilePin, p gen.Project) bool {
+	return pin.RepoPath != "" && pin.RepoPath == p.RepoPath && pin.MainBranch == p.MainBranch
 }
 
 // The states of a pinned file against main, and of a reference against
@@ -60,9 +73,16 @@ func RefPaths(refs []gen.TicketRef) []FilePin {
 	return out
 }
 
-// CheckFilePins compares each pin with main at head (P2-R3): by content,
-// with renames on main followed from the pinned commit. A pin git can't
-// follow is unchecked; an error is the repo not being readable at all.
+// CheckFilePins compares each pin with main at head (P2-R3), by content:
+// a pin whose path is still on main is unchanged when its blob there is
+// the pinned one, and changed otherwise, whatever was renamed meanwhile
+// (the reference names that path, so its content is what a reader gets).
+// Only a pin whose path has left main has its renames followed from the
+// pinned commit: found with the pinned content it is renamed, with other
+// content changed (Now the new path either way), not found gone. The
+// renames are walked once per distinct pinned commit (Renames), and the
+// files read in two ls-trees, however many pins. A pin whose history can't
+// be walked is unchecked; an error is the repo not readable at all.
 // Never inside a transaction.
 func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []FilePin) ([]FileState, error) {
 	out := make([]FileState, len(pins))
@@ -77,23 +97,41 @@ func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []Fil
 	if err != nil {
 		return nil, err
 	}
+	walks := map[string][]gitread.Rename{} // pinned commit -> its renames
+	failed := map[string]bool{}
 	current := map[int]string{}
 	var moved []string
 	for i, p := range pins {
 		out[i] = FileState{Path: p.Path, State: FileUnchanged}
-		if p.Blob != "" && blobs[p.Path] == p.Blob {
+		if blob, there := blobs[p.Path]; there {
+			if blob != p.Blob {
+				out[i].State = FileChanged
+			}
 			continue
 		}
-		cur, err := g.FollowTo(ctx, p.Path, p.Commit, head)
-		switch {
-		case ctx.Err() != nil:
-			return nil, ctx.Err()
-		case err != nil:
-			out[i].State = FileUnchecked
-		default:
-			current[i] = cur
-			moved = append(moved, cur)
+		list, walked := walks[p.Commit]
+		if !walked && !failed[p.Commit] {
+			list, err = g.Renames(ctx, p.Commit, head)
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			if err != nil {
+				failed[p.Commit] = true
+			} else {
+				walks[p.Commit] = list
+			}
 		}
+		if failed[p.Commit] {
+			out[i].State = FileUnchecked
+			continue
+		}
+		cur := gitread.FollowRenames(p.Path, list)
+		if cur == p.Path {
+			out[i].State = FileGone
+			continue
+		}
+		current[i] = cur
+		moved = append(moved, cur)
 	}
 	if len(current) == 0 {
 		return out, nil
@@ -108,12 +146,9 @@ func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []Fil
 		case !there:
 			out[i].State = FileGone
 		case blob != pins[i].Blob:
-			out[i].State = FileChanged
-		case cur != pins[i].Path:
-			out[i].State = FileRenamed
-		}
-		if there && cur != pins[i].Path {
-			out[i].Now = cur
+			out[i].State, out[i].Now = FileChanged, cur
+		default:
+			out[i].State, out[i].Now = FileRenamed, cur
 		}
 	}
 	return out, nil
@@ -205,7 +240,7 @@ func (c *Core) pinFiles(ctx context.Context, in DecisionInput) (askedFiles, erro
 		if !ok {
 			return a, invalid("tickets", f.Path+" isn't on main; merge it before asking for approval.")
 		}
-		f.Commit, f.Blob = head, blob
+		f.Commit, f.Blob, f.RepoPath, f.MainBranch = head, blob, p.RepoPath, p.MainBranch
 	}
 	return a, nil
 }
@@ -265,6 +300,10 @@ func (c *Core) checkAskedFiles(ctx context.Context, decisionID string) fileVerdi
 			return v
 		}
 		for _, f := range fs {
+			if !PinMatches(f, p) {
+				v.changed[r.TicketID] = true // asked against other repo settings
+				continue
+			}
 			pins = append(pins, f)
 			owner = append(owner, r.TicketID)
 		}

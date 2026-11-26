@@ -488,7 +488,7 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 	// The pinned files are compared with main before the transaction (git
 	// never runs inside one), and only for what could be an Approve.
 	var files fileVerdict
-	if strings.EqualFold(strings.TrimSpace(a.Option), ApproveLabel) {
+	if strings.EqualFold(strings.TrimSpace(norm.NFC.String(a.Option)), ApproveLabel) { // as resolveAnswer reads it
 		files = c.checkAskedFiles(ctx, decisionID)
 	}
 	err := c.tx(ctx, func(q *gen.Queries) error {

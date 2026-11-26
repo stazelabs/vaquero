@@ -33,7 +33,8 @@ type FileView struct {
 
 // FileSince is a file against the version an approval pinned: State is
 // "changed" (DiffURL reads the diff when Show changes is first opened;
-// NewPath set when it moved too), "renamed" (to NewPath) or "gone".
+// NewPath set when it moved too), "renamed" (to NewPath), "gone" or
+// "unchecked" (it can't be compared with the approval).
 type FileSince struct {
 	State, NewPath, DiffURL string
 }
@@ -111,6 +112,8 @@ templ fileSince(s *FileSince) {
 					<span class="min-w-0 break-all">Renamed to { s.NewPath } since approval</span>
 				case "gone":
 					<span>Removed from main since approval</span>
+				case "unchecked":
+					<span>Can't check this file against the approval.</span>
 			}
 		</div>
 	}

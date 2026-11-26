@@ -57,8 +57,10 @@
 // with repo-path references of its own has them added: its epic's
 // approval wasn't asked about them. Files that can't be checked (no repo
 // path, no git, a read error) are "Files can't be checked.", never a pass.
-// Files (files.go) runs git outside any transaction, once per project per
-// CheckAll; a project with nothing pinned runs none.
+// Files (files.go) runs git outside any transaction: per project per
+// CheckAll, one Open and one read of main's head, then, for pins not
+// already compared at that head, two ls-trees and one history walk per
+// distinct pinned commit. A project with nothing pinned runs none.
 //
 // The board's conditions (unassigned, unclaimed, no open blocker or
 // sub-ticket) are not reasons here: the board query decides them, and the

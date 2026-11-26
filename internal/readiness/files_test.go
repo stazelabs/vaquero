@@ -108,6 +108,35 @@ func TestReadinessFileChanged(t *testing.T) {
 	files(t, got, "docs/a.md gone")
 }
 
+// Review I1: a pinned file renamed away and replaced at its path by other
+// content is changed, not renamed: the reference names that path, and what
+// is there now wasn't approved. Renamed, then the new name edited, is
+// changed too.
+func TestReadinessRenamedAwayAndReplaced(t *testing.T) {
+	w, r := gitWorld(t)
+	tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
+	w.ref(tk, "docs/a.md")
+	w.approve(tk)
+	r.Rename("docs/a.md", "docs/b.md")
+	r.Commit("rename")
+	expect(t, w.check(tk))
+	r.WriteCommit("docs/a.md", "# Something else\n", "a new a")
+	got := w.check(tk)
+	expect(t, got, readiness.FilesChanged)
+	files(t, got, "docs/a.md changed")
+
+	other := w.ticket(core.TicketInput{Title: "Other", Tier: "light"})
+	w.ref(other, "docs/c.md")
+	r.WriteCommit("docs/c.md", "# C\n", "c")
+	w.approve(other)
+	r.Rename("docs/c.md", "docs/d.md")
+	r.Commit("rename c")
+	r.WriteCommit("docs/d.md", "# D\n", "edit d")
+	got = w.check(other)
+	expect(t, got, readiness.FilesChanged)
+	files(t, got, "docs/c.md changed docs/d.md")
+}
+
 // P2-R4: a repo-path reference added or removed since the approval is a
 // file change; a URL reference isn't.
 func TestReadinessRefAddedAfterApproval(t *testing.T) {
@@ -176,7 +205,7 @@ func TestReadinessEpicFilesChanged(t *testing.T) {
 
 // Files that can't be checked never pass: no repo path, no checker, no git.
 func TestReadinessFilesUnchecked(t *testing.T) {
-	w, _ := gitWorld(t)
+	w, r := gitWorld(t)
 	tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
 	w.ref(tk, "docs/a.md")
 	w.approve(tk)
@@ -193,6 +222,24 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	expect(t, w.check(tk), readiness.FilesUnchecked)
 
 	w.files = keep
+	// Ruling M3: a pin holds only against the repo and main branch it was
+	// taken from. Another clone with the same content is unchecked, and so
+	// is another branch of the same repo.
+	clone := gittest.Repo(t)
+	clone.WriteCommit("docs/a.md", "# A\n", "a")
+	w.p = w.repo(w.p, clone)
+	got = w.check(tk)
+	expect(t, got, readiness.FilesUnchecked)
+	files(t, got, "docs/a.md unchecked")
+	w.p = w.repo(w.p, r)
+	expect(t, w.check(tk))
+	r.Branch("trunk")
+	trunk := "trunk"
+	if _, err := w.c.UpdateProject(bg, w.owner.ID, w.p.ID, core.ProjectPatch{MainBranch: &trunk}); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(tk), readiness.FilesUnchecked)
+
 	empty := ""
 	if _, err := w.c.UpdateProject(bg, w.owner.ID, w.p.ID, core.ProjectPatch{RepoPath: &empty}); err != nil {
 		t.Fatal(err)
@@ -230,13 +277,31 @@ func TestReadinessGitBatched(t *testing.T) {
 		p = w.repo(p, r)
 		w.p = p
 		for n := range 20 {
+			if n == 10 { // the second ten are pinned at another commit
+				r.WriteCommit("other.md", "o\n", "elsewhere")
+			}
 			tk := w.ticket(core.TicketInput{Title: fmt.Sprintf("T%d", n), Tier: "light"})
 			w.ref(tk, fmt.Sprintf("docs/%d.md", n))
 			w.approve(tk)
 			ids = append(ids, tk.ID)
 		}
 		if i == 0 {
-			r.WriteCommit("docs/0.md", "# changed\n", "change 0")
+			// In both groups: two edited, two renamed, two renamed and
+			// edited, one removed.
+			for _, base := range []int{0, 10} {
+				r.Write(fmt.Sprintf("docs/%d.md", base), "# changed\n")
+				r.Write(fmt.Sprintf("docs/%d.md", base+1), "# changed\n")
+				r.Rename(fmt.Sprintf("docs/%d.md", base+2), fmt.Sprintf("moved/%d.md", base+2))
+				r.Rename(fmt.Sprintf("docs/%d.md", base+3), fmt.Sprintf("moved/%d.md", base+3))
+				r.Rename(fmt.Sprintf("docs/%d.md", base+4), fmt.Sprintf("moved/%d.md", base+4))
+				r.Rename(fmt.Sprintf("docs/%d.md", base+5), fmt.Sprintf("moved/%d.md", base+5))
+				r.Remove(fmt.Sprintf("docs/%d.md", base+6))
+			}
+			r.Commit("move things")
+			for _, n := range []int{4, 5, 14, 15} {
+				r.Write(fmt.Sprintf("moved/%d.md", n), "# edited\n")
+			}
+			r.Commit("edit moved")
 		}
 	}
 	rec := gittest.Record(rs)
@@ -259,13 +324,21 @@ func TestReadinessGitBatched(t *testing.T) {
 			ready++
 		}
 	}
-	if ready != 39 || all[ids[0]].Ready {
-		t.Fatalf("%d ready; the changed one %+v", ready, all[ids[0]])
+	// VAQ: 10 of 20 not ready (4 edited, 4 renamed and edited, 2 removed).
+	if ready != 30 || all[ids[0]].Ready || !all[ids[2]].Ready || all[ids[4]].Ready || all[ids[16]].Ready {
+		t.Fatalf("%d ready", ready)
 	}
 	if n := heads(); n > 2 {
 		t.Fatalf("main's head read %d times for two projects: %q", n, rec.Calls())
 	}
-	if n := len(rec.Calls()); n > 12 {
+	// One history walk per distinct pinned commit with a pin off main: two,
+	// both in VAQ.
+	if n := rec.Count("log"); n != 2 {
+		t.Fatalf("%d history walks, want 2", n)
+	}
+	// Per project: Open (2), main's head, one ls-tree; VAQ adds two walks
+	// (each with its commit's rev-parse) and one ls-tree for the moved.
+	if n := len(rec.Calls()); n > 13 {
 		t.Fatalf("%d git commands for 40 tickets in two projects: %q", n, rec.Calls())
 	}
 	rec.Reset()
@@ -278,6 +351,33 @@ func TestReadinessGitBatched(t *testing.T) {
 	for _, sub := range []string{"ls-tree", "cat-file", "log", "show", "diff"} {
 		if n := rec.Count(sub); n != 0 {
 			t.Fatalf("the second call ran %d %s: %q", n, sub, rec.Calls())
+		}
+	}
+}
+
+// Review I2: a pin whose history can't be walked (its commit gone after a
+// rewrite) is unchecked, and that answer is kept while main stays put: no
+// walk per request.
+func TestReadinessUncheckedIsCached(t *testing.T) {
+	w, r := gitWorld(t)
+	tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
+	w.ref(tk, "docs/a.md")
+	w.approve(tk)
+	r.Git("checkout", "-q", "--orphan", "rewritten")
+	r.Git("rm", "-q", "-r", "-f", ".")
+	r.WriteCommit("other.md", "o\n", "a new history")
+	r.Git("branch", "-M", "main")
+	r.Git("reflog", "expire", "--expire=now", "--all")
+	r.Git("gc", "-q", "--prune=now")
+	rec := gittest.Record(w.c.Git)
+	got := w.check(tk)
+	expect(t, got, readiness.FilesUnchecked)
+	files(t, got, "docs/a.md unchecked")
+	rec.Reset()
+	expect(t, w.check(tk), readiness.FilesUnchecked)
+	for _, sub := range []string{"log", "ls-tree"} {
+		if n := rec.Count(sub); n != 0 {
+			t.Fatalf("an unchecked pin ran %d %s again at the same head", n, sub)
 		}
 	}
 }

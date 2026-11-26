@@ -26,24 +26,33 @@ type Files interface {
 	Check(ctx context.Context, project gen.Project, pins []core.FilePin) ([]FileState, error)
 }
 
-// maxCached bounds the states NewFiles keeps; past it the cache starts over.
+// maxCached bounds the states NewFiles keeps for one repo's head; past it
+// that repo's cache starts over.
 const maxCached = 10000
 
-// NewFiles is the checker over r: each Check opens the project's repo and
-// reads main's head once, and compares only the pins it hasn't already
-// compared at that head (by repo, head and pin), so a list read again
-// while main hasn't moved reads no blobs. A nil r checks nothing.
+// NewFiles is the checker over r. Each Check opens the project's repo and
+// reads main's head once; every pin it has compared at that head, unchecked
+// ones included, is answered from its cache (by pin) for as long as main
+// stays there, so a list read again reads no blobs and walks no history. A
+// new head starts that repo's cache over. Uncached pins go to
+// core.CheckFilePins together: two ls-trees and one history walk per
+// distinct pinned commit. A nil r checks nothing.
 func NewFiles(r *gitread.Repos) Files {
-	return &gitFiles{repos: r, cache: map[pinKey]FileState{}}
+	return &gitFiles{repos: r, cache: map[string]*headCache{}}
 }
 
 type gitFiles struct {
 	repos *gitread.Repos
 	mu    sync.Mutex
-	cache map[pinKey]FileState
+	cache map[string]*headCache // repo path -> its states at one head
 }
 
-type pinKey struct{ repo, head, path, commit, blob string }
+type headCache struct {
+	head   string
+	states map[pinKey]FileState
+}
+
+type pinKey struct{ path, commit, blob string }
 
 func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin) ([]FileState, error) {
 	out := unchecked(pins)
@@ -58,12 +67,17 @@ func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin
 	if err != nil {
 		return out, ctx.Err()
 	}
-	key := func(f core.FilePin) pinKey { return pinKey{repo.Path, head, f.Path, f.Commit, f.Blob} }
+	key := func(f core.FilePin) pinKey { return pinKey{f.Path, f.Commit, f.Blob} }
 	var todo []core.FilePin
 	var at []int
 	g.mu.Lock()
+	hc := g.cache[repo.Path]
+	if hc == nil || hc.head != head {
+		hc = &headCache{head: head, states: map[pinKey]FileState{}}
+		g.cache[repo.Path] = hc
+	}
 	for i, f := range pins {
-		if st, ok := g.cache[key(f)]; ok {
+		if st, ok := hc.states[key(f)]; ok {
 			out[i] = st
 			continue
 		}
@@ -75,19 +89,20 @@ func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin
 		return out, nil
 	}
 	states, err := core.CheckFilePins(ctx, repo, head, todo)
+	if ctx.Err() != nil {
+		return out, ctx.Err() // nothing kept from a cancelled read
+	}
 	if err != nil {
-		return out, ctx.Err()
+		states = unchecked(todo) // kept for this head too: no retry per request
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if len(g.cache)+len(todo) > maxCached {
-		clear(g.cache)
+	if len(hc.states)+len(todo) > maxCached {
+		clear(hc.states)
 	}
 	for j, st := range states {
 		out[at[j]] = st
-		if st.State != core.FileUnchecked {
-			g.cache[key(todo[j])] = st
-		}
+		hc.states[key(todo[j])] = st
 	}
 	return out, nil
 }
@@ -163,12 +178,23 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 		}
 	}
 	for _, p := range repos {
-		pid := p.ID
-		got, err := files.Check(ctx, p, pinsOf[pid])
+		// A pin taken against other repo settings stays unchecked (M3).
+		var pins []core.FilePin
+		var at []slot
+		for k, f := range pinsOf[p.ID] {
+			if core.PinMatches(f, p) {
+				pins = append(pins, f)
+				at = append(at, slots[p.ID][k])
+			}
+		}
+		if len(pins) == 0 {
+			continue
+		}
+		got, err := files.Check(ctx, p, pins)
 		if err != nil {
 			return nil, err
 		}
-		for k, sl := range slots[pid] {
+		for k, sl := range at {
 			if k < len(got) {
 				out[sl.ticket][sl.i] = got[k]
 			}

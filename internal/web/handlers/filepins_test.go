@@ -125,3 +125,24 @@ func TestWorkflowOffRunsNoGit(t *testing.T) {
 		t.Fatalf("%d git commands with the workflow off: %q", len(calls), calls)
 	}
 }
+
+// Review I1 and M2: renamed away and replaced at its path, the file view
+// says it changed, not that it was renamed; pinned against other repo
+// settings (ruling M3), it says it can't be checked.
+func TestFileViewReplacedAndUnchecked(t *testing.T) {
+	e, c, _, repo, ref := pinnedWorld(t)
+	at := "/p/VAQ/files/docs/a.md?ref=" + ref.ID
+	repo.Rename("docs/a.md", "docs/b.md")
+	repo.Commit("rename")
+	repo.WriteCommit("docs/a.md", "# Something else\n", "a new a")
+	body := c.Get(at).Body
+	contains(t, body, "Changed since approval", "Show changes")
+	lacks(t, body, "Renamed to")
+	contains(t, c.Get("/p/VAQ/file-changes/docs/a.md?ref="+ref.ID).Body, "Something else", "One.")
+
+	clone := gittest.Repo(t)
+	clone.WriteCommit("docs/a.md", "# A\n\nOne.\n", "a")
+	setRepo(t, e, clone.Dir)
+	contains(t, c.Get(at).Body, "data-file-since", "check this file against the approval.")
+	contains(t, c.Get("/p/VAQ/file-changes/docs/a.md?ref="+ref.ID).Body, "check this file against the approval.")
+}
