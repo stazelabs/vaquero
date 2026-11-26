@@ -12,7 +12,7 @@ import (
 
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (id, key, name, description, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph
 `
 
 type CreateProjectParams struct {
@@ -45,6 +45,8 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.ArchivedAt,
 		&i.Workflow,
 		&i.TierMap,
+		&i.IconKind,
+		&i.IconGlyph,
 	)
 	return i, err
 }
@@ -129,7 +131,7 @@ func (q *Queries) DeleteProjectTickets(ctx context.Context, projectID string) er
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map FROM projects WHERE id = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph FROM projects WHERE id = ?
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -146,12 +148,14 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 		&i.ArchivedAt,
 		&i.Workflow,
 		&i.TierMap,
+		&i.IconKind,
+		&i.IconGlyph,
 	)
 	return i, err
 }
 
 const getProjectByKey = `-- name: GetProjectByKey :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map FROM projects WHERE key = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph FROM projects WHERE key = ?
 `
 
 func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, error) {
@@ -168,12 +172,14 @@ func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, err
 		&i.ArchivedAt,
 		&i.Workflow,
 		&i.TierMap,
+		&i.IconKind,
+		&i.IconGlyph,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map,
+SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map, p.icon_kind, p.icon_glyph,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
          WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count
 FROM projects p
@@ -191,6 +197,8 @@ type ListProjectsRow struct {
 	ArchivedAt  sql.NullString
 	Workflow    int64
 	TierMap     string
+	IconKind    string
+	IconGlyph   string
 	OpenCount   int64
 }
 
@@ -215,6 +223,8 @@ func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
 			&i.ArchivedAt,
 			&i.Workflow,
 			&i.TierMap,
+			&i.IconKind,
+			&i.IconGlyph,
 			&i.OpenCount,
 		); err != nil {
 			return nil, err

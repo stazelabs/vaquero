@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -68,11 +70,14 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY"
+	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
 	workflow := c.fs.String("workflow", "", "on or off: the agent workflow")
+	c.fs.Bool("monogram", false, "icon: the project's monogram")
+	glyph := c.fs.String("glyph", "", "icon: a glyph from the list")
+	image := c.fs.String("image", "", "icon: a PNG, JPEG or WebP image file")
 	pos, err := c.parse(args, 2, 3)
 	if err != nil {
 		return c.finish(err)
@@ -89,6 +94,15 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 	}
 	if c.set("workflow") && (pos[0] != "edit" || *workflow != "on" && *workflow != "off") {
 		return c.finish(usageError{usage: usage, hint: "--workflow is on or off, for project edit"})
+	}
+	icons := 0
+	for _, f := range []string{"monogram", "glyph", "image"} {
+		if c.set(f) {
+			icons++
+		}
+	}
+	if icons > 0 && pos[0] != "icon" || pos[0] == "icon" && icons != 1 {
+		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME and --image FILE"})
 	}
 	switch pos[0] {
 	case "create":
@@ -153,8 +167,67 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			printProject()
 			return nil
 		})
+	case "icon":
+		if len(pos) != 2 {
+			return c.finish(usageError{usage: usage})
+		}
+		return c.connected(ctx, nil, func() error {
+			path := "/api/v1/projects/" + url.PathEscape(pos[1])
+			var err error
+			switch {
+			case c.set("image"):
+				err = uploadIcon(ctx, c, path+"/icon", *image, &p)
+			case c.set("glyph"):
+				err = c.call(ctx, "PATCH", path, map[string]any{"icon": map[string]string{"kind": "glyph", "glyph": *glyph}}, &p)
+			default:
+				err = c.call(ctx, "PATCH", path, map[string]any{"icon": map[string]string{"kind": "monogram"}}, &p)
+			}
+			if err != nil {
+				return err
+			}
+			c.emit(p, func() { fmt.Fprintf(c.stdout, "%s icon: %s\n", p.Key, iconWords(p)) })
+			return nil
+		})
 	}
 	return c.finish(usageError{usage: usage})
+}
+
+// errIconTooLarge is the refusal of an icon image over core.MaxIcon, in
+// the server's words.
+const errIconTooLarge = "Use an image of 256 KB or less."
+
+// uploadIcon sends file as the project icon image at path, after checking
+// it is a file of at most core.MaxIcon bytes.
+func uploadIcon(ctx context.Context, c *cmd, path, file string, out *api.Project) error {
+	st, err := os.Stat(file)
+	if err != nil {
+		return fmt.Errorf("can't read %s: %w", file, errUnwrapped(err))
+	}
+	if st.IsDir() {
+		return fmt.Errorf("%s is a directory", file)
+	}
+	if st.Size() > core.MaxIcon {
+		return fmt.Errorf("%s: %s", filepath.Base(file), errIconTooLarge)
+	}
+	fh, err := os.Open(file)
+	if err != nil {
+		return fmt.Errorf("can't read %s: %w", file, errUnwrapped(err))
+	}
+	defer fh.Close()
+	return c.client.UploadPut(ctx, path, filepath.Base(file), fh, out)
+}
+
+// iconWords says what p's icon is: "monogram VA", "glyph rocket", "image".
+func iconWords(p api.Project) string {
+	switch {
+	case p.Icon == nil:
+		return "monogram"
+	case p.Icon.Kind == core.IconKindGlyph:
+		return "glyph " + p.Icon.Glyph
+	case p.Icon.Kind == core.IconKindImage:
+		return "image"
+	}
+	return "monogram " + core.Monogram(p.Name, p.Key)
 }
 
 func cmdTickets(ctx context.Context, stdout, stderr io.Writer, args []string) int {

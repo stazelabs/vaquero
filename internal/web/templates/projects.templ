@@ -55,6 +55,9 @@ type SettingsView struct {
 
 	// Workflow is the workflow form, set only when it was refused.
 	Workflow SubForm
+	// HasIconImage is whether the project has a stored icon image, offered
+	// again in the icon form.
+	HasIconImage bool
 
 	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag SubForm
 }
@@ -112,9 +115,7 @@ templ ProjectListPage(rows []gen.ListProjectsRow) {
 
 templ projectItem(p gen.ListProjectsRow) {
 	<li class="flex items-center gap-4 py-3">
-		<span class="text-muted">
-			@Icon("project")
-		</span>
+		@ProjectIcon(IconOfRow(p), "sm")
 		<a href={ templ.SafeURL("/p/" + p.Key) } class="font-mono text-sm font-semibold text-accent hover:underline">{ p.Key }</a>
 		<a href={ templ.SafeURL("/p/" + p.Key) } class="flex-1 text-ink hover:text-accent">{ p.Name }</a>
 		<span class="text-sm text-muted">{ countLabel(p.OpenCount, "open ticket", "open tickets") }</span>
@@ -141,7 +142,10 @@ templ ProjectNewPage(f ProjectForm) {
 // ProjectSettingsPage edits a project, its statuses and milestones.
 templ ProjectSettingsPage(v SettingsView) {
 	@Shell(v.Project.Name + " settings") {
-		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a></p>
+		<p class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(v.Project), "sm")
+			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a>
+		</p>
 		@titleWithHelp("Settings", "projects-and-tickets", "About projects")
 		<section class="mt-8">
 			<h2 class={ h2Class }>Project</h2>
@@ -161,6 +165,7 @@ templ ProjectSettingsPage(v SettingsView) {
 				<button type="submit" class={ btnSecondary }>Change key</button>
 			</form>
 		</section>
+		@iconSection(v)
 		@workflowSection(v)
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>

@@ -8,6 +8,14 @@ order: 1
 
 A project has a name and a key. The key is 2 to 10 capital letters or digits, starting with a letter, such as `VAQ`. Its tickets are numbered from 1: `VAQ-1`, `VAQ-2`. Addresses accept any case and leading zeros (`/t/vaq-012` goes to `VAQ-12`).
 
+## Project icons
+
+Every project shows an icon beside its name. Until you choose one it is the project's monogram: the first letters of the first two words of its name (or the first two letters of its key) on a colour of its own. The colour never changes, not even when the key does.
+
+In project settings, under Icon, choose the monogram, a glyph, or an image of your own: a PNG, JPEG or WebP of up to 256 KB, shown square and cropped to fit. An uploaded image is kept when you switch back to the monogram or a glyph, so you can choose it again without uploading it. `vaquero project icon` and [the API](/help/api) make the same changes.
+
+The glyphs: folder, rocket, smartphone, globe, server, database, book, wrench, code, terminal, cloud, cpu, package, layers, palette, camera, music, gamepad, heart, star, sun, leaf, flame, zap, shield, bell, mail, map, compass, truck, plane, briefcase, graduation-cap, flask, bug, puzzle, lightbulb, hammer, chart and users.
+
 ## Statuses
 
 Every new project starts with six statuses: Backlog, Todo, In progress, In review, Done and Cancelled. Each status belongs to a category of the same names, and the category decides where it shows on [the board](/help/the-board) and whether a ticket counts as open. In project settings you can rename statuses, add more (say, Testing in the in progress category), reorder them, or delete one no ticket uses. A new status goes after the last status of its category. Each category keeps at least one status. The [command line](/help/cli) (`vaquero statuses`, `vaquero status`) and [the API](/help/api) make the same changes.

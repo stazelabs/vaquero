@@ -244,25 +244,43 @@ func (c *Client) Upload(path, filename, contentType string, data []byte) *Respon
 // UploadAs is Upload with token as the bearer ("" for none), for the API.
 func (c *Client) UploadAs(path, token, filename, contentType string, data []byte) *Response {
 	c.t.Helper()
+	return c.Multipart(http.MethodPost, path, token, nil, filename, contentType, data)
+}
+
+// Multipart sends a multipart form with method: fields first, then, unless
+// filename and data are both empty, data as the part "file" named filename
+// (contentType "" for application/octet-stream). token is the bearer (""
+// for none).
+func (c *Client) Multipart(method, path, token string, fields url.Values, filename, contentType string, data []byte) *Response {
+	c.t.Helper()
 	var b bytes.Buffer
 	mw := multipart.NewWriter(&b)
-	if contentType == "" {
-		contentType = "application/octet-stream"
+	for k, vs := range fields {
+		for _, v := range vs {
+			if err := mw.WriteField(k, v); err != nil {
+				c.t.Fatal(err)
+			}
+		}
 	}
-	h := textproto.MIMEHeader{}
-	h.Set("Content-Disposition", `form-data; name="file"; filename="`+strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(filename)+`"`)
-	h.Set("Content-Type", contentType)
-	pw, err := mw.CreatePart(h)
-	if err != nil {
-		c.t.Fatal(err)
-	}
-	if _, err := pw.Write(data); err != nil {
-		c.t.Fatal(err)
+	if filename != "" || len(data) > 0 {
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Disposition", `form-data; name="file"; filename="`+strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(filename)+`"`)
+		h.Set("Content-Type", contentType)
+		pw, err := mw.CreatePart(h)
+		if err != nil {
+			c.t.Fatal(err)
+		}
+		if _, err := pw.Write(data); err != nil {
+			c.t.Fatal(err)
+		}
 	}
 	if err := mw.Close(); err != nil {
 		c.t.Fatal(err)
 	}
-	req := c.newRequest(http.MethodPost, path, &b)
+	req := c.newRequest(method, path, &b)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)

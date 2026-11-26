@@ -161,6 +161,16 @@ type Project struct {
 	ArchivedAt  sql.NullString
 	Workflow    int64
 	TierMap     string
+	IconKind    string
+	IconGlyph   string
+}
+
+type ProjectIcon struct {
+	ProjectID string
+	Type      string
+	Data      string
+	Etag      string
+	UpdatedAt string
 }
 
 type Setting struct {

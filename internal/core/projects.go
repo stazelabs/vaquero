@@ -63,11 +63,15 @@ func (c *Core) CreateProject(ctx context.Context, by string, in ProjectInput) (g
 }
 
 // ProjectPatch names a project's fields to change; a nil field keeps its
-// value. TierMap is JSON (ParseTierMap), "" for the default map.
+// value. TierMap is JSON (ParseTierMap), "" for the default map. IconKind
+// is monogram, glyph or image (the stored image; SetProjectIcon uploads
+// one), with IconGlyph naming the glyph; a nil IconGlyph is "".
 type ProjectPatch struct {
 	Name, Description *string
 	Workflow          *bool
 	TierMap           *string
+	IconKind          *string
+	IconGlyph         *string
 }
 
 // UpdateProject changes the fields patch names. The key never changes
@@ -96,10 +100,24 @@ func (c *Core) UpdateProject(ctx context.Context, by, projectID string, patch Pr
 				maps.Copy(f, inv.Fields)
 			}
 		}
+		now := timefmt.Format(c.Now())
+		var icon *Change
+		if patch.IconKind != nil {
+			glyph := ""
+			if patch.IconGlyph != nil {
+				glyph = *patch.IconGlyph
+			}
+			if icon, err = applyIcon(ctx, q, f, &p, *patch.IconKind, glyph, nil, now); err != nil {
+				return err
+			}
+		}
 		if err := f.err(); err != nil {
 			return err
 		}
 		changes := map[string]Change{}
+		if icon != nil {
+			changes["icon"] = *icon
+		}
 		if name != p.Name {
 			changes["name"] = Change{p.Name, name}
 		}
@@ -115,7 +133,6 @@ func (c *Core) UpdateProject(ctx context.Context, by, projectID string, patch Pr
 		if len(changes) == 0 {
 			return nil
 		}
-		now := timefmt.Format(c.Now())
 		wf := int64(0)
 		if workflow {
 			wf = 1
@@ -190,7 +207,7 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 // DeleteProject removes a project and everything in it: its tickets, their
 // tags, comments, plans (every revision) and links (including links from
 // other projects' tickets), its decisions with their tickets and approvals,
-// its milestones, statuses and history. confirm must be the project's key
+// its icon, milestones, statuses and history. confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
 // Callers take a backup first.
 func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string) error {
@@ -210,6 +227,7 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"comments", q.DeleteProjectComments},
 			{"attachments", q.DeleteProjectAttachments},
 			{"links", q.DeleteProjectLinks},
+			{"icon", q.DeleteProjectIcon},
 			{"plan revisions", q.DeleteProjectPlanRevisions},
 			{"plans", q.DeleteProjectPlans},
 			{"approvals", q.DeleteProjectApprovals},

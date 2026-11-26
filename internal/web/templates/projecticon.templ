@@ -1,0 +1,134 @@
+package templates
+
+import (
+	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
+
+// ProjectIconView is what ProjectIcon draws: the project's id (its tile
+// colour), key (its image's address and the monogram's fallback), name
+// (the monogram), and its icon kind and glyph.
+type ProjectIconView struct {
+	ID, Key, Name, Kind, Glyph string
+}
+
+// IconOf is p's icon.
+func IconOf(p gen.Project) ProjectIconView {
+	return ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: p.IconKind, Glyph: p.IconGlyph}
+}
+
+// IconOfRow is the icon of a projects-page row.
+func IconOfRow(p gen.ListProjectsRow) ProjectIconView {
+	return ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: p.IconKind, Glyph: p.IconGlyph}
+}
+
+// tileClasses are the 8 monogram tile pairs (theme tokens in input.css),
+// spelled out in full so Tailwind generates each.
+var tileClasses = [8]string{
+	"bg-tile-0 text-tile-0-ink", "bg-tile-1 text-tile-1-ink", "bg-tile-2 text-tile-2-ink", "bg-tile-3 text-tile-3-ink",
+	"bg-tile-4 text-tile-4-ink", "bg-tile-5 text-tile-5-ink", "bg-tile-6 text-tile-6-ink", "bg-tile-7 text-tile-7-ink",
+}
+
+// tileClass is the tile pair of project id.
+func tileClass(id string) string { return tileClasses[core.TileColor(id)] }
+
+// iconBox is the icon's size and corner: "sm" 22px, "md" 30px.
+func iconBox(size string) string {
+	if size == "md" {
+		return "size-[30px] rounded-md text-xs"
+	}
+	return "size-[22px] rounded text-[10px]"
+}
+
+// iconPx is the icon's side in pixels, for an image's width and height.
+func iconPx(size string) string {
+	if size == "md" {
+		return "30"
+	}
+	return "22"
+}
+
+// glyphIcon is the internal/web/icons name of project glyph g
+// (TestProjectGlyphsHaveIcons holds that each exists).
+func glyphIcon(g string) string { return "glyph-" + g }
+
+// glyphClass is the glyph's size inside its tile.
+func glyphClass(size string) string {
+	if size == "md" {
+		return "size-[18px]"
+	}
+	return "size-3.5"
+}
+
+// ProjectIcon draws a project's icon at size "sm" (22px) or "md" (30px):
+// its uploaded image (square-cropped), a glyph on its tile colour, or by
+// default its monogram, two letters on its tile colour. It is decoration
+// beside the project's name, so it is hidden from screen readers.
+templ ProjectIcon(p ProjectIconView, size string) {
+	switch p.Kind {
+		case core.IconKindImage:
+			<img src={ templ.SafeURL("/p/" + p.Key + "/icon") } alt="" width={ iconPx(size) } height={ iconPx(size) } class={ "shrink-0 object-cover " + iconBox(size) } aria-hidden="true"/>
+		case core.IconKindGlyph:
+			<span class={ "inline-flex shrink-0 items-center justify-center " + iconBox(size) + " " + tileClass(p.ID) } aria-hidden="true" data-glyph={ p.Glyph }>
+				@IconClass(glyphIcon(p.Glyph), glyphClass(size))
+			</span>
+		default:
+			<span class={ "inline-flex shrink-0 select-none items-center justify-center font-semibold leading-none tracking-tight " + iconBox(size) + " " + tileClass(p.ID) } aria-hidden="true" data-monogram={ core.Monogram(p.Name, p.Key) }>{ core.Monogram(p.Name, p.Key) }</span>
+	}
+}
+
+// iconSection is the settings page's icon form: the monogram, a glyph from
+// the curated set, or an uploaded image (a chosen file wins). The stored
+// image is offered again when there is one.
+templ iconSection(v SettingsView) {
+	<section id="icon" class="mt-10">
+		<h2 class={ h2Class }>Icon</h2>
+		<p class="mt-1 max-w-2xl text-sm text-muted">Shown beside the project's name. Choose its monogram, a glyph, or an image of your own.</p>
+		<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/icon") } enctype="multipart/form-data" class="mt-3 max-w-2xl space-y-4">
+			<fieldset>
+				<legend class="text-sm font-medium text-ink">Monogram</legend>
+				<div class="mt-2 flex flex-wrap gap-2">
+					@iconChoice("monogram", "Monogram "+core.Monogram(v.Project.Name, v.Project.Key), v.Project.IconKind == core.IconKindMonogram) {
+						@ProjectIcon(ProjectIconView{ID: v.Project.ID, Key: v.Project.Key, Name: v.Project.Name, Kind: core.IconKindMonogram}, "md")
+					}
+				</div>
+			</fieldset>
+			<fieldset>
+				<legend class="text-sm font-medium text-ink">Glyph</legend>
+				<div class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] gap-2">
+					for _, g := range core.ProjectGlyphs {
+						@iconChoice("glyph:"+g, g, v.Project.IconKind == core.IconKindGlyph && v.Project.IconGlyph == g) {
+							@ProjectIcon(ProjectIconView{ID: v.Project.ID, Key: v.Project.Key, Kind: core.IconKindGlyph, Glyph: g}, "md")
+						}
+					}
+				</div>
+			</fieldset>
+			<fieldset>
+				<legend class="text-sm font-medium text-ink">Image</legend>
+				if v.HasIconImage {
+					<div class="mt-2 flex gap-2">
+						@iconChoice("image", "Uploaded image", v.Project.IconKind == core.IconKindImage) {
+							@ProjectIcon(ProjectIconView{ID: v.Project.ID, Key: v.Project.Key, Kind: core.IconKindImage}, "md")
+						}
+					</div>
+				}
+				<label for="f-icon-file" class="mt-2 block text-sm text-ink">Upload image</label>
+				<input id="f-icon-file" type="file" name="file" accept="image/png,image/jpeg,image/webp" class="mt-1 block w-full text-sm text-ink file:mr-3 file:rounded-md file:border file:border-line file:bg-paper-alt file:px-3 file:py-1.5 file:text-sm file:text-ink"/>
+				<p class="mt-1 text-xs text-muted">PNG, JPEG or WebP, up to 256 KB. Shown square, cropped to fit. A chosen file replaces the choice above.</p>
+			</fieldset>
+			<button type="submit" class={ btnSecondary }>Save icon</button>
+		</form>
+	</section>
+}
+
+// iconChoice is one radio of the icon form, drawn as the icon it chooses
+// with a ring when chosen; label names it for screen readers.
+templ iconChoice(value, label string, checked bool) {
+	<label class="inline-flex cursor-pointer" title={ label }>
+		<input type="radio" name="icon" value={ value } checked?={ checked } class="peer sr-only"/>
+		<span class="sr-only">{ label }</span>
+		<span class="inline-flex rounded-lg p-1 ring-1 ring-line hover:ring-accent/60 peer-checked:ring-2 peer-checked:ring-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent">
+			{ children... }
+		</span>
+	</label>
+}

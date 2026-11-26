@@ -35,7 +35,7 @@ Every change records where it came from, as the caller reports it, in the event'
 | Request | Answer |
 |---|---|
 | `GET /api/v1/me` | The actor the token belongs to |
-| `GET /api/v1/projects` | Every project, with `open_count` |
+| `GET /api/v1/projects` | Every project, with `open_count` and `icon` |
 | `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
@@ -49,6 +49,8 @@ Every change records where it came from, as the caller reports it, in the event'
 | `GET /api/v1/export` | Everything, as a `.tar.gz` download (`application/gzip`); the owner's token only, `403` for anyone else, including an agent acting through it. `HEAD` makes the same checks and sends no body. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. A plan's events (`plan.created`, `plan.revised`) carry only its `revision`, never its text. Each event's `meta` says where it came from (see [Where a change came from](#where-a-change-came-from)), left out when it has none. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
 
+A project's `icon` is `{"kind"}`: `monogram` (its two letters), `glyph` with `glyph` naming it, or `image` with `url`, the address of the image on the server (`/p/{key}/icon`). See [Project icons](/help/projects-and-tickets#project-icons).
+
 An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
 A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets). In a project with the [agent workflow](/help/agent-workflow) on, it also has `tier`, and a todo ticket's has `readiness`, `{"ready", "reasons"}`; a ticket's own answer has `readiness` whatever its status. `ready` then needs both the board's rule and `readiness` (see [Readiness](/help/agent-workflow#readiness)).
@@ -58,7 +60,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | Request | Body |
 |---|---|
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
-| `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default |
+| `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map", "icon"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default; `icon` is `{"kind": "monogram"}`, `{"kind": "glyph", "glyph": "rocket"}` (a name from [the list](/help/projects-and-tickets#project-icons)), or `{"kind": "image"}` for the image already uploaded |
+| `PUT /api/v1/projects/{key}/icon` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the project's icon, and the answer is the project. Up to 256 KB: more is `413`, and another type (SVG included) is `422` |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |

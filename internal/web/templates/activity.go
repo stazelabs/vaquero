@@ -343,8 +343,8 @@ func change(p map[string]any, field string) (from, to string, ok bool) {
 }
 
 // projectUpdated is a project.updated sentence: the agent workflow turned
-// on or off and the tier map changed, when they did, else "updated
-// project VAQ".
+// on or off and the tier map changed, when they did, or an icon change on
+// its own, else "updated project VAQ".
 func projectUpdated(e EventView) string {
 	changes, _ := e.Payload["changes"].(map[string]any)
 	_, tierMap := changes["tier_map"]
@@ -362,6 +362,9 @@ func projectUpdated(e EventView) string {
 	}
 	if tierMap {
 		return "changed the tier map of " + e.ProjectKey
+	}
+	if _, icon := changes["icon"]; icon && len(changes) == 1 {
+		return "changed the icon of " + e.ProjectKey
 	}
 	return "updated project " + e.ProjectKey
 }

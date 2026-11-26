@@ -117,6 +117,12 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 		v.Statuses = append(v.Statuses, templates.StatusRow{Status: s, First: i == 0, Last: i == len(statuses)-1})
 	}
 	v.TierMap = core.EffectiveTierMap(p.TierMap).Indent()
+	if _, err := d.R.GetProjectIconEtag(ctx, p.ID); err == nil {
+		v.HasIconImage = true
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		serverError(w, r, d, err)
+		return
+	}
 	if p.Workflow == 1 {
 		v.TriageMissing = missingTriage(statuses)
 	}

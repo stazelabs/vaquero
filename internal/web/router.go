@@ -25,7 +25,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.SecurityHeaders(false),
 		middleware.CSP,
 		middleware.CrossOrigin(d.Logger),
-		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload.
+		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload
+		// for attachments, MaxIconUpload for project icons.
 		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
 		// Provenance for every change: the surface and the Vaquero-Client,
 		// -Harness, -Model and -Run headers, as reported (core.Origin).
@@ -88,6 +89,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Get("/list", handlers.ProjectListView(d))
 			r.With(fs).Post("/", handlers.ProjectUpdate(d))
 			r.Get("/settings", handlers.ProjectSettings(d))
+			r.Get("/icon", handlers.ProjectIconServe(d))
+			r.Post("/icon", handlers.ProjectIconSave(d))
 			r.Post("/key", handlers.ProjectKeyChange(d))
 			r.With(fs).Post("/workflow", handlers.ProjectWorkflow(d))
 			r.Post("/triage-statuses", handlers.TriageStatuses(d))
@@ -143,6 +146,7 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.Post("/projects", handlers.APIProjectCreate(d))
 	r.Patch("/projects/{key}", handlers.APIProjectUpdate(d))
 	r.Post("/projects/{key}/key", handlers.APIProjectKey(d))
+	r.Put("/projects/{key}/icon", handlers.APIProjectIconUpload(d))
 	r.Post("/projects/{key}/statuses", handlers.APIStatusCreate(d))
 	r.Patch("/projects/{key}/statuses/{name}", handlers.APIStatusUpdate(d))
 	r.Post("/projects/{key}/statuses/{name}/move", handlers.APIStatusMove(d))
