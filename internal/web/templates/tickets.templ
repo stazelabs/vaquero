@@ -352,7 +352,7 @@ templ commentItem(key string, c CommentRow) {
 			if c.Mine {
 				<div class="mt-2 flex items-center gap-4">
 					<a href={ templ.SafeURL("/t/" + key + "?edit=" + c.ID + "#c-" + c.ID) } class="text-xs text-muted hover:text-accent">Edit</a>
-					<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID + "/delete") }>
+					<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID + "/delete") } data-confirm="Delete this comment?">
 						<button type="submit" class="text-xs text-muted hover:text-danger">Delete</button>
 					</form>
 				</div>

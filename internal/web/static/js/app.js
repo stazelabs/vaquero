@@ -301,6 +301,74 @@ window.vqDragging = false;
   });
 })();
 
+// Confirm before a destructive post: a form carrying data-confirm="question"
+// opens the Shell's #vq-confirm dialog instead of posting. Its confirm
+// button takes the label of the button that submitted the form; Cancel,
+// Escape or a click on the backdrop close it and nothing is posted; confirm
+// submits the original form, with its original submitter. Without this
+// script the form posts directly.
+(function () {
+  var dialog = document.getElementById("vq-confirm");
+  if (!dialog) {
+    return;
+  }
+  var message = dialog.querySelector("[data-confirm-message]");
+  var ok = dialog.querySelector("[data-confirm-ok]");
+  var cancel = dialog.querySelector("[data-confirm-cancel]");
+  var pending = null;
+  document.addEventListener("submit", function (ev) {
+    var form = ev.target;
+    if (!form.matches || !form.matches("form[data-confirm]")) {
+      return;
+    }
+    if (form.dataset.confirmed === "1") {
+      delete form.dataset.confirmed;
+      return; // confirmed: let it post
+    }
+    ev.preventDefault();
+    var submitter = ev.submitter || null;
+    pending = { form: form, submitter: submitter };
+    message.textContent = form.dataset.confirm;
+    var label = submitter ? submitter.textContent.trim() : "";
+    ok.textContent = label || "Confirm";
+    dialog.showModal();
+    cancel.focus();
+  });
+  cancel.addEventListener("click", function () { dialog.close(); });
+  dialog.addEventListener("click", function (ev) {
+    if (ev.target !== dialog) {
+      return;
+    }
+    // The dialog's own padding is the dialog too: close only for a click
+    // outside its box, on the backdrop.
+    var r = dialog.getBoundingClientRect();
+    if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) {
+      dialog.close();
+    }
+  });
+  dialog.addEventListener("close", function () {
+    var p = pending;
+    pending = null;
+    if (p && p.submitter && p.submitter.isConnected) {
+      p.submitter.focus({ preventScroll: true });
+    }
+  });
+  ok.addEventListener("click", function () {
+    var p = pending;
+    pending = null;
+    dialog.close();
+    if (!p || !p.form.isConnected) {
+      return;
+    }
+    p.form.dataset.confirmed = "1";
+    if (p.submitter && p.submitter.form === p.form) {
+      p.form.requestSubmit(p.submitter);
+    } else {
+      p.form.requestSubmit();
+    }
+  });
+})();
+
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
 // g b board, g l list, j/k next/previous card (enter on its focused link
 // opens it), ? shortcuts.
@@ -351,8 +419,8 @@ window.vqDragging = false;
     if (ev.metaKey || ev.ctrlKey || ev.altKey || typing(ev.target)) {
       return;
     }
-    if (dialog && dialog.open) {
-      return; // the dialog closes itself on esc
+    if (document.querySelector("dialog[open]")) {
+      return; // an open dialog closes itself on esc
     }
     var k = ev.key;
     var p = project();
@@ -457,9 +525,8 @@ window.vqDragging = false;
     if (ev.key !== "Escape" || !narrow.matches || ev.defaultPrevented) {
       return;
     }
-    var dialog = document.getElementById("vq-shortcuts");
-    if (dialog && dialog.open) {
-      return; // the dialog closes itself
+    if (document.querySelector("dialog[open]")) {
+      return; // an open dialog closes itself
     }
     var open = document.querySelector("details[data-rail][open]");
     if (open) {

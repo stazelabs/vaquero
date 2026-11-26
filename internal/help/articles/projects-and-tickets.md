@@ -45,4 +45,4 @@ In project settings, under Key. The old key stops working at once: links, branch
 
 ## Archiving and deleting
 
-Archiving hides a project at the bottom of the list and stops new tickets; restore it any time. Deleting removes the project, its tickets, comments, links and history for good. You type the project's key to confirm, and Vaquero takes a snapshot of the database first (see [Your data and backups](/help/data-and-backups#backups)).
+Archiving hides a project at the bottom of the list and stops new tickets; restore it any time. Vaquero asks before it archives a project, deletes a status or deletes a comment; Cancel or Escape leaves everything as it was. Deleting removes the project, its tickets, comments, links and history for good. You type the project's key to confirm, and Vaquero takes a snapshot of the database first (see [Your data and backups](/help/data-and-backups#backups)).
