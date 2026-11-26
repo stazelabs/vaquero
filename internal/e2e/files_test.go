@@ -84,3 +84,58 @@ func TestE2EFileViewAndCommits(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-136, O-R2: a file opened from an approved ticket's reference says it
+// changed since the approval, and Show changes reads the diff when opened,
+// at phone and desktop widths, light and dark.
+func TestE2EFileChangedSinceApproval(t *testing.T) {
+	for _, w := range []int64{375, 1280} {
+		for _, scheme := range []string{"light", "dark"} {
+			t.Run(fmt.Sprintf("%d-%s", w, scheme), func(t *testing.T) {
+				r := gittest.Repo(t)
+				r.WriteCommit("docs/spec.md", "# Spec\n\nThe board has columns.\n", "spec")
+				env := webtest.New(t)
+				f := newProject(t, env, "REP")
+				ctx := context.Background()
+				dir, main := r.Dir, "main"
+				if _, err := env.Deps.Core.UpdateProject(ctx, env.Deps.Actor.ID, f.project.ID, core.ProjectPatch{RepoPath: &dir, MainBranch: &main}); err != nil {
+					t.Fatal(err)
+				}
+				tk, err := env.Deps.Core.CreateTicket(ctx, env.Deps.Actor.ID, f.project.ID, core.TicketInput{Title: "Board spec"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ref, err := env.Deps.Core.AddRef(ctx, env.Deps.Actor.ID, tk.ID, core.RefInput{Kind: "spec", Target: "docs/spec.md"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				q, err := env.Deps.Core.AskDecision(ctx, env.Deps.Actor.ID, core.DecisionInput{ProjectID: f.project.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionApproval, Subject: "plan", Question: "Approve?"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := env.Deps.Core.AnswerDecision(ctx, env.Deps.Actor.ID, q.ID, core.Answer{Option: core.ApproveLabel}); err != nil {
+					t.Fatal(err)
+				}
+				r.WriteCommit("docs/spec.md", "# Spec\n\nThe board has columns and "+strings.Repeat("lanes-", 40)+".\n", "more spec")
+
+				p := open(t, env, w, 900)
+				p.scheme(scheme)
+				p.goTo("/p/REP/files/docs/spec.md?ref=" + ref.ID)
+				if !eval[bool](p, `document.querySelector("[data-file-since]").textContent.includes("Changed since approval")`) {
+					t.Fatal("no changed-since-approval note")
+				}
+				if eval[bool](p, `document.querySelector("[data-file-changes] pre") !== null`) {
+					t.Fatal("the diff was read before Show changes opened")
+				}
+				p.click(`[data-file-changes] summary`)
+				p.until(`document.querySelector("[data-file-changes] pre") !== null`)
+				if !eval[bool](p, `document.querySelector("[data-file-changes] pre").textContent.includes("lanes-")`) {
+					t.Error("the diff lacks the new line")
+				}
+				if sw := eval[int64](p, `document.documentElement.scrollWidth`); sw > w {
+					t.Errorf("the file view is %d px wide at %d px", sw, w)
+				}
+			})
+		}
+	}
+}
