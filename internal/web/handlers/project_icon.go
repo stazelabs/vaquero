@@ -88,7 +88,8 @@ func readIconForm(r *http.Request) (iconForm, error) {
 
 // ProjectIconSave is POST /p/{key}/icon, the settings page's icon form: a
 // chosen file makes the icon that image, else the chosen radio applies. It
-// returns to settings with a toast either way.
+// returns to settings (or with ?return=/ the projects page, for quick
+// settings) with a toast either way.
 func ProjectIconSave(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projectFromURL(w, r, d)
@@ -98,10 +99,10 @@ func ProjectIconSave(d Deps) http.HandlerFunc {
 		f, err := readIconForm(r)
 		switch {
 		case errors.Is(err, errIconTooLarge):
-			redirectWithFlash(w, r, flash.Error, middleware.IconTooLargeMessage, projectPath(p, "/settings"))
+			redirectWithFlash(w, r, flash.Error, middleware.IconTooLargeMessage, returnPath(r, p))
 			return
 		case err != nil:
-			redirectWithFlash(w, r, flash.Error, "That upload couldn't be read.", projectPath(p, "/settings"))
+			redirectWithFlash(w, r, flash.Error, "That upload couldn't be read.", returnPath(r, p))
 			return
 		}
 		kind, glyph, ok := strings.Cut(f.choice, ":")

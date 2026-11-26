@@ -9,9 +9,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
@@ -50,16 +52,73 @@ func projectFromURL(w http.ResponseWriter, r *http.Request, d Deps) (p gen.Proje
 
 func projectPath(p gen.Project, rest string) string { return "/p/" + p.Key + rest }
 
-// ProjectList is the front page.
+// projectsViewCookie remembers the projects page's view, cards or list.
+const projectsViewCookie = "vq_projects_view"
+
+// projectsView is the projects page's view: ?view=cards or ?view=list
+// chooses it and sets the cookie that remembers it; else the cookie's;
+// else cards. An unknown ?view= changes nothing.
+func projectsView(w http.ResponseWriter, r *http.Request) string {
+	if v := r.URL.Query().Get("view"); v == templates.ViewCards || v == templates.ViewList {
+		http.SetCookie(w, &http.Cookie{
+			Name: projectsViewCookie, Value: v,
+			Path: "/", MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		})
+		return v
+	}
+	if c, err := r.Cookie(projectsViewCookie); err == nil && c.Value == templates.ViewList {
+		return templates.ViewList
+	}
+	return templates.ViewCards
+}
+
+// ProjectList is the front page: every project as a card or a row with
+// its stats.
 func ProjectList(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := d.R.ListProjects(r.Context())
-		if err != nil {
-			serverError(w, r, d, err)
-			return
-		}
-		render(w, r, d, http.StatusOK, templates.ProjectListPage(rows))
+		projectsPage(w, r, d, http.StatusOK, templates.QuickEdit{})
 	}
+}
+
+// projectsPage renders the projects page with status; edit, when it names
+// a project, is its refused quick settings form, shown open.
+func projectsPage(w http.ResponseWriter, r *http.Request, d Deps, status int, edit templates.QuickEdit) {
+	templates.LoadEventSeq(r.Context()) // before the page data is read
+	ctx := r.Context()
+	rows, err := d.R.ListProjects(ctx)
+	if err != nil {
+		serverError(w, r, d, err)
+		return
+	}
+	stats, err := board.LoadProjectStats(ctx, d.R)
+	if err != nil {
+		serverError(w, r, d, err)
+		return
+	}
+	now := d.Now()
+	v := templates.ProjectsView{View: projectsView(w, r), Edit: edit}
+	for _, p := range rows {
+		if p.ArchivedAt.Valid {
+			v.Archived = append(v.Archived, p)
+			continue
+		}
+		c := templates.ProjectCard{Row: p, Stats: stats[p.ID]}
+		if at := c.Stats.LastChange; !at.IsZero() {
+			c.LastChange = timefmt.Ago(at, now, nil)
+		}
+		v.Projects = append(v.Projects, c)
+	}
+	render(w, r, d, status, templates.ProjectListPage(v))
+}
+
+// returnPath is where a settings form goes back to: the projects page when
+// it was posted from there (?return=/, the only other address honoured),
+// else the project's settings.
+func returnPath(r *http.Request, p gen.Project) string {
+	if r.URL.Query().Get("return") == "/" {
+		return "/"
+	}
+	return projectPath(p, "/settings")
 }
 
 // ProjectNew is the new-project form.
@@ -151,14 +210,19 @@ func ProjectUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		f := templates.ProjectForm{Key: p.Key, Name: r.PostFormValue("name"), Description: r.PostFormValue("description")}
+		to := returnPath(r, p)
 		if _, err := d.Core.UpdateProject(r.Context(), d.Actor.ID, p.ID, core.ProjectPatch{Name: &f.Name, Description: &f.Description}); err != nil {
 			invalidOrError(w, r, d, err, func(fields map[string]string) {
 				f.Errors = fields
+				if to == "/" {
+					projectsPage(w, r, d, http.StatusUnprocessableEntity, templates.QuickEdit{Key: p.Key, Name: f.Name, Description: f.Description, Errors: fields})
+					return
+				}
 				settingsPage(w, r, d, p, f, http.StatusUnprocessableEntity)
 			})
 			return
 		}
-		redirectWithFlash(w, r, flash.Success, "Project saved.", projectPath(p, "/settings"))
+		redirectWithFlash(w, r, flash.Success, "Project saved.", to)
 	}
 }
 
@@ -225,9 +289,10 @@ func TriageStatuses(d Deps) http.HandlerFunc {
 }
 
 // settingsAction runs one settings-page change and returns to the settings
-// page with a toast: okMsg on success, the refusal's message otherwise.
+// page (or the projects page, for quick settings: returnPath) with a
+// toast: okMsg on success, the refusal's message otherwise.
 func settingsAction(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, okMsg string, fn func() error) {
-	to := projectPath(p, "/settings")
+	to := returnPath(r, p)
 	err := fn()
 	var inv *core.Invalid
 	switch {

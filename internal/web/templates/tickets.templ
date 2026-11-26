@@ -83,7 +83,10 @@ type TicketView struct {
 // TicketFormPage is the form for a new ticket or an edit.
 templ TicketFormPage(f TicketForm) {
 	@Shell(formTitle(f)) {
-		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + f.Project.Key) } class="hover:text-accent">{ f.Project.Key }</a></p>
+		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(f.Project), "sm")
+			<a href={ templ.SafeURL("/p/" + f.Project.Key) } class="hover:text-accent">{ f.Project.Key }</a>
+		</p>
 		<h1 class={ h1Class }>{ formTitle(f) }</h1>
 		if msg := f.Errors["project"]; msg != "" {
 			<p class="mt-4 text-sm text-danger" role="alert">{ msg }</p>
@@ -149,8 +152,9 @@ templ TicketFormPage(f TicketForm) {
 templ TicketPage(v TicketView) {
 	@Shell(v.Key + " " + v.Ticket.Title) {
 		<span hidden data-project={ v.Project.Key }></span>
-		<p class="font-mono text-sm text-muted">
-			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
+		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(v.Project), "sm")
+			<span><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }</span>
 		</p>
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<h1 class={ h1Class }>{ v.Ticket.Title }</h1>

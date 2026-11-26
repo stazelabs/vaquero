@@ -3,6 +3,7 @@ package templates
 import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/search"
 )
 
 // ProjectIconView is what ProjectIcon draws: the project's id (its tile
@@ -20,6 +21,11 @@ func IconOf(p gen.Project) ProjectIconView {
 // IconOfRow is the icon of a projects-page row.
 func IconOfRow(p gen.ListProjectsRow) ProjectIconView {
 	return ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: p.IconKind, Glyph: p.IconGlyph}
+}
+
+// IconOfHit is the icon of a search hit's project.
+func IconOfHit(h search.Hit) ProjectIconView {
+	return ProjectIconView{ID: h.ProjectID, Key: h.ProjectKey, Name: h.ProjectName, Kind: h.IconKind, Glyph: h.IconGlyph}
 }
 
 // tileClasses are the 8 monogram tile pairs (theme tokens in input.css),

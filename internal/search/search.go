@@ -67,6 +67,8 @@ type Part struct {
 type Hit struct {
 	Key, Title, Status, Category string
 	Snippet                      []Part
+	// The ticket's project, for its icon beside the key.
+	ProjectID, ProjectKey, ProjectName, IconKind, IconGlyph string
 }
 
 // Result is a search's hits, best first, and how many tickets matched in
@@ -101,6 +103,12 @@ func Run(ctx context.Context, db *sql.DB, typed string, limit int64) (Result, er
 			Status:   r.StatusName,
 			Category: r.StatusCategory,
 			Snippet:  parts(r.Snippet),
+
+			ProjectID:   r.ProjectID,
+			ProjectKey:  r.ProjectKey,
+			ProjectName: r.ProjectName,
+			IconKind:    r.IconKind,
+			IconGlyph:   r.IconGlyph,
 		}
 		res.Total = int(r.Total)
 	}

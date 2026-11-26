@@ -178,6 +178,161 @@ func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, err
 	return i, err
 }
 
+const listBoardReadyTickets = `-- name: ListBoardReadyTickets :many
+SELECT t.id, t.project_id, p.workflow
+FROM tickets t
+JOIN statuses s ON s.id = t.status_id
+JOIN projects p ON p.id = t.project_id
+WHERE s.category = 'todo' AND t.assignee_id IS NULL AND t.claimed_by IS NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM ticket_links l
+      JOIN tickets bt ON bt.id = l.from_id
+      JOIN statuses bs ON bs.id = bt.status_id
+      WHERE l.to_id = t.id AND l.kind = 'blocks' AND bs.category NOT IN ('done', 'cancelled'))
+  AND NOT EXISTS (
+      SELECT 1 FROM tickets ct
+      JOIN statuses cs ON cs.id = ct.status_id
+      WHERE ct.parent_id = t.id AND cs.category NOT IN ('done', 'cancelled'))
+ORDER BY t.id
+`
+
+type ListBoardReadyTicketsRow struct {
+	ID        string
+	ProjectID string
+	Workflow  int64
+}
+
+// Every project's tickets that are ready by the board's rule, the ready
+// column of ListBoardTickets (TestProjectStats holds the two the same):
+// a todo ticket, unassigned and unclaimed, with no open blocker and no
+// open sub-ticket. With the project's workflow on, readiness decides too.
+func (q *Queries) ListBoardReadyTickets(ctx context.Context) ([]ListBoardReadyTicketsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listBoardReadyTickets)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListBoardReadyTicketsRow{}
+	for rows.Next() {
+		var i ListBoardReadyTicketsRow
+		if err := rows.Scan(&i.ID, &i.ProjectID, &i.Workflow); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listOpenMilestoneProgress = `-- name: ListOpenMilestoneProgress :many
+SELECT m.project_id, m.id, m.name, m.due_on,
+       CAST(coalesce(sum(s.category = 'done'), 0) AS INTEGER) AS done,
+       CAST(coalesce(sum(s.category <> 'cancelled'), 0) AS INTEGER) AS total
+FROM milestones m
+LEFT JOIN tickets t ON t.milestone_id = m.id
+LEFT JOIN statuses s ON s.id = t.status_id
+WHERE m.closed_at IS NULL
+GROUP BY m.id
+ORDER BY m.project_id, m.due_on IS NULL, m.due_on, m.name
+`
+
+type ListOpenMilestoneProgressRow struct {
+	ProjectID string
+	ID        string
+	Name      string
+	DueOn     sql.NullString
+	Done      int64
+	Total     int64
+}
+
+// Every project's open milestones with ListMilestoneProgress's counts, in
+// its order within each project: earliest due first, undated last.
+func (q *Queries) ListOpenMilestoneProgress(ctx context.Context) ([]ListOpenMilestoneProgressRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenMilestoneProgress)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOpenMilestoneProgressRow{}
+	for rows.Next() {
+		var i ListOpenMilestoneProgressRow
+		if err := rows.Scan(
+			&i.ProjectID,
+			&i.ID,
+			&i.Name,
+			&i.DueOn,
+			&i.Done,
+			&i.Total,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectStats = `-- name: ListProjectStats :many
+
+SELECT p.id AS project_id,
+       CAST(coalesce(sum(s.category = 'in_review'), 0) AS INTEGER) AS in_review,
+       CAST(coalesce(sum(s.category NOT IN ('done', 'cancelled')), 0) AS INTEGER) AS open_count,
+       CAST(coalesce((SELECT e.at FROM events e WHERE e.project_id = p.id ORDER BY e.seq DESC LIMIT 1), '') AS TEXT) AS last_change
+FROM projects p
+LEFT JOIN tickets t ON t.project_id = p.id
+LEFT JOIN statuses s ON s.id = t.status_id
+GROUP BY p.id
+`
+
+type ListProjectStatsRow struct {
+	ProjectID  string
+	InReview   int64
+	OpenCount  int64
+	LastChange string
+}
+
+// The projects page's stats, one query per stat across every project
+// (board.LoadProjectStats).
+// Per project: tickets in review, open tickets, and the newest event's time
+// (” when it has none).
+func (q *Queries) ListProjectStats(ctx context.Context) ([]ListProjectStatsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectStats)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectStatsRow{}
+	for rows.Next() {
+		var i ListProjectStatsRow
+		if err := rows.Scan(
+			&i.ProjectID,
+			&i.InReview,
+			&i.OpenCount,
+			&i.LastChange,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map, p.icon_kind, p.icon_glyph,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id

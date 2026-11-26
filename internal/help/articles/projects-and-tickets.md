@@ -8,9 +8,19 @@ order: 1
 
 A project has a name and a key. The key is 2 to 10 capital letters or digits, starting with a letter, such as `VAQ`. Its tickets are numbered from 1: `VAQ-1`, `VAQ-2`. Addresses accept any case and leading zeros (`/t/vaq-012` goes to `VAQ-12`).
 
+## The projects page
+
+The projects page shows each active project as a card, or as a row in a list: switch with Cards and List at the top, and the page remembers your choice. Each shows the project's icon, name and key, the start of its description, and:
+
+- **Counts**: tickets ready to start (by the same rule as the board's ready cards, and with the [agent workflow](/help/agent-workflow) on, its readiness too), in review, and open (everything not done or cancelled).
+- **Milestone**: the open milestone due soonest (else the first open one), with how many of its tickets are done, or "No open milestone".
+- **Last change**: when anything in the project last changed.
+
+The "⋯" button opens quick settings in place: the project's name and description, and its icon. Saving brings you back to the projects page. "All settings →" opens the project's full settings. Archived projects are listed under Archived at the end.
+
 ## Project icons
 
-Every project shows an icon beside its name. Until you choose one it is the project's monogram: the first letters of the first two words of its name (or the first two letters of its key) on a colour of its own. The colour never changes, not even when the key does.
+Every project shows an icon beside its name: on the projects page, in the project's header, in the breadcrumb on its ticket pages and beside its tickets in search results. Until you choose one it is the project's monogram: the first letters of the first two words of its name (or the first two letters of its key) on a colour of its own. The colour never changes, not even when the key does.
 
 In project settings, under Icon, choose the monogram, a glyph, or an image of your own: a PNG, JPEG or WebP of up to 256 KB, shown square and cropped to fit. An uploaded image is kept when you switch back to the monogram or a glyph, so you can choose it again without uploading it. `vaquero project icon` and [the API](/help/api) make the same changes.
 

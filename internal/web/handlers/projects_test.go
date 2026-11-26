@@ -380,3 +380,120 @@ func TestMilestoneSettingsEditDescription(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 }
+
+// VAQ-102: the projects page shows each project as a card, with its
+// description, counts, open milestone and last change.
+func TestProjectsPageCardsShowStats(t *testing.T) {
+	e := webtest.New(t)
+	p, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero", Description: "Herds the chaos."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+		t.Fatal(err)
+	}
+	ss := statuses(t, e, p)
+	byCat := map[string]string{}
+	for _, s := range ss {
+		if byCat[s.Category] == "" {
+			byCat[s.Category] = s.ID
+		}
+	}
+	m, err := e.Deps.Core.CreateMilestone(bg, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Beta launch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []core.TicketInput{
+		{Title: "Ready one", MilestoneID: m.ID},
+		{Title: "Under review", StatusID: byCat["in_review"]},
+		{Title: "Shipped", StatusID: byCat["done"], MilestoneID: m.ID},
+	} {
+		if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, p.ID, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := e.Client().Get("/")
+	if r.Status != 200 {
+		t.Fatal(r.Status)
+	}
+	card := regexp.MustCompile(`(?s)<li[^>]*data-project-card="VAQ".*?</li>`).FindString(r.Body)
+	if card == "" {
+		t.Fatalf("no VAQ card:\n%s", r.Body)
+	}
+	contains(t, r.Body, `data-projects-view="cards"`)
+	contains(t, card, "Vaquero", "Herds the chaos.", "data-monogram", "1 ready", "1 in review", "2 open", "Beta launch", "1 of 2 done", "Just now", `href="/p/VAQ/settings"`, "All settings")
+	other := regexp.MustCompile(`(?s)<li[^>]*data-project-card="OTH".*?</li>`).FindString(r.Body)
+	contains(t, other, "No open milestone", "0 ready")
+}
+
+// VAQ-102: ?view=list switches to the list and the cookie remembers it;
+// ?view=cards switches back, and an unknown view changes nothing.
+func TestProjectsViewCookieRemembersList(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="cards"`) {
+		t.Fatal("cards is not the default")
+	}
+	r := c.Get("/?view=list")
+	if !strings.Contains(r.Body, `data-projects-view="list"`) || !strings.Contains(r.Body, `data-project-row="VAQ"`) {
+		t.Fatal("?view=list shows no list")
+	}
+	if ck := r.Header.Get("Set-Cookie"); !strings.Contains(ck, "vq_projects_view=list") || !strings.Contains(ck, "HttpOnly") || !strings.Contains(ck, "SameSite=Lax") {
+		t.Fatalf("cookie %q", ck)
+	}
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="list"`) {
+		t.Fatal("the list is not remembered")
+	}
+	if r := c.Get("/?view=bogus"); !strings.Contains(r.Body, `data-projects-view="list"`) || r.Header.Get("Set-Cookie") != "" {
+		t.Fatal("an unknown view changed the view")
+	}
+	c.Get("/?view=cards")
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="cards"`) {
+		t.Fatal("cards is not remembered")
+	}
+}
+
+// VAQ-102: quick settings post to the settings handlers with ?return=/ and
+// come back to the projects page with a toast; a refused name re-renders
+// the projects page with its panel open and the message. Only "/" is
+// honoured as a return address.
+func TestQuickSettingsSavesAndReturns(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	contains(t, c.Get("/").Body, `action="/p/VAQ?return=/"`, `action="/p/VAQ/icon?return=/"`)
+	r := c.Post("/p/VAQ?return=/", url.Values{"name": {"Vaquero tracker"}, "description": {"Herds the chaos."}})
+	if r.Status != 303 || r.Location != "/" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Project saved.", "Vaquero tracker", "Herds the chaos.")
+	got, _ := e.Deps.R.GetProject(bg, p.ID)
+	if got.Name != "Vaquero tracker" || got.Description != "Herds the chaos." {
+		t.Fatalf("%+v", got)
+	}
+
+	r = c.Post("/p/VAQ?return=/", url.Values{"name": {"  "}, "description": {"Typed"}})
+	if r.Status != 422 {
+		t.Fatal(r.Status)
+	}
+	panel := regexp.MustCompile(`(?s)<details[^>]*data-quick-settings="VAQ"[^>]*>`).FindString(r.Body)
+	if !strings.Contains(panel, " open") {
+		t.Fatalf("the refused panel is not open: %q", panel)
+	}
+	contains(t, r.Body, "Enter a name.", ">Typed</textarea>", `data-projects-view="cards"`)
+
+	r = c.Multipart("POST", "/p/VAQ/icon?return=/", "", url.Values{"icon": {"glyph:rocket"}}, "", "", nil)
+	if r.Status != 303 || r.Location != "/" {
+		t.Fatalf("icon: %d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Icon saved.", `data-glyph="rocket"`)
+
+	// Any other return address goes to settings as before.
+	for _, ret := range []string{"//evil.example", "https://evil.example/", "/p/OTH"} {
+		r = c.Post("/p/VAQ?return="+url.QueryEscape(ret), url.Values{"name": {"Vaquero"}, "description": {""}})
+		if r.Status != 303 || r.Location != "/p/VAQ/settings" {
+			t.Fatalf("return %q: %d %q", ret, r.Status, r.Location)
+		}
+	}
+}
