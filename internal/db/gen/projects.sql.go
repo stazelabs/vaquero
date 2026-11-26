@@ -12,7 +12,7 @@ import (
 
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (id, key, name, description, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph, repo_path, main_branch, remote, fetch_minutes
 `
 
 type CreateProjectParams struct {
@@ -47,6 +47,10 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.TierMap,
 		&i.IconKind,
 		&i.IconGlyph,
+		&i.RepoPath,
+		&i.MainBranch,
+		&i.Remote,
+		&i.FetchMinutes,
 	)
 	return i, err
 }
@@ -144,7 +148,7 @@ func (q *Queries) DeleteProjectTickets(ctx context.Context, projectID string) er
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph FROM projects WHERE id = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph, repo_path, main_branch, remote, fetch_minutes FROM projects WHERE id = ?
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -163,12 +167,16 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 		&i.TierMap,
 		&i.IconKind,
 		&i.IconGlyph,
+		&i.RepoPath,
+		&i.MainBranch,
+		&i.Remote,
+		&i.FetchMinutes,
 	)
 	return i, err
 }
 
 const getProjectByKey = `-- name: GetProjectByKey :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph FROM projects WHERE key = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph, repo_path, main_branch, remote, fetch_minutes FROM projects WHERE key = ?
 `
 
 func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, error) {
@@ -187,6 +195,10 @@ func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, err
 		&i.TierMap,
 		&i.IconKind,
 		&i.IconGlyph,
+		&i.RepoPath,
+		&i.MainBranch,
+		&i.Remote,
+		&i.FetchMinutes,
 	)
 	return i, err
 }
@@ -345,7 +357,7 @@ func (q *Queries) ListProjectStats(ctx context.Context) ([]ListProjectStatsRow, 
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map, p.icon_kind, p.icon_glyph,
+SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map, p.icon_kind, p.icon_glyph, p.repo_path, p.main_branch, p.remote, p.fetch_minutes,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
          WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count,
        CAST(EXISTS (SELECT 1 FROM project_icons i WHERE i.project_id = p.id) AS BOOLEAN) AS has_image
@@ -354,20 +366,24 @@ ORDER BY p.archived_at IS NOT NULL, p.name
 `
 
 type ListProjectsRow struct {
-	ID          string
-	Key         string
-	Name        string
-	Description string
-	NextNumber  int64
-	CreatedAt   string
-	UpdatedAt   string
-	ArchivedAt  sql.NullString
-	Workflow    int64
-	TierMap     string
-	IconKind    string
-	IconGlyph   string
-	OpenCount   int64
-	HasImage    bool
+	ID           string
+	Key          string
+	Name         string
+	Description  string
+	NextNumber   int64
+	CreatedAt    string
+	UpdatedAt    string
+	ArchivedAt   sql.NullString
+	Workflow     int64
+	TierMap      string
+	IconKind     string
+	IconGlyph    string
+	RepoPath     string
+	MainBranch   string
+	Remote       string
+	FetchMinutes int64
+	OpenCount    int64
+	HasImage     bool
 }
 
 // Active projects first, by name; then archived ones. has_image: the
@@ -394,6 +410,10 @@ func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
 			&i.TierMap,
 			&i.IconKind,
 			&i.IconGlyph,
+			&i.RepoPath,
+			&i.MainBranch,
+			&i.Remote,
+			&i.FetchMinutes,
 			&i.OpenCount,
 			&i.HasImage,
 		); err != nil {

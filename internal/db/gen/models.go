@@ -97,6 +97,7 @@ type DecisionTicket struct {
 	PlanRevision    int64
 	ParentID        string
 	Children        string
+	Files           string
 }
 
 type Event struct {
@@ -151,18 +152,22 @@ type PlanRevision struct {
 }
 
 type Project struct {
-	ID          string
-	Key         string
-	Name        string
-	Description string
-	NextNumber  int64
-	CreatedAt   string
-	UpdatedAt   string
-	ArchivedAt  sql.NullString
-	Workflow    int64
-	TierMap     string
-	IconKind    string
-	IconGlyph   string
+	ID           string
+	Key          string
+	Name         string
+	Description  string
+	NextNumber   int64
+	CreatedAt    string
+	UpdatedAt    string
+	ArchivedAt   sql.NullString
+	Workflow     int64
+	TierMap      string
+	IconKind     string
+	IconGlyph    string
+	RepoPath     string
+	MainBranch   string
+	Remote       string
+	FetchMinutes int64
 }
 
 type ProjectIcon struct {
@@ -239,6 +244,17 @@ type TicketOldKey struct {
 	Number    int64
 	TicketID  string
 	MovedAt   string
+}
+
+type TicketRef struct {
+	ID        string
+	TicketID  string
+	Kind      string
+	Target    string
+	Anchor    string
+	Label     string
+	CreatedBy string
+	CreatedAt string
 }
 
 type TicketTag struct {
