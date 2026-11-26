@@ -167,3 +167,18 @@ func TestRunHostileInput(t *testing.T) {
 		t.Fatal("repeated terms")
 	}
 }
+
+// K1 review M8: a stray combining mark is dropped, not searched for, so
+// it doesn't empty the results.
+func TestRunIgnoresLoneCombiningMark(t *testing.T) {
+	c, d, by, pid := setup(t)
+	ctx := context.Background()
+	c.CreateTicket(ctx, by, pid, core.TicketInput{Title: "gadget"})
+	res, err := search.Run(ctx, d.R, "gadget ́", 50)
+	if err != nil || len(res.Hits) != 1 {
+		t.Fatalf("%d %v", len(res.Hits), err)
+	}
+	if res, _ := search.Run(ctx, d.R, "́", 50); len(res.Hits) != 0 {
+		t.Fatal("a lone mark matched")
+	}
+}

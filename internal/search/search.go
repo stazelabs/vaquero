@@ -27,8 +27,9 @@ func MatchQuery(typed string) string {
 
 // Terms turns typed text into quoted FTS5 prefix terms ("colum"*): the
 // text is put in NFC first, then each run of letters, digits and combining
-// marks is a term (so a decomposed "résumé" stays one word), at most
-// maxTerms of them. A term holds no quote, star or other syntax.
+// marks is a term (so a decomposed "résumé" stays one word) if it holds
+// a letter or digit, at most maxTerms of them. A term holds no quote, star
+// or other syntax.
 //
 // NFC is applied here, on the query side, and by core when it writes
 // titles, descriptions and comments. Text stored decomposed before core
@@ -39,6 +40,10 @@ func Terms(typed string) []string {
 	typed = norm.NFC.String(typed)
 	words := strings.FieldsFunc(typed, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.Is(unicode.M, r)
+	})
+	// A run of combining marks alone (a stray accent) is no word.
+	words = slices.DeleteFunc(words, func(w string) bool {
+		return !strings.ContainsFunc(w, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
 	})
 	if len(words) > maxTerms {
 		words = words[:maxTerms]
