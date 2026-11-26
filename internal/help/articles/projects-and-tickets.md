@@ -29,7 +29,7 @@ A ticket can block, relate to or duplicate another ticket, in any project. Vaque
 
 ## Milestones
 
-A milestone is a named goal with an optional due date. The board's side panel shows each open milestone's progress, and clicking one shows only its tickets. Close a milestone when it ships.
+A milestone is a named goal with an optional due date. The board's side panel shows each open milestone's progress, and clicking one shows only its tickets. Close a milestone when it ships. Milestones are added and changed in project settings, or with `vaquero milestone` and [the API](/help/api).
 
 ## Changing a project key
 

@@ -126,36 +126,6 @@ func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	api.WriteJSON(w, status, projectDTO(p, open))
 }
 
-// APIMilestones is GET /api/v1/projects/{key}/milestones.
-func APIMilestones(d Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := apiProject(w, r, d)
-		if !ok {
-			return
-		}
-		ms, err := d.R.ListMilestones(r.Context(), p.ID)
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		progress, err := d.R.ListMilestoneProgress(r.Context(), p.ID)
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		counts := map[string][2]int64{}
-		for _, m := range progress {
-			counts[m.ID] = [2]int64{m.Done, m.Total}
-		}
-		out := make([]api.Milestone, len(ms))
-		for i, m := range ms {
-			c := counts[m.ID]
-			out[i] = api.Milestone{Name: m.Name, Description: m.Description, DueOn: m.DueOn.String, Closed: m.ClosedAt.Valid, Done: c[0], Total: c[1]}
-		}
-		api.WriteJSON(w, http.StatusOK, out)
-	}
-}
-
 func summary(k board.Card, s gen.Status) api.TicketSummary {
 	tags := k.Tags
 	if tags == nil {

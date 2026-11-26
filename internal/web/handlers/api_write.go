@@ -86,17 +86,23 @@ func (n *names) milestone(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return ""
 	}
+	return n.milestoneRow(name).ID
+}
+
+// milestoneRow resolves the milestone called name; the zero milestone when
+// none is.
+func (n *names) milestoneRow(name string) gen.Milestone {
 	ms, err := n.d.R.ListMilestones(n.ctx, n.p.ID)
 	if !n.lookup(err) {
-		return ""
+		return gen.Milestone{}
 	}
 	for _, m := range ms {
 		if strings.EqualFold(m.Name, strings.TrimSpace(name)) {
-			return m.ID
+			return m
 		}
 	}
 	n.fields["milestone"] = "No milestone " + name + " in " + n.p.Key + "."
-	return ""
+	return gen.Milestone{}
 }
 
 func (n *names) parent(key string) string { return n.ticket("parent", key) }
