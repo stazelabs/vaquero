@@ -133,12 +133,16 @@ func brewManaged(goos, dataDir string, get func(string) string, ask probe) (labe
 	if goos != "darwin" && file == "" {
 		return "", brewNone
 	}
-	env, managerUp := serviceEnv(goos, get, ask)
+	env, manager := serviceEnv(goos, get, ask)
 	def, err := config.DefaultDataDir(goos, env)
 	if err != nil || !sameDir(dataDir, def) {
 		return "", brewNone
 	}
-	if goos != "darwin" && !managerUp {
+	switch {
+	case goos == "darwin":
+	case manager == managerAbsent:
+		return file, brewStopped
+	case manager == managerUnknown:
 		return file, brewRunning
 	}
 	labels := brewLabels(goos)
@@ -161,42 +165,63 @@ func brewManaged(goos, dataDir string, get func(string) string, ask probe) (labe
 	return "", brewNone
 }
 
+// manager is what the systemd user manager's answer to show-environment
+// says about it.
+type manager int
+
+const (
+	managerUp      manager = iota // it answered
+	managerUnknown                // no answer, or one that can't be read
+	managerAbsent                 // there is none to reach: no service runs under it
+)
+
+// busDownMessage is systemctl's complaint when there is no user manager to talk
+// to (no session bus, as over a plain SSH login without lingering).
+const busDownMessage = "Failed to connect to bus"
+
 // serviceEnv is the environment the service's server starts with, as far
 // as the default data directory goes. On Linux, when the systemd user
-// manager answers (up is true), its XDG_DATA_HOME and HOME (the shell's
-// when it sets none); otherwise, and on macOS, the shell's. A value of
-// those two that can't be read (see unquoteSystemd) makes the manager
-// unknown: the shell's environment is used, never the raw text.
-func serviceEnv(goos string, get func(string) string, ask probe) (env func(string) string, up bool) {
+// manager answers (managerUp), its XDG_DATA_HOME and HOME (the shell's
+// when it sets none); otherwise, and on macOS, the shell's. A
+// show-environment that ran and said it couldn't reach the bus is
+// managerAbsent; any other failure (a timeout, a missing systemctl) is
+// managerUnknown. A value of XDG_DATA_HOME or HOME that can't be read (see
+// unquoteSystemd) makes it unknown too: the shell's environment is used,
+// never the raw text.
+func serviceEnv(goos string, get func(string) string, ask probe) (env func(string) string, m manager) {
 	if goos == "darwin" {
-		return get, false
+		return get, managerUnknown
 	}
 	out, err := ask("systemctl", "--user", "show-environment")
 	if err != nil {
-		return get, false
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && !errors.Is(err, errProbeUnknown) && bytes.Contains(ee.Stderr, []byte(busDownMessage)) {
+			return get, managerAbsent
+		}
+		return get, managerUnknown
 	}
-	m := map[string]string{}
+	vals := map[string]string{}
 	sc := bufio.NewScanner(bytes.NewReader(out))
 	for sc.Scan() {
 		k, v, ok := strings.Cut(sc.Text(), "=")
 		if !ok || (k != "XDG_DATA_HOME" && k != "HOME") {
 			continue
 		}
-		if m[k], ok = unquoteSystemd(v); !ok {
-			return get, false
+		if vals[k], ok = unquoteSystemd(v); !ok {
+			return get, managerUnknown
 		}
 	}
 	return func(k string) string {
 		switch k {
 		case "XDG_DATA_HOME":
-			return m[k]
+			return vals[k]
 		case "HOME":
-			if v := m[k]; v != "" {
+			if v := vals[k]; v != "" {
 				return v
 			}
 		}
 		return get(k)
-	}, true
+	}, managerUp
 }
 
 // unquoteSystemd reads a value as `systemctl show-environment` prints it:

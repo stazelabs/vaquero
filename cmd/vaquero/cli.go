@@ -216,6 +216,12 @@ var errBrewGone = message("The brew service didn't come back; run brew services 
 // services stop --keep), no service will start it: start it here, and say
 // once how to hand it back.
 func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) error {
+	// A server that answers needs nothing more, and no question to the
+	// service manager (after replaceStale's stop nothing answers yet, so
+	// the restart still asks).
+	if client.WaitUp(ctx, p.URL, 0) == nil {
+		return nil
+	}
 	label, state := brewServiceState(p.DataDir)
 	if state == brewRunning {
 		if client.WaitUp(ctx, p.URL, brewRestartWait) == nil {

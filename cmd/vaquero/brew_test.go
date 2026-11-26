@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/lockfile"
+	"github.com/stazelabs/vaquero/internal/version"
 )
 
 // fakeManager is a service manager for tests: it answers the commands in
@@ -361,5 +362,49 @@ func TestBrewServiceNotLoadedStartsOutsideIt(t *testing.T) {
 	// Running already: no note.
 	if code, _, e := runCLI(t, "projects"); code != 0 || strings.Contains(e, "outside brew services") {
 		t.Fatalf("%d %q", code, e)
+	}
+}
+
+// A server that already answers needs no question to the service manager:
+// startLocal returns before any probe. (After replaceStale's stop nothing
+// answers, so the stale-restart path still probes: TestStaleRestartUnderBrewServices.)
+func TestRunningServerAsksNoServiceManager(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	serverAt(t, dataDir, version.Version)
+	m := &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): "loaded\n"}}
+	useManager(t, m)
+	if code, _, e := runCLI(t, "projects"); code != 0 {
+		t.Fatalf("%d %q", code, e)
+	}
+	if c := m.called(); len(c) != 0 {
+		t.Fatalf("asked %v", c)
+	}
+}
+
+// busDown is systemctl --user failing as it does with no user manager to
+// talk to: a real exit, with the reason on standard error.
+func busDown(string, ...string) ([]byte, error) {
+	return exec.Command("sh", "-c", "echo 'Failed to connect to bus: No medium found' >&2; exit 1").Output()
+}
+
+// On Linux with a unit file, a user manager that can't be reached at all
+// runs no service: brewStopped. A manager that doesn't answer in time, or a
+// missing systemctl, is unknown, which takes the file at its word.
+func TestBrewManagedLinuxBusDown(t *testing.T) {
+	home := t.TempDir()
+	touchFile(t, brewServiceFile(home, "linux", "sh.brew.vaquero"))
+	get := envOf(map[string]string{"HOME": home})
+	linux := filepath.Join(home, ".local", "share", "vaquero")
+	if label, state := brewManaged("linux", linux, get, busDown); state != brewStopped || label != "sh.brew.vaquero" {
+		t.Errorf("bus down: %q %v", label, state)
+	}
+	if _, state := brewManaged("linux", linux, get, (&fakeManager{unknown: true}).probe); state != brewRunning {
+		t.Errorf("no answer: %v", state)
+	}
+	other := func(string, ...string) ([]byte, error) {
+		return exec.Command("sh", "-c", "echo 'Something else went wrong' >&2; exit 1").Output()
+	}
+	if _, state := brewManaged("linux", linux, get, other); state != brewRunning {
+		t.Errorf("another failure: %v", state)
 	}
 }
