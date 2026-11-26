@@ -67,18 +67,20 @@ func brewStopRefusal(label string) error {
 }
 
 // outsideService reports the pid of the server holding dataDir's lock when
-// it isn't the one the service manager runs as label (VAQ-130: started
-// outside brew services, it holds the port while the service fails to
-// start). ok is false when nothing serves, when the holder is the
-// service's own server, or when the manager reports no pid for the label,
-// so the caller keeps the refusal. The service itself is never touched.
+// it isn't the one the service manager runs as label (VAQ-130, R13:
+// started outside brew services, it holds the port while the service fails
+// to start). The manager reporting another pid, or none at all (between
+// failed restarts), means the holder isn't the service's current process.
+// ok is false when nothing serves, when the holder is the service's own
+// server, or when the manager gives no answer, so the caller keeps the
+// refusal. The service itself is never touched.
 func outsideService(dataDir, label string) (pid int, ok bool, err error) {
 	pid, role, running, err := lockfile.HolderRole(dataDir)
 	if err != nil || !running || role == lockfile.RoleMaintenance || pid <= 0 {
 		return 0, false, err
 	}
-	managed := servicePID(serviceOS, label, serviceProbe)
-	if managed == 0 || managed == pid {
+	managed, known := servicePID(serviceOS, label, serviceProbe)
+	if !known || managed == pid {
 		return 0, false, nil
 	}
 	return pid, true, nil
