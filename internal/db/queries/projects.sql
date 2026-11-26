@@ -141,3 +141,7 @@ LEFT JOIN statuses s ON s.id = t.status_id
 WHERE m.closed_at IS NULL
 GROUP BY m.id
 ORDER BY m.project_id, m.due_on IS NULL, m.due_on, m.name;
+
+-- name: ListProjectKeysByIDs :many
+-- The key of each given project, in one read (a page of decisions).
+SELECT id, key FROM projects WHERE id IN (sqlc.slice('ids'));

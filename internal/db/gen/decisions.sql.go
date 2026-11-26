@@ -241,8 +241,8 @@ SELECT a.id, a.ticket_id, a.decision_id, a.requirement_hash, a.plan_revision, a.
 FROM approvals a
 JOIN tickets t ON t.id = a.ticket_id
 JOIN projects p ON p.id = t.project_id
-WHERE a.decision_id = ?
-ORDER BY t.number
+WHERE a.decision_id IN (/*SLICE:ids*/?)
+ORDER BY a.decision_id, t.number
 `
 
 type ListDecisionApprovalsRow struct {
@@ -257,8 +257,20 @@ type ListDecisionApprovalsRow struct {
 	Number          int64
 }
 
-func (q *Queries) ListDecisionApprovals(ctx context.Context, decisionID string) ([]ListDecisionApprovalsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDecisionApprovals, decisionID)
+// The approvals each given decision wrote, in ticket number order: one
+// read for a page of decisions.
+func (q *Queries) ListDecisionApprovals(ctx context.Context, ids []string) ([]ListDecisionApprovalsRow, error) {
+	query := listDecisionApprovals
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -318,22 +330,34 @@ func (q *Queries) ListDecisionTicketIDs(ctx context.Context, decisionID string) 
 }
 
 const listDecisionTicketKeys = `-- name: ListDecisionTicketKeys :many
-SELECT p.key AS project_key, t.number
+SELECT dt.decision_id, p.key AS project_key, t.number
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
-WHERE dt.decision_id = ?
-ORDER BY t.number
+WHERE dt.decision_id IN (/*SLICE:ids*/?)
+ORDER BY dt.decision_id, t.number
 `
 
 type ListDecisionTicketKeysRow struct {
+	DecisionID string
 	ProjectKey string
 	Number     int64
 }
 
-// The tickets a decision names, by key, in ticket number order.
-func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string) ([]ListDecisionTicketKeysRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDecisionTicketKeys, decisionID)
+// The tickets each given decision names, by key, in ticket number order:
+// one read for a page of decisions.
+func (q *Queries) ListDecisionTicketKeys(ctx context.Context, ids []string) ([]ListDecisionTicketKeysRow, error) {
+	query := listDecisionTicketKeys
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +365,7 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string)
 	items := []ListDecisionTicketKeysRow{}
 	for rows.Next() {
 		var i ListDecisionTicketKeysRow
-		if err := rows.Scan(&i.ProjectKey, &i.Number); err != nil {
+		if err := rows.Scan(&i.DecisionID, &i.ProjectKey, &i.Number); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -473,6 +497,66 @@ func (q *Queries) ListDecisions(ctx context.Context, arg ListDecisionsParams) ([
 			&i.RelayedWords,
 			&i.AskedBy,
 			&i.AskedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDecisionsAsked = `-- name: ListDecisionsAsked :many
+SELECT dt.decision_id, dt.plan_revision, dt.parent_id, dt.children, p.key AS project_key, t.number
+FROM decision_tickets dt
+JOIN tickets t ON t.id = dt.ticket_id
+JOIN projects p ON p.id = t.project_id
+WHERE dt.decision_id IN (/*SLICE:ids*/?)
+ORDER BY dt.decision_id, t.number
+`
+
+type ListDecisionsAskedRow struct {
+	DecisionID   string
+	PlanRevision int64
+	ParentID     string
+	Children     string
+	ProjectKey   string
+	Number       int64
+}
+
+// What each given plan approval asked about for each of its tickets, by
+// number: one read for a page of decisions (the API's asked).
+func (q *Queries) ListDecisionsAsked(ctx context.Context, ids []string) ([]ListDecisionsAskedRow, error) {
+	query := listDecisionsAsked
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDecisionsAskedRow{}
+	for rows.Next() {
+		var i ListDecisionsAskedRow
+		if err := rows.Scan(
+			&i.DecisionID,
+			&i.PlanRevision,
+			&i.ParentID,
+			&i.Children,
+			&i.ProjectKey,
+			&i.Number,
 		); err != nil {
 			return nil, err
 		}

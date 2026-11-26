@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"strings"
 )
 
 const createActor = `-- name: CreateActor :one
@@ -83,6 +84,50 @@ SELECT id, kind, name, created_at, display_name FROM actors ORDER BY kind, name
 
 func (q *Queries) ListActors(ctx context.Context) ([]Actor, error) {
 	rows, err := q.db.QueryContext(ctx, listActors)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Actor{}
+	for rows.Next() {
+		var i Actor
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.Name,
+			&i.CreatedAt,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActorsByIDs = `-- name: ListActorsByIDs :many
+SELECT id, kind, name, created_at, display_name FROM actors WHERE id IN (/*SLICE:ids*/?)
+`
+
+// The given actors, in one read (a page of decisions' people).
+func (q *Queries) ListActorsByIDs(ctx context.Context, ids []string) ([]Actor, error) {
+	query := listActorsByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}

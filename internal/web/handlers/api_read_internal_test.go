@@ -19,9 +19,11 @@ import (
 type countingDB struct {
 	gen.DBTX
 	tagReads int
+	n        int // every query
 }
 
 func (c *countingDB) note(q string) {
+	c.n++
 	name, _, _ := strings.Cut(strings.TrimPrefix(q, "-- name: "), " ")
 	if strings.HasPrefix(name, "List") && strings.Contains(name, "Tags") {
 		c.tagReads++

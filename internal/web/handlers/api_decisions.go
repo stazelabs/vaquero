@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -148,14 +149,10 @@ func APIDecisions(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		out := make([]api.Decision, 0, len(rows))
-		for _, dec := range rows {
-			dto, err := decisionDTO(ctx, d, dec)
-			if err != nil {
-				apiFail(w, r, d, api.Internal(), err)
-				return
-			}
-			out = append(out, dto)
+		out, err := decisionDTOs(ctx, d, rows)
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -255,91 +252,157 @@ func writeDecision(w http.ResponseWriter, r *http.Request, d Deps, dec gen.Decis
 
 // decisionDTO is dec as the API answers it, read through the reader pool.
 func decisionDTO(ctx context.Context, d Deps, dec gen.Decision) (api.Decision, error) {
-	p, err := d.R.GetProject(ctx, dec.ProjectID)
+	out, err := decisionDTOs(ctx, d, []gen.Decision{dec})
 	if err != nil {
 		return api.Decision{}, err
 	}
-	actorNames := map[string]string{}
-	name := func(id string) (string, error) {
-		if id == "" {
-			return "", nil
-		}
-		if n, ok := actorNames[id]; ok {
-			return n, nil
-		}
-		a, err := d.R.GetActor(ctx, id)
-		if err != nil {
-			return "", err
-		}
-		actorNames[id] = a.Name
-		return a.Name, nil
+	return out[0], nil
+}
+
+// decisionDTOs is each of decs as the API answers it, in order, read
+// through the reader pool in a fixed number of queries however many there
+// are (VAQ-145): their projects, people, tickets, approvals, what the plan
+// approvals asked, and the tickets those name, a read each.
+func decisionDTOs(ctx context.Context, d Deps, decs []gen.Decision) ([]api.Decision, error) {
+	out := make([]api.Decision, 0, len(decs))
+	if len(decs) == 0 {
+		return out, nil
 	}
-	out := api.Decision{
-		ID: dec.ID, Project: p.Key, Tickets: []string{}, Run: dec.RunID.String, Kind: dec.Kind, Subject: dec.Subject,
-		Question: dec.Question, Options: []api.DecisionOption{}, Recommendation: dec.Recommendation, Why: dec.Why,
-		State: dec.State, Answer: dec.Answer, Note: dec.AnswerNote, AnsweredAt: dec.AnsweredAt.String,
-		Words: dec.RelayedWords, AskedAt: dec.AskedAt,
-	}
-	if err := json.Unmarshal([]byte(dec.Options), &out.Options); err != nil {
-		return api.Decision{}, err
-	}
-	if dec.Kind == core.DecisionApproval {
-		for _, o := range out.Options {
-			if strings.EqualFold(o.Label, core.ApproveLabel) {
-				out.Approves = o.Label
+	ids := make([]string, len(decs))
+	var projectIDs, actorIDs, planApprovals []string
+	for i, dec := range decs {
+		ids[i] = dec.ID
+		projectIDs = append(projectIDs, dec.ProjectID)
+		actorIDs = append(actorIDs, dec.AskedBy)
+		for _, n := range []sql.NullString{dec.AnsweredBy, dec.RelayedBy} {
+			if n.Valid {
+				actorIDs = append(actorIDs, n.String)
 			}
 		}
-	}
-	for _, s := range []struct {
-		into *string
-		id   string
-	}{{&out.AskedBy, dec.AskedBy}, {&out.AnsweredBy, dec.AnsweredBy.String}, {&out.RelayedBy, dec.RelayedBy.String}} {
-		if *s.into, err = name(s.id); err != nil {
-			return api.Decision{}, err
+		if dec.Kind == core.DecisionApproval && dec.Subject == "plan" {
+			planApprovals = append(planApprovals, dec.ID)
 		}
 	}
-	// An answer by the owner is direct or relayed; a ruling an agent made
-	// is its own call, and is neither until the owner overrules it.
-	if dec.AnsweredBy.Valid {
-		a, err := d.R.GetActor(ctx, dec.AnsweredBy.String)
-		if err != nil {
-			return api.Decision{}, err
-		}
-		if core.IsOwner(a) {
-			out.Answered = "direct"
-			if dec.RelayedBy.Valid {
-				out.Answered = "relayed"
-			}
-		}
-	}
-	keys, err := d.R.ListDecisionTicketKeys(ctx, dec.ID)
+	projectRows, err := d.R.ListProjectKeysByIDs(ctx, distinct(projectIDs))
 	if err != nil {
-		return api.Decision{}, err
+		return nil, err
 	}
-	for _, k := range keys {
-		out.Tickets = append(out.Tickets, core.TicketKey{Project: k.ProjectKey, Number: k.Number}.String())
+	projectKeys := map[string]string{}
+	for _, p := range projectRows {
+		projectKeys[p.ID] = p.Key
 	}
-	aps, err := d.R.ListDecisionApprovals(ctx, dec.ID)
+	actorRows, err := d.R.ListActorsByIDs(ctx, distinct(actorIDs))
 	if err != nil {
-		return api.Decision{}, err
+		return nil, err
 	}
-	for _, a := range aps {
-		out.Approvals = append(out.Approvals, api.DecisionApproval{
+	actors := map[string]gen.Actor{}
+	for _, a := range actorRows {
+		actors[a.ID] = a
+	}
+	keyRows, err := d.R.ListDecisionTicketKeys(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	keys := map[string][]string{}
+	for _, k := range keyRows {
+		keys[k.DecisionID] = append(keys[k.DecisionID], core.TicketKey{Project: k.ProjectKey, Number: k.Number}.String())
+	}
+	approvalRows, err := d.R.ListDecisionApprovals(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	approvals := map[string][]api.DecisionApproval{}
+	for _, a := range approvalRows {
+		approvals[a.DecisionID] = append(approvals[a.DecisionID], api.DecisionApproval{
 			Ticket: core.TicketKey{Project: a.ProjectKey, Number: a.Number}.String(), RequirementHash: a.RequirementHash, PlanRevision: a.PlanRevision, At: a.At,
 		})
 	}
-	if dec.Kind == core.DecisionApproval && dec.Subject == "plan" {
-		if out.Asked, err = decisionAsked(ctx, d, dec.ID); err != nil {
-			return api.Decision{}, err
+	asked, err := decisionsAsked(ctx, d, planApprovals)
+	if err != nil {
+		return nil, err
+	}
+	for _, dec := range decs {
+		key, ok := projectKeys[dec.ProjectID]
+		if !ok {
+			return nil, fmt.Errorf("decision %s: no project %s: %w", dec.ID, dec.ProjectID, sql.ErrNoRows)
 		}
+		name := func(id string) (string, error) {
+			if id == "" {
+				return "", nil
+			}
+			a, ok := actors[id]
+			if !ok {
+				return "", fmt.Errorf("decision %s: no actor %s: %w", dec.ID, id, sql.ErrNoRows)
+			}
+			return a.Name, nil
+		}
+		o := api.Decision{
+			ID: dec.ID, Project: key, Tickets: []string{}, Run: dec.RunID.String, Kind: dec.Kind, Subject: dec.Subject,
+			Question: dec.Question, Options: []api.DecisionOption{}, Recommendation: dec.Recommendation, Why: dec.Why,
+			State: dec.State, Answer: dec.Answer, Note: dec.AnswerNote, AnsweredAt: dec.AnsweredAt.String,
+			Words: dec.RelayedWords, AskedAt: dec.AskedAt,
+		}
+		if err := json.Unmarshal([]byte(dec.Options), &o.Options); err != nil {
+			return nil, err
+		}
+		if dec.Kind == core.DecisionApproval {
+			for _, opt := range o.Options {
+				if strings.EqualFold(opt.Label, core.ApproveLabel) {
+					o.Approves = opt.Label
+				}
+			}
+		}
+		for _, s := range []struct {
+			into *string
+			id   string
+		}{{&o.AskedBy, dec.AskedBy}, {&o.AnsweredBy, dec.AnsweredBy.String}, {&o.RelayedBy, dec.RelayedBy.String}} {
+			if *s.into, err = name(s.id); err != nil {
+				return nil, err
+			}
+		}
+		// An answer by the owner is direct or relayed; a ruling an agent
+		// made is its own call, and is neither until the owner overrules it.
+		if dec.AnsweredBy.Valid && core.IsOwner(actors[dec.AnsweredBy.String]) {
+			o.Answered = "direct"
+			if dec.RelayedBy.Valid {
+				o.Answered = "relayed"
+			}
+		}
+		o.Tickets = append(o.Tickets, keys[dec.ID]...)
+		o.Approvals = approvals[dec.ID]
+		if dec.Kind == core.DecisionApproval && dec.Subject == "plan" {
+			o.Asked = asked[dec.ID]
+			if o.Asked == nil {
+				o.Asked = []api.DecisionAsked{}
+			}
+		}
+		out = append(out, o)
 	}
 	return out, nil
 }
 
-// decisionAsked is what plan approval decisionID asked about for each of
-// its tickets, in two reads: the pins, then the keys and titles they name.
-func decisionAsked(ctx context.Context, d Deps, decisionID string) ([]api.DecisionAsked, error) {
-	pins, err := d.R.ListDecisionTicketPins(ctx, decisionID)
+// distinct is ids without repeats, in first-seen order.
+func distinct(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// decisionsAsked is what each of the plan approvals decisionIDs asked
+// about for each of its tickets, by decision id, in two reads however
+// many: the pins, then the keys and titles they name.
+func decisionsAsked(ctx context.Context, d Deps, decisionIDs []string) (map[string][]api.DecisionAsked, error) {
+	out := map[string][]api.DecisionAsked{}
+	if len(decisionIDs) == 0 {
+		return out, nil
+	}
+	pins, err := d.R.ListDecisionsAsked(ctx, decisionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +425,7 @@ func decisionAsked(ctx context.Context, d Deps, decisionID string) ([]api.Decisi
 	}
 	briefs := map[string]brief{}
 	if len(ids) > 0 {
-		rows, err := d.R.ListTicketBriefs(ctx, ids)
+		rows, err := d.R.ListTicketBriefs(ctx, distinct(ids))
 		if err != nil {
 			return nil, err
 		}
@@ -370,7 +433,6 @@ func decisionAsked(ctx context.Context, d Deps, decisionID string) ([]api.Decisi
 			briefs[r.ID] = brief{api.DecisionItem{Key: core.TicketKey{Project: r.ProjectKey, Number: r.Number}.String(), Title: r.Title}, r.Number}
 		}
 	}
-	out := []api.DecisionAsked{}
 	for i, p := range pins {
 		a := api.DecisionAsked{Ticket: core.TicketKey{Project: p.ProjectKey, Number: p.Number}.String(), PlanRevision: p.PlanRevision,
 			Parent: briefs[p.ParentID].item.Key, Children: []api.DecisionItem{}}
@@ -384,7 +446,7 @@ func decisionAsked(ctx context.Context, d Deps, decisionID string) ([]api.Decisi
 		for _, k := range kids {
 			a.Children = append(a.Children, k.item)
 		}
-		out = append(out, a)
+		out[p.DecisionID] = append(out[p.DecisionID], a)
 	}
 	return out, nil
 }

@@ -49,6 +49,14 @@
 // approval.", "Epic's plan changed since approval.", "Epic's plan not
 // approved.").
 //
+// A cancelled ancestor in the chain a ticket leans on covers nothing
+// (VAQ-145): cancelling it withdrew its approval, and the ticket is "Epic's
+// plan not approved." until it has an approved plan of its own or a new
+// parent. A done ancestor still covers its open children (ruling P-R2): its
+// approved work finished, and what is left open is follow-up under the same
+// plan. A ticket with its own plan leans on nothing, so no ancestor's state
+// touches it.
+//
 // An approval pins the ticket's repo files (core.FilePin, P2-R2), and
 // holds while each one's content on main, renames followed, is what was
 // pinned (P2-R3) and the ticket's repo-path references name the same files
@@ -146,8 +154,10 @@ func CheckAll(ctx context.Context, q *gen.Queries, files Files, ids []string) (m
 	}
 	missing := func(level []gen.ListReadinessTicketsRow) []string {
 		var ids []string
+		seen := map[string]bool{}
 		for _, r := range level {
-			if p := r.ParentID.String; r.ParentID.Valid && !slices.Contains(ids, p) {
+			if p := r.ParentID.String; r.ParentID.Valid && !seen[p] {
+				seen[p] = true
 				if _, ok := tickets[p]; !ok {
 					ids = append(ids, p)
 				}
@@ -317,6 +327,10 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 // moving after the approval was asked voids it for the leaning ticket
 // ("Plan not approved."), whatever the parents were then. Each is one map
 // lookup; the chain is already loaded.
+//
+// A cancelled parent covers nothing (VAQ-145): cancelling it withdrew the
+// approval it gave, so the lean fails with "Epic's plan not approved.",
+// at any link. A done one still covers (ruling P-R2).
 func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found map[string]bool, chain []string) {
 	notApproved := EpicPlanNotApproved
 	if listed {
@@ -325,6 +339,10 @@ func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found
 	p, ok := s.tickets[t.ParentID.String]
 	if !ok || depth > MaxDepth {
 		found[EpicPlanNotApproved] = true // beyond the chain read
+		return
+	}
+	if p.StatusCategory == "cancelled" {
+		found[EpicPlanNotApproved] = true // cancelling withdrew its approval (VAQ-145)
 		return
 	}
 	a, answered := s.latest[p.ID]

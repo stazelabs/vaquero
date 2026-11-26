@@ -36,13 +36,24 @@ UPDATE decisions SET state = 'withdrawn' WHERE id = ?;
 SELECT ticket_id FROM decision_tickets WHERE decision_id = ? ORDER BY ticket_id;
 
 -- name: ListDecisionTicketKeys :many
--- The tickets a decision names, by key, in ticket number order.
-SELECT p.key AS project_key, t.number
+-- The tickets each given decision names, by key, in ticket number order:
+-- one read for a page of decisions.
+SELECT dt.decision_id, p.key AS project_key, t.number
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
-WHERE dt.decision_id = ?
-ORDER BY t.number;
+WHERE dt.decision_id IN (sqlc.slice('ids'))
+ORDER BY dt.decision_id, t.number;
+
+-- name: ListDecisionsAsked :many
+-- What each given plan approval asked about for each of its tickets, by
+-- number: one read for a page of decisions (the API's asked).
+SELECT dt.decision_id, dt.plan_revision, dt.parent_id, dt.children, p.key AS project_key, t.number
+FROM decision_tickets dt
+JOIN tickets t ON t.id = dt.ticket_id
+JOIN projects p ON p.id = t.project_id
+WHERE dt.decision_id IN (sqlc.slice('ids'))
+ORDER BY dt.decision_id, t.number;
 
 -- name: ListDecisions :many
 -- Newest first, optionally narrowed to a project, a state, a kind or a
@@ -61,12 +72,14 @@ INSERT INTO approvals (id, ticket_id, decision_id, requirement_hash, plan_revisi
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListDecisionApprovals :many
+-- The approvals each given decision wrote, in ticket number order: one
+-- read for a page of decisions.
 SELECT a.*, p.key AS project_key, t.number
 FROM approvals a
 JOIN tickets t ON t.id = a.ticket_id
 JOIN projects p ON p.id = t.project_id
-WHERE a.decision_id = ?
-ORDER BY t.number;
+WHERE a.decision_id IN (sqlc.slice('ids'))
+ORDER BY a.decision_id, t.number;
 
 -- name: DeleteProjectApprovals :exec
 DELETE FROM approvals

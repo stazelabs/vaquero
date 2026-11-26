@@ -650,3 +650,85 @@ func TestCarriedAndReattachedNeedsApprovalAgain(t *testing.T) {
 		t.Fatalf("grandchild ready: %+v", got)
 	}
 }
+
+// status moves tk to the project's first status of category.
+func (w *world) status(tk gen.Ticket, category string) {
+	w.t.Helper()
+	st, err := w.d.RQ.FirstStatusInCategory(bg, gen.FirstStatusInCategoryParams{ProjectID: w.p.ID, Category: category})
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	w.edit(tk, core.TicketPatch{StatusID: &st.ID})
+}
+
+// VAQ-145: cancelling an epic withdraws the approval it gave the children
+// leaning on it, and the same goes for a cancelled ancestor further up the
+// chain a child leans on.
+func TestCancelledEpicStopsCovering(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(epic, "1. Columns.", 0)
+	w.approve(epic)
+	expect(t, w.check(child))
+	w.status(epic, "cancelled")
+	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+	// Its own approval doesn't help while it leans on the epic (L-R6) ...
+	w.approve(child)
+	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+	// ... but a plan of its own, approved, stands alone.
+	w.plan(child, "1. Columns, sorted.", 0)
+	w.approve(child)
+	expect(t, w.check(child))
+	// Back to todo, the epic's approval covers again.
+	w.status(epic, "todo")
+	other := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
+	w.approve(epic)
+	expect(t, w.check(other))
+
+	// A cancelled grandparent in the leaning chain.
+	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
+	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
+	w.plan(e, "1. Child.", 0)
+	w.approve(e, c)
+	expect(t, w.check(g))
+	w.status(e, "cancelled")
+	expect(t, w.check(g), readiness.EpicPlanNotApproved)
+	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{g.ID, c.ID, e.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expect(t, all[g.ID], readiness.EpicPlanNotApproved)
+	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
+	expect(t, all[e.ID], readiness.NotATodo, readiness.NoTier)
+
+	// A grandparent outside the chain (the parent has its own plan) doesn't
+	// matter.
+	w.status(e, "todo")
+	w.plan(c, "1. Grandchild.", 0)
+	w.approve(c)
+	expect(t, w.check(g))
+	w.status(e, "cancelled")
+	expect(t, w.check(g))
+}
+
+// P-R2: a done epic keeps covering its open children; only a cancelled
+// one stops.
+func TestDoneEpicStillCovers(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(epic, "1. Columns.", 0)
+	w.approve(epic)
+	w.status(epic, "done")
+	expect(t, w.check(child))
+	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
+	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
+	w.plan(e, "1. Child.", 0)
+	w.approve(e, c)
+	w.status(e, "done")
+	w.status(c, "done")
+	expect(t, w.check(g))
+}

@@ -8,6 +8,7 @@ package gen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const createProject = `-- name: CreateProject :one
@@ -308,6 +309,49 @@ func (q *Queries) ListOpenMilestoneProgress(ctx context.Context) ([]ListOpenMile
 			&i.Done,
 			&i.Total,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectKeysByIDs = `-- name: ListProjectKeysByIDs :many
+SELECT id, key FROM projects WHERE id IN (/*SLICE:ids*/?)
+`
+
+type ListProjectKeysByIDsRow struct {
+	ID  string
+	Key string
+}
+
+// The key of each given project, in one read (a page of decisions).
+func (q *Queries) ListProjectKeysByIDs(ctx context.Context, ids []string) ([]ListProjectKeysByIDsRow, error) {
+	query := listProjectKeysByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectKeysByIDsRow{}
+	for rows.Next() {
+		var i ListProjectKeysByIDsRow
+		if err := rows.Scan(&i.ID, &i.Key); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
