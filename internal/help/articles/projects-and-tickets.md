@@ -20,7 +20,7 @@ The "⋯" button opens quick settings in place: the project's name and descripti
 
 ## Project icons
 
-Every project shows an icon beside its name: on the projects page, in the project's header, in the breadcrumb on its ticket pages and beside its tickets in search results. Until you choose one it is the project's monogram: the first letters of the first two words of its name (or the first two letters of its key) on a colour of its own. The colour never changes, not even when the key does.
+Every project shows an icon beside its name: on the projects page, in the project's header, in the breadcrumb on its ticket pages and beside its tickets in search results. Until you choose one it is the project's monogram: the first letter or digit of each of the first two words of its name (or the first two characters of its key) on a colour of its own. The colour never changes, not even when the key does.
 
 In project settings, under Icon, choose the monogram, a glyph, or an image of your own: a PNG, JPEG or WebP of up to 256 KB, shown square and cropped to fit. An uploaded image is kept when you switch back to the monogram or a glyph, so you can choose it again without uploading it. `vaquero project icon` and [the API](/help/api) make the same changes.
 

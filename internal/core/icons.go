@@ -49,8 +49,9 @@ type IconImage struct {
 	Data []byte
 }
 
-// Monogram is a project's two upper-case letters: the first letters of the
-// first two words of name, else the first two letters of key.
+// Monogram is a project's two upper-case characters: the first letter or
+// digit of each of the first two words of name that have one, else the
+// first two characters of key.
 func Monogram(name, key string) string {
 	var initials []rune
 	for w := range strings.FieldsSeq(name) {
@@ -93,7 +94,8 @@ func checkIconImage(f fields, img *IconImage) *storedIcon {
 	return &storedIcon{typ: typ, data: base64.StdEncoding.EncodeToString(img.Data), etag: hex.EncodeToString(sum[:16])}
 }
 
-// iconValue is how an event names an icon: its kind, and its glyph.
+// iconValue is how an event names an icon: its kind, and its glyph
+// (applyIcon adds an image's etag).
 func iconValue(kind, glyph string) map[string]string {
 	if kind == IconKindGlyph {
 		return map[string]string{"kind": kind, "glyph": glyph}
@@ -150,7 +152,19 @@ func applyIcon(ctx context.Context, q *gen.Queries, f fields, p *gen.Project, ki
 			return nil, fmt.Errorf("set icon: %w", err)
 		}
 	}
-	ch := &Change{From: iconValue(p.IconKind, p.IconGlyph), To: iconValue(kind, glyph)}
+	from, to := iconValue(p.IconKind, p.IconGlyph), iconValue(kind, glyph)
+	if kind == IconKindImage {
+		// Each image side names its etag, so replacing one image with
+		// another shows as a change though the kind stays "image".
+		if p.IconKind == IconKindImage && oldEtag != "" {
+			from["etag"] = oldEtag
+		}
+		to["etag"] = oldEtag
+		if stored != nil {
+			to["etag"] = stored.etag
+		}
+	}
+	ch := &Change{From: from, To: to}
 	p.IconKind, p.IconGlyph, p.UpdatedAt = kind, glyph, now
 	return ch, nil
 }

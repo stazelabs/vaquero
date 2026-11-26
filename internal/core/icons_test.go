@@ -133,8 +133,15 @@ func TestSetProjectIconGlyphAndImage(t *testing.T) {
 		t.Fatal("a no-op wrote an event")
 	}
 	step("image", "", &core.IconImage{Data: webpIcon})
-	if icon2, _ := d.RQ.GetProjectIcon(bg, f.Project.ID); icon2.Type != "image/webp" || icon2.Etag == icon.Etag {
+	icon2, _ := d.RQ.GetProjectIcon(bg, f.Project.ID)
+	if icon2.Type != "image/webp" || icon2.Etag == icon.Etag {
 		t.Fatalf("%+v", icon2)
+	}
+	// Replacing one image with another names both etags, so the change
+	// shows though the kind stays "image".
+	_, ch := newest()
+	if got, _ := json.Marshal(ch["icon"]); string(got) != `{"from":{"etag":"`+icon.Etag+`","kind":"image"},"to":{"etag":"`+icon2.Etag+`","kind":"image"}}` {
+		t.Fatalf("replace: %s", got)
 	}
 	// Back to the monogram keeps the stored image, so the image comes back
 	// without an upload.
