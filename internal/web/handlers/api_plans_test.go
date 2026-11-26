@@ -127,7 +127,7 @@ func TestTicketPageShowsPlan(t *testing.T) {
 	tk, _ := e.Deps.R.GetTicketByNumber(bg, gen.GetTicketByNumberParams{ProjectID: p.ID, Number: 1})
 	// Without a plan the live wrapper is there, empty, so a plan saved
 	// elsewhere appears on the next change.
-	if body := c.Get("/t/VAQ-1").Body; !strings.Contains(body, `id="plan"`) || strings.Contains(body, "Revision 1") {
+	if body := c.Get("/t/VAQ-1").Body; !strings.Contains(body, `class="empty:hidden"></section>`) || strings.Contains(body, "Revision 1") {
 		t.Fatal("no empty plan wrapper without a plan")
 	}
 	if _, err := e.Deps.Core.SavePlan(bg, e.Deps.Actor.ID, tk.ID, "## Approach\n\nUse the *board*.", 0); err != nil {

@@ -332,9 +332,10 @@ templ TicketPage(v TicketView) {
 
 // planSection is the ticket's plan, read-only: the current revision and,
 // folded, its changes from the one before. The live wrapper is always
-// there, empty without a plan, so a plan written elsewhere appears.
+// there, so a plan written elsewhere appears; empty, it is hidden and adds
+// no gap.
 templ planSection(key string, p *PlanView) {
-	<section id="plan" hx-get={ "/t/" + key } hx-trigger="vq:change" hx-select="#plan" hx-swap="outerHTML" data-live>
+	<section id="plan" hx-get={ "/t/" + key } hx-trigger="vq:change" hx-select="#plan" hx-swap="outerHTML" data-live class="empty:hidden">
 		if p != nil {
 			@planBody(*p)
 		}
