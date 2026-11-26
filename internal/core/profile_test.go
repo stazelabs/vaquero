@@ -119,6 +119,9 @@ func TestUpdateProfile(t *testing.T) {
 		{strings.Repeat("k", 81), "Keep the name to 80 characters."},
 		{"Kim\x00", "Remove the hidden control characters."},
 		{"Kim\nLee", "Remove the hidden control characters."},
+		{"Kim\tLee", "Remove the hidden control characters."},
+		{"Kim\u2028Lee", "Remove the hidden control characters."},
+		{"Kim\u2029Lee", "Remove the hidden control characters."},
 	} {
 		snap := snapshot(t, d)
 		_, err := c.UpdateProfile(bg, f.Owner.ID, &tc.in)
@@ -128,6 +131,31 @@ func TestUpdateProfile(t *testing.T) {
 		}
 		if !maps.Equal(snapshot(t, d), snap) {
 			t.Fatalf("%q: a refusal changed rows", tc.in)
+		}
+	}
+	// A name another actor has, folded as tags are, is refused.
+	if _, err := c.EnsureAgent(bg, f.Owner.ID, "claude"); err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []string{"claude", "CLAUDE", "Owner", "owner"} {
+		snap := snapshot(t, d)
+		_, err := c.UpdateProfile(bg, f.Owner.ID, &in)
+		inv, ok := errors.AsType[*core.Invalid](err)
+		want := "An agent is called claude; choose another name."
+		if strings.EqualFold(in, "owner") {
+			want = ""
+		}
+		if want == "" {
+			if err != nil {
+				t.Fatalf("%q: %v", in, err)
+			}
+			continue
+		}
+		if !ok || inv.Fields["display_name"] != want {
+			t.Fatalf("%q: %v", in, err)
+		}
+		if !maps.Equal(snapshot(t, d), snap) {
+			t.Fatalf("%q: a refusal changed rows", in)
 		}
 	}
 	// "" restores "Owner".

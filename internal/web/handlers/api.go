@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
@@ -25,11 +26,13 @@ func APIMethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 }
 
 // APIMe is GET /api/v1/me: who the token acts as, and the server's version.
+// name is the actor's identity (vaquero mcp checks it); display_name and
+// shown_name are its profile's (VAQ-149).
 func APIMe(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		a := apiActor(r)
 		api.WriteJSON(w, http.StatusOK, map[string]any{
-			"actor":   map[string]string{"name": a.Name, "kind": a.Kind},
+			"actor":   map[string]string{"name": a.Name, "kind": a.Kind, "display_name": a.DisplayName, "shown_name": core.ActorName(a)},
 			"version": version.Version,
 		})
 	}

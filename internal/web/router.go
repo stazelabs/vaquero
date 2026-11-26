@@ -25,14 +25,15 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.SecurityHeaders(false),
 		middleware.CSP,
 		middleware.CrossOrigin(d.Logger),
+		// Names and avatars, read on a page's first use (VAQ-149); before
+		// BodyLimit, so its themed 413 page shows the owner's face.
+		handlers.Faces(d),
 		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload
 		// for attachments, MaxIconUpload for project icons.
 		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
 		// Provenance for every change: the surface and the Vaquero-Client,
 		// -Harness, -Model and -Run headers, as reported (core.Origin).
 		middleware.Origin,
-		// Names and avatars, read on a page's first use (VAQ-149).
-		handlers.Faces(d),
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
 		chimw.GetHead,

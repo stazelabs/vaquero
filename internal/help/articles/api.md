@@ -34,7 +34,7 @@ Every change records where it came from, as the caller reports it, in the event'
 
 | Request | Answer |
 |---|---|
-| `GET /api/v1/me` | The actor the token belongs to |
+| `GET /api/v1/me` | The actor the token belongs to: `{"actor": {"name", "kind", "display_name", "shown_name"}, "version"}`. `name` is the account's name (Owner, or the agent's), `display_name` the owner's [display name](/help/your-profile) (`""` for none) and `shown_name` what answers and pages show |
 | `GET /api/v1/projects` | Every project, with `open_count` and `icon` |
 | `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on), `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default, and `links`, its [project links](/help/projects-and-tickets#project-links) as `[{"id", "kind", "direction", "key", "name"}]`: `kind` is `depends on` or `relates`, `direction` is `out` (this project depends on or relates to `key`) or `in` (`key` depends on or relates to this one). `GET /api/v1/projects` carries `links` too. A project with a [repository](/help/repositories) also has `repo`: `{"path", "main_branch", "remote", "remote_url", "fetch_minutes", "last_fetch_at"?, "available"}`, `remote_url` without any credentials and `available` false when git is missing or the repo can't be opened; a project without one has no `repo` |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
@@ -111,7 +111,7 @@ The owner's [profile](/help/your-profile): the display name every answer shows, 
 | Request | Body |
 |---|---|
 | `GET /api/v1/profile` | No body. The answer is `{"name", "display_name", "shown_name", "avatar"}`: `name` is the account's name, Owner; `display_name` what was chosen (`""` for none); `shown_name` what answers and pages show; `avatar` is `{"url", "etag"}`, or `null` while the initials show |
-| `PATCH /api/v1/profile` | `{"display_name"}`: up to 80 characters, no line breaks or control characters; `""` shows Owner again. The answer is the profile |
+| `PATCH /api/v1/profile` | `{"display_name"}`: up to 80 characters, no line breaks or control characters, and not a name an agent has (in any case); `""` shows Owner again. The answer is the profile |
 | `PUT /api/v1/profile/avatar` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the avatar, and the answer is the profile. Up to 256 KB: more is `413`, and another type (SVG and GIF included) is `422` |
 | `DELETE /api/v1/profile/avatar` | No body. Remove the avatar, so the initials show again; the answer is the profile. With none stored nothing changes |
 

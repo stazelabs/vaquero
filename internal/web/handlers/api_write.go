@@ -82,7 +82,7 @@ func (n *names) assignee(name string) string {
 		}
 	}
 	for _, a := range as {
-		if a.DisplayName != "" && strings.EqualFold(a.DisplayName, strings.TrimSpace(name)) {
+		if a.DisplayName != "" && core.SameTag(a.DisplayName, strings.TrimSpace(name)) {
 			return a.ID
 		}
 	}
@@ -522,7 +522,7 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
-		writeCommentAnswer(w, r, d, t, c, a.Name, http.StatusCreated)
+		writeCommentAnswer(w, r, d, t, c, core.ActorName(a), http.StatusCreated)
 	}
 }
 
@@ -567,7 +567,7 @@ func APICommentUpdate(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		writeCommentAnswer(w, r, d, t, nc, a.Name, http.StatusOK)
+		writeCommentAnswer(w, r, d, t, nc, core.ActorName(a), http.StatusOK)
 	}
 }
 

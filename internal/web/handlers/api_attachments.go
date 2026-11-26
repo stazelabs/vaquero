@@ -10,6 +10,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/blobs"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
@@ -64,7 +65,7 @@ func APIAttachmentUpload(d Deps) http.HandlerFunc {
 			api.WriteFailure(w, uploadFailure(r, d, err))
 			return
 		}
-		out := attachmentDTO(a, by.Name)
+		out := attachmentDTO(a, core.ActorName(by))
 		if _, _, out.Warning, err = ticketClaim(r, d, t); err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

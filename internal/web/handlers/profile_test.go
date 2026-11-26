@@ -200,6 +200,36 @@ func TestDisplayNameEverywhere(t *testing.T) {
 	if tk.Assignee != "Kim Lee" || len(tk.Comments) != 1 || tk.Comments[0].Author != "Kim Lee" {
 		t.Fatalf("%+v", tk)
 	}
+	// Write answers name the author by the shown name too (fix round 1):
+	// a comment created and edited, through the API and MCP, and an
+	// upload's uploader.
+	var cm api.Comment
+	r := c.API("POST", "/api/v1/tickets/VAQ-1/comments", tok, map[string]string{"body": "Saddled."})
+	decode(t, r.Body, &cm)
+	if r.Status != 201 || cm.Author != "Kim Lee" {
+		t.Fatalf("comment create: %d %s", r.Status, r.Body)
+	}
+	r = c.API("PATCH", "/api/v1/comments/"+cm.ID, tok, map[string]string{"body": "Saddled up."})
+	decode(t, r.Body, &cm)
+	if r.Status != 200 || cm.Author != "Kim Lee" {
+		t.Fatalf("comment edit: %d %s", r.Status, r.Body)
+	}
+	cs := mcpConnect(t, e, tok, "")
+	if res, text := mcpCall(t, cs, "add_comment", map[string]any{"key": "VAQ-1", "body": "Through MCP."}); res.IsError || !strings.Contains(text, `"author": "Kim Lee"`) && !strings.Contains(text, `"author":"Kim Lee"`) {
+		t.Fatalf("mcp add_comment: %s", text)
+	}
+	var att api.Attachment
+	r = c.UploadAs("/api/v1/tickets/VAQ-1/attachments", tok, "notes.txt", "text/plain", []byte("hay"))
+	decode(t, r.Body, &att)
+	if r.Status != 201 || att.UploadedBy != "Kim Lee" {
+		t.Fatalf("upload: %d %s", r.Status, r.Body)
+	}
+	var me struct{ Actor map[string]string }
+	body := c.API("GET", "/api/v1/me", tok, nil).Body
+	decode(t, body, &me)
+	if a := me.Actor; a["name"] != "Owner" || a["display_name"] != "Kim Lee" || a["shown_name"] != "Kim Lee" || a["kind"] != "human" {
+		t.Fatalf("me: %s", body)
+	}
 	var evs []api.Event
 	decode(t, c.API("GET", "/api/v1/events", tok, nil).Body, &evs)
 	for _, ev := range evs {
@@ -215,7 +245,7 @@ func TestAssigneeByDisplayName(t *testing.T) {
 	if _, err := e.Deps.Core.UpdateProfile(bg, e.Deps.Actor.ID, new("Kim")); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"Kim", "kim", "Owner"} {
+	for _, name := range []string{"Kim", "kim", "KIM", "Owner"} {
 		r := c.API("PATCH", "/api/v1/tickets/VAQ-1", tok, map[string]string{"assignee": name})
 		var tk api.Ticket
 		decode(t, r.Body, &tk)
@@ -277,5 +307,36 @@ func assign(t *testing.T, e *webtest.Env, key, id string) {
 	}
 	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{AssigneeID: &id}, 0); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The assignee's display name is matched in NFC with case folding, as
+// tags are (fix round 1).
+func TestAssigneeDisplayNameFolded(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	if _, err := e.Deps.Core.UpdateProfile(bg, e.Deps.Actor.ID, new("Jos\u00e9")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Jose\u0301", "JOS\u00c9"} {
+		r := c.API("PATCH", "/api/v1/tickets/VAQ-1", tok, map[string]string{"assignee": name})
+		var tk api.Ticket
+		decode(t, r.Body, &tk)
+		if r.Status != 200 || tk.Assignee != "Jos\u00e9" {
+			t.Fatalf("%q: %d %s", name, r.Status, r.Body)
+		}
+		assign(t, e, "VAQ-1", "")
+	}
+}
+
+// The themed 413 page for an oversized profile form shows the owner's
+// face in its header, like every other page (fix round 1).
+func TestTooLargePageShowsTheOwner(t *testing.T) {
+	e := webtest.New(t)
+	if _, err := e.Deps.Core.UpdateProfile(bg, e.Deps.Actor.ID, new("Kim Lee")); err != nil {
+		t.Fatal(err)
+	}
+	r := e.Client().Post("/profile", url.Values{"display_name": {strings.Repeat("x", 2<<20)}})
+	if r.Status != http.StatusRequestEntityTooLarge || !strings.Contains(r.Body, `data-avatar-monogram="KL"`) {
+		t.Fatalf("%d", r.Status)
 	}
 }

@@ -88,6 +88,11 @@ func (c *Core) UpdateProfile(ctx context.Context, by string, displayName *string
 		if err := f.err(); err != nil {
 			return err
 		}
+		if name != "" {
+			if err := nameTaken(ctx, q, a.ID, name); err != nil {
+				return err
+			}
+		}
 		if name == a.DisplayName {
 			return nil
 		}
@@ -101,9 +106,31 @@ func (c *Core) UpdateProfile(ctx context.Context, by string, displayName *string
 	return a, err
 }
 
-// hasNewline reports a tab or line break, which a name never holds
-// (checked lets them through for multi-line text).
-func hasNewline(s string) bool { return strings.ContainsAny(s, "\t\n\r") }
+// hasNewline reports a tab or line break, U+2028 and U+2029 included,
+// which a name never holds (checked lets them through for multi-line
+// text).
+func hasNewline(s string) bool { return strings.ContainsAny(s, "\t\n\r\u2028\u2029") }
+
+// nameTaken refuses a display name that another actor is called, or shows,
+// matched as tags are (SameTag: NFC and case folding), so a name in an
+// answer or the assignee field names one actor.
+func nameTaken(ctx context.Context, q *gen.Queries, self, name string) error {
+	as, err := q.ListActors(ctx)
+	if err != nil {
+		return fmt.Errorf("list actors: %w", err)
+	}
+	for _, o := range as {
+		if o.ID == self || !SameTag(name, o.Name) && (o.DisplayName == "" || !SameTag(name, o.DisplayName)) {
+			continue
+		}
+		who := "Someone"
+		if o.Kind == "agent" {
+			who = "An agent"
+		}
+		return invalid("display_name", who+" is called "+ActorName(o)+"; choose another name.")
+	}
+	return nil
+}
 
 // avatarEtag is the owner's stored avatar's etag, "" when none, read
 // inside q's transaction.
