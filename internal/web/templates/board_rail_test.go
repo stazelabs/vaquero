@@ -33,10 +33,16 @@ func TestBoardRailOverlaysBelowMd(t *testing.T) {
 		t.Fatalf("%d close controls, want 2", n)
 	}
 	btn := regexp.MustCompile(`<button[^>]*data-rail-close[^>]*>`).FindString(page)
-	for _, want := range []string{`type="button"`, `aria-label="Close Backlog"`, "md:hidden"} {
+	for _, want := range []string{`type="button"`, `aria-label="Close Backlog"`} {
 		if !strings.Contains(btn, want) {
 			t.Errorf("close control %q lacks %q", btn, want)
 		}
+	}
+	// The close control's row is hidden from md up; the button itself
+	// doesn't repeat it.
+	i := strings.Index(page, btn)
+	if row := page[strings.LastIndex(page[:i], "<div"):i]; !strings.Contains(row, "md:hidden") || strings.Contains(btn, "md:hidden") {
+		t.Errorf("close control row %q, button %q: md:hidden belongs on the row only", row, btn)
 	}
 	sum := classOf(t, page, "summary", "writing-mode:vertical-rl")
 	if !strings.Contains(sum, " md:group-open:[writing-mode:horizontal-tb] ") || strings.Contains(sum, " group-open:[writing-mode:horizontal-tb] ") {

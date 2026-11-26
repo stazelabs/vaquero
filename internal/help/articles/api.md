@@ -127,7 +127,7 @@ The answer is `200` with one result per item, in request order:
        "skipped": ["move", "release"]}
     ]}
 
-`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), the item it ended in and each item after it have the code `cancelled`, with the actions that didn't run in `skipped`; actions before those ran.
+`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), an item whose actions all ran is `ok` and carries the ticket's `status` and `version`, even when the request ends right after it. Only the item the request was cut off in, and each item after it, have the code `cancelled`, with the actions that didn't run in `skipped`; the actions before those ran.
 
 ## Errors
 

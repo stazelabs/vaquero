@@ -156,7 +156,7 @@ templ rail(b board.Board, c board.Column) {
 					</span>
 					{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
 				</span>
-				<button type="button" data-rail-close aria-label={ "Close " + c.Status.Name } class="rounded-md p-1 text-muted hover:bg-paper hover:text-accent md:hidden">
+				<button type="button" data-rail-close aria-label={ "Close " + c.Status.Name } class="rounded-md p-1 text-muted hover:bg-paper hover:text-accent">
 					@Icon("close")
 				</button>
 			</div>
