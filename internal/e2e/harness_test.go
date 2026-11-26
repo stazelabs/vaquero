@@ -123,7 +123,7 @@ func open(t *testing.T, env *webtest.Env, width, height int64) *page {
 	}
 	tctx, cancelTimeout := context.WithTimeout(browserCtx, 90*time.Second)
 	ctx, cancel := chromedp.NewContext(tctx, chromedp.WithNewBrowserContext())
-	p := &page{t: t, ctx: ctx, env: env, srv: record(env)}
+	p := &page{t: t, ctx: ctx, env: env, srv: record(t, env)}
 	t.Cleanup(func() {
 		cancel()
 		cancelTimeout()
@@ -317,19 +317,40 @@ var (
 // recorder wraps env's handler: it counts requests by method and path, and
 // can answer some with a 500 to stand in for a server that failed.
 type recorder struct {
-	next  http.Handler
 	mu    sync.Mutex
 	count map[string]int
 	fail  atomic.Value // func(*http.Request) bool, or nil
 }
 
-func record(env *webtest.Env) *recorder {
-	r := &recorder{next: env.Server.Config.Handler, count: map[string]int{}}
-	env.Server.Config.Handler = r
+// recorders holds each env's one recorder: a second tab on the same env
+// shares it rather than wrapping the server again.
+var (
+	recordersMu sync.Mutex
+	recorders   = map[*webtest.Env]*recorder{}
+)
+
+// record is env's recorder, put around its router the first time (through
+// webtest's Wrap, which is safe while the server serves).
+func record(t *testing.T, env *webtest.Env) *recorder {
+	recordersMu.Lock()
+	defer recordersMu.Unlock()
+	if r, ok := recorders[env]; ok {
+		return r
+	}
+	r := &recorder{count: map[string]int{}}
+	env.Wrap(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) { r.serve(w, req, next) })
+	})
+	recorders[env] = r
+	t.Cleanup(func() {
+		recordersMu.Lock()
+		delete(recorders, env)
+		recordersMu.Unlock()
+	})
 	return r
 }
 
-func (r *recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (r *recorder) serve(w http.ResponseWriter, req *http.Request, next http.Handler) {
 	r.mu.Lock()
 	r.count[req.Method+" "+req.URL.Path]++
 	r.mu.Unlock()
@@ -337,7 +358,7 @@ func (r *recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "test failure", http.StatusInternalServerError)
 		return
 	}
-	r.next.ServeHTTP(w, req)
+	next.ServeHTTP(w, req)
 }
 
 // requests is how many method+path requests arrived ("POST /t/WEB-1/move").

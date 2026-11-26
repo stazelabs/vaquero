@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -45,11 +46,45 @@ type Env struct {
 
 	shutdown     chan struct{}
 	shutdownOnce sync.Once
+
+	// The server's handler is a switch, so Rebuild and Wrap can change
+	// what it serves while it serves, without a data race.
+	handler handlerSwitch
+	mu      sync.Mutex
+	wraps   []func(http.Handler) http.Handler
+}
+
+// handlerSwitch serves whichever handler was stored last.
+type handlerSwitch struct{ h atomic.Pointer[http.Handler] }
+
+func (s *handlerSwitch) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	(*s.h.Load()).ServeHTTP(w, r)
+}
+
+func (e *Env) serve() {
+	var h http.Handler = web.NewRouter(e.Deps)
+	for _, w := range e.wraps {
+		h = w(h)
+	}
+	e.handler.h.Store(&h)
 }
 
 // Rebuild serves a router built from the current Deps, after a test
-// changed them.
-func (e *Env) Rebuild() { e.Server.Config.Handler = web.NewRouter(e.Deps) }
+// changed them. Handlers added by Wrap stay around it.
+func (e *Env) Rebuild() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.serve()
+}
+
+// Wrap puts mw around the router (and around any earlier wrap). It is
+// safe while requests are in flight: later requests go through mw.
+func (e *Env) Wrap(mw func(http.Handler) http.Handler) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.wraps = append(e.wraps, mw)
+	e.serve()
+}
 
 // Shutdown closes Deps.Shutdown, as the server does when it stops.
 func (e *Env) Shutdown() { e.shutdownOnce.Do(func() { close(e.shutdown) }) }
@@ -85,8 +120,10 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		Blobs:      blobs.NewSQLite(d.W, d.R, now),
 		Instance:   Instance,
 	}
-	srv := httptest.NewServer(web.NewRouter(deps))
-	e := &Env{DB: d, Deps: deps, Server: srv, t: t, shutdown: shutdown}
+	e := &Env{DB: d, Deps: deps, t: t, shutdown: shutdown}
+	e.serve()
+	srv := httptest.NewServer(&e.handler)
+	e.Server = srv
 	// Streams end before the server closes, or Close would wait on them.
 	t.Cleanup(func() { e.Shutdown(); srv.Close() })
 	return e

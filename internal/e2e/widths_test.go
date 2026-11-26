@@ -91,7 +91,7 @@ func focusedOn(sel string) string {
 }
 
 func TestNarrowBoard(t *testing.T) {
-	for _, w := range []int64{375, 768} {
+	for _, w := range []int64{375, 767, 768} {
 		t.Run(fmt.Sprint(w), func(t *testing.T) {
 			env, f := widthFixture(t)
 			p := open(t, env, w, 900)
@@ -251,7 +251,7 @@ func TestPhoneWidthNoSidewaysScroll(t *testing.T) {
 		{empty, []string{"/"}},
 		{env, []string{
 			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
-			"/t/WEB-3", "/t/WEB-1?edit=1", "/projects/new", "/search?q=beta", "/activity",
+			"/t/WEB-3", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/activity",
 			"/help", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
 		}},
 	} {
