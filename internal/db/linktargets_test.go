@@ -335,3 +335,35 @@ func TestTicketArrivalsUsesIndex(t *testing.T) {
 	}
 }
 
+// VAQ-147: the projects page finds each project's moves out through
+// events_moved_from, never a scan of events.
+func TestProjectStatsUsesMovedFromIndex(t *testing.T) {
+	raw, err := os.ReadFile("queries/projects.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "-- name: ListProjectStats :many\n")
+	if !ok {
+		t.Fatal("no ListProjectStats")
+	}
+	q, _, _ := strings.Cut(rest, "-- name:")
+	rows, err := dbtest.New(t).W.Query("EXPLAIN QUERY PLAN " + strings.TrimSpace(q))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	all := strings.Join(plan, "\n")
+	t.Log(all)
+	if regexp.MustCompile(`\bSCAN (e|mv)\b`).MatchString(all) || !strings.Contains(all, "SEARCH mv USING INDEX events_moved_from") {
+		t.Fatalf("plan:\n%s", all)
+	}
+}

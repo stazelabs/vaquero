@@ -92,11 +92,17 @@ DELETE FROM projects WHERE id = ?;
 -- name: ListProjectStats :many
 -- For the projects page (board.LoadProjectStats, which reads each stat in
 -- one query across every project): per project, tickets in review, open
--- tickets, and the newest event's time ('' when it has none).
+-- tickets, and the newest event's time ('' when it has none): its own
+-- events, and the moves out of it (VAQ-147), which are recorded on the
+-- project the ticket moved to (events_moved_from; +p.id drops the
+-- column's affinity, which would keep the index from matching).
 SELECT p.id AS project_id,
        CAST(coalesce(sum(s.category = 'in_review'), 0) AS INTEGER) AS in_review,
        CAST(coalesce(sum(s.category NOT IN ('done', 'cancelled')), 0) AS INTEGER) AS open_count,
-       CAST(coalesce((SELECT e.at FROM events e WHERE e.project_id = p.id ORDER BY e.seq DESC LIMIT 1), '') AS TEXT) AS last_change
+       CAST(max(coalesce((SELECT e.at FROM events e WHERE e.project_id = p.id ORDER BY e.seq DESC LIMIT 1), ''),
+                coalesce((SELECT mv.at FROM events mv
+                          WHERE mv.kind = 'ticket.moved' AND json_extract(mv.payload, '$.from_project_id') = +p.id
+                          ORDER BY mv.seq DESC LIMIT 1), '')) AS TEXT) AS last_change
 FROM projects p
 LEFT JOIN tickets t ON t.project_id = p.id
 LEFT JOIN statuses s ON s.id = t.status_id

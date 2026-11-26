@@ -58,6 +58,44 @@ func TestGroupDecisionInMemberHistory(t *testing.T) {
 	}
 }
 
+// VAQ-147, ruling P-R1: a sub-ticket carried by its epic's move keeps the
+// move line after it is re-parented, and after it is detached, because the
+// move event lists it by id.
+func TestMovedSubTicketKeepsMoveLineAfterReparent(t *testing.T) {
+	c, d, f := newFixture(t)
+	child, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Child", ParentID: f.T1.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MoveTicketToProject(bg, f.Owner.ID, f.T1.ID, f.Other.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if n := kindsIn(t, d, child.ID)[core.EvTicketMoved]; n != 1 {
+		t.Fatalf("%d move lines before re-parenting", n)
+	}
+	other := f.O1.ID
+	if _, err := c.PatchTicket(bg, f.Owner.ID, child.ID, core.TicketPatch{ParentID: &other}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if n := kindsIn(t, d, child.ID)[core.EvTicketMoved]; n != 1 {
+		t.Errorf("%d move lines after re-parenting", n)
+	}
+	none := ""
+	if _, err := c.PatchTicket(bg, f.Owner.ID, child.ID, core.TicketPatch{ParentID: &none}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if n := kindsIn(t, d, child.ID)[core.EvTicketMoved]; n != 1 {
+		t.Errorf("%d move lines after detaching", n)
+	}
+	// The epic's own history has its move once, on itself.
+	if n := kindsIn(t, d, f.T1.ID)[core.EvTicketMoved]; n != 1 {
+		t.Errorf("the epic has %d move lines", n)
+	}
+	if n := kindsIn(t, d, f.O1.ID)[core.EvTicketMoved]; n != 0 {
+		t.Errorf("the new parent has %d move lines", n)
+	}
+}
+
 // Run N's tag history (VAQ-134), through event_tickets now: a rename, a
 // merge and a delete each show once on the tickets they changed, and on
 // no other.

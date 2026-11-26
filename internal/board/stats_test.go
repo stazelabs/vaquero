@@ -242,3 +242,31 @@ func TestProjectStatsLinks(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-147: a move out of a project is that project's last change too,
+// though the event is recorded on the project the ticket moved to.
+func TestProjectStatsCountsMoveOut(t *testing.T) {
+	e := newEnv(t)
+	old, err := e.c.CreateProject(ctx, e.owner.ID, core.ProjectInput{Key: "OLD", Name: "Old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk, err := e.c.CreateTicket(ctx, e.owner.ID, old.ID, core.TicketInput{Title: "Leaving"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.now = t0.Add(2 * time.Hour)
+	if _, err := e.c.MoveTicketToProject(ctx, e.owner.ID, tk.ID, e.p.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	got, err := board.LoadProjectStats(ctx, e.d.RQ, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := got[old.ID]; !s.LastChange.Equal(e.now) {
+		t.Errorf("OLD's last change %v, want the move's %v", s.LastChange, e.now)
+	}
+	if s := got[e.p.ID]; !s.LastChange.Equal(e.now) {
+		t.Errorf("VAQ's last change %v, want the move's %v", s.LastChange, e.now)
+	}
+}
