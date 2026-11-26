@@ -296,8 +296,8 @@ func hardened(t *testing.T, args []string) {
 	}
 }
 
-// Every command runs with the guards in its environment, and only fetch
-// gets GIT_SSH_COMMAND.
+// Every command runs with the guards in its environment, only fetch gets
+// GIT_SSH_COMMAND, and every command but fetch GIT_NO_LAZY_FETCH=1 (C2).
 func TestCommandEnvironment(t *testing.T) {
 	bare := gittest.Bare(t)
 	seed := gittest.Clone(t, bare)
@@ -337,11 +337,14 @@ func TestCommandEnvironment(t *testing.T) {
 		}
 		for _, e := range env {
 			name, _, _ := strings.Cut(e, "=")
-			if (strings.HasPrefix(name, "GIT_") && !slices.Contains([]string{"GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "GIT_PAGER", "GIT_SSH_COMMAND", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}, name)) || name == "SSH_ASKPASS" {
+			if (strings.HasPrefix(name, "GIT_") && !slices.Contains([]string{"GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "GIT_PAGER", "GIT_SSH_COMMAND", "GIT_NO_LAZY_FETCH", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}, name)) || name == "SSH_ASKPASS" {
 				t.Errorf("git %s: %s passed through", subs[i], e)
 			}
 		}
 		ssh := slices.Contains(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+		if lazy := slices.Contains(env, "GIT_NO_LAZY_FETCH=1"); lazy == (subs[i] == "fetch") {
+			t.Errorf("git %s: GIT_NO_LAZY_FETCH=1 %v", subs[i], lazy)
+		}
 		if subs[i] == "fetch" {
 			sawFetch = true
 			if !ssh {

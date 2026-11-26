@@ -71,8 +71,8 @@ func commitsView(d Deps, p gen.Project, key string) templates.CommitsView {
 	switch {
 	case p.RepoPath == "":
 		v.Problem = "No repository set for this project."
-	case d.Git == nil || !d.Git.Available():
-		v.Problem = "Git isn't installed."
+	case gitMissing(d) != "":
+		v.Problem = gitMissing(d)
 	default:
 		v.Lazy = true
 	}

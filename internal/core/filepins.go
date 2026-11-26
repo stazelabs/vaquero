@@ -164,6 +164,10 @@ func repoReason(err error) string {
 	switch {
 	case errors.Is(err, gitread.ErrNoGit):
 		return "git isn't installed."
+	case errors.Is(err, gitread.ErrOldGit):
+		return "git 2.31 or later is needed."
+	case errors.Is(err, gitread.ErrPartialClone):
+		return "partial clones need git 2.44 or later."
 	case errors.Is(err, gitread.ErrNotRepo):
 		return "it isn't a git work tree."
 	case errors.Is(err, gitread.ErrNoRev):

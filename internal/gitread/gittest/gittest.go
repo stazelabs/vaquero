@@ -88,6 +88,23 @@ func Clone(t testing.TB, remote *R) *R {
 	return r
 }
 
+// PartialClone clones remote with --filter=blob:none (over file://, which
+// a local clone needs to honour the filter; remote is set to serve
+// filters): a work tree with main's blobs and none of history's, whose
+// origin is its promisor remote.
+func PartialClone(t testing.TB, remote *R) *R {
+	t.Helper()
+	remote.Git("config", "uploadpack.allowFilter", "true")
+	r := &R{t: t, git: Need(t), Dir: t.TempDir()}
+	cmd := exec.Command(r.git, "clone", "-q", "--filter=blob:none", "file://"+remote.Dir, r.Dir)
+	cmd.Env = r.env()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git clone --filter: %v: %s", err, out)
+	}
+	r.tick = remote.tick + 100
+	return r
+}
+
 // env is a fixed environment: no global or system config, no prompts, the
 // fixed author and the commit clock.
 func (r *R) env() []string {

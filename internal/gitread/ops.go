@@ -52,11 +52,17 @@ const maxDiffstat = 200
 
 // Open checks path is a git work tree (or a directory in one) and returns
 // its Repo. mainBranch must be a valid ref name and remote "" or a valid
-// remote name (ErrInvalid otherwise); ErrNoGit without git; ErrNotRepo
-// for anything git doesn't take as a work tree.
+// remote name (ErrInvalid otherwise); ErrNoGit without git, ErrOldGit
+// with a git older than MinVersion; ErrNotRepo for anything git doesn't
+// take as a work tree; ErrPartialClone for a partial clone (or a repo
+// whose config names a promisor remote) under a git older than
+// NoLazyFetchVersion.
 func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Repo, error) {
-	if !r.Available() {
+	if r.git == "" {
 		return nil, ErrNoGit
+	}
+	if !r.Available() {
+		return nil, ErrOldGit
 	}
 	if !filepath.IsAbs(path) || strings.ContainsAny(path, "\x00\n\r") {
 		return nil, fmt.Errorf("%w: the repo path must be absolute", ErrInvalid)
@@ -81,6 +87,15 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 	}
 	g.gitDir = lines[1]
 	g.Path = workTreeRoot(g.Path, lines[2], lines[3])
+	if !r.atLeast(NoLazyFetchVersion) {
+		partial, err := g.partialClone(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if partial {
+			return nil, ErrPartialClone
+		}
+	}
 	remotes, err := g.Remotes(ctx)
 	if err != nil {
 		return nil, err
@@ -92,6 +107,33 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 		g.Remote = "origin"
 	}
 	return g, nil
+}
+
+// partialClone reports whether the repo's config makes it a partial clone
+// or names a promisor remote: extensions.partialclone, or any remote's
+// promisor (unless false) or partialclonefilter. Exit 1 is no match.
+func (g *Repo) partialClone(ctx context.Context) (bool, error) {
+	out, err := g.git(ctx, "config", promisorRead...)
+	if err != nil {
+		if exitCode(err) == 1 {
+			return false, nil
+		}
+		return false, err
+	}
+	for entry := range strings.SplitSeq(strings.TrimSuffix(string(out), "\x00"), "\x00") {
+		key, value, _ := strings.Cut(entry, "\n")
+		if key == "" {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(key), ".promisor") {
+			switch strings.ToLower(strings.TrimSpace(value)) {
+			case "false", "no", "off", "0":
+				continue
+			}
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // workTreeRoot is the work tree's root for a path inside it: the path as

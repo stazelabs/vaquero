@@ -63,6 +63,18 @@ func TestUpdateProjectRepoPath(t *testing.T) {
 	if got := invalidMsg(set(r.Dir+"/", "main", "")); got != "Git isn't installed, so repository features are off." {
 		t.Fatalf("%q", got)
 	}
+	// Git older than 2.31 refuses one too.
+	c.Git = gitread.NewWithVersion("git version 2.30.2")
+	if got := invalidMsg(set(r.Dir+"/", "main", "")); got != "Git 2.31 or later is needed, so repository features are off." {
+		t.Fatalf("%q", got)
+	}
+	// A partial clone under a git older than 2.44 is refused (C2).
+	c.Git = gitread.NewWithVersion("git version 2.40.0")
+	r.Git("config", "remote.origin.promisor", "true")
+	if got := invalidMsg(set(r.Dir, "main", "")); got != "Partial clones need git 2.44 or later." {
+		t.Fatalf("%q", got)
+	}
+	r.Git("config", "--unset", "remote.origin.promisor")
 	// Clearing the path needs no git.
 	if err := set("", "main", ""); err != nil {
 		t.Fatal(err)

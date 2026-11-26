@@ -213,7 +213,10 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 // repoView is what the settings page's repository section shows: whether
 // git is missing, and the remotes and the remote's URL of the repo as set.
 func repoView(ctx context.Context, d Deps, p gen.Project) templates.RepoView {
-	v := templates.RepoView{GitMissing: d.Git == nil || !d.Git.Available()}
+	v := templates.RepoView{GitMissing: gitMissing(d) != ""}
+	if v.GitMissing {
+		v.GitProblem = strings.TrimSuffix(gitMissing(d), ".") + ", so repository features are off."
+	}
 	if v.GitMissing || p.RepoPath == "" {
 		return v
 	}

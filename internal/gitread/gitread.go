@@ -15,14 +15,20 @@
 // GIT_ variable or SSH_ASKPASS, plus GIT_TERMINAL_PROMPT=0,
 // GIT_OPTIONAL_LOCKS=0, GIT_PAGER=cat and LC_ALL=C; fetch alone adds
 // GIT_SSH_COMMAND="ssh -o BatchMode=yes", so a remote that wants a password
-// fails instead of waiting. Standard input is empty. A command has
+// fails instead of waiting, and every other command GIT_NO_LAZY_FETCH=1, so
+// a read in a partial clone fails on a missing object instead of fetching
+// it from the promisor remote (git 2.44+; under an older git Open refuses
+// a partial clone, ErrPartialClone). New reads git version once (the one
+// command run outside a repo besides Fetch's helper reads); a git older
+// than 2.31 (MinVersion) isn't used (Available false, ErrOldGit). Standard input is empty. A command has
 // Timeout (Fetch: FetchTimeout), is killed with its process group when it
 // runs over, and its output is read up to MaxOutput (a file shown: MaxShow).
 //
 // Only these subcommands run (Allowed): rev-parse, show, cat-file, log,
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
 // the list and get-url), ls-tree (only Blobs' one form: -z --full-tree, a
-// commit hash, then "--" and ValidPaths) and diff, which read; and fetch, which only Fetch
+// commit hash, then "--" and ValidPaths), config (only Open's one
+// promisor read, under a git older than 2.44) and diff, which read; and fetch, which only Fetch
 // runs, with the two fixed reads of the user's credential helpers (git
 // config --system and --global -z --get-regexp for credential.helper and
 // credential.<url>.helper, never the repo's). diff, log and show run only
@@ -57,6 +63,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -83,6 +90,22 @@ var (
 	ErrInvalid     = errors.New("gitread: not a valid path, revision or name")
 	ErrRefused     = errors.New("gitread: refused, not a read-only git command")
 	ErrOutputLimit = errors.New("gitread: output too large to read")
+	// ErrOldGit is a git older than MinVersion: found, but not used.
+	ErrOldGit = errors.New("gitread: git 2.31 or later is needed")
+	// ErrPartialClone is a partial clone (or a repo naming a promisor
+	// remote) under a git older than 2.44, which can't be kept from
+	// fetching missing objects on a read.
+	ErrPartialClone = errors.New("gitread: partial clones need git 2.44 or later")
+)
+
+// The git versions gitread needs: MinVersion for every read (older git
+// lacks options the reads pass), NoLazyFetchVersion for a partial clone
+// (GIT_NO_LAZY_FETCH, which keeps a read from fetching a missing object
+// from the promisor remote; older git ignores the variable, so Open
+// refuses a partial clone there).
+var (
+	MinVersion         = [2]int{2, 31}
+	NoLazyFetchVersion = [2]int{2, 44}
 )
 
 // Error is a git command that failed: its subcommand, exit code (-1 when
@@ -115,7 +138,8 @@ type RunFunc func(ctx context.Context, dir string, args []string, env []string, 
 // Repos runs git for every project: where git is, the runner, and the
 // fetches in flight (one per repo at a time).
 type Repos struct {
-	git string
+	git     string
+	version [2]int // major, minor; zero when unknown
 
 	mu       sync.Mutex
 	runner   RunFunc
@@ -138,19 +162,77 @@ type FetchFailure struct {
 	At   time.Time
 }
 
-// New finds git on PATH. Without it Available is false and Open answers
-// ErrNoGit.
-func New() *Repos {
+// New finds git on PATH and reads its version once (git version). Without
+// git Available is false and Open answers ErrNoGit; with a git older than
+// MinVersion (or one whose version can't be read) Available is false too
+// and Open answers ErrOldGit.
+func New() *Repos { return newRepos(readVersion) }
+
+// NewWithVersion is New as if git version had answered v (tests check
+// what an older git turns off with it).
+func NewWithVersion(v string) *Repos { return newRepos(func(*Repos) string { return v }) }
+
+// newRepos is New with the version read by version (tests give one).
+func newRepos(version func(*Repos) string) *Repos {
 	r := &Repos{fetching: map[string]*flight{}, fetched: map[string]bool{}, failed: map[string]FetchFailure{}}
+	r.runner = r.exec
 	if p, err := exec.LookPath("git"); err == nil {
 		r.git = p
+		r.version, _ = parseVersion(version(r))
 	}
-	r.runner = r.exec
 	return r
 }
 
-// Available reports whether git was found.
-func (r *Repos) Available() bool { return r.git != "" }
+// versionRead is the one command run before any repo: git version, from /.
+var versionRead = []string{"-C", "/", "--no-pager", "version"}
+
+// readVersion is git version's answer, or "" when it fails.
+func readVersion(r *Repos) string {
+	out, err := r.run(context.Background(), "/", versionRead, maxStderr)
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// parseVersion reads "git version 2.39.5 (Apple Git-154)" as {2, 39}.
+func parseVersion(s string) ([2]int, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(s), "git version ")
+	if !ok {
+		return [2]int{}, false
+	}
+	num, _, _ := strings.Cut(rest, " ")
+	parts := strings.SplitN(num, ".", 3)
+	if len(parts) < 2 {
+		return [2]int{}, false
+	}
+	major, err1 := strconv.Atoi(parts[0])
+	minor, err2 := strconv.Atoi(parts[1])
+	if err1 != nil || err2 != nil || major < 0 || minor < 0 {
+		return [2]int{}, false
+	}
+	return [2]int{major, minor}, true
+}
+
+// atLeast reports whether the git found is version v or later.
+func (r *Repos) atLeast(v [2]int) bool {
+	return r.version[0] > v[0] || r.version[0] == v[0] && r.version[1] >= v[1]
+}
+
+// Available reports whether git was found and is MinVersion or later.
+func (r *Repos) Available() bool { return r.git != "" && r.atLeast(MinVersion) }
+
+// Missing is why repository features are off, as a sentence: "Git isn't
+// installed." or "Git 2.31 or later is needed."; "" when Available.
+func (r *Repos) Missing() string {
+	switch {
+	case r.git == "":
+		return "Git isn't installed."
+	case !r.Available():
+		return "Git 2.31 or later is needed."
+	}
+	return ""
+}
 
 // Wrap puts mw around the runner: tests record commands with it
 // (gittest.Record) or answer some themselves. The checks that refuse a
@@ -256,7 +338,13 @@ func Subcommand(args []string) string {
 }
 
 // allowed are the subcommands the runner runs; fetch only from Fetch.
-var allowed = []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "fetch"}
+var allowed = []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "config", "fetch"}
+
+// promisorRead is the one form git config runs in a repo (after the
+// guards): the settings that make it a partial clone, as git itself would
+// see them (every scope, includes followed), read by Open under a git
+// older than NoLazyFetchVersion.
+var promisorRead = []string{"--null", "--get-regexp", `^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`}
 
 // Allowed is the allow-list, in order.
 func Allowed() []string { return slices.Clone(allowed) }
@@ -268,6 +356,9 @@ type fetchKey struct{}
 // prefix, then an allowed subcommand, then arguments that neither write
 // nor apply a repo's drivers.
 func (r *Repos) check(ctx context.Context, dir string, args []string) error {
+	if slices.Equal(args, versionRead) {
+		return nil
+	}
 	for _, read := range helperReads {
 		if slices.Equal(args, read) {
 			if ctx.Value(fetchKey{}) == nil {
@@ -327,6 +418,11 @@ func (r *Repos) check(ctx context.Context, dir string, args []string) error {
 			if !ValidPath(p) {
 				return fmt.Errorf("%w: git ls-tree path %q", ErrRefused, p)
 			}
+		}
+	case "config":
+		// Only Open's partial-clone read.
+		if !slices.Equal(rest, promisorRead) {
+			return fmt.Errorf("%w: git config %q", ErrRefused, rest)
 		}
 	case "remote":
 		// Only the list and get-url.
@@ -400,6 +496,11 @@ func environ(fetch bool) []string {
 	env = append(env, "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat", "LC_ALL=C")
 	if fetch {
 		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+	} else {
+		// A read in a partial clone must not fetch a missing object from
+		// the promisor remote (network, and a write). git 2.44+ honours
+		// it; older git ignores it, so Open refuses a partial clone there.
+		env = append(env, "GIT_NO_LAZY_FETCH=1")
 	}
 	return env
 }

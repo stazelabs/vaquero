@@ -21,13 +21,19 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 	ctx := t.Context()
 	before := r.Refs()
 
-	if !slices.Equal(gitread.Allowed(), []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "fetch"}) {
+	if !slices.Equal(gitread.Allowed(), []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "config", "fetch"}) {
 		t.Fatalf("allow-list %v", gitread.Allowed())
 	}
 	refused := [][]string{
 		{"fetch", "origin"},
 		{"push", "origin", "main"},
 		{"config", "core.fsmonitor", "x"},
+		{"config", "--get-regexp", "."},
+		{"config", "--null", "--get-regexp", "."},
+		{"config", "--null", "--get-regexp", `^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`, "x"},
+		{"config", "--global", "--null", "--get-regexp", `^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`},
+		{"config", "--add", "remote.x.promisor", "true"},
+		{"version", "--build-options"},
 		{"commit", "-m", "x"},
 		{"checkout", "-b", "x"},
 		{"update-ref", "refs/heads/x", "HEAD"},
@@ -132,6 +138,14 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		if _, err := gitread.RunCommand(rs, ctx, r.Dir, args[0], args[1:]...); err != nil {
 			t.Errorf("git %q: %v", args, err)
 		}
+	}
+	// Open's one config read, under a git older than 2.44, runs (exit 1:
+	// no match), and so does git version, from /.
+	if _, err := gitread.RunCommand(rs, ctx, r.Dir, "config", "--null", "--get-regexp", `^(extensions\.partialclone|remote\..+\.(promisor|partialclonefilter))$`); errors.Is(err, gitread.ErrRefused) {
+		t.Errorf("the promisor read: %v", err)
+	}
+	if _, err := gitread.RunRaw(rs, ctx, "/", []string{"-C", "/", "--no-pager", "version"}); err != nil {
+		t.Errorf("git version: %v", err)
 	}
 	if after := r.Refs(); after != before {
 		t.Fatalf("refs changed:\n%s\n%s", before, after)

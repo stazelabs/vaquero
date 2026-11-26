@@ -9,6 +9,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
@@ -271,6 +272,10 @@ func TestGitReadsNeedARepoAndGit(t *testing.T) {
 	e.Deps.Git, e.Deps.Core.Git = nil, nil
 	e.Rebuild()
 	check("no_git", "Git isn't installed.")
+	old := gitread.NewWithVersion("git version 2.30.2")
+	e.Deps.Git, e.Deps.Core.Git = old, old
+	e.Rebuild()
+	check("no_git", "Git 2.31 or later is needed.")
 }
 
 // read_file is GET /api/v1/projects/{key}/files/{path}, answer for answer.

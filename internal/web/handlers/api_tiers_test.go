@@ -8,6 +8,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
@@ -348,4 +349,14 @@ func TestSettingsRepoWithoutGit(t *testing.T) {
 	e.Deps.Git, e.Deps.Core.Git = nil, nil
 	e.Rebuild()
 	contains(t, e.Client().Get("/p/VAQ/settings").Body, "installed, so repository features are off.", "disabled")
+}
+
+// Below git 2.31 the repository features are off and say why.
+func TestSettingsRepoWithOldGit(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	old := gitread.NewWithVersion("git version 2.30.2")
+	e.Deps.Git, e.Deps.Core.Git = old, old
+	e.Rebuild()
+	contains(t, e.Client().Get("/p/VAQ/settings").Body, "Git 2.31 or later is needed, so repository features are off.", "disabled")
 }

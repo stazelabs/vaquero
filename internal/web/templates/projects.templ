@@ -80,6 +80,7 @@ type SettingsView struct {
 // the form as typed when refused.
 type RepoView struct {
 	GitMissing bool
+	GitProblem string // why, as a sentence, when GitMissing
 	Remotes    []string
 	RemoteURL  string
 	Form       SubForm
@@ -635,7 +636,7 @@ templ repoSection(v SettingsView) {
 			@helpLink("repositories", "About repositories")
 		</p>
 		if v.Repo.GitMissing {
-			<p class="mt-3 max-w-2xl rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink">Git isn't installed, so repository features are off.</p>
+			<p class="mt-3 max-w-2xl rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink">{ v.Repo.GitProblem }</p>
 		}
 		<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/repo") } class="mt-3 max-w-2xl space-y-4">
 			@TextInput(InputProps{Name: "repo_path", ID: "f-repo-path", Label: "Repository path", Value: v.Repo.Form.Val("repo_path", v.Project.RepoPath), Placeholder: "/Users/you/code/project", Error: v.Repo.Form.Errors["repo_path"], Attrs: repoAttrs(v.Repo, templ.Attributes{"spellcheck": "false"})})

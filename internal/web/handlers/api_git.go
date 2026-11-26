@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
@@ -34,19 +35,30 @@ const (
 	maxUnpushed       = 50
 )
 
+// gitMissing is why git can't be used ("Git isn't installed." or "Git 2.31
+// or later is needed."), or "" when it can.
+func gitMissing(d Deps) string {
+	if d.Git == nil {
+		return "Git isn't installed."
+	}
+	return d.Git.Missing()
+}
+
 // openRepo opens p's repository, or says why it can't: no repository set,
 // no git, or a repo that can't be read now (logged). All three are 409s.
 func openRepo(ctx context.Context, d Deps, p gen.Project) (*gitread.Repo, *api.Failure) {
 	if p.RepoPath == "" {
 		return nil, api.Fail(http.StatusConflict, "no_repo", "No repository set for this project.")
 	}
-	noGit := api.Fail(http.StatusConflict, "no_git", "Git isn't installed.")
-	if d.Git == nil || !d.Git.Available() {
-		return nil, noGit
+	if msg := gitMissing(d); msg != "" {
+		return nil, api.Fail(http.StatusConflict, "no_git", msg)
 	}
 	repo, err := d.Git.Open(ctx, p.RepoPath, p.MainBranch, p.Remote)
-	if errors.Is(err, gitread.ErrNoGit) {
-		return nil, noGit
+	if errors.Is(err, gitread.ErrNoGit) || errors.Is(err, gitread.ErrOldGit) {
+		return nil, api.Fail(http.StatusConflict, "no_git", cmp.Or(d.Git.Missing(), "Git isn't installed."))
+	}
+	if errors.Is(err, gitread.ErrPartialClone) {
+		return nil, api.Fail(http.StatusConflict, "repo_unreadable", "Partial clones need git 2.44 or later.")
 	}
 	if err != nil {
 		d.Logger.WarnContext(ctx, "open repo", "project", p.Key, "err", err)

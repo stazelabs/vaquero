@@ -420,3 +420,42 @@ func TestReadinessTransientFailureNotCached(t *testing.T) {
 		r.WriteCommit("other.md", sub+"\n", "move main")
 	}
 }
+
+// C2: in a partial clone, a pin whose rename can be seen only through a
+// blob the clone lacks is unchecked, never ready, and checking it fetches
+// nothing from the promisor remote.
+func TestReadinessPartialCloneUnchecked(t *testing.T) {
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("docs/a.md", strings.Repeat("line\n", 20), "a")
+	seed.Git("push", "-q", "origin", "main")
+	r := gittest.PartialClone(t, bare)
+
+	w := newWorld(t)
+	w.c.Git = gitread.New()
+	w.files = readiness.NewFiles(w.c.Git)
+	w.p = w.repo(w.p, r)
+	tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
+	w.ref(tk, "docs/a.md")
+	w.approve(tk)
+	expect(t, w.check(tk))
+
+	// The remote renames the file with an edit; the clone's main follows
+	// without a checkout, so the new blob is never downloaded.
+	seed.Rename("docs/a.md", "docs/b.md")
+	seed.Write("docs/b.md", strings.Repeat("line\n", 20)+"more\n")
+	seed.Commit("rename with an edit")
+	seed.Git("push", "-q", "origin", "main")
+	r.Branch("elsewhere")
+	r.Git("fetch", "-q", "origin")
+	r.Git("update-ref", "refs/heads/main", "refs/remotes/origin/main")
+	packs := func() string { return r.Git("count-objects", "-v") }
+	before := packs()
+
+	got := w.check(tk)
+	expect(t, got, readiness.FilesUnchecked)
+	files(t, got, "docs/a.md unchecked")
+	if after := packs(); after != before {
+		t.Fatalf("checking fetched objects:\n%s\n%s", before, after)
+	}
+}
