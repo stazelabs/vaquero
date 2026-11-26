@@ -242,6 +242,9 @@ func repoStatus(ctx context.Context, repo *gitread.Repo) (api.RepoStatus, error)
 	if at, ok := repo.LastFetch(); ok {
 		out.LastFetchAt = new(timefmt.Format(at))
 	}
+	if f, ok := repo.LastFetchError(); ok {
+		out.LastFetchError, out.LastFetchErrorAt = f.Line, new(timefmt.Format(f.At))
+	}
 	return out, nil
 }
 
@@ -313,6 +316,56 @@ func APIRepoStatus(d Deps) http.HandlerFunc {
 		if err != nil {
 			gitFail(w, r, d, p, err)
 			return
+		}
+		api.WriteJSON(w, http.StatusOK, out)
+	}
+}
+
+// fetchRepo fetches p's remote now, the one thing here that uses the
+// network. The fetch is shared with any other running for the repo and
+// outlives this request; it writes no event. A failed fetch is an answer,
+// not an error: why is the second result. A project without a repository,
+// without git or without a remote is a failure.
+func fetchRepo(ctx context.Context, d Deps, p gen.Project) (api.FetchResult, *api.Failure, error) {
+	repo, f := openRepo(ctx, d, p)
+	if f != nil {
+		return api.FetchResult{}, f, nil
+	}
+	if repo.Remote == "" {
+		return api.FetchResult{}, api.Fail(http.StatusConflict, "no_remote", "This repository has no remote to fetch."), nil
+	}
+	err := repo.Fetch(ctx)
+	if ctx.Err() != nil {
+		return api.FetchResult{}, nil, ctx.Err()
+	}
+	var out api.FetchResult
+	if at, ok := repo.LastFetch(); ok {
+		out.LastFetchAt = new(timefmt.Format(at))
+	}
+	if err != nil {
+		if fail, ok := repo.LastFetchError(); ok {
+			out.Error = fail.Line
+		} else {
+			out.Error = err.Error()
+		}
+	}
+	return out, nil, nil
+}
+
+// APIRepoFetch is POST /api/v1/projects/{key}/repo/fetch.
+func APIRepoFetch(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := apiProject(w, r, d)
+		if !ok {
+			return
+		}
+		out, f, err := fetchRepo(r.Context(), d, p)
+		if f != nil {
+			api.WriteFailure(w, f)
+			return
+		}
+		if err != nil {
+			return // the client has gone
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}

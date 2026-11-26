@@ -57,6 +57,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero ref remove TICKET ID` | Remove one of a ticket's references; `ticket show` lists them with their ids |
 | `vaquero file KEY PATH [--at REV]` | Print a file from the project's [repository](/help/repositories#reading-files-and-commits) as it is on the main branch, or at a branch, tag or commit hash; a file too large to show (over 512 KiB) or not text is an error |
 | `vaquero commits TICKET` | The commits on the main branch whose message names the ticket, as `(VAQ-12)`, newest first (at most 50), with the lines added and removed and the first release tag that contains them |
+| `vaquero fetch KEY` | Fetch the project's [repository](/help/repositories#fetching) remote now. Prints "Fetched KEY."; a failed fetch exits 1 with git's first line. |
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero attach TICKET FILE... [--name NAME]` | Attach files (up to 10 MB each) and print a Markdown reference for each, to paste into a description or comment; `-` reads standard input and needs `--name`. See [Attachments](/help/attachments) |
 | `vaquero attachments TICKET` | A ticket's files: id, name, size, who attached it and when |

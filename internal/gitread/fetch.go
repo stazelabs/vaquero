@@ -2,8 +2,10 @@ package gitread
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Fetch updates the remote's branches and tags in Vaquero's view, the one
@@ -32,8 +34,11 @@ import (
 // nothing ever prompts. So a private https remote fetches with the user's
 // keychain helper, and a repo can't add a program of its own.
 // One fetch per repo runs at a time; a
-// second caller waits for it and gets its answer. ErrNoRemote when the repo
-// has none.
+// second caller waits for it and gets its answer. The fetch runs under a
+// context of its own (FetchTimeout), so a caller that gives up (a closed
+// request) stops waiting with its own ctx.Err() and leaves the fetch to
+// finish for the others. A failure is kept for LastFetchError. ErrNoRemote
+// when the repo has none.
 func (g *Repo) Fetch(ctx context.Context) error {
 	if g.Remote == "" {
 		return ErrNoRemote
@@ -41,29 +46,83 @@ func (g *Repo) Fetch(ctx context.Context) error {
 	r := g.repos
 	key := g.Path + "\x00" + g.Remote
 	r.mu.Lock()
-	if f, ok := r.fetching[key]; ok {
-		r.mu.Unlock()
-		select {
-		case <-f.done:
-			return f.err
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+	f, running := r.fetching[key]
+	if running {
+		f.waiters++
+	} else {
+		f = &flight{done: make(chan struct{})}
+		r.fetching[key] = f
+		// The fetch belongs to no one caller: it runs under a context of
+		// its own, so a request that gives up doesn't fail it for the
+		// others, and each caller stops waiting on its own context.
+		go g.runFetch(context.WithoutCancel(ctx), key, f)
 	}
-	f := &flight{done: make(chan struct{})}
-	r.fetching[key] = f
 	r.mu.Unlock()
+	select {
+	case <-f.done:
+		return f.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 
-	f.err = g.fetch(ctx)
-
+// runFetch is the one fetch behind a flight: it records the outcome, then
+// releases every waiter.
+func (g *Repo) runFetch(ctx context.Context, key string, f *flight) {
+	ctx, cancel := context.WithTimeout(ctx, FetchTimeout)
+	defer cancel()
+	err := g.fetch(ctx)
+	r := g.repos
 	r.mu.Lock()
 	delete(r.fetching, key)
-	if f.err == nil {
+	if err == nil {
 		r.fetched[key] = true
+		delete(r.failed, key)
+	} else {
+		r.failed[key] = FetchFailure{Line: failureLine(err), At: time.Now().UTC()}
 	}
 	r.mu.Unlock()
+	f.err = err
 	close(f.done)
-	return f.err
+}
+
+// failureLine is git's first stderr line for err, else its message, on
+// one line and cut to 200 characters.
+func failureLine(err error) string {
+	line := err.Error()
+	var ge *Error
+	if errors.As(err, &ge) && ge.Line != "" {
+		line = ge.Line
+	}
+	line, _, _ = strings.Cut(line, "\n")
+	if r := []rune(line); len(r) > 200 {
+		line = string(r[:200])
+	}
+	return line
+}
+
+// Waiting is how many callers wait on the repo's running fetch besides the
+// one that started it; 0 when none runs (for tests that need two callers to
+// share one).
+func (g *Repo) Waiting() int {
+	r := g.repos
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if f := r.fetching[g.Path+"\x00"+g.Remote]; f != nil {
+		return f.waiters
+	}
+	return 0
+}
+
+// LastFetchError is why the repo's last fetch by this process failed; false
+// when there was none or a later one succeeded. It is kept in memory, so a
+// restart forgets it.
+func (g *Repo) LastFetchError() (FetchFailure, bool) {
+	r := g.repos
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	f, ok := r.failed[g.Path+"\x00"+g.Remote]
+	return f, ok
 }
 
 func (g *Repo) fetch(ctx context.Context) error {

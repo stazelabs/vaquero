@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -585,25 +586,122 @@ func TestFetchNeedsRemote(t *testing.T) {
 	}
 }
 
-func TestFetchSingleflight(t *testing.T) {
+// gate holds every fetch command until release is closed, saying when the
+// first one has started.
+func gate(rs *gitread.Repos) (started <-chan struct{}, release func()) {
+	st, rel := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	rs.Wrap(func(next gitread.RunFunc) gitread.RunFunc {
+		return func(ctx context.Context, dir string, args, env []string, limit int) ([]byte, error) {
+			if gitread.Subcommand(args) == "fetch" {
+				once.Do(func() { close(st) })
+				<-rel
+			}
+			return next(ctx, dir, args, env, limit)
+		}
+	})
+	var o sync.Once
+	return st, func() { o.Do(func() { close(rel) }) }
+}
+
+func fetchWorld(t *testing.T) (*gitread.Repos, *gitread.Repo) {
+	t.Helper()
 	bare := gittest.Bare(t)
 	seed := gittest.Clone(t, bare)
 	seed.WriteCommit("a", "1", "one")
 	seed.Git("push", "-q", "origin", "main")
 	r := gittest.Clone(t, bare)
-	rs, g := open(t, r)
+	return open(t, r)
+}
+
+func TestFetchSingleflight(t *testing.T) {
+	rs, g := fetchWorld(t)
 	rec := gittest.Record(rs)
+	started, release := gate(rs)
+	defer release()
 	errs := make(chan error, 4)
-	for range 4 {
+	go func() { errs <- g.Fetch(context.Background()) }()
+	<-started
+	for range 3 {
 		go func() { errs <- g.Fetch(context.Background()) }()
 	}
+	for g.Waiting() < 3 {
+		time.Sleep(time.Millisecond)
+	}
+	release()
 	for range 4 {
 		if err := <-errs; err != nil {
 			t.Fatal(err)
 		}
 	}
-	if n := rec.Count("fetch"); n < 1 || n > 4 {
+	if n := rec.Count("fetch"); n != 1 {
+		t.Fatalf("%d fetches for four callers", n)
+	}
+	if err := g.Fetch(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := rec.Count("fetch"); n != 2 {
+		t.Fatalf("a later call ran %d fetches in all", n)
+	}
+}
+
+// A caller that gives up neither fails the fetch for the others nor stops it.
+func TestFetchSurvivesACancelledCaller(t *testing.T) {
+	rs, g := fetchWorld(t)
+	rec := gittest.Record(rs)
+	started, release := gate(rs)
+	defer release()
+	first, cancel := context.WithCancel(context.Background())
+	firstErr := make(chan error, 1)
+	go func() { firstErr <- g.Fetch(first) }()
+	<-started
+	second := make(chan error, 1)
+	go func() { second <- g.Fetch(context.Background()) }()
+	for g.Waiting() < 1 {
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	if err := <-firstErr; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the caller that gave up got %v", err)
+	}
+	release()
+	if err := <-second; err != nil {
+		t.Fatalf("a waiter failed with the first caller's cancel: %v", err)
+	}
+	if n := rec.Count("fetch"); n != 1 {
 		t.Fatalf("%d fetches", n)
+	}
+	if _, ok := g.LastFetch(); !ok {
+		t.Fatal("the fetch didn't finish")
+	}
+}
+
+func TestLastFetchError(t *testing.T) {
+	r := gittest.Repo(t)
+	r.WriteCommit("a", "1", "one")
+	missing := t.TempDir() + "/nowhere.git"
+	r.Git("remote", "add", "origin", missing)
+	_, g := open(t, r)
+	if _, ok := g.LastFetchError(); ok {
+		t.Fatal("an error before any fetch")
+	}
+	if err := g.Fetch(t.Context()); err == nil {
+		t.Fatal("fetched from nowhere")
+	}
+	f, ok := g.LastFetchError()
+	if !ok || f.Line == "" || strings.Contains(f.Line, "\n") || len([]rune(f.Line)) > 200 || time.Since(f.At) > time.Minute {
+		t.Fatalf("%+v %v", f, ok)
+	}
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("a", "1", "one")
+	seed.Git("push", "-q", "origin", "main")
+	r.Git("remote", "set-url", "origin", bare.Dir)
+	if err := g.Fetch(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := g.LastFetchError(); ok {
+		t.Fatal("the error stayed after a good fetch")
 	}
 }
 

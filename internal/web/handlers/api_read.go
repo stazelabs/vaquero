@@ -114,6 +114,9 @@ func repoDTO(ctx context.Context, d Deps, p gen.Project) *api.ProjectRepo {
 	if at, ok := repo.LastFetch(); ok {
 		out.LastFetchAt = new(timefmt.Format(at))
 	}
+	if f, ok := repo.LastFetchError(); ok {
+		out.LastFetchError, out.LastFetchErrorAt = f.Line, new(timefmt.Format(f.At))
+	}
 	return out
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -17,6 +18,31 @@ import (
 func init() {
 	cliCommands["file"] = cmdFile
 	cliCommands["commits"] = cmdCommits
+	cliCommands["fetch"] = cmdFetch
+}
+
+// cmdFetch fetches a project's remote now: the one command that contacts a
+// remote. A failed fetch exits 1 with git's first line.
+func cmdFetch(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	c := newCmd(stdout, stderr, "vaquero fetch KEY")
+	pos, err := c.parse(args, 1, 1)
+	return c.connected(ctx, err, func() error {
+		key := strings.ToUpper(pos[0])
+		var res api.FetchResult
+		if err := c.call(ctx, "POST", "/api/v1/projects/"+url.PathEscape(key)+"/repo/fetch", nil, &res); err != nil {
+			return err
+		}
+		if c.jsonOut {
+			c.emit(res, nil)
+		}
+		if res.Error != "" {
+			return errors.New("Fetch failed: " + res.Error)
+		}
+		if !c.jsonOut {
+			fmt.Fprintf(c.stdout, "Fetched %s.\n", key)
+		}
+		return nil
+	})
 }
 
 // cmdFile prints a file from a project's repository as it is, text only:

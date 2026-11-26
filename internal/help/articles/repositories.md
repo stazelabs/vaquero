@@ -37,10 +37,18 @@ A ticket's page lists its commits under Commits: the commits on the main branch 
 
 From the command line, `vaquero file KEY PATH --at REV` prints a file and `vaquero commits TICKET` lists the commits. Agents read files with the `read_file` [tool](/help/mcp). The [API](/help/api) has `GET /api/v1/projects/{key}/files/{path}`, `GET /api/v1/tickets/{ticket}/commits` and `GET /api/v1/projects/{key}/repo/status`, which compares the main branch and the local branches with the remote's as of the last fetch, without contacting it.
 
+## Fetching
+
+Fetching is off by default (fetch every 0 minutes) and is the only thing in Vaquero that contacts a remote. Everything else reads the repository as it is on disk, so the status and the readiness checks are as fresh as the last fetch.
+
+Set Fetch every N minutes (5 to 1440) and the server fetches the project's remote whenever its last fetch is that old, one repository at a time; projects that share a repository share one fetch. Fetch now on the settings page, `vaquero fetch KEY` and `POST /api/v1/projects/{key}/repo/fetch` fetch at once, whatever the interval, and anyone may use them. A fetch updates only Vaquero's view of the remote (its branches under `refs/remotes/` and its tags under `refs/vaquero/remote-tags/`): never your branches, your tags or your work tree, and it writes no event. It uses your own git credential helpers, never prompts and gives up after 60 seconds, so a remote that wants a password fails instead of waiting.
+
+When a fetch fails, the settings page shows when and why (git's first line, such as "Could not resolve host"), and the API's `last_fetch_error` has it, until a fetch succeeds or the server restarts. Reading files, commits and the status keeps working.
+
 ## When git is missing
 
 Without git installed, the section says "Git isn't installed, so repository features are off." and its fields are disabled, and the file view and a ticket's Commits say "Git isn't installed." Nothing else in Vaquero depends on git.
 
 ## What stays local
 
-Vaquero runs git only to read. The one exception is fetching, which is the only thing that contacts a remote.
+Vaquero runs git only to read. The one exception is [fetching](#fetching), which is off by default and is the only thing that contacts a remote.

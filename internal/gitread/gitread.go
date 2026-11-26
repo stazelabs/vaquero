@@ -121,17 +121,27 @@ type Repos struct {
 	runner   RunFunc
 	fetching map[string]*flight
 	fetched  map[string]bool // repo and remote fetched by this process
+	failed   map[string]FetchFailure
 }
 
 type flight struct {
-	done chan struct{}
-	err  error
+	done    chan struct{}
+	err     error
+	waiters int // callers waiting on it besides the one that started it
+}
+
+// FetchFailure is why a repo's last fetch failed: git's first line, cut to
+// 200 characters, and when. It is kept in memory, per repo, until a fetch
+// succeeds.
+type FetchFailure struct {
+	Line string
+	At   time.Time
 }
 
 // New finds git on PATH. Without it Available is false and Open answers
 // ErrNoGit.
 func New() *Repos {
-	r := &Repos{fetching: map[string]*flight{}, fetched: map[string]bool{}}
+	r := &Repos{fetching: map[string]*flight{}, fetched: map[string]bool{}, failed: map[string]FetchFailure{}}
 	if p, err := exec.LookPath("git"); err == nil {
 		r.git = p
 	}

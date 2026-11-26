@@ -57,3 +57,39 @@ func TestCLIFileAndCommits(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIFetch(t *testing.T) {
+	cliEnv(t)
+	if code, _, errOut := cli(t, "fetch", "VAQ"); code != 1 || !strings.Contains(errOut, "No repository set for this project.") {
+		t.Fatalf("no repo: %d %q", code, errOut)
+	}
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("a", "1", "one")
+	seed.Git("push", "-q", "origin", "main")
+	r := gittest.Clone(t, bare)
+	mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir)
+	seed.WriteCommit("b", "1", "two")
+	seed.Git("push", "-q", "origin", "main")
+
+	if out := mustCLI(t, "fetch", "vaq"); !strings.Contains(out, "Fetched VAQ.") {
+		t.Fatalf("fetch: %q", out)
+	}
+	if got := r.Git("rev-parse", "origin/main"); got != seed.Rev("main") {
+		t.Fatalf("origin/main %q", got)
+	}
+	var res api.FetchResult
+	if err := json.Unmarshal([]byte(mustCLI(t, "fetch", "VAQ", "--json")), &res); err != nil || res.LastFetchAt == nil || res.Error != "" {
+		t.Fatalf("%v %+v", err, res)
+	}
+
+	r.Git("remote", "set-url", "origin", t.TempDir()+"/nowhere.git")
+	if code, _, errOut := cli(t, "fetch", "VAQ"); code != 1 || !strings.Contains(errOut, "Fetch failed:") || !strings.Contains(errOut, "nowhere.git") {
+		t.Fatalf("failed fetch: %d %q", code, errOut)
+	}
+	for _, args := range [][]string{{"fetch"}, {"fetch", "VAQ", "OTH"}} {
+		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, "usage") {
+			t.Errorf("%v: %d %q", args, code, errOut)
+		}
+	}
+}

@@ -83,6 +83,13 @@ type RepoView struct {
 	Remotes    []string
 	RemoteURL  string
 	Form       SubForm
+	// CanFetch: the repo has a remote to fetch. LastFetch is when it last
+	// did ("" never); FetchError is why this server's last fetch failed
+	// and FetchErrorAt when (both "" after a good one).
+	CanFetch     bool
+	LastFetch    string
+	FetchError   string
+	FetchErrorAt string
 }
 
 // remoteOptions are the remote select's choices: the default, the repo's
@@ -640,6 +647,24 @@ templ repoSection(v SettingsView) {
 			@TextInput(InputProps{Name: "fetch_minutes", ID: "f-fetch-minutes", Label: "Fetch every N minutes (0 = never)", Type: "number", Value: v.Repo.Form.Val("fetch_minutes", itoa(v.Project.FetchMinutes)), Error: v.Repo.Form.Errors["fetch_minutes"], Attrs: repoAttrs(v.Repo, templ.Attributes{"min": "0", "max": "1440", "step": "1"})})
 			<button type="submit" class={ btnSecondary } disabled?={ v.Repo.GitMissing }>Save repository</button>
 		</form>
+		if v.Repo.CanFetch {
+			<div class="mt-4 max-w-2xl space-y-2 text-sm" data-fetch>
+				<p class="text-muted">
+					if v.Repo.LastFetch != "" {
+						Last fetched { v.Repo.LastFetch }.
+					} else {
+						Not fetched yet.
+					}
+					Fetching is the only time Vaquero contacts the remote.
+				</p>
+				if v.Repo.FetchError != "" {
+					<p class="rounded-md border border-line bg-paper-alt px-3 py-2 text-ink">Last fetch failed { v.Repo.FetchErrorAt }: <span class="break-all">{ v.Repo.FetchError }</span></p>
+				}
+				<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/repo/fetch") }>
+					<button type="submit" class={ btnSecondary }>Fetch now</button>
+				</form>
+			</div>
+		}
 	</section>
 }
 

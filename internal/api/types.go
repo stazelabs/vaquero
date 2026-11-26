@@ -33,7 +33,9 @@ type Project struct {
 // ProjectRepo is a project's repository settings. Remote is the setting
 // ("" means origin when the repo has it); RemoteURL is the remote's URL
 // with any credentials removed, "" when there is no remote. FetchMinutes is
-// 0 for never. LastFetchAt is when the repo was last fetched, when known.
+// 0 for never. LastFetchAt is when the repo was last fetched, when known;
+// LastFetchError is why this server's last fetch failed (git's first line),
+// at LastFetchErrorAt, and is absent after a good one or after a restart.
 // Available is false when git is missing or the repo can't be opened now.
 type ProjectRepo struct {
 	Path         string  `json:"path"`
@@ -43,6 +45,9 @@ type ProjectRepo struct {
 	FetchMinutes int64   `json:"fetch_minutes"`
 	LastFetchAt  *string `json:"last_fetch_at,omitempty"`
 	Available    bool    `json:"available"`
+
+	LastFetchError   string  `json:"last_fetch_error,omitempty"`
+	LastFetchErrorAt *string `json:"last_fetch_error_at,omitempty"`
 }
 
 // ProjectLink is one of a project's links as that project sees it. Kind
@@ -278,6 +283,18 @@ type RepoStatus struct {
 	Main             BranchStatus   `json:"main"`
 	UnpushedBranches []BranchStatus `json:"unpushed_branches"`
 	LastFetchAt      *string        `json:"last_fetch_at,omitempty"`
+	// LastFetchError is why the last fetch failed, as ProjectRepo's.
+	LastFetchError   string  `json:"last_fetch_error,omitempty"`
+	LastFetchErrorAt *string `json:"last_fetch_error_at,omitempty"`
+}
+
+// FetchResult is POST /api/v1/projects/{key}/repo/fetch: the last
+// successful fetch (null when there has been none) and, when this one
+// failed, why (git's first line). The answer is 200 either way: a failed
+// fetch is data.
+type FetchResult struct {
+	LastFetchAt *string `json:"last_fetch_at"`
+	Error       string  `json:"error,omitempty"`
 }
 
 type Comment struct {

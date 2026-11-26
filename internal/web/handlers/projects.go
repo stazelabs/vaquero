@@ -223,7 +223,38 @@ func repoView(ctx context.Context, d Deps, p gen.Project) templates.RepoView {
 	}
 	v.Remotes, _ = repo.Remotes(ctx)
 	v.RemoteURL, _ = repo.RemoteURL(ctx)
+	v.CanFetch = repo.Remote != ""
+	if at, ok := repo.LastFetch(); ok {
+		v.LastFetch = timefmt.Ago(at, d.Now(), nil)
+	}
+	if f, ok := repo.LastFetchError(); ok {
+		v.FetchError, v.FetchErrorAt = f.Line, timefmt.Ago(f.At, d.Now(), nil)
+	}
 	return v
+}
+
+// ProjectFetch is Fetch now on the settings page: anyone may ask for it.
+// A failed fetch is a toast with git's first line; the page keeps saying
+// why until a fetch succeeds.
+func ProjectFetch(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		to := "/p/" + p.Key + "/settings#repository"
+		out, f, err := fetchRepo(r.Context(), d, p)
+		switch {
+		case err != nil:
+			return // the client has gone
+		case f != nil:
+			redirectWithFlash(w, r, flash.Error, f.Message, to)
+		case out.Error != "":
+			redirectWithFlash(w, r, flash.Error, "Fetch failed: "+out.Error, to)
+		default:
+			redirectWithFlash(w, r, flash.Success, "Fetched.", to)
+		}
+	}
 }
 
 // ProjectRepo saves the repository settings. Only the owner changes the

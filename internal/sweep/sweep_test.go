@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +16,8 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/gitread"
+	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/sweep"
 	"github.com/stazelabs/vaquero/internal/timefmt"
@@ -270,5 +275,161 @@ func TestSweepKeepsLiveThumbsAndDeletesOrphans(t *testing.T) {
 	_ = store.Store.List(bg, "thumbs/inst/", func(k string, _ time.Time) error { left = append(left, k); return nil })
 	if len(left) != 0 {
 		t.Fatalf("after delete: %v", left)
+	}
+}
+
+// fetchWorld is a core on a clock the test moves, with a git runner that
+// counts fetches and the most that ran at once.
+type fetchEnv struct {
+	c      *core.Core
+	owner  gen.Actor
+	now    *time.Time
+	rec    *gittest.Recorder
+	mu     sync.Mutex
+	active int
+	most   int
+	s      *sweep.Sweeper
+}
+
+func newFetchEnv(t *testing.T) *fetchEnv {
+	t.Helper()
+	d := dbtest.New(t)
+	now := time.Now().UTC()
+	e := &fetchEnv{now: &now}
+	e.c = core.New(d.W, func() time.Time { return now })
+	e.c.Git = gitread.New()
+	e.rec = gittest.Record(e.c.Git)
+	e.c.Git.Wrap(func(next gitread.RunFunc) gitread.RunFunc {
+		return func(ctx context.Context, dir string, args, env []string, limit int) ([]byte, error) {
+			if gitread.Subcommand(args) != "fetch" {
+				return next(ctx, dir, args, env, limit)
+			}
+			e.mu.Lock()
+			e.active++
+			e.most = max(e.most, e.active)
+			e.mu.Unlock()
+			time.Sleep(20 * time.Millisecond)
+			defer func() { e.mu.Lock(); e.active--; e.mu.Unlock() }()
+			return next(ctx, dir, args, env, limit)
+		}
+	})
+	owner, err := e.c.EnsureOwner(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.owner = owner
+	e.s = &sweep.Sweeper{Core: e.c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: func() time.Time { return now }}
+	return e
+}
+
+// project makes a project whose repo is a clone of a bare remote, fetching
+// every minutes.
+func (e *fetchEnv) project(t *testing.T, key, repoDir string, minutes int64) {
+	t.Helper()
+	p, err := e.c.CreateProject(bg, e.owner.ID, core.ProjectInput{Key: key, Name: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := "main"
+	if _, err := e.c.UpdateProject(bg, e.owner.ID, p.ID, core.ProjectPatch{RepoPath: &repoDir, MainBranch: &main, FetchMinutes: &minutes}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func clone(t *testing.T) string {
+	t.Helper()
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("a", "1", "one")
+	seed.Git("push", "-q", "origin", "main")
+	return gittest.Clone(t, bare).Dir
+}
+
+func TestSweepFetchesWhenDue(t *testing.T) {
+	e := newFetchEnv(t)
+	dir := clone(t)
+	e.project(t, "VAQ", dir, 0)
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 0 {
+		t.Fatalf("fetch_minutes 0 fetched %d times", n)
+	}
+	five := int64(5)
+	p, _ := gen.New(e.s.DB).GetProjectByKey(bg, "VAQ")
+	if _, err := e.c.UpdateProject(bg, e.owner.ID, p.ID, core.ProjectPatch{FetchMinutes: &five}); err != nil {
+		t.Fatal(err)
+	}
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 1 {
+		t.Fatalf("never fetched: %d fetches", n)
+	}
+	e.s.Fetch(bg)
+	*e.now = e.now.Add(4 * time.Minute)
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 1 {
+		t.Fatalf("not yet due: %d fetches", n)
+	}
+	*e.now = e.now.Add(2 * time.Minute)
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 2 {
+		t.Fatalf("due: %d fetches", n)
+	}
+}
+
+// A fresh server counts the repo's own last fetch (FETCH_HEAD) as the last.
+func TestSweepKeepsToTheLastFetchOnDisk(t *testing.T) {
+	e := newFetchEnv(t)
+	dir := clone(t)
+	e.project(t, "VAQ", dir, 5)
+	e.s.Fetch(bg)
+	fresh := &sweep.Sweeper{Core: e.c, DB: e.s.DB, Logger: e.s.Logger, Now: e.s.Now}
+	fresh.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 1 {
+		t.Fatalf("a restart refetched: %d", n)
+	}
+	old := e.now.Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, ".git", "FETCH_HEAD"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	fresh = &sweep.Sweeper{Core: e.c, DB: e.s.DB, Logger: e.s.Logger, Now: e.s.Now}
+	fresh.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 2 {
+		t.Fatalf("an old FETCH_HEAD wasn't due: %d", n)
+	}
+}
+
+func TestSweepFetchesOneAtATimeAndOncePerRepo(t *testing.T) {
+	e := newFetchEnv(t)
+	one, two := clone(t), clone(t)
+	e.project(t, "AAA", one, 5)
+	e.project(t, "BBB", one, 5) // the same repo
+	e.project(t, "CCC", two, 5)
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 2 {
+		t.Fatalf("%d fetches for two repos", n)
+	}
+	if e.most != 1 {
+		t.Fatalf("%d fetches at once", e.most)
+	}
+}
+
+// A failure is remembered by the repo and tried again at the interval, not
+// every tick.
+func TestSweepFailedFetchWaitsForTheInterval(t *testing.T) {
+	e := newFetchEnv(t)
+	r := gittest.Repo(t)
+	r.WriteCommit("a", "1", "one")
+	r.Git("remote", "add", "origin", t.TempDir()+"/nowhere.git")
+	e.project(t, "VAQ", r.Dir, 5)
+	e.s.Fetch(bg)
+	e.s.Fetch(bg)
+	if n := e.rec.Count("fetch"); n != 1 {
+		t.Fatalf("%d fetches after a failure", n)
+	}
+	g, err := e.c.Git.Open(bg, r.Dir, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f, ok := g.LastFetchError(); !ok || f.Line == "" {
+		t.Fatalf("%+v %v", f, ok)
 	}
 }

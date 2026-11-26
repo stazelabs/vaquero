@@ -7,6 +7,12 @@
 // previews under thumbs/{instance}/{id} whose attachment id has no row. A
 // preview whose attachment exists is kept however old it is. serve starts
 // it and stops it before draining.
+//
+// The sweep also fetches (Fetch, VAQ-136): a project with a repository and
+// fetch_minutes above 0 has its remote fetched when its last fetch is that
+// old. It is off by default and the only thing here that uses the network.
+// A fetch runs apart from the tick, one at a time, so a slow remote never
+// delays the claims.
 package sweep
 
 import (
@@ -17,6 +23,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/blobs"
@@ -53,6 +60,11 @@ type Sweeper struct {
 	startOnce, stopOnce sync.Once
 	cancel              context.CancelFunc
 	done                chan struct{}
+	fetches             sync.WaitGroup
+	fetchRunning        atomic.Bool
+
+	mu    sync.Mutex
+	tried map[string]time.Time // repo and remote → when this sweeper last fetched it
 }
 
 // Tick runs one sweep and returns how many claims it ended.
@@ -68,6 +80,70 @@ func (s *Sweeper) Tick(ctx context.Context) (int, error) {
 		return n, err
 	}
 	return n, nil
+}
+
+// Fetch fetches every repository that is due and returns how many fetches
+// it ran. A project is due when its fetch_minutes is above 0 and its repo's
+// last fetch (the later of this sweeper's own attempt, successful or not,
+// and the repo's FETCH_HEAD) is at least that old. Archived projects are
+// skipped; projects that share a repository share one fetch. They run one
+// at a time. A failure is kept by the repo (gitread.Repo.LastFetchError)
+// and logged at warn; the next try is a full interval later.
+func (s *Sweeper) Fetch(ctx context.Context) int {
+	if s.Core == nil || s.Core.Git == nil || !s.Core.Git.Available() {
+		return 0
+	}
+	projects, err := gen.New(s.DB).ListProjects(ctx)
+	if err != nil {
+		s.Logger.ErrorContext(ctx, "list projects for fetch", "err", err)
+		return 0
+	}
+	ran := 0
+	for _, p := range projects {
+		if ctx.Err() != nil {
+			break
+		}
+		if p.FetchMinutes <= 0 || p.RepoPath == "" || p.ArchivedAt.Valid {
+			continue
+		}
+		repo, err := s.Core.Git.Open(ctx, p.RepoPath, p.MainBranch, p.Remote)
+		if err != nil || repo.Remote == "" {
+			continue
+		}
+		key := repo.Path + "\x00" + repo.Remote
+		now := s.Now()
+		last, _ := repo.LastFetch()
+		s.mu.Lock()
+		if t := s.tried[key]; t.After(last) {
+			last = t
+		}
+		s.mu.Unlock()
+		if !last.IsZero() && now.Sub(last) < time.Duration(p.FetchMinutes)*time.Minute {
+			continue
+		}
+		s.mu.Lock()
+		if s.tried == nil {
+			s.tried = map[string]time.Time{}
+		}
+		s.tried[key] = now
+		s.mu.Unlock()
+		ran++
+		if err := repo.Fetch(ctx); err != nil && ctx.Err() == nil {
+			s.Logger.WarnContext(ctx, "fetch", "project", p.Key, "err", err)
+		}
+	}
+	return ran
+}
+
+// startFetch runs Fetch on its own goroutine unless one is running.
+func (s *Sweeper) startFetch(ctx context.Context) {
+	if !s.fetchRunning.CompareAndSwap(false, true) {
+		return
+	}
+	s.fetches.Go(func() {
+		defer s.fetchRunning.Store(false)
+		s.Fetch(ctx)
+	})
 }
 
 // deleteOrphans removes this instance's attachment bytes and previews
@@ -181,6 +257,7 @@ func (s *Sweeper) Start() {
 				} else if n > 0 {
 					s.Logger.InfoContext(ctx, "claims lapsed", "count", n)
 				}
+				s.startFetch(ctx)
 				if s.OnTick != nil {
 					s.OnTick()
 				}
