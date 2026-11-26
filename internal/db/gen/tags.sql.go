@@ -24,6 +24,152 @@ func (q *Queries) AddTicketTag(ctx context.Context, arg AddTicketTagParams) erro
 	return err
 }
 
+const copyProjectTicketTags = `-- name: CopyProjectTicketTags :exec
+INSERT INTO ticket_tags (ticket_id, tag_id)
+SELECT tt.ticket_id, ?1 FROM ticket_tags tt
+JOIN tickets t ON t.id = tt.ticket_id
+WHERE tt.tag_id = ?2 AND t.project_id = ?3
+ON CONFLICT DO NOTHING
+`
+
+type CopyProjectTicketTagsParams struct {
+	ToID      string
+	FromID    string
+	ProjectID string
+}
+
+// Gives every ticket of a project tagged from_id the tag to_id too; a
+// ticket that has it already keeps its one row.
+func (q *Queries) CopyProjectTicketTags(ctx context.Context, arg CopyProjectTicketTagsParams) error {
+	_, err := q.db.ExecContext(ctx, copyProjectTicketTags, arg.ToID, arg.FromID, arg.ProjectID)
+	return err
+}
+
+const countProjectTagTickets = `-- name: CountProjectTagTickets :one
+SELECT count(*) FROM ticket_tags tt JOIN tickets t ON t.id = tt.ticket_id
+WHERE tt.tag_id = ? AND t.project_id = ?
+`
+
+type CountProjectTagTicketsParams struct {
+	TagID     string
+	ProjectID string
+}
+
+// How many of a project's tickets carry the tag.
+func (q *Queries) CountProjectTagTickets(ctx context.Context, arg CountProjectTagTicketsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countProjectTagTickets, arg.TagID, arg.ProjectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countTagTickets = `-- name: CountTagTickets :one
+SELECT count(*) FROM ticket_tags WHERE tag_id = ?
+`
+
+// How many tickets, in any project, carry the tag.
+func (q *Queries) CountTagTickets(ctx context.Context, tagID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTagTickets, tagID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const deleteUnusedTag = `-- name: DeleteUnusedTag :exec
+DELETE FROM tags WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM ticket_tags WHERE tag_id = ?1)
+`
+
+// Removes a tag no ticket carries any more.
+func (q *Queries) DeleteUnusedTag(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, deleteUnusedTag, id)
+	return err
+}
+
+const getTag = `-- name: GetTag :one
+SELECT id, name, created_at FROM tags WHERE id = ?
+`
+
+func (q *Queries) GetTag(ctx context.Context, id string) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, getTag, id)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
+const listProjectTaggedTicketIDs = `-- name: ListProjectTaggedTicketIDs :many
+SELECT t.id FROM tickets t JOIN ticket_tags tt ON tt.ticket_id = t.id
+WHERE tt.tag_id = ? AND t.project_id = ?
+ORDER BY t.number
+`
+
+type ListProjectTaggedTicketIDsParams struct {
+	TagID     string
+	ProjectID string
+}
+
+// The project's tickets that carry a tag, by number.
+func (q *Queries) ListProjectTaggedTicketIDs(ctx context.Context, arg ListProjectTaggedTicketIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectTaggedTicketIDs, arg.TagID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectTags = `-- name: ListProjectTags :many
+SELECT g.id, g.name, count(*) AS tickets FROM tags g
+JOIN ticket_tags tt ON tt.tag_id = g.id
+JOIN tickets t ON t.id = tt.ticket_id
+WHERE t.project_id = ?
+GROUP BY g.id, g.name
+ORDER BY g.name
+`
+
+type ListProjectTagsRow struct {
+	ID      string
+	Name    string
+	Tickets int64
+}
+
+// Every tag a project's tickets carry, with how many of its tickets do.
+func (q *Queries) ListProjectTags(ctx context.Context, projectID string) ([]ListProjectTagsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectTags, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListProjectTagsRow{}
+	for rows.Next() {
+		var i ListProjectTagsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.Tickets); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectTicketTags = `-- name: ListProjectTicketTags :many
 SELECT tt.ticket_id, g.name FROM ticket_tags tt
 JOIN tags g ON g.id = tt.tag_id
@@ -162,6 +308,23 @@ func (q *Queries) ListTicketTags(ctx context.Context, ticketID string) ([]Tag, e
 	return items, nil
 }
 
+const removeProjectTicketTags = `-- name: RemoveProjectTicketTags :exec
+DELETE FROM ticket_tags
+WHERE tag_id = ?1
+  AND ticket_id IN (SELECT id FROM tickets WHERE project_id = ?2)
+`
+
+type RemoveProjectTicketTagsParams struct {
+	TagID     string
+	ProjectID string
+}
+
+// Takes a tag off every ticket of a project.
+func (q *Queries) RemoveProjectTicketTags(ctx context.Context, arg RemoveProjectTicketTagsParams) error {
+	_, err := q.db.ExecContext(ctx, removeProjectTicketTags, arg.TagID, arg.ProjectID)
+	return err
+}
+
 const removeTicketTag = `-- name: RemoveTicketTag :exec
 DELETE FROM ticket_tags WHERE ticket_id = ? AND tag_id = ?
 `
@@ -173,6 +336,39 @@ type RemoveTicketTagParams struct {
 
 func (q *Queries) RemoveTicketTag(ctx context.Context, arg RemoveTicketTagParams) error {
 	_, err := q.db.ExecContext(ctx, removeTicketTag, arg.TicketID, arg.TagID)
+	return err
+}
+
+const setTagName = `-- name: SetTagName :exec
+UPDATE tags SET name = ? WHERE id = ?
+`
+
+type SetTagNameParams struct {
+	Name string
+	ID   string
+}
+
+func (q *Queries) SetTagName(ctx context.Context, arg SetTagNameParams) error {
+	_, err := q.db.ExecContext(ctx, setTagName, arg.Name, arg.ID)
+	return err
+}
+
+const touchTaggedTickets = `-- name: TouchTaggedTickets :exec
+UPDATE tickets SET version = version + 1, updated_at = ?1
+WHERE project_id = ?2
+  AND id IN (SELECT ticket_id FROM ticket_tags WHERE tag_id = ?3)
+`
+
+type TouchTaggedTicketsParams struct {
+	UpdatedAt string
+	ProjectID string
+	TagID     string
+}
+
+// Raises the version of every ticket of a project that carries a tag about
+// to be renamed, merged or removed: its tags change.
+func (q *Queries) TouchTaggedTickets(ctx context.Context, arg TouchTaggedTicketsParams) error {
+	_, err := q.db.ExecContext(ctx, touchTaggedTickets, arg.UpdatedAt, arg.ProjectID, arg.TagID)
 	return err
 }
 

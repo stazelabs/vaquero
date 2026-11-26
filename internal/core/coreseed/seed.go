@@ -1,8 +1,8 @@
 // Package coreseed fills a database with a little of everything the schema
 // can hold, through internal/core: projects, statuses, a milestone, tickets
-// with sub-tickets, tags, comments (one edited, one deleted), links, an
-// agent with a claim, tokens (one revoked), two attachments and an MCP log
-// row. The upgrade fixture (scripts/fixture) and the export tests use it.
+// with sub-tickets, tags (one renamed), a description edit, a reorder,
+// comments (one edited, one deleted), links, an agent with a claim, tokens
+// (one revoked), two attachments and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
 package coreseed
 
 import (
@@ -106,6 +106,26 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if _, err := c.AddLink(ctx, by, done.ID, "duplicates", core.TicketKey{Project: "OLD", Number: 1}); err != nil {
+		return err
+	}
+	// This release's event payloads: a description edit (body_before and
+	// body_after), a tag rename (ticket_ids) and a reorder.
+	body := "Everything **needed** for v0.1.0, and a checklist."
+	if _, err := c.PatchTicket(ctx, by, parent.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+		return err
+	}
+	tags, err := q.ListProjectTags(ctx, vaq.ID)
+	if err != nil {
+		return err
+	}
+	for _, t := range tags {
+		if t.Name == "docs" {
+			if err := c.RenameTag(ctx, by, vaq.ID, t.ID, "documentation"); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := c.MoveTicket(ctx, by, child.ID, byCategory["todo"], "", parent.ID); err != nil {
 		return err
 	}
 	agent, err := c.EnsureAgent(ctx, by, "builder")

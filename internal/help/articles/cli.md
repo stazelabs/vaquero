@@ -48,7 +48,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero attachments TICKET` | A ticket's files: id, name, size, who attached it and when |
 | `vaquero detach ID` | Remove an attachment; only the person who attached it, or the owner, can |
 | `vaquero search WORDS...` | Search titles, descriptions and comments |
-| `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ |
+| `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ; reorders within a column are left out |
 | `vaquero ready [KEY] [--limit N]` | Tickets ready to be worked on, most urgent first; every project unless KEY |
 | `vaquero claim TICKET [--lease 30m]` | Claim a ticket for 1 minute to 2 hours (default 15 minutes); see [Agents and claims](/help/agents-and-claims) |
 | `vaquero heartbeat TICKET [--lease 30m]` | Extend your claim from now |

@@ -26,7 +26,7 @@ Only the person who attached a file, or the owner, can remove it.
 
 A file lives at `/attachments/ID/NAME` on the server, with no project key, so a reference keeps working if the project's key changes. A wrong name, or an id in lower case, redirects to the right address.
 
-PNG, JPEG, GIF and WebP files show in the page. Every other file, including SVG and HTML, is a download: it is never shown inside Vaquero, whatever it is named. Markdown shows an image only when it points at an attachment; an image from anywhere else becomes a plain link.
+PNG, JPEG, GIF and WebP files show in the page. Every other file, including SVG and HTML, is a download: it is never shown inside Vaquero, whatever it is named. Markdown shows an image only when it points at an attachment; an image from anywhere else becomes a plain link. See [Writing in Markdown](/help/markdown#images-and-attachments).
 
 Every file answer carries `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. A browser checks with the server each time it shows a file, so a removed file stops showing.
 

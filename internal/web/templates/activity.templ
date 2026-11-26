@@ -15,7 +15,11 @@ templ ActivityPage(events []EventView) {
 								@Icon(EventIcon(e.Kind))
 							</span>
 							<span class="font-medium text-ink">{ e.Actor }</span>
-							if href := eventHref(e); href != "" {
+							if parts := EventParts(e); hasLinks(parts) {
+								<span>
+									@sentenceParts(parts)
+								</span>
+							} else if href := eventHref(e); href != "" {
 								<a href={ templ.SafeURL(href) } class="hover:text-accent hover:underline">{ EventSentence(e) }</a>
 							} else {
 								<span>{ EventSentence(e) }</span>
@@ -26,5 +30,16 @@ templ ActivityPage(events []EventView) {
 				</ul>
 			}
 		</div>
+	}
+}
+
+// sentenceParts is an event's sentence with its linked tickets as links.
+templ sentenceParts(parts []SentencePart) {
+	for _, p := range parts {
+		if p.Href != "" {
+			<a href={ templ.SafeURL(p.Href) } class="hover:text-accent hover:underline">{ p.Text }</a>
+		} else {
+			{ p.Text }
+		}
 	}
 }

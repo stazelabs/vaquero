@@ -33,6 +33,7 @@
     "link": "link",
     "list": "list",
     "markdown": "file-text",
+    "merge": "merge",
     "milestone": "flag",
     "moved": "arrow-right",
     "new-project": "folder-plus",

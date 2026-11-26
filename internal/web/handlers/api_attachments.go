@@ -64,7 +64,12 @@ func APIAttachmentUpload(d Deps) http.HandlerFunc {
 			api.WriteFailure(w, uploadFailure(r, d, err))
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, attachmentDTO(a, by.Name))
+		out := attachmentDTO(a, by.Name)
+		if _, _, out.Warning, err = ticketClaim(r, d, t); err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		api.WriteJSON(w, http.StatusCreated, out)
 	}
 }
 

@@ -103,7 +103,15 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 		serverError(w, r, d, err)
 		return
 	}
+	tags, err := d.R.ListProjectTags(ctx, p.ID)
+	if err != nil {
+		serverError(w, r, d, err)
+		return
+	}
 	v := templates.SettingsView{Project: p, Form: f, Milestones: milestones}
+	for _, t := range tags {
+		v.Tags = append(v.Tags, templates.TagRow{ID: t.ID, Name: t.Name, Tickets: t.Tickets})
+	}
 	for i, s := range statuses {
 		v.Statuses = append(v.Statuses, templates.StatusRow{Status: s, First: i == 0, Last: i == len(statuses)-1})
 	}
@@ -428,4 +436,66 @@ func MilestoneReopen(d Deps) http.HandlerFunc {
 	return milestoneAction(d, "Milestone reopened.", func(r *http.Request, m gen.Milestone) error {
 		return d.Core.SetMilestoneClosed(r.Context(), d.Actor.ID, m.ID, false)
 	})
+}
+
+// mergeTarget is the project's other tag that name would merge tag id
+// into (matched by core.SameTag), if any.
+func mergeTarget(r *http.Request, d Deps, p gen.Project, id, name string) (gen.ListProjectTagsRow, bool, error) {
+	rows, err := d.R.ListProjectTags(r.Context(), p.ID)
+	if err != nil {
+		return gen.ListProjectTagsRow{}, false, err
+	}
+	name = strings.TrimSpace(name)
+	for _, t := range rows {
+		if t.ID != id && core.SameTag(t.Name, name) {
+			return t, true, nil
+		}
+	}
+	return gen.ListProjectTagsRow{}, false, nil
+}
+
+// TagRename renames one of the project's tags. A name another of its tags
+// has merges the two, but only when the form says merge=1: otherwise the
+// page comes back with the question and a merge button (behind the confirm
+// dialog).
+func TagRename(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		id := chi.URLParam(r, "id")
+		sf := templates.SubForm{ID: id, Values: formValues(r, "name")}
+		into, merging, err := mergeTarget(r, d, p, id, sf.Values["name"])
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		if merging && r.PostFormValue("merge") != "1" {
+			sf.Errors = map[string]string{"name": p.Key + " already has the tag " + into.Name + ". Merge the two, or choose another name."}
+			settingsPage(w, r, d, p, templates.ProjectForm{Key: p.Key, Name: p.Name, Description: p.Description}, http.StatusUnprocessableEntity,
+				func(v *templates.SettingsView) { v.EditTag, v.MergeInto = sf, into.Name })
+			return
+		}
+		msg := "Tag renamed."
+		if merging {
+			msg = "Tags merged."
+		}
+		settingsForm(w, r, d, p, msg, sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditTag = f }, func() error {
+			return d.Core.RenameTag(r.Context(), d.Actor.ID, p.ID, id, sf.Values["name"])
+		})
+	}
+}
+
+// TagDelete takes one of the project's tags off all its tickets.
+func TagDelete(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		settingsAction(w, r, d, p, "Tag deleted.", func() error {
+			return d.Core.DeleteTag(r.Context(), d.Actor.ID, p.ID, chi.URLParam(r, "id"))
+		})
+	}
 }

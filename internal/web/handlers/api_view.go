@@ -6,6 +6,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/web/templates"
 )
 
 // viewParam reads a write's ?view=: "summary" asks for the short answer
@@ -38,14 +39,43 @@ func ticketBrief(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Tick
 	}
 	row := rows[0]
 	return api.TicketBrief{Key: ticketKey(p, row.Number), Status: row.StatusName, Category: row.StatusCategory, Version: row.Version,
-		Assignee: row.AssigneeName, ClaimedBy: row.ClaimantName, ClaimExpiresAt: row.ClaimExpiresAt}, nil
+		Assignee: row.AssigneeName, ClaimedBy: row.ClaimantName, ClaimExpiresAt: row.ClaimExpiresAt,
+		Warning: claimWarning(r, d, row.ClaimantID, row.ClaimantName, row.ClaimExpiresAt)}, nil
+}
+
+// claimWarning is what a write's answer says when someone other than the
+// caller holds a live claim on the ticket: "Claimed by bot until 12:15
+// UTC." Claims are advisory, so the write itself went through. "" when the
+// caller holds the claim or nobody does.
+func claimWarning(r *http.Request, d Deps, claimantID, claimant, expires string) string {
+	return templates.ClaimNote(claimantID, claimant, expires, apiActor(r).ID, d.Now(), ".")
+}
+
+// ticketClaim is the claim on t as a write's answer names it: the
+// claimant, the lease's end and claimWarning's note; all "" when nobody
+// holds it.
+func ticketClaim(r *http.Request, d Deps, t gen.Ticket) (claimant, expires, warning string, err error) {
+	if !t.ClaimedBy.Valid {
+		return "", "", "", nil
+	}
+	a, err := d.R.GetActor(r.Context(), t.ClaimedBy.String)
+	if err != nil {
+		return "", "", "", err
+	}
+	return a.Name, t.ClaimExpiresAt.String, claimWarning(r, d, a.ID, a.Name, t.ClaimExpiresAt.String), nil
 }
 
 // writeTicketView answers a write with t: the short answer when summary,
 // else the whole ticket.
 func writeTicketView(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p gen.Project, status int, summary bool) {
 	if !summary {
-		writeTicket(w, r, d, t, p, status)
+		out, err := ticketDTO(r, d, t, p)
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		out.Warning = claimWarning(r, d, t.ClaimedBy.String, out.ClaimedBy, out.ClaimExpiresAt)
+		api.WriteJSON(w, status, out)
 		return
 	}
 	b, err := ticketBrief(r, d, t, p)

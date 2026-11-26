@@ -30,8 +30,12 @@ const (
 	h2IconClass  = h2Class + " flex items-center gap-1.5"
 	panelClass   = "rounded-lg border border-line bg-paper-alt p-5"
 	inputClass   = "block w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 aria-[invalid=true]:border-danger"
-	labelClass   = "mb-1 block text-xs font-semibold uppercase tracking-wider text-ink/80"
-	proseClass   = "prose-vq text-sm leading-relaxed text-ink"
+	// fieldClass is a one-line control (text box or select): a fixed height,
+	// since browsers size a select's box their own way and it would not line
+	// up with a text box beside it. Below sm the text is 1rem (input.css).
+	fieldClass = inputClass + " h-9.5 max-sm:h-10.5"
+	labelClass = "mb-1 block text-xs font-semibold uppercase tracking-wider text-ink/80"
+	proseClass = "prose-vq text-sm leading-relaxed text-ink"
 )
 
 func pageTitle(t string) string {
@@ -53,6 +57,9 @@ type InputProps struct {
 	Error string
 	// Attrs carries what the field alone needs, such as data-* hooks.
 	Attrs templ.Attributes
+	// Markdown marks a TextArea whose text renders as Markdown (ticket
+	// descriptions and comments): a link to the article goes under it.
+	Markdown bool
 }
 
 func (p InputProps) id() string {
@@ -88,6 +95,18 @@ func (p InputProps) attrs() templ.Attributes {
 		return templ.Attributes{}
 	}
 	return p.Attrs
+}
+
+// linkTargetAttrs make the link box ask for suggestions as you type.
+func linkTargetAttrs(key string) templ.Attributes {
+	return templ.Attributes{
+		"list":       "link-targets",
+		"hx-get":     "/t/" + key + "/link-targets",
+		"hx-trigger": "input changed delay:200ms",
+		"hx-target":  "#link-targets",
+		"hx-swap":    "innerHTML",
+		"hx-sync":    "this:replace",
+	}
 }
 
 // Option is one choice in a Select.

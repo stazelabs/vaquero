@@ -143,6 +143,76 @@ func (q *Queries) ListBlockedBy(ctx context.Context, fromID string) ([]ListBlock
 	return items, nil
 }
 
+const listLinkTargets = `-- name: ListLinkTargets :many
+SELECT t.number, t.title, p.key AS project_key,
+       CAST(p.id = CAST(?1 AS TEXT) AS BOOLEAN) AS home,
+       CAST(CAST(t.number AS TEXT) = CAST(?2 AS TEXT) AS BOOLEAN) AS exact FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id <> ?3
+  AND (CAST(?4 AS TEXT) = '' OR p.key = ?4)
+  AND substr(CAST(t.number AS TEXT), 1, length(CAST(?5 AS TEXT))) = ?5
+  AND instr(lower(t.title), lower(CAST(?6 AS TEXT))) > 0
+ORDER BY home DESC, exact DESC, t.number DESC
+LIMIT 10
+`
+
+type ListLinkTargetsParams struct {
+	HomeID    string
+	Exact     string
+	SelfID    string
+	Key       string
+	NumPrefix string
+	Title     string
+}
+
+type ListLinkTargetsRow struct {
+	Number     int64
+	Title      string
+	ProjectKey string
+	Home       bool
+	Exact      bool
+}
+
+// Candidates for the ticket page's link box: tickets other than self_id,
+// narrowed by an exact project key, a number prefix and a title fragment
+// (each empty for any; the title matches ignoring ASCII case): the home
+// project's first, then the exact number, then the newest.
+func (q *Queries) ListLinkTargets(ctx context.Context, arg ListLinkTargetsParams) ([]ListLinkTargetsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLinkTargets,
+		arg.HomeID,
+		arg.Exact,
+		arg.SelfID,
+		arg.Key,
+		arg.NumPrefix,
+		arg.Title,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLinkTargetsRow{}
+	for rows.Next() {
+		var i ListLinkTargetsRow
+		if err := rows.Scan(
+			&i.Number,
+			&i.Title,
+			&i.ProjectKey,
+			&i.Home,
+			&i.Exact,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLinksFrom = `-- name: ListLinksFrom :many
 SELECT l.id, l.kind, t.id AS other_id, p.key AS other_key, t.number AS other_number,
        t.title AS other_title, s.category AS other_category

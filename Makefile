@@ -21,12 +21,12 @@ SQLC_VERSION        := v1.31.1
 
 .DEFAULT_GOAL := help
 
-.PHONY: help tools gen templ sqlc css notices dev build test cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean fixture formula
+.PHONY: help tools gen templ sqlc css notices dev build test e2e cover cover-check vet lint modernize-check modernize fmt migration db-reset ci clean fixture formula
 
 help: ## Show this list (the default)
 	@echo "usage: make <target>"
 	@echo
-	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z-]*:.*## / { printf "  %-16s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":.*## " } /^[a-z][a-z0-9-]*:.*## / { printf "  %-16s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 tools: ## Install templ, sqlc, goose, air, staticcheck, and npm packages (one time)
 	$(GO) install github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
@@ -71,14 +71,18 @@ build: gen ## Generate, then build bin/vaquero for this machine
 test: ## Run all tests
 	CGO_ENABLED=0 $(GO) test ./...
 
+e2e: ## Run the browser tests in headless Chrome (internal/e2e; they skip when no Chrome is installed)
+	CGO_ENABLED=0 $(GO) test -tags e2e -count=1 ./internal/e2e/
+
 cover: ## Run tests and list coverage by function
 	CGO_ENABLED=0 $(GO) test -coverprofile=coverage.out ./... >/dev/null && $(GO) tool cover -func=coverage.out | sort -k3 -n
 
 cover-check: ## Fail if a package is under its floor in coverage-floors.txt
 	./scripts/cover-check.sh
 
-vet: ## Run go vet
+vet: ## Run go vet (the browser tests too, under their e2e tag)
 	$(GO) vet ./...
+	$(GO) vet -tags e2e ./internal/e2e/
 
 modernize-check: ## Fail if go fix would change anything
 	@out="$$($(GO) fix -diff ./... 2>/dev/null)" || true; \
@@ -88,7 +92,7 @@ modernize: ## Apply go fix modernizations
 	$(GO) fix ./...
 
 lint: modernize-check ## Run modernize-check and staticcheck (under LINT_TOOLCHAIN)
-	GOTOOLCHAIN=$(LINT_TOOLCHAIN) staticcheck ./...
+	GOTOOLCHAIN=$(LINT_TOOLCHAIN) staticcheck -tags e2e ./...
 
 fmt: ## Format all Go code
 	gofmt -w $$(find . -name '*.go' -not -path './node_modules/*' -not -path './.claude/*')

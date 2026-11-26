@@ -46,3 +46,19 @@ WITH RECURSIVE reach(id) AS (
     SELECT l.to_id FROM ticket_links l JOIN reach r ON l.from_id = r.id WHERE l.kind = 'blocks'
 )
 SELECT CAST(EXISTS (SELECT 1 FROM reach WHERE id = sqlc.arg(target)) AS BOOLEAN);
+
+-- name: ListLinkTargets :many
+-- Candidates for the ticket page's link box: tickets other than self_id,
+-- narrowed by an exact project key, a number prefix and a title fragment
+-- (each empty for any; the title matches ignoring ASCII case): the home
+-- project's first, then the exact number, then the newest.
+SELECT t.number, t.title, p.key AS project_key,
+       CAST(p.id = CAST(sqlc.arg(home_id) AS TEXT) AS BOOLEAN) AS home,
+       CAST(CAST(t.number AS TEXT) = CAST(sqlc.arg(exact) AS TEXT) AS BOOLEAN) AS exact FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id <> sqlc.arg(self_id)
+  AND (CAST(sqlc.arg(key) AS TEXT) = '' OR p.key = sqlc.arg(key))
+  AND substr(CAST(t.number AS TEXT), 1, length(CAST(sqlc.arg(num_prefix) AS TEXT))) = sqlc.arg(num_prefix)
+  AND instr(lower(t.title), lower(CAST(sqlc.arg(title) AS TEXT))) > 0
+ORDER BY home DESC, exact DESC, t.number DESC
+LIMIT 10;

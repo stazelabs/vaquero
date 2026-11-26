@@ -4,14 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
+// commentBody is a comment's text as stored: in NFC (as search reads it),
+// trimmed, and checked.
 func commentBody(body string) (string, error) {
 	f := fields{}
-	body = checked(f, "body", trimBlock(body), 20000, "Write a comment.", "Keep comments under 20,000 characters.")
+	body = checked(f, "body", trimBlock(norm.NFC.String(body)), 20000, "Write a comment.", "Keep comments under 20,000 characters.")
 	return body, f.err()
 }
 

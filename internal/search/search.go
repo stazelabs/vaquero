@@ -5,8 +5,11 @@ package search
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
@@ -15,12 +18,35 @@ import (
 // maxTerms bounds how many words of a long query are searched for.
 const maxTerms = 20
 
-// MatchQuery turns typed text into an FTS5 query: each run of letters and
-// digits becomes a quoted prefix term ("colum"*), all of them required. No
-// FTS5 syntax survives, so no input is a syntax error. "" means there is
-// nothing to search for.
+// MatchQuery turns typed text into an FTS5 query: Terms, all of them
+// required. No FTS5 syntax survives, so no input is a syntax error. ""
+// means there is nothing to search for.
 func MatchQuery(typed string) string {
-	words := strings.FieldsFunc(typed, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	return strings.Join(Terms(typed), " ")
+}
+
+// Terms turns typed text into quoted FTS5 prefix terms ("colum"*): the
+// text is put in NFC first, then each run of letters, digits and combining
+// marks is a term (so a decomposed "résumé" stays one word) if it holds
+// a letter or digit, at most maxTerms of them. A term holds no quote, star
+// or other syntax.
+//
+// NFC is applied here, on the query side, and by core when it writes
+// titles, descriptions and comments. Accented Latin text stored decomposed
+// before core normalised still matches: the indexes' unicode61 tokenizer
+// with remove_diacritics 2 folds Latin letters' diacritics, so both
+// spellings index as the same token, and no migration or reindex is
+// needed. Decomposed text in other scripts isn't folded that way and may
+// not match until it is saved again.
+func Terms(typed string) []string {
+	typed = norm.NFC.String(typed)
+	words := strings.FieldsFunc(typed, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.Is(unicode.M, r)
+	})
+	// A run of combining marks alone (a stray accent) is no word.
+	words = slices.DeleteFunc(words, func(w string) bool {
+		return !strings.ContainsFunc(w, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) })
+	})
 	if len(words) > maxTerms {
 		words = words[:maxTerms]
 	}
@@ -28,7 +54,7 @@ func MatchQuery(typed string) string {
 	for i, w := range words {
 		terms[i] = `"` + w + `"*`
 	}
-	return strings.Join(terms, " ")
+	return terms
 }
 
 // Part is a piece of a snippet; Mark is a matched word.
@@ -43,28 +69,42 @@ type Hit struct {
 	Snippet                      []Part
 }
 
+// Result is a search's hits, best first, and how many tickets matched in
+// all (Total may be more than the hits shown).
+type Result struct {
+	Hits  []Hit
+	Total int
+}
+
 // Run searches for typed through db (the reader pool). Nothing to search
 // for gives no hits.
-func Run(ctx context.Context, db *sql.DB, typed string, limit int64) ([]Hit, error) {
-	q := MatchQuery(typed)
-	if q == "" {
-		return nil, nil
+func Run(ctx context.Context, db *sql.DB, typed string, limit int64) (Result, error) {
+	// A repeated word adds nothing but work.
+	var terms []string
+	for _, t := range Terms(typed) {
+		if !slices.ContainsFunc(terms, func(o string) bool { return strings.EqualFold(o, t) }) {
+			terms = append(terms, t)
+		}
 	}
-	rows, err := appdb.SearchTickets(ctx, db, q, limit)
+	if len(terms) == 0 {
+		return Result{}, nil
+	}
+	rows, err := appdb.SearchTickets(ctx, db, terms, limit)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	hits := make([]Hit, len(rows))
+	res := Result{Hits: make([]Hit, len(rows))}
 	for i, r := range rows {
-		hits[i] = Hit{
+		res.Hits[i] = Hit{
 			Key:      core.TicketKey{Project: r.ProjectKey, Number: r.Number}.String(),
 			Title:    r.Title,
 			Status:   r.StatusName,
 			Category: r.StatusCategory,
 			Snippet:  parts(r.Snippet),
 		}
+		res.Total = int(r.Total)
 	}
-	return hits, nil
+	return res, nil
 }
 
 // parts splits a snippet at its \x02 (start) and \x03 (end) markers.

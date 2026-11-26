@@ -71,8 +71,9 @@ func normTags(f fields, names []string) []string {
 func checkTicket(ctx context.Context, q *gen.Queries, p gen.Project, ticketID string, in TicketInput) (ticketFields, error) {
 	f := fields{}
 	tf := ticketFields{TicketInput: in}
-	tf.Title = text(f, "title", in.Title, 200, "Enter a title.", "Keep the title under 200 characters.")
-	tf.Body = strings.TrimRight(in.Body, " \t\r\n")
+	// Titles and descriptions are stored in NFC, as search reads them.
+	tf.Title = text(f, "title", norm.NFC.String(in.Title), 200, "Enter a title.", "Keep the title under 200 characters.")
+	tf.Body = strings.TrimRight(norm.NFC.String(in.Body), " \t\r\n")
 	if hasControl(tf.Body) {
 		f.add("body", controlMsg)
 	} else if len([]rune(tf.Body)) > 100000 {

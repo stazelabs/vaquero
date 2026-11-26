@@ -38,7 +38,7 @@ templ Shell(title string) {
 				<header class="border-t-4 border-accent border-b border-b-line">
 					<div class="mx-auto flex h-14 w-full max-w-7xl min-w-0 items-center px-4">
 						<a href="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink hover:text-accent">
-							<img src={ static.URL("logo.svg") } alt="" width="28" height="28" class="h-7 w-7"/>
+							@logo("h-7 w-7 shrink-0")
 							<span class="max-sm:sr-only">Vaquero</span>
 						</a>
 						<nav aria-label="Main" class="ml-4 flex items-center gap-3 sm:ml-8 sm:gap-5">
@@ -52,7 +52,7 @@ templ Shell(title string) {
 							</a>
 						</nav>
 						<form method="get" action="/search" role="search" class="relative ml-auto">
-							<label for="vq-search" class="sr-only">Search tickets and comments</label>
+							<label for="vq-search" class="sr-only">Search tickets, comments and help</label>
 							<span class="pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted">
 								@Icon("search")
 							</span>
@@ -79,6 +79,7 @@ templ Shell(title string) {
 				@footer()
 			</div>
 			@shortcutsDialog()
+			@confirmDialog()
 			// The error toast's markup, inert until app.js clones it to report
 			// a failure it sees itself (an upload, a board drop).
 			<template id="vq-toast-template">
@@ -124,6 +125,20 @@ templ shortcutsDialog() {
 		<form method="dialog" class="mt-5 text-right">
 			<button type="submit" class={ btnSecondary }>Close</button>
 		</form>
+	</dialog>
+}
+
+// confirmDialog asks before a destructive form posts: app.js opens it for
+// a form carrying data-confirm="question", puts the question and the form's
+// button label in it, and submits the form only on confirm. Escape and
+// Cancel close it. Without JavaScript the form posts directly.
+templ confirmDialog() {
+	<dialog id="vq-confirm" aria-labelledby="vq-confirm-message" class="m-auto w-full max-w-sm rounded-lg border border-line bg-paper p-5 text-ink backdrop:bg-ink/40">
+		<p id="vq-confirm-message" data-confirm-message class="text-sm text-ink"></p>
+		<div class="mt-5 flex justify-end gap-3">
+			<button type="button" data-confirm-cancel autofocus class={ btnSecondary }>Cancel</button>
+			<button type="button" data-confirm-ok class={ btnDanger }>Confirm</button>
+		</div>
 	</dialog>
 }
 

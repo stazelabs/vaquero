@@ -15,7 +15,7 @@ order: 5
 | `j / k` | Focus the next or previous card on the board or list |
 | `enter` | Open the focused card |
 | `?` | Show these shortcuts |
-| `esc` | Close the shortcuts; on a narrow screen, close an open rail |
+| `esc` | Close a dialog; on a narrow screen, close an open rail |
 
 ## When they work
 

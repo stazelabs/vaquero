@@ -58,3 +58,31 @@ func TestSearchClipsCharacters(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-40: a search with more matches than it shows says so.
+func TestSearchSaysShowingOfTotal(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	for range 52 {
+		ticket(t, e, p, core.TicketInput{Title: "many"})
+	}
+	contains(t, e.Client().Get("/search?q=many").Body, "Showing 50 of 52 matching tickets.")
+	lacks(t, e.Client().Get("/search?q=nothingmatches").Body, "Showing")
+}
+
+// Help articles that match show above the tickets, linking the article or
+// its heading (VAQ-63).
+func TestSearchShowsHelp(t *testing.T) {
+	e := webtest.New(t)
+	ticket(t, e, project(t, e), core.TicketInput{Title: "Compact the cache"})
+	page := e.Client().Get("/search?q=compact").Body
+	contains(t, page, `data-help-hits`, `href="/help/data-and-backups#compacting-the-database"`, "Compacting the database", `href="/t/VAQ-1"`)
+	if strings.Index(page, "data-help-hits") > strings.Index(page, `href="/t/VAQ-1"`) {
+		t.Fatal("help hits are not above the tickets")
+	}
+	// Help alone still says no tickets match.
+	page = e.Client().Get("/search?q=keyboard").Body
+	contains(t, page, `href="/help/keyboard-shortcuts"`, "No tickets match.")
+	// No help match: no Help section.
+	lacks(t, e.Client().Get("/search?q=cache").Body, "data-help-hits")
+}

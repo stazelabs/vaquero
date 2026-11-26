@@ -507,7 +507,7 @@ func TestRestoreRebuildsSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	if hits, err := appdb.SearchTickets(t.Context(), d, `"lasso"*`, 10); err != nil || len(hits) != 1 {
+	if hits, err := appdb.SearchTickets(t.Context(), d, []string{`"lasso"*`}, 10); err != nil || len(hits) != 1 {
 		t.Fatalf("search after restoring: %d hits, %v", len(hits), err)
 	}
 }

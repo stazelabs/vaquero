@@ -66,3 +66,22 @@ func TestLinkWordingTakesTheReadersSide(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestTagWording(t *testing.T) {
+	for _, c := range []struct {
+		kind string
+		p    map[string]any
+		want string
+	}{
+		{core.EvTagRenamed, map[string]any{"from": "bug", "to": "defect", "tickets": 1.0}, "renamed tag bug to defect in VAQ (1 ticket)"},
+		{core.EvTagMerged, map[string]any{"from": "bug", "to": "ui", "tickets": 3.0}, "merged tag bug into ui in VAQ (3 tickets)"},
+		{core.EvTagDeleted, map[string]any{"name": "bug", "tickets": 2.0}, "deleted tag bug from VAQ (2 tickets)"},
+	} {
+		if got := EventSentence(EventView{Kind: c.kind, ProjectKey: "VAQ", Payload: c.p}); got != c.want {
+			t.Errorf("%s: %q, want %q", c.kind, got, c.want)
+		}
+	}
+	if EventIcon(core.EvTagRenamed) != "tag" || EventIcon(core.EvTagMerged) != "merge" || EventIcon(core.EvTagDeleted) != "delete" {
+		t.Error("tag icons")
+	}
+}

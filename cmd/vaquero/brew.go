@@ -320,3 +320,56 @@ func serviceLoaded(goos, label string, ask probe) loaded {
 	}
 	return loadedNo
 }
+
+// servicePID is the process id the service manager runs label as. known
+// is true for an answer that could be read: then pid 0 means the manager
+// runs no process for it (between keep_alive restarts, say). A probe with
+// no answer, one that failed, or a pid that can't be read is unknown.
+// launchd's `launchctl print gui/{uid}/{label}` shows the process as a
+// top-level "pid = N" line (a nested block's pid is someone else's);
+// systemd's `systemctl --user show -p MainPID {label}` prints MainPID=N,
+// 0 when nothing runs.
+func servicePID(goos, label string, ask probe) (pid int, known bool) {
+	if goos == "darwin" {
+		out, err := ask("launchctl", "print", "gui/"+strconv.Itoa(os.Getuid())+"/"+label)
+		if err != nil {
+			return 0, false
+		}
+		depth := 0
+		sc := bufio.NewScanner(bytes.NewReader(out))
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if depth == 1 {
+				if v, ok := strings.CutPrefix(line, "pid = "); ok {
+					return readPID(v)
+				}
+			}
+			switch {
+			case strings.HasSuffix(line, "{"):
+				depth++
+			case line == "}":
+				depth--
+			}
+		}
+		return 0, true
+	}
+	out, err := ask("systemctl", "--user", "show", "-p", "MainPID", label)
+	if err != nil {
+		return 0, false
+	}
+	v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "MainPID=")
+	if !ok {
+		return 0, false
+	}
+	return readPID(v)
+}
+
+// readPID reads v as a process id (0 included); ok is false for anything
+// else.
+func readPID(v string) (pid int, ok bool) {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}

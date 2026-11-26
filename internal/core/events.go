@@ -16,6 +16,9 @@ import (
 //   - *.updated: {"changes": {field: {"from", "to"}}}, only changed fields;
 //     ticket tags are sorted name lists. milestone.updated also carries
 //     {"name"}; a project key change is project.updated with a "key" change.
+//     A ticket.updated that changes the body also carries "body_before" and
+//     "body_after" (the whole text, from 0.1.5 on), or "body_too_long": true
+//     when either side is over BodyHistoryMax bytes.
 //   - project.archived, project.restored, milestone.closed,
 //     milestone.reopened: {}.
 //   - status.moved: {"name", "from": position, "to": position}.
@@ -32,6 +35,10 @@ import (
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
 //   - ticket.claim_lapsed: {"status"}, the status the ticket was left in;
 //     its actor is the claimant whose lease ran out.
+//   - tag.renamed, tag.merged: {"from", "to", "tickets", "ticket_ids"};
+//     tag.deleted: {"name", "tickets", "ticket_ids"}: TagPayload, a project
+//     event (no ticket); ticket_ids names the project's tickets whose tags
+//     changed, tickets how many.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -66,6 +73,9 @@ const (
 	EvTicketClaimed     = "ticket.claimed"
 	EvTicketReleased    = "ticket.released"
 	EvClaimLapsed       = "ticket.claim_lapsed"
+	EvTagRenamed        = "tag.renamed"
+	EvTagMerged         = "tag.merged"
+	EvTagDeleted        = "tag.deleted"
 )
 
 // ClaimPayload is a ticket.claimed event's payload: the lease's end, the
@@ -119,5 +129,10 @@ func EventKinds() []string {
 		EvLinkCreated, EvLinkDeleted,
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
+		EvTagRenamed, EvTagMerged, EvTagDeleted,
 	}
 }
+
+// BodyHistoryMax is the most bytes of a description a ticket.updated event
+// keeps on either side of an edit.
+const BodyHistoryMax = 64 << 10

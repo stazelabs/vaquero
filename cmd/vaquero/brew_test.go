@@ -408,3 +408,126 @@ func TestBrewManagedLinuxBusDown(t *testing.T) {
 		t.Errorf("another failure: %v", state)
 	}
 }
+
+// launchctl print shows a running agent's process as "pid = N"; systemctl
+// show prints MainPID=N, 0 when nothing runs. An answer with no pid line is
+// a known 0 (between keep_alive restarts); no answer, a failed probe, or a
+// pid that can't be read is unknown (R13).
+func TestServicePID(t *testing.T) {
+	label := "sh.brew.vaquero"
+	show := "systemctl --user show -p MainPID " + label
+	for name, c := range map[string]struct {
+		goos  string
+		m     *fakeManager
+		want  int
+		known bool
+	}{
+		"launchd running":     {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "gui/501/sh.brew.vaquero = {\n\tactive count = 1\n\tstate = running\n\tpid = 4242\n\tprogram = /opt/homebrew/opt/vaquero/bin/vaquero\n}\n"}}, 4242, true},
+		"launchd no pid":      {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "gui/501/sh.brew.vaquero = {\n\tstate = not running\n\tlast exit code = 1\n}\n"}}, 0, true},
+		"launchd nested pid":  {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "x = {\n\tstate = not running\n\tendpoints = {\n\t\tpid = 77\n\t}\n}\n"}}, 0, true},
+		"launchd bad pid":     {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "x = {\n\tpid = soon\n}\n"}}, 0, false},
+		"launchd not loaded":  {"darwin", &fakeManager{}, 0, false},
+		"launchd no answer":   {"darwin", &fakeManager{unknown: true}, 0, false},
+		"systemd running":     {"linux", &fakeManager{ok: map[string]string{show: "MainPID=5151\n"}}, 5151, true},
+		"systemd not running": {"linux", &fakeManager{ok: map[string]string{show: "MainPID=0\n"}}, 0, true},
+		"systemd garbage":     {"linux", &fakeManager{ok: map[string]string{show: "MainPID=\n"}}, 0, false},
+		"systemd no answer":   {"linux", &fakeManager{unknown: true}, 0, false},
+	} {
+		if got, known := servicePID(c.goos, label, c.m.probe); got != c.want || known != c.known {
+			t.Errorf("%s: %d %v, want %d %v", name, got, known, c.want, c.known)
+		}
+	}
+}
+
+// launchdRunning is launchctl print for a loaded agent whose process is pid.
+func launchdRunning(pid int) string {
+	return "gui/501/sh.brew.vaquero = {\n\tstate = running\n\tpid = " + strconv.Itoa(pid) + "\n}\n"
+}
+
+// The service is loaded, but the server holding the lock isn't the one
+// launchd runs (one started outside brew services, VAQ-130): stop stops
+// it, says so, and leaves the service alone.
+func TestStopClearsAServerStartedOutsideBrewServices(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	other := pid + 100000
+	m := &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): launchdRunning(other)}}
+	useManager(t, m)
+	code, out, e := runCLI(t, "stop")
+	want := "Stopped a Vaquero started outside brew services (pid " + strconv.Itoa(pid) + "); the service can start now."
+	if code != 0 || strings.TrimSpace(out) != want {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if _, running, _ := lockfile.Holder(dataDir); running {
+		t.Fatal("server still holds the lock")
+	}
+	for _, c := range m.called() {
+		if !strings.HasPrefix(c, "launchctl print ") {
+			t.Fatalf("touched the service: %q", c)
+		}
+	}
+}
+
+// When the lock holder is the service's own server, stop still refuses.
+func TestStopRefusesTheServicesOwnServer(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	useManager(t, &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): launchdRunning(pid)}})
+	code, _, e := runCLI(t, "stop")
+	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services (sh.brew.vaquero); run brew services stop vaquero.") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, running, _ := lockfile.Holder(dataDir); !running || now != pid {
+		t.Fatal("the service's server was stopped")
+	}
+}
+
+// When launchd has the service loaded but reports no pid (between failed
+// restarts), a live lock holder can't be the service's current process:
+// stop stops it with the same message (R13).
+func TestStopClearsALockHolderWhenTheServiceHasNoPID(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	m := &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): "gui/501/sh.brew.vaquero = {\n\tstate = not running\n\tlast exit code = 1\n}\n"}}
+	useManager(t, m)
+	code, out, e := runCLI(t, "stop")
+	want := "Stopped a Vaquero started outside brew services (pid " + strconv.Itoa(pid) + "); the service can start now."
+	if code != 0 || strings.TrimSpace(out) != want {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if _, running, _ := lockfile.Holder(dataDir); running {
+		t.Fatal("server still holds the lock")
+	}
+	for _, c := range m.called() {
+		if !strings.HasPrefix(c, "launchctl print ") {
+			t.Fatalf("touched the service: %q", c)
+		}
+	}
+}
+
+// When the pid question gets no answer at all (a timeout, a missing
+// launchctl), stop refuses as before. On macOS the loaded and pid
+// questions are the same launchctl print, so no answer is no answer to
+// both: an unanswered question about the service's own file counts as
+// loaded (brewManaged), and its pid stays unknown.
+func TestStopRefusesWhenThePIDProbeHasNoAnswer(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	m := &fakeManager{unknown: true}
+	useManager(t, m)
+	code, _, e := runCLI(t, "stop")
+	for _, c := range m.called() {
+		if !strings.HasPrefix(c, "launchctl print ") {
+			t.Fatalf("asked or touched the service: %q", c)
+		}
+	}
+	if len(m.called()) == 0 {
+		t.Fatal("the service manager was never asked")
+	}
+	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services (sh.brew.vaquero); run brew services stop vaquero.") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, running, _ := lockfile.Holder(dataDir); !running || now != pid {
+		t.Fatal("the server was stopped")
+	}
+}

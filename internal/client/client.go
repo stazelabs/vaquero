@@ -27,8 +27,9 @@ type Client struct {
 	Version string // this client's release, sent as Vaquero-Client
 	HTTP    *http.Client
 
-	minClient     string // the last answer's Vaquero-Min-Client
-	serverVersion string // the last answer's Vaquero-Version
+	minClient     string   // the last answer's Vaquero-Min-Client
+	serverVersion string   // the last answer's Vaquero-Version
+	warnings      []string // warnings from answers since the last Warnings
 }
 
 // Error is an API error answer.
@@ -177,12 +178,44 @@ func (c *Client) send(ctx context.Context, method, path string, body io.Reader, 
 		return err
 	}
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
-		if out == nil || len(bytes.TrimSpace(data)) == 0 {
+		if len(bytes.TrimSpace(data)) == 0 {
+			return nil
+		}
+		c.noteWarnings(data)
+		if out == nil {
 			return nil
 		}
 		return json.Unmarshal(data, out)
 	}
 	return failure(res.StatusCode, data)
+}
+
+// noteWarnings keeps an answer's "warning" (someone else holds a claim on
+// the ticket; the write went through), and each bulk item's, named by key.
+func (c *Client) noteWarnings(data []byte) {
+	var a struct {
+		Warning string
+		Items   []struct{ Key, Warning string }
+	}
+	if json.Unmarshal(data, &a) != nil {
+		return // an array, or not JSON: no warning to find
+	}
+	if a.Warning != "" {
+		c.warnings = append(c.warnings, a.Warning)
+	}
+	for _, it := range a.Items {
+		if it.Warning != "" {
+			c.warnings = append(c.warnings, it.Key+": "+it.Warning)
+		}
+	}
+}
+
+// Warnings returns the warnings answers carried since the last call, and
+// forgets them.
+func (c *Client) Warnings() []string {
+	w := c.warnings
+	c.warnings = nil
+	return w
 }
 
 // UpgradeNeeded reports whether this client is older than the server's

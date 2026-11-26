@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"errors"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -318,7 +319,8 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 func APISearch(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := units.Clip(r.URL.Query().Get("q"), maxQuery)
-		hits, err := search.Run(r.Context(), d.RDB, q, limitParam(r, 50, maxAPIList))
+		res, err := search.Run(r.Context(), d.RDB, q, limitParam(r, 50, maxAPIList))
+		hits := res.Hits
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return
@@ -344,8 +346,16 @@ func APISearch(d Deps) http.HandlerFunc {
 // instead gives the newest N, still oldest first.
 func APIEvents(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Vaquero-Seq is the newest sequence, read before the list: an
+		// empty answer to after=SEQ means nothing listable lies between
+		// SEQ and it (reorders advance seq but aren't listed), so a poller
+		// can continue from it without missing an event.
+		newestSeq, err := d.R.MaxEventSeq(r.Context())
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
 		var rows []gen.ListEventsAfterRow
-		var err error
 		if n, perr := strconv.ParseInt(r.URL.Query().Get("newest"), 10, 64); perr == nil && n > 0 {
 			var newest []gen.ListEventsNewestRow
 			newest, err = d.R.ListEventsNewest(r.Context(), min(n, maxAPIList))
@@ -360,22 +370,47 @@ func APIEvents(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		out := make([]api.Event, len(rows))
+		views := make([]templates.EventView, len(rows))
 		for i, e := range rows {
-			ev := templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
+			views[i] = templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
 				Payload: templates.ParsePayload(e.Payload)}
 			if e.TicketNumber > 0 {
-				ev.TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
+				views[i].TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
 			}
+		}
+		if err := resolveLinkTargets(r.Context(), d, views); err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		out := make([]api.Event, len(rows))
+		for i, e := range rows {
+			ev := views[i]
 			at := e.At
 			if parsed, err := timefmt.Parse(e.At); err == nil {
 				at = timefmt.Format(parsed)
 			}
 			out[i] = api.Event{Seq: e.Seq, At: at, Actor: e.ActorName, Kind: e.Kind, Project: e.ProjectKey,
-				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: ev.Payload}
+				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload)}
 		}
+		w.Header().Set("Vaquero-Seq", strconv.FormatInt(newestSeq, 10))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// apiPayload is an event's payload as the API shows it: a description
+// edit's stored text (body_before, body_after) stays on the server, for the
+// ticket history's diff, and "body_diff": true says it was kept.
+func apiPayload(p map[string]any) map[string]any {
+	_, before := p["body_before"]
+	_, after := p["body_after"]
+	if !before && !after {
+		return p
+	}
+	out := maps.Clone(p)
+	delete(out, "body_before")
+	delete(out, "body_after")
+	out["body_diff"] = true
+	return out
 }
 
 // orList joins words as "a, b or c".

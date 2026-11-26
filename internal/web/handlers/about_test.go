@@ -27,10 +27,16 @@ func TestLicensesPage(t *testing.T) {
 		"github.com/go-chi/chi", "Go standard library", "Permission is hereby granted", "<details")
 }
 
+// The header draws the hat inline in theme tokens, so it follows light and
+// dark (VAQ-53); static/logo.svg keeps its fixed colours for the favicon.
 func TestLogoInHeader(t *testing.T) {
 	e := webtest.New(t)
-	contains(t, e.Client().Get("/").Body, static.URL("logo.svg"))
-	if r := e.Client().Get(static.URL("logo.svg")); r.Status != 200 || !strings.Contains(r.Body, "<svg") {
+	body := e.Client().Get("/").Body
+	contains(t, body, `<svg data-logo`, `fill-accent`, `aria-hidden="true"`)
+	if strings.Contains(body, static.URL("logo.svg")) {
+		t.Fatal("the header still loads the fixed-colour logo.svg")
+	}
+	if r := e.Client().Get(static.URL("logo.svg")); r.Status != 200 || !strings.Contains(r.Body, "<svg") || !strings.Contains(r.Body, "#b5532a") {
 		t.Fatalf("%d", r.Status)
 	}
 }

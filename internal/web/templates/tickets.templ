@@ -14,6 +14,7 @@ type TicketForm struct {
 	Parent, MilestoneID, Tags                     string
 	Version                                       string // the version the form was opened at
 	Conflict                                      string // set when a save was refused as stale
+	ClaimNote                                     string // someone else's claim (ClaimNote), "" for none
 	Statuses, Assignees, Milestones               []Option
 	Errors                                        map[string]string
 }
@@ -80,13 +81,22 @@ templ TicketFormPage(f TicketForm) {
 				@helpLink("editing-and-conflicts", "About conflicts")
 			</div>
 		}
+		if f.ClaimNote != "" {
+			<div class="mt-4 flex flex-wrap items-center gap-x-1.5 rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink" data-claim-note>
+				<span class="text-muted">
+					@Icon("claim")
+				</span>
+				{ f.ClaimNote }. Claims are advisory: your save goes through, but they may be working on it.
+				@helpLink("agents-and-claims", "About claims")
+			</div>
+		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">
 			if f.Version != "" {
 				<input type="hidden" name="version" value={ f.Version }/>
 			}
 			<div class="space-y-4 lg:col-span-2">
 				@TextInput(InputProps{Name: "title", Label: "Title", Value: f.Title, Required: true, Error: f.Errors["title"]})
-				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey)})
+				@TextArea(InputProps{Name: "body", Label: "Description", Value: f.Body, Rows: 12, Placeholder: "Markdown works here.", Error: f.Errors["body"], Attrs: attachAttrs(f.TicketKey), Markdown: true})
 				if f.TicketKey == "" {
 					<p class="text-sm text-muted">Attach files after creating the ticket.</p>
 				} else {
@@ -169,9 +179,6 @@ templ TicketPage(v TicketView) {
 						@Icon("link")
 						Links
 					</h2>
-					if len(v.Links) == 0 {
-						<p class="mt-2 text-sm text-muted">No links.</p>
-					}
 					for _, g := range v.Links {
 						<h3 class="mt-3 text-sm font-medium text-ink">{ g.Label }</h3>
 						<ul class="mt-1 space-y-1">
@@ -185,13 +192,19 @@ templ TicketPage(v TicketView) {
 							}
 						</ul>
 					}
-					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
-						@Select(SelectProps{Name: "kind", Label: "This ticket", Selected: v.LinkKind, Options: linkKindOptions()})
-						<div class="flex-1">
-							@TextInput(InputProps{Name: "to", Label: "Ticket", Value: v.LinkTo, Placeholder: v.Project.Key + "-12", Required: true, Error: v.LinkErr})
-						</div>
-						<button type="submit" class={ btnSecondary }>Add link</button>
-					</form>
+					if len(v.Links) == 0 {
+						// Most tickets have no links: the form folds behind one
+						// button until it's wanted (or a link was refused).
+						<details data-link-add open?={ v.LinkErr != "" } class="mt-3 group">
+							<summary class={ btnSecondary + " w-fit cursor-pointer list-none gap-1.5 group-open:hidden [&::-webkit-details-marker]:hidden" }>
+								@Icon("plus")
+								Add link
+							</summary>
+							@linkForm(v)
+						</details>
+					} else {
+						@linkForm(v)
+					}
 				</section>
 				<section id="attachments" hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#attachments" hx-swap="outerHTML" data-live>
 					<h2 class={ h2IconClass }>
@@ -241,7 +254,7 @@ templ TicketPage(v TicketView) {
 						}
 					</ul>
 					<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/comments") } class="mt-4 space-y-3">
-						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key)})
+						@TextArea(InputProps{Name: "body", Label: "Add a comment", Value: v.CommentBody, Rows: 4, Placeholder: "Markdown works here.", Error: v.CommentErr, Attrs: attachAttrs(v.Key), Markdown: true})
 						<button type="submit" class={ btnPrimary }>Add comment</button>
 					</form>
 				</section>
@@ -290,6 +303,28 @@ templ TicketPage(v TicketView) {
 	}
 }
 
+// linkForm adds a link from this ticket, named by its key. The ticket box
+// suggests tickets as you type (GET /t/{key}/link-targets fills the
+// datalist): a number, with or without the project key, or words of a title.
+templ linkForm(v TicketView) {
+	<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/links") } class="mt-4 flex flex-wrap items-end gap-3">
+		@Select(SelectProps{Name: "kind", Label: v.Key, Selected: v.LinkKind, Options: linkKindOptions()})
+		<div class="flex-1">
+			@TextInput(InputProps{Name: "to", Label: "Ticket", Value: v.LinkTo, Placeholder: "12, " + v.Project.Key + "-12 or words of a title", Required: true, Error: v.LinkErr, Attrs: linkTargetAttrs(v.Key)})
+			<datalist id="link-targets"></datalist>
+		</div>
+		<button type="submit" class={ btnSecondary }>Add link</button>
+	</form>
+}
+
+// LinkTargetOptions are the link box's suggestions: each ticket's key, with
+// its title in the label.
+templ LinkTargetOptions(opts []Option) {
+	for _, o := range opts {
+		<option value={ o.Value } label={ o.Label }></option>
+	}
+}
+
 // iconField is a side-panel field whose value has a glyph.
 templ iconField(label, value, icon, tint string) {
 	<div>
@@ -329,7 +364,7 @@ templ commentItem(key string, c CommentRow) {
 		</p>
 		if c.Editing {
 			<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID) } class="mt-2 space-y-2">
-				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key)})
+				@TextArea(InputProps{Name: "body", ID: "c-body-" + c.ID, Label: "Edit comment", Value: c.Raw, Rows: 4, Attrs: attachAttrs(key), Markdown: true})
 				<div class="flex items-center gap-4">
 					<button type="submit" class={ btnPrimary }>Save comment</button>
 					<a href={ templ.SafeURL("/t/" + key + "#c-" + c.ID) } class={ btnLink }>Cancel</a>
@@ -342,7 +377,7 @@ templ commentItem(key string, c CommentRow) {
 			if c.Mine {
 				<div class="mt-2 flex items-center gap-4">
 					<a href={ templ.SafeURL("/t/" + key + "?edit=" + c.ID + "#c-" + c.ID) } class="text-xs text-muted hover:text-accent">Edit</a>
-					<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID + "/delete") }>
+					<form method="post" action={ templ.SafeURL("/t/" + key + "/comments/" + c.ID + "/delete") } data-confirm="Delete this comment?">
 						<button type="submit" class="text-xs text-muted hover:text-danger">Delete</button>
 					</form>
 				</div>
@@ -357,8 +392,25 @@ templ EventLine(e EventView) {
 		<span class="text-muted">
 			@Icon(EventIcon(e.Kind))
 		</span>
-		<span class="font-medium text-ink">{ e.Actor }</span> { EventSentence(e) }
+		<span class="font-medium text-ink">{ e.Actor }</span>
+		<span>
+			@sentenceParts(EventParts(e))
+		</span>
 		<span class="text-xs text-muted">· { e.Ago }</span>
+		if d := bodyChanges(e); d.Show {
+			<details class="w-full pl-6">
+				<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
+				if d.TooLong {
+					<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
+				} else {
+					<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+						for _, l := range d.Lines {
+							<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+						}
+					</pre>
+				}
+			</details>
+		}
 	</li>
 }
 

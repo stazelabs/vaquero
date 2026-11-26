@@ -19,14 +19,15 @@ templ TextInput(p InputProps) {
 				aria-invalid="true"
 				aria-describedby={ p.id() + "-error" }
 			}
-			class={ inputClass }
+			class={ fieldClass }
 			{ p.attrs()... }
 		/>
 		@FieldError(p.id()+"-error", p.Error)
 	</div>
 }
 
-// TextArea is TextInput for several lines, Rows tall.
+// TextArea is TextInput for several lines, Rows tall. With Markdown, a
+// small link to the Markdown article sits under it.
 templ TextArea(p InputProps) {
 	<div>
 		if p.Label != "" {
@@ -46,7 +47,22 @@ templ TextArea(p InputProps) {
 			{ p.attrs()... }
 		>{ p.Value }</textarea>
 		@FieldError(p.id()+"-error", p.Error)
+		if p.Markdown {
+			@markdownHelp()
+		}
 	</div>
+}
+
+// markdownHelp is the small link under a box that takes Markdown. It opens
+// the article in a new tab, so what is typed in the box stays.
+templ markdownHelp() {
+	<p class="mt-1 flex justify-end text-xs">
+		<a href="/help/markdown" data-markdown-help target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-muted hover:text-accent">
+			@IconClass("markdown", "h-3.5 w-3.5")
+			Markdown
+			<span class="sr-only">help, opens in a new tab</span>
+		</a>
+	</p>
 }
 
 // Select is a labelled drop-down with id "f-" + Name.
@@ -62,7 +78,7 @@ templ Select(p SelectProps) {
 				aria-invalid="true"
 				aria-describedby={ "f-" + p.Name + "-error" }
 			}
-			class={ inputClass }
+			class={ fieldClass }
 		>
 			for _, o := range p.Options {
 				<option value={ o.Value } selected?={ o.Value == p.Selected }>{ o.Label }</option>

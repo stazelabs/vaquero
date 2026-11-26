@@ -84,7 +84,7 @@ func TestStatusChangedAtBackfilled(t *testing.T) {
 	if err != nil || tk.StatusChangedAt != "2026-02-02T00:00:00Z" {
 		t.Fatalf("%q %v", tk.StatusChangedAt, err)
 	}
-	hits, err := appdb.SearchTickets(ctx, w, `"old"*`, 10)
+	hits, err := appdb.SearchTickets(ctx, w, []string{`"old"*`}, 10)
 	if err != nil || len(hits) != 1 {
 		t.Fatalf("backfilled index: %d %v", len(hits), err)
 	}
@@ -92,7 +92,7 @@ func TestStatusChangedAtBackfilled(t *testing.T) {
 
 func search(t *testing.T, w world, query string) []appdb.SearchHit {
 	t.Helper()
-	hits, err := appdb.SearchTickets(ctx, w.d.R, query, 50)
+	hits, err := appdb.SearchTickets(ctx, w.d.R, []string{query}, 50)
 	if err != nil {
 		t.Fatal(err)
 	}

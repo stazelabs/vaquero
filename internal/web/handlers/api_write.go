@@ -352,15 +352,6 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 	}
 }
 
-func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p gen.Project, status int) {
-	out, err := ticketDTO(r, d, t, p)
-	if err != nil {
-		apiFail(w, r, d, api.Internal(), err)
-		return
-	}
-	api.WriteJSON(w, status, out)
-}
-
 // APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?,
 // after?}; ?view=summary answers with the short answer.
 func APITicketMove(d Deps) http.HandlerFunc {
@@ -430,7 +421,7 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, commentDTO(c, a.Name))
+		writeCommentAnswer(w, r, d, t, c, a.Name, http.StatusCreated)
 	}
 }
 
@@ -470,8 +461,26 @@ func APICommentUpdate(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, commentDTO(nc, a.Name))
+		t, err := d.R.GetTicket(r.Context(), nc.TicketID)
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		writeCommentAnswer(w, r, d, t, nc, a.Name, http.StatusOK)
 	}
+}
+
+// writeCommentAnswer answers a comment write with the comment, the claim
+// on its ticket t (which a comment leaves alone) and, when someone else
+// holds that claim, its warning.
+func writeCommentAnswer(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, c gen.Comment, author string, status int) {
+	out := commentDTO(c, author)
+	var err error
+	if out.ClaimedBy, out.ClaimExpiresAt, out.Warning, err = ticketClaim(r, d, t); err != nil {
+		apiFail(w, r, d, api.Internal(), err)
+		return
+	}
+	api.WriteJSON(w, status, out)
 }
 
 // APICommentDelete is DELETE /api/v1/comments/{id}.
@@ -514,7 +523,12 @@ func APILinkCreate(d Deps) http.HandlerFunc {
 			return
 		}
 		other, _, _ := d.Core.ResolveTicket(r.Context(), d.R, k)
-		api.WriteJSON(w, http.StatusCreated, api.Link{ID: l.ID, Kind: l.Kind, Direction: "out", Key: k.String(), Title: other.Title})
+		out := api.Link{ID: l.ID, Kind: l.Kind, Direction: "out", Key: k.String(), Title: other.Title}
+		if _, _, out.Warning, err = ticketClaim(r, d, t); err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		api.WriteJSON(w, http.StatusCreated, out)
 	}
 }
 

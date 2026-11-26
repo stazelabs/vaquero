@@ -251,7 +251,16 @@ func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) erro
 func (c *cmd) call(ctx context.Context, method, path string, body, out any) error {
 	err := c.client.Do(ctx, method, path, body, out)
 	c.tellUpgrade()
+	c.tellWarnings()
 	return err
+}
+
+// tellWarnings prints each warning the last answers carried, such as
+// someone else's claim on the ticket just changed, on stderr.
+func (c *cmd) tellWarnings() {
+	for _, w := range c.client.Warnings() {
+		fmt.Fprintln(c.stderr, "vaquero: warning: "+w)
+	}
 }
 
 // tellUpgrade says, once a run, that this CLI is older than the server's
