@@ -55,6 +55,7 @@ func cmdAttach(ctx context.Context, stdout, stderr io.Writer, args []string) int
 			var a api.Attachment
 			err = c.client.Upload(ctx, "/api/v1/tickets/"+key+"/attachments", s.name, r, &a)
 			closeFn()
+			c.tellWarnings()
 			if err != nil {
 				return fmt.Errorf("%s: %w", s.name, err)
 			}

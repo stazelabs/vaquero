@@ -421,17 +421,7 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
-		out := commentDTO(c, a.Name)
-		// t was read before the comment, which leaves the claim alone.
-		if t.ClaimedBy.Valid {
-			claimant, err := d.R.GetActor(r.Context(), t.ClaimedBy.String)
-			if err != nil {
-				apiFail(w, r, d, api.Internal(), err)
-				return
-			}
-			out.Warning = claimWarning(r, d, t.ClaimedBy.String, claimant.Name, t.ClaimExpiresAt.String)
-		}
-		api.WriteJSON(w, http.StatusCreated, out)
+		writeCommentAnswer(w, r, d, t, c, a.Name, http.StatusCreated)
 	}
 }
 
@@ -471,8 +461,26 @@ func APICommentUpdate(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
-		api.WriteJSON(w, http.StatusOK, commentDTO(nc, a.Name))
+		t, err := d.R.GetTicket(r.Context(), nc.TicketID)
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		writeCommentAnswer(w, r, d, t, nc, a.Name, http.StatusOK)
 	}
+}
+
+// writeCommentAnswer answers a comment write with the comment, the claim
+// on its ticket t (which a comment leaves alone) and, when someone else
+// holds that claim, its warning.
+func writeCommentAnswer(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, c gen.Comment, author string, status int) {
+	out := commentDTO(c, author)
+	var err error
+	if out.ClaimedBy, out.ClaimExpiresAt, out.Warning, err = ticketClaim(r, d, t); err != nil {
+		apiFail(w, r, d, api.Internal(), err)
+		return
+	}
+	api.WriteJSON(w, status, out)
 }
 
 // APICommentDelete is DELETE /api/v1/comments/{id}.
@@ -515,7 +523,12 @@ func APILinkCreate(d Deps) http.HandlerFunc {
 			return
 		}
 		other, _, _ := d.Core.ResolveTicket(r.Context(), d.R, k)
-		api.WriteJSON(w, http.StatusCreated, api.Link{ID: l.ID, Kind: l.Kind, Direction: "out", Key: k.String(), Title: other.Title})
+		out := api.Link{ID: l.ID, Kind: l.Kind, Direction: "out", Key: k.String(), Title: other.Title}
+		if _, _, out.Warning, err = ticketClaim(r, d, t); err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
+		api.WriteJSON(w, http.StatusCreated, out)
 	}
 }
 

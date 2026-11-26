@@ -31,7 +31,7 @@ Only the holder can renew or release a claim, and only while its lease is runnin
 
 ## Claims are advisory
 
-A claim says who is working on a ticket; it doesn't lock it. Anyone can still edit, move or comment on a claimed ticket, and the change goes through. When the ticket is claimed by someone else, the answer says so: the API and MCP answers to an update, a move or a new comment carry `"warning": "Claimed by builder until 12:15 UTC."` (bulk updates carry it on each item), and the web edit form shows the same note above the fields. Check with the holder before changing work in progress.
+A claim says who is working on a ticket; it doesn't lock it. Anyone can still edit, move or comment on a claimed ticket, and the change goes through. When the ticket is claimed by someone else, the answer says so: the API and MCP answers to an update, a move, a comment, a link or an attachment carry `"warning": "Claimed by builder until 12:15 UTC."` (bulk updates carry it on each item), the command line prints it as `vaquero: warning: Claimed by builder until 12:15 UTC.` on standard error, and the web edit form shows the same note above the fields. Check with the holder before changing work in progress.
 
 ## When a claim lapses
 

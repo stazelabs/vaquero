@@ -105,6 +105,7 @@ type Link struct {
 	Direction string `json:"direction"` // out: this ticket → key; in: key → this ticket
 	Key       string `json:"key"`
 	Title     string `json:"title"`
+	Warning   string `json:"warning,omitempty"` // on a new link's answer, as on Ticket
 }
 
 type Comment struct {
@@ -113,7 +114,11 @@ type Comment struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
-	Warning   string `json:"warning,omitempty"` // on a new comment's answer, as on Ticket
+	// On a comment write's answer only: the claim on its ticket, and the
+	// warning as on Ticket.
+	ClaimedBy      string `json:"claimed_by,omitempty"`
+	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
+	Warning        string `json:"warning,omitempty"`
 }
 
 // Attachment is a file on a ticket. URL is the address of its bytes on the
@@ -126,6 +131,7 @@ type Attachment struct {
 	UploadedBy  string `json:"uploaded_by"`
 	CreatedAt   string `json:"created_at"`
 	URL         string `json:"url"`
+	Warning     string `json:"warning,omitempty"` // on an upload's answer, as on Ticket
 }
 
 // inlineTypes are the sniffed types a server shows in the page; every

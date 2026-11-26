@@ -51,6 +51,20 @@ func claimWarning(r *http.Request, d Deps, claimantID, claimant, expires string)
 	return templates.ClaimNote(claimantID, claimant, expires, apiActor(r).ID, d.Now(), ".")
 }
 
+// ticketClaim is the claim on t as a write's answer names it: the
+// claimant, the lease's end and claimWarning's note; all "" when nobody
+// holds it.
+func ticketClaim(r *http.Request, d Deps, t gen.Ticket) (claimant, expires, warning string, err error) {
+	if !t.ClaimedBy.Valid {
+		return "", "", "", nil
+	}
+	a, err := d.R.GetActor(r.Context(), t.ClaimedBy.String)
+	if err != nil {
+		return "", "", "", err
+	}
+	return a.Name, t.ClaimExpiresAt.String, claimWarning(r, d, a.ID, a.Name, t.ClaimExpiresAt.String), nil
+}
+
 // writeTicketView answers a write with t: the short answer when summary,
 // else the whole ticket.
 func writeTicketView(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p gen.Project, status int, summary bool) {
