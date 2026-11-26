@@ -33,8 +33,8 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero status move KEY NAME --before S \| --after S` | Move a status next to another, in one step |
 | `vaquero status delete KEY NAME` | Delete a status no ticket uses; each category keeps at least one |
 | `vaquero milestones KEY` | A project's milestones with their due dates, done and total tickets, and whether each is open |
-| `vaquero milestone add KEY NAME [--description TEXT|-] [--due DATE]` | Add a milestone; dates look like 2026-12-31 |
-| `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT|-] [--due DATE]` | Change only what is given; `--due ""` clears the date |
+| `vaquero milestone add KEY NAME [--description TEXT] [--due DATE]` | Add a milestone; dates look like 2026-12-31, and `-` as the description reads it from standard input |
+| `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT] [--due DATE]` | Change only what is given; `--due ""` clears the date, and `-` as the description reads it from standard input |
 | `vaquero milestone close KEY NAME` / `reopen KEY NAME` | Close a milestone when it ships, or open it again |
 | `vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]` | List tickets; done and cancelled are left out unless `--status` or `--all` |
 | `vaquero ticket show TICKET` | A ticket with its sub-tickets, links and comments |
