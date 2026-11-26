@@ -44,6 +44,20 @@ DELETE FROM ticket_links
 WHERE ticket_links.from_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid))
    OR ticket_links.to_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid));
 
+-- name: DeleteProjectOldKeys :exec
+-- Old keys in the project (of tickets that moved away) and the old keys
+-- elsewhere of the project's tickets (that moved in).
+DELETE FROM ticket_old_keys
+WHERE ticket_old_keys.project_id = sqlc.arg(pid)
+   OR ticket_old_keys.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid));
+
+-- name: RehomeMovedTicketEvents :exec
+-- The project's events on tickets that have since moved to another project
+-- go with the ticket, so its history outlives the old project.
+UPDATE events SET project_id = (SELECT t.project_id FROM tickets t WHERE t.id = events.ticket_id)
+WHERE events.project_id = sqlc.arg(pid)
+  AND events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id <> sqlc.arg(pid));
+
 -- name: DeleteProjectEvents :exec
 DELETE FROM events
 WHERE events.project_id = sqlc.arg(pid)

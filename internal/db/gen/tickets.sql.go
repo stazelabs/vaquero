@@ -11,6 +11,21 @@ import (
 	"strings"
 )
 
+const addTicketOldKey = `-- name: AddTicketOldKey :exec
+INSERT INTO ticket_old_keys (project_id, number, ticket_id) VALUES (?, ?, ?)
+`
+
+type AddTicketOldKeyParams struct {
+	ProjectID string
+	Number    int64
+	TicketID  string
+}
+
+func (q *Queries) AddTicketOldKey(ctx context.Context, arg AddTicketOldKeyParams) error {
+	_, err := q.db.ExecContext(ctx, addTicketOldKey, arg.ProjectID, arg.Number, arg.TicketID)
+	return err
+}
+
 const createTicket = `-- name: CreateTicket :one
 INSERT INTO tickets (id, project_id, number, title, body, status_id, priority, assignee_id,
                      parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at,
@@ -156,6 +171,50 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 	return i, err
 }
 
+const getTicketByOldKey = `-- name: GetTicketByOldKey :one
+
+SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, t.version, t.claimed_by, t.claim_expires_at, t.claim_prev_status_id, t.tier, t.model FROM ticket_old_keys k
+JOIN tickets t ON t.id = k.ticket_id
+WHERE k.project_id = ? AND k.number = ?
+`
+
+type GetTicketByOldKeyParams struct {
+	ProjectID string
+	Number    int64
+}
+
+// Moving a ticket to another project (VAQ-18): MoveTicketToProject runs
+// these inside one transaction.
+// The ticket that once had this project's number, before it moved away.
+func (q *Queries) GetTicketByOldKey(ctx context.Context, arg GetTicketByOldKeyParams) (Ticket, error) {
+	row := q.db.QueryRowContext(ctx, getTicketByOldKey, arg.ProjectID, arg.Number)
+	var i Ticket
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Number,
+		&i.Title,
+		&i.Body,
+		&i.StatusID,
+		&i.Priority,
+		&i.AssigneeID,
+		&i.ParentID,
+		&i.MilestoneID,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.StatusChangedAt,
+		&i.Version,
+		&i.ClaimedBy,
+		&i.ClaimExpiresAt,
+		&i.ClaimPrevStatusID,
+		&i.Tier,
+		&i.Model,
+	)
+	return i, err
+}
+
 const listAncestorIDs = `-- name: ListAncestorIDs :many
 WITH RECURSIVE up(id, parent_id, depth) AS (
     SELECT t.id, t.parent_id, 0 FROM tickets t WHERE t.id = ?
@@ -210,6 +269,63 @@ func (q *Queries) ListColumn(ctx context.Context, statusID string) ([]ListColumn
 	for rows.Next() {
 		var i ListColumnRow
 		if err := rows.Scan(&i.ID, &i.Position); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDescendants = `-- name: ListDescendants :many
+WITH RECURSIVE down(id, depth) AS (
+    SELECT c.id, 1 FROM tickets c WHERE c.parent_id = ?1
+    UNION ALL
+    SELECT c.id, down.depth + 1 FROM tickets c JOIN down ON c.parent_id = down.id
+    WHERE down.depth < 1000
+)
+SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, t.version, t.claimed_by, t.claim_expires_at, t.claim_prev_status_id, t.tier, t.model FROM down JOIN tickets t ON t.id = down.id ORDER BY down.depth, t.number
+`
+
+// The ticket's sub-tickets, theirs, and so on, nearest first, then by
+// number.
+func (q *Queries) ListDescendants(ctx context.Context, id sql.NullString) ([]Ticket, error) {
+	rows, err := q.db.QueryContext(ctx, listDescendants, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Number,
+			&i.Title,
+			&i.Body,
+			&i.StatusID,
+			&i.Priority,
+			&i.AssigneeID,
+			&i.ParentID,
+			&i.MilestoneID,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.StatusChangedAt,
+			&i.Version,
+			&i.ClaimedBy,
+			&i.ClaimExpiresAt,
+			&i.ClaimPrevStatusID,
+			&i.Tier,
+			&i.Model,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -403,6 +519,42 @@ func (q *Queries) ListTicketKeys(ctx context.Context, ids []string) ([]ListTicke
 	return items, nil
 }
 
+const listTicketOldKeys = `-- name: ListTicketOldKeys :many
+SELECT p.key AS project_key, k.number FROM ticket_old_keys k
+JOIN projects p ON p.id = k.project_id
+WHERE k.ticket_id = ?
+ORDER BY p.key, k.number
+`
+
+type ListTicketOldKeysRow struct {
+	ProjectKey string
+	Number     int64
+}
+
+// The keys a ticket had before it moved, oldest project first by name.
+func (q *Queries) ListTicketOldKeys(ctx context.Context, ticketID string) ([]ListTicketOldKeysRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTicketOldKeys, ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTicketOldKeysRow{}
+	for rows.Next() {
+		var i ListTicketOldKeysRow
+		if err := rows.Scan(&i.ProjectKey, &i.Number); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTicketsByProject = `-- name: ListTicketsByProject :many
 SELECT t.id, t.project_id, t.number, t.title, t.body, t.status_id, t.priority, t.assignee_id, t.parent_id, t.milestone_id, t.position, t.created_by, t.created_at, t.updated_at, t.status_changed_at, t.version, t.claimed_by, t.claim_expires_at, t.claim_prev_status_id, t.tier, t.model, s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name
@@ -533,6 +685,39 @@ type SetTicketPositionParams struct {
 
 func (q *Queries) SetTicketPosition(ctx context.Context, arg SetTicketPositionParams) error {
 	_, err := q.db.ExecContext(ctx, setTicketPosition, arg.Position, arg.ID)
+	return err
+}
+
+const setTicketProject = `-- name: SetTicketProject :exec
+UPDATE tickets SET project_id = ?, number = ?, status_id = ?, milestone_id = ?, position = ?,
+       claim_prev_status_id = ?, status_changed_at = ?, updated_at = ?, version = version + 1
+WHERE id = ?
+`
+
+type SetTicketProjectParams struct {
+	ProjectID         string
+	Number            int64
+	StatusID          string
+	MilestoneID       sql.NullString
+	Position          float64
+	ClaimPrevStatusID sql.NullString
+	StatusChangedAt   string
+	UpdatedAt         string
+	ID                string
+}
+
+func (q *Queries) SetTicketProject(ctx context.Context, arg SetTicketProjectParams) error {
+	_, err := q.db.ExecContext(ctx, setTicketProject,
+		arg.ProjectID,
+		arg.Number,
+		arg.StatusID,
+		arg.MilestoneID,
+		arg.Position,
+		arg.ClaimPrevStatusID,
+		arg.StatusChangedAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
 	return err
 }
 

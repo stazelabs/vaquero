@@ -196,6 +196,8 @@ func EventSentence(e EventView) string {
 		return "created " + e.TicketKey + " " + title
 	case core.EvTicketUpdated:
 		return ticketUpdated(e)
+	case core.EvTicketMoved:
+		return movedSentence(e)
 	case core.EvTicketReordered:
 		if e.Times > 1 {
 			return fmt.Sprintf("reordered %s in %s %d times", e.TicketKey, s("status"), e.Times)
@@ -316,6 +318,24 @@ func decisionSentence(e EventView) string {
 	return "withdrew a question " + scope("about")
 }
 
+// movedSentence words a ticket.moved event, naming both projects: "moved
+// VAQ-4 to OTH as OTH-2 with 2 sub-tickets; 1 open decision stays in VAQ".
+func movedSentence(e EventView) string {
+	s := func(k string) string { v, _ := e.Payload[k].(string); return v }
+	out := fmt.Sprintf("moved %s to %s as %s", s("from"), s("to_project"), s("to"))
+	if subs, _ := e.Payload["sub_tickets"].([]any); len(subs) > 0 {
+		out += " with " + countLabel(int64(len(subs)), "sub-ticket", "sub-tickets")
+	}
+	if n, _ := e.Payload["open_decisions"].(float64); n > 0 {
+		verb := " stays in "
+		if n > 1 {
+			verb = " stay in "
+		}
+		out += "; " + countLabel(int64(n), "open decision", "open decisions") + verb + s("from_project")
+	}
+	return out
+}
+
 // tagTickets is a tag event's ticket count: "1 ticket", "3 tickets".
 func tagTickets(p map[string]any) string {
 	n, _ := p["tickets"].(float64)
@@ -404,7 +424,7 @@ func eventHref(e EventView) string {
 
 // eventIcons are the glyphs for event kinds that don't follow their prefix.
 var eventIcons = map[string]string{
-	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved",
+	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved", core.EvTicketMoved: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
 	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",

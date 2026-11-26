@@ -252,6 +252,13 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		}
 		out.Assignee = a.Name
 	}
+	former, err := d.R.ListTicketOldKeys(ctx, t.ID)
+	if err != nil {
+		return out, err
+	}
+	for _, k := range former {
+		out.FormerKeys = append(out.FormerKeys, core.TicketKey{Project: k.ProjectKey, Number: k.Number}.String())
+	}
 	if t.MilestoneID.Valid {
 		m, err := d.R.GetMilestone(ctx, t.MilestoneID.String)
 		if err != nil {
@@ -424,7 +431,7 @@ func APIEvents(d Deps) http.HandlerFunc {
 			views[i] = templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
 				Payload: templates.ParsePayload(e.Payload)}
 			if e.TicketNumber > 0 {
-				views[i].TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
+				views[i].TicketKey = core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String()
 			}
 		}
 		if err := resolveLinkTargets(r.Context(), d, views); err != nil {

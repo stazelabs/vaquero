@@ -336,6 +336,10 @@ func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) ([]gen.
 		return nil, fmt.Errorf("decision pins: %w", err)
 	}
 	for _, p := range pins {
+		if p.ProjectID != d.ProjectID {
+			key := TicketKey{Project: p.ProjectKey, Number: p.Number}.String()
+			return nil, invalid("answer", key+" moved to another project since this was asked; ask again there.")
+		}
 		rev, err := planRevision(ctx, q, p.TicketID)
 		if err != nil {
 			return nil, err

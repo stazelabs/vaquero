@@ -295,6 +295,9 @@ func printTicket(w io.Writer, t apiTicket) {
 	if t.Milestone != "" {
 		fmt.Fprintf(w, "Milestone: %s\n", t.Milestone)
 	}
+	if len(t.FormerKeys) > 0 {
+		fmt.Fprintf(w, "Formerly %s\n", strings.Join(t.FormerKeys, ", "))
+	}
 	switch {
 	case t.Tier != "" && t.Model != "":
 		fmt.Fprintf(w, "Tier: %s · Model: %s\n", t.Tier, t.Model)
@@ -349,7 +352,7 @@ func linkWords(l api.Link) string {
 }
 
 func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS"
+	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS | move-to TICKET KEY [--version N]"
 	c := newCmd(stdout, stderr, usage)
 	title := c.fs.String("title", "", "title")
 	body := c.fs.String("body", "", "description (- reads standard input)")
@@ -479,6 +482,25 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 				return err
 			}
 			show()
+			return nil
+		})
+	case "move-to":
+		if len(pos) != 3 {
+			return c.finish(usageError{usage: usage})
+		}
+		return c.connected(ctx, nil, func() error {
+			key, err := canon(pos[1])
+			if err != nil {
+				return err
+			}
+			b := map[string]any{"project": pos[2]}
+			if *version > 0 {
+				b["version"] = *version
+			}
+			if err := c.call(ctx, "POST", "/api/v1/tickets/"+key+"/move-to", b, &t); err != nil {
+				return err
+			}
+			c.emit(t, func() { fmt.Fprintf(c.stdout, "%s is now %s.\n", key, t.Key) })
 			return nil
 		})
 	}

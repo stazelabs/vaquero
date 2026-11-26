@@ -198,6 +198,15 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if _, err := c.AnswerDecision(ctx, by, approval.ID, core.Answer{Option: core.ApproveLabel, Note: "Go.", RelayedBy: agent.ID, Words: "Looks good, go."}); err != nil {
 		return err
 	}
+	// A ticket moved from OLD to VAQ: it is VAQ-8 now, and OLD-2 still
+	// leads to it (ticket_old_keys).
+	moving, err := c.CreateTicket(ctx, by, old.ID, core.TicketInput{Title: "A ticket that moved"})
+	if err != nil {
+		return err
+	}
+	if _, err := c.MoveTicketToProject(ctx, by, moving.ID, vaq.ID, 0); err != nil {
+		return err
+	}
 	// Archived last: an archived project takes no new tickets or links.
 	if err := c.SetProjectArchived(ctx, by, old.ID, true); err != nil {
 		return err

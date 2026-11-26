@@ -46,6 +46,14 @@ import (
 //     decision's one ticket; a decision naming several (a group approval)
 //     or none is a project event, ticket_ids naming them. A group answer is
 //     one event, however many approval rows it writes.
+//   - ticket.moved: {"from": "VAQ-7", "to": "OTH-3", "from_project",
+//     "from_project_id", "to_project", "changes"?, "sub_tickets",
+//     "ticket_ids", "open_decisions"?}, on the moved ticket in its new
+//     project. changes holds the status and milestone when the move changed
+//     their names; sub_tickets the sub-tickets that moved along
+//     (MovedTicket), ticket_ids their ids (their histories find the move
+//     through it); open_decisions how many open decisions naming them stay
+//     in the old project, left out when none do.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -89,6 +97,7 @@ const (
 	EvDecisionRuled     = "decision.ruled"
 	EvDecisionAnswered  = "decision.answered"
 	EvDecisionWithdrawn = "decision.withdrawn"
+	EvTicketMoved       = "ticket.moved"
 )
 
 // PlanPayload is a plan.created or plan.revised event's payload.
@@ -149,7 +158,7 @@ func EventKinds() []string {
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
-		EvPlanCreated, EvPlanRevised,
+		EvPlanCreated, EvPlanRevised, EvTicketMoved,
 		EvDecisionAsked, EvDecisionRuled, EvDecisionAnswered, EvDecisionWithdrawn,
 	}
 }

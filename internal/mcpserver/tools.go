@@ -99,6 +99,7 @@ type (
 	bulkItemArgs struct {
 		Key       string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
 		Version   int64      `json:"version,omitempty" jsonschema:"The version you read: if the ticket changed since, nothing in the item runs. Needs an update."`
+		Project   string     `json:"project,omitempty" jsonschema:"Another project's key: move the ticket there first, with its sub-tickets; it takes a new key, and its old key keeps leading to it. The rest of the item then names that project's statuses and milestones."`
 		Claim     *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket: {} for 15 minutes. Not with heartbeat."`
 		Heartbeat *claimArgs `json:"heartbeat,omitempty" jsonschema:"Renew your claim from now, without changing the version: {} for 15 minutes."`
 		Update    *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
@@ -306,7 +307,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
 		})
 	add(s, c, "bulk_update", "Update tickets in bulk", false,
-		"Work several tickets in one call, up to 100. Each item names a ticket and any of claim, heartbeat, update, comment, move and release, which run in that order; "+
+		"Work several tickets in one call, up to 100. Each item names a ticket and any of project, claim, heartbeat, update, comment, move and release, which run in that order; "+
 			"the first that fails skips the rest of that item, and a stale version runs none of it. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
 		func(in bulkArgs) request {
 			items := make([]map[string]any, len(in.Items))
@@ -314,6 +315,9 @@ func addTools(s *mcp.Server, c *caller) {
 				b := map[string]any{"key": it.Key}
 				if it.Version != 0 {
 					b["version"] = it.Version
+				}
+				if it.Project != "" {
+					b["project"] = it.Project
 				}
 				for k, l := range map[string]*claimArgs{"claim": it.Claim, "heartbeat": it.Heartbeat} {
 					if l != nil {

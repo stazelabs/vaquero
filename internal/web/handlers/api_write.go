@@ -403,6 +403,61 @@ func APITicketMove(d Deps) http.HandlerFunc {
 	}
 }
 
+// APITicketMoveTo is POST /api/v1/tickets/{ticket}/move-to {project,
+// version?}: the ticket, with its sub-tickets, moves to the project of
+// that key (core.MoveTicketToProject), and the answer names it by its new
+// key; ?view=summary answers with the short answer. Its old key keeps
+// leading to it.
+func APITicketMoveTo(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
+		t, p, ok := apiTicket(w, r, d)
+		if !ok {
+			return
+		}
+		var in struct {
+			Project string `json:"project"`
+			Version int64  `json:"version"`
+		}
+		if f := api.Decode(r, &in); f != nil {
+			api.WriteFailure(w, f)
+			return
+		}
+		to, f, err := moveTarget(r.Context(), d, in.Project)
+		if f != nil {
+			apiFail(w, r, d, f, err)
+			return
+		}
+		nt, err := d.Core.MoveTicketToProject(r.Context(), apiActor(r).ID, t.ID, to.ID, in.Version)
+		if err != nil {
+			apiCoreFail(w, r, d, p, err)
+			return
+		}
+		writeTicketView(w, r, d, nt, to, http.StatusOK, short)
+	}
+}
+
+// moveTarget is the project a ticket moves to, by key (any case): a 422
+// naming the project field when there is none, a 500 (err its cause) when
+// it can't be read.
+func moveTarget(ctx context.Context, d Deps, key string) (gen.Project, *api.Failure, error) {
+	k := strings.ToUpper(strings.TrimSpace(key))
+	if k == "" {
+		return gen.Project{}, invalidFields(map[string]string{"project": "Name the project to move it to."}, ""), nil
+	}
+	p, err := d.R.GetProjectByKey(ctx, k)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, invalidFields(map[string]string{"project": "No project " + k + "."}, ""), nil
+	}
+	if err != nil {
+		return p, api.Internal(), err
+	}
+	return p, nil, nil
+}
+
 func commentDTO(c gen.Comment, author string) api.Comment {
 	return api.Comment{ID: c.ID, Author: author, Body: c.Body, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
 }

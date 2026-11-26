@@ -357,13 +357,19 @@ func (c *Core) replaceTags(ctx context.Context, q *gen.Queries, ticketID string,
 	return nil
 }
 
-// ResolveTicket finds a ticket by key through q (normally the reader).
+// ResolveTicket finds a ticket by key through q (normally the reader). A
+// key the ticket had before it moved to another project leads to it too:
+// the answer is the ticket and the project it is in now, so callers name
+// it by its current key (TicketKey{p.Key, t.Number}).
 func (c *Core) ResolveTicket(ctx context.Context, q *gen.Queries, key TicketKey) (gen.Ticket, gen.Project, error) {
 	p, err := q.GetProjectByKey(ctx, key.Project)
 	if err != nil {
 		return gen.Ticket{}, gen.Project{}, notFound(err, "get project")
 	}
 	t, err := q.GetTicketByNumber(ctx, gen.GetTicketByNumberParams{ProjectID: p.ID, Number: key.Number})
+	if errors.Is(err, sql.ErrNoRows) {
+		t, p, err = resolveOldKey(ctx, q, p, key.Number)
+	}
 	if err != nil {
 		return gen.Ticket{}, p, notFound(err, "get ticket")
 	}

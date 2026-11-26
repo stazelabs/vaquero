@@ -186,11 +186,12 @@ func ticketEventsQuery(t *testing.T) string {
 	return strings.ReplaceAll(strings.TrimSpace(q), "sqlc.arg(ticket_id)", "?1")
 }
 
-var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|g|events)\b`)
+var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|g|v|events)\b`)
 
-// Review Focus 2: a ticket's history is three index lookups (its own
-// events, link events aimed at it, its project's tag events), never a scan
-// of events, on a new database and on every released one migrated.
+// Review Focus 2: a ticket's history is four index lookups (its own
+// events, link events aimed at it, its projects' tag events, its
+// ancestors' moves that took it along), never a scan of events, on a new
+// database and on every released one migrated.
 func TestTicketHistoryUsesIndexes(t *testing.T) {
 	dbs := map[string]*sql.DB{"new": dbtest.New(t).W}
 	files, _ := filepath.Glob(filepath.Join(fixtureDir, "*.sqlite"))
@@ -227,6 +228,9 @@ func TestTicketHistoryUsesIndexes(t *testing.T) {
 		t.Logf("%s:\n%s", name, all)
 		if scansEvents.MatchString(all) {
 			t.Errorf("%s: the history query scans events:\n%s", name, all)
+		}
+		if !strings.Contains(all, "SEARCH v USING INDEX events_ticket") {
+			t.Errorf("%s: the ancestors' moves aren't found through events_ticket:\n%s", name, all)
 		}
 		for _, idx := range []string{"events_ticket", "events_link_to", "events_tag"} {
 			if !strings.Contains(all, idx) {

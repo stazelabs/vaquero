@@ -92,6 +92,19 @@ func (q *Queries) DeleteProjectMilestones(ctx context.Context, projectID string)
 	return err
 }
 
+const deleteProjectOldKeys = `-- name: DeleteProjectOldKeys :exec
+DELETE FROM ticket_old_keys
+WHERE ticket_old_keys.project_id = ?1
+   OR ticket_old_keys.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1)
+`
+
+// Old keys in the project (of tickets that moved away) and the old keys
+// elsewhere of the project's tickets (that moved in).
+func (q *Queries) DeleteProjectOldKeys(ctx context.Context, pid string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectOldKeys, pid)
+	return err
+}
+
 const deleteProjectRow = `-- name: DeleteProjectRow :exec
 DELETE FROM projects WHERE id = ?
 `
@@ -406,6 +419,19 @@ func (q *Queries) NextTicketNumber(ctx context.Context, id string) (int64, error
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const rehomeMovedTicketEvents = `-- name: RehomeMovedTicketEvents :exec
+UPDATE events SET project_id = (SELECT t.project_id FROM tickets t WHERE t.id = events.ticket_id)
+WHERE events.project_id = ?1
+  AND events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id <> ?1)
+`
+
+// The project's events on tickets that have since moved to another project
+// go with the ticket, so its history outlives the old project.
+func (q *Queries) RehomeMovedTicketEvents(ctx context.Context, pid sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, rehomeMovedTicketEvents, pid)
+	return err
 }
 
 const setProjectArchived = `-- name: SetProjectArchived :exec

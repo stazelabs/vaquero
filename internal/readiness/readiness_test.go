@@ -435,3 +435,49 @@ func TestGrandchildLeansThroughItsParent(t *testing.T) {
 	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
 	expect(t, all[e.ID], readiness.NoTier, readiness.PlanNotApproved)
 }
+
+// N-R1: a ticket moved to another project keeps its approvals in history,
+// but they no longer make it ready; its plan moves with it, and an approval
+// asked in the new project makes it ready again. Its sub-tickets, which
+// moved with it, lean on nothing until then.
+func TestMovedTicketNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, other.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	if n := count(t, w, `SELECT count(*) FROM approvals WHERE ticket_id = ?`, epic.ID); n != 1 {
+		t.Fatalf("approvals %d, want the old one kept", n)
+	}
+	if n := count(t, w, `SELECT count(*) FROM plans WHERE ticket_id = ?`, epic.ID); n != 1 {
+		t.Fatal("plan didn't move with it")
+	}
+	w.p = other
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+}
+
+func count(t *testing.T, w *world, q string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := w.d.R.QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}

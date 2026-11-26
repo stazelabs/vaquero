@@ -67,3 +67,38 @@ WHERE t.id IN (sqlc.slice('ids'));
 SELECT t.id, p.key AS project_key, t.number, t.title FROM tickets t
 JOIN projects p ON p.id = t.project_id
 WHERE t.id IN (sqlc.slice('ids'));
+
+-- Moving a ticket to another project (VAQ-18): MoveTicketToProject runs
+-- these inside one transaction.
+
+-- name: GetTicketByOldKey :one
+-- The ticket that once had this project's number, before it moved away.
+SELECT t.* FROM ticket_old_keys k
+JOIN tickets t ON t.id = k.ticket_id
+WHERE k.project_id = ? AND k.number = ?;
+
+-- name: AddTicketOldKey :exec
+INSERT INTO ticket_old_keys (project_id, number, ticket_id) VALUES (?, ?, ?);
+
+-- name: ListTicketOldKeys :many
+-- The keys a ticket had before it moved, oldest project first by name.
+SELECT p.key AS project_key, k.number FROM ticket_old_keys k
+JOIN projects p ON p.id = k.project_id
+WHERE k.ticket_id = ?
+ORDER BY p.key, k.number;
+
+-- name: ListDescendants :many
+-- The ticket's sub-tickets, theirs, and so on, nearest first, then by
+-- number.
+WITH RECURSIVE down(id, depth) AS (
+    SELECT c.id, 1 FROM tickets c WHERE c.parent_id = sqlc.arg(id)
+    UNION ALL
+    SELECT c.id, down.depth + 1 FROM tickets c JOIN down ON c.parent_id = down.id
+    WHERE down.depth < 1000
+)
+SELECT t.* FROM down JOIN tickets t ON t.id = down.id ORDER BY down.depth, t.number;
+
+-- name: SetTicketProject :exec
+UPDATE tickets SET project_id = ?, number = ?, status_id = ?, milestone_id = ?, position = ?,
+       claim_prev_status_id = ?, status_changed_at = ?, updated_at = ?, version = version + 1
+WHERE id = ?;

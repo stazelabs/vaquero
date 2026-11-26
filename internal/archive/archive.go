@@ -32,6 +32,9 @@
 // project_icons (0010) is exported whole, each image as the base64 text it
 // is stored as (icons never live in the blob store, so they add no entry);
 // an export from before it loads with every project on its monogram.
+// ticket_old_keys (0011) is exported whole, so a moved ticket's old keys
+// keep leading to it after an import; an export from before it loads with
+// none.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
 // entries, whatever the backend), the FTS tables, goose's table, and every
@@ -73,7 +76,7 @@ const (
 // Tables are the exported tables, parents before children.
 var Tables = []string{
 	"settings", "actors", "projects", "statuses", "milestones", "tags",
-	"tickets", "ticket_tags", "comments", "ticket_links", "attachments",
+	"tickets", "ticket_old_keys", "ticket_tags", "comments", "ticket_links", "attachments",
 	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "project_icons", "events",
 }
 

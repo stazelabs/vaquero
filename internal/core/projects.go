@@ -207,7 +207,10 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 // DeleteProject removes a project and everything in it: its tickets, their
 // tags, comments, plans (every revision) and links (including links from
 // other projects' tickets), its decisions with their tickets and approvals,
-// its icon, milestones, statuses and history. confirm must be the project's key
+// its icon, milestones, statuses and history, and the old keys of tickets
+// that moved in or out (VAQ-18). A ticket that moved away keeps its
+// history: its events from its time here go with it to its project now.
+// confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
 // Callers take a backup first.
 func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string) error {
@@ -233,6 +236,10 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"approvals", q.DeleteProjectApprovals},
 			{"decision tickets", q.DeleteProjectDecisionTickets},
 			{"decisions", q.DeleteProjectDecisions},
+			{"old keys", q.DeleteProjectOldKeys},
+			{"moved tickets' events", func(ctx context.Context, id string) error {
+				return q.RehomeMovedTicketEvents(ctx, nullString(id))
+			}},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))
 			}},

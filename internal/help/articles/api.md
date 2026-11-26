@@ -76,8 +76,9 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
 | `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
-| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
+| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: move to another project, claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
+| `POST /api/v1/tickets/{ticket}/move-to` | `{"project", "version"}`: move the ticket, with its sub-tickets, to the project of that key; `version` is optional. Answers with the ticket under its new key; see [Moving a ticket to another project](/help/projects-and-tickets#moving-a-ticket-to-another-project) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
 | `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan (`0` is `422`); to revise it, send the revision you read. The body limit is 1 MiB, as for every request. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
@@ -135,15 +136,15 @@ A decision has `id`, `project`, `tickets`, `kind`, `subject` (approvals), `quest
       {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "release": true}
     ]}
 
-- An item names a ticket by `key` and any of `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
-- An item's actions run in that order: claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
-- An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim in the same item changes the version, which is allowed for: send the version you read.
+- An item names a ticket by `key` and any of `project` (another project's key: the ticket moves there with its sub-tickets, as `move-to` moves it, and the rest of the item names that project's statuses and milestones; the project it is already in changes nothing), `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
+- An item's actions run in that order: project, claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
+- An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim or a move to another project in the same item changes the version, which is allowed for: send the version you read. A result names the ticket by its key after the item, its new key when it moved.
 - `heartbeat` renews your claim from now without changing the version, as its endpoint does. A `release` after the same item's update or move ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds; a claim that ended any other way (it lapsed, or was released elsewhere) gets the normal release, which refuses.
 - Items stand alone and run in request order. One refused item never stops the others, and the same key may appear in more than one item.
 - Each action is the same change its own endpoint makes, recorded in the ticket's history the same way.
 - At most 100 items, within the 1 MiB body limit.
 
-A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, an item with both `claim` and `heartbeat` (it can claim or renew, not both), a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move`.
+A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, an item with both `claim` and `heartbeat` (it can claim or renew, not both), a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move` or `project`.
 
 The answer is `200` with one result per item, in request order:
 

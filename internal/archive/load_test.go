@@ -78,7 +78,7 @@ func TestReadExport(t *testing.T) {
 	if rd.Header != header {
 		t.Fatalf("header %+v", rd.Header)
 	}
-	if n := len(rd.Tables["tickets"]); n != 8 {
+	if n := len(rd.Tables["tickets"]); n != 9 {
 		t.Fatalf("%d tickets", n)
 	}
 	// Numbers come back typed as export.json wrote them.
@@ -297,7 +297,7 @@ func TestLoadMissingColumnDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	if err := d.R.QueryRow("SELECT count(*) FROM tickets WHERE version = 1").Scan(&n); err != nil || n != 8 {
+	if err := d.R.QueryRow("SELECT count(*) FROM tickets WHERE version = 1").Scan(&n); err != nil || n != 9 {
 		t.Fatalf("%d tickets at the default version, %v", n, err)
 	}
 }

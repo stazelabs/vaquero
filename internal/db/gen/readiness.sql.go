@@ -22,6 +22,7 @@ JOIN decisions d ON d.id = dt.decision_id
 LEFT JOIN approvals a ON a.decision_id = d.id AND a.ticket_id = dt.ticket_id
 WHERE dt.ticket_id IN (/*SLICE:ids*/?)
   AND d.kind = 'approval' AND d.subject = 'plan' AND d.state = 'answered'
+  AND d.project_id = (SELECT tk.project_id FROM tickets tk WHERE tk.id = dt.ticket_id)
 ORDER BY dt.ticket_id, d.answered_at DESC, d.asked_at DESC, d.id DESC
 `
 
@@ -36,7 +37,9 @@ type ListPlanApprovalAnswersRow struct {
 
 // Every answered plan approval naming one of the given tickets, latest
 // answer first for each ticket, with the approval row it wrote for that
-// ticket (none: it was answered otherwise than Approve).
+// ticket (none: it was answered otherwise than Approve). Only decisions
+// of the ticket's own project count: a ticket moved to another project
+// needs approving there (ruling N-R1); its approvals stay in history.
 func (q *Queries) ListPlanApprovalAnswers(ctx context.Context, ids []string) ([]ListPlanApprovalAnswersRow, error) {
 	query := listPlanApprovalAnswers
 	var queryParams []interface{}

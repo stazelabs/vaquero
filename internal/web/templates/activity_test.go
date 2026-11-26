@@ -158,3 +158,15 @@ func TestTagWordingOnTicketHistory(t *testing.T) {
 		}
 	}
 }
+
+func TestMovedWording(t *testing.T) {
+	p := map[string]any{"from": "VAQ-4", "to": "OTH-2", "from_project": "VAQ", "to_project": "OTH",
+		"sub_tickets": []any{map[string]any{}, map[string]any{}}, "open_decisions": float64(1)}
+	if got := EventSentence(EventView{Kind: core.EvTicketMoved, TicketKey: "OTH-2", Payload: p}); got != "moved VAQ-4 to OTH as OTH-2 with 2 sub-tickets; 1 open decision stays in VAQ" {
+		t.Fatal(got)
+	}
+	p = map[string]any{"from": "VAQ-4", "to": "OTH-2", "from_project": "VAQ", "to_project": "OTH", "sub_tickets": []any{}}
+	if got := EventSentence(EventView{Kind: core.EvTicketMoved, Payload: p}); got != "moved VAQ-4 to OTH as OTH-2" {
+		t.Fatal(got)
+	}
+}

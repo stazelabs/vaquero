@@ -78,6 +78,9 @@ type TicketView struct {
 	Events                    []EventView
 	LinkKind, LinkTo, LinkErr string
 	CommentBody, CommentErr   string
+	// MoveTargets are the projects the ticket can move to (active ones but
+	// its own), by key; none hides the move form.
+	MoveTargets []Option
 }
 
 // TicketFormPage is the form for a new ticket or an edit.
@@ -362,8 +365,29 @@ templ TicketPage(v TicketView) {
 						}
 					</p>
 				</div>
+				@moveToProject(v)
 			</aside>
 		</div>
+	}
+}
+
+// moveToProject is the ticket's move to another project, behind the
+// confirm dialog. A sub-ticket moves only with its parent, so its page
+// says so instead.
+templ moveToProject(v TicketView) {
+	if v.Parent != nil {
+		<div data-move-project class="border-t border-line pt-3">
+			<p class={ labelClass }>Move to project</p>
+			<p class="text-muted">Move its parent, or detach it first.</p>
+		</div>
+	} else if len(v.MoveTargets) > 0 {
+		<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/move-to") } data-move-project data-confirm={ moveQuestion(v) } class="space-y-2 border-t border-line pt-3">
+			@Select(SelectProps{Name: "project", Label: "Move to project", Options: v.MoveTargets})
+			<button type="submit" class={ btnSecondary + " gap-1.5" }>
+				@Icon("moved")
+				Move ticket
+			</button>
+		</form>
 	}
 }
 

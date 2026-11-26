@@ -100,8 +100,11 @@ type Ticket struct {
 	Links       []Link          `json:"links"`
 	Comments    []Comment       `json:"comments"`
 	Attachments []Attachment    `json:"attachments"`
-	CreatedAt   string          `json:"created_at"`
-	UpdatedAt   string          `json:"updated_at"`
+	// FormerKeys are the keys the ticket had before it moved to another
+	// project, each still leading to it; absent when it never moved.
+	FormerKeys []string `json:"former_keys,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+	UpdatedAt  string   `json:"updated_at"`
 	// Warning is set on a write's answer when someone other than the
 	// caller holds a claim on the ticket: "Claimed by bot until 12:15
 	// UTC." Claims are advisory, so the write went through.

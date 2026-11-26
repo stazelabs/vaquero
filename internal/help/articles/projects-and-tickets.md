@@ -70,10 +70,20 @@ On a ticket with no links yet, the form sits behind an "Add link" button. In the
 
 A milestone is a named goal with a description and an optional due date. The board's side panel shows each open milestone's progress, and clicking one shows only its tickets. Close a milestone when it ships. Milestones are added and changed in project settings, or with `vaquero milestone` and [the API](/help/api).
 
+## Moving a ticket to another project
+
+On a ticket's page, choose a project under "Move to project", then Move ticket and Confirm. From the command line it is `vaquero ticket move-to VAQ-12 OTH`; the API has `POST /api/v1/tickets/{ticket}/move-to`, and a [bulk change](/help/api#bulk-changes) can move tickets too.
+
+- The ticket takes the next number in its new project (`OTH-31`). Its old key keeps leading to it: `/t/VAQ-12` goes to `/t/OTH-31`, and the API, the command line and agents accept `VAQ-12` and answer for `OTH-31`. A ticket that moves again, or back, keeps every old key.
+- Its sub-tickets move with it, each taking a new number too. A sub-ticket can't move on its own: move its parent, or detach it first.
+- Its status, milestone and assignee carry over by name. A status the new project doesn't have becomes that project's first status of the same kind (a todo stays a todo); a milestone it doesn't have is dropped.
+- Its comments, attachments, links, plan and history stay with it. The move is one line in its history and on the Activity page, naming both projects.
+- With the [agent workflow](/help/agent-workflow) on, a moved ticket needs approving again in its new project: its earlier approvals stay in its history but no longer make it ready. Open decisions about it stay in the old project; the move's line counts them, and a plan approval asked there can no longer approve it.
+
 ## Changing a project key
 
 In project settings, under Key. The old key stops working at once: links, branch names and commit messages that use it no longer lead anywhere, and another project may take it.
 
 ## Archiving and deleting
 
-Archiving hides a project at the bottom of the list and stops new tickets; restore it any time. Vaquero asks before it archives a project, deletes a status or deletes a comment; Cancel or Escape leaves everything as it was. Deleting removes the project, its tickets, comments, links and history for good. You type the project's key to confirm, and Vaquero takes a snapshot of the database first (see [Your data and backups](/help/data-and-backups#backups)).
+Archiving hides a project at the bottom of the list and stops new tickets; restore it any time. Vaquero asks before it archives a project, deletes a status or deletes a comment; Cancel or Escape leaves everything as it was. Deleting removes the project, its tickets, comments, links and history for good; a ticket that moved to another project earlier stays there, with its history, and its old key here stops working. You type the project's key to confirm, and Vaquero takes a snapshot of the database first (see [Your data and backups](/help/data-and-backups#backups)).

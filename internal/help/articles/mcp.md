@@ -51,7 +51,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
 | `release_ticket` | Give up your claim: `key` |
-| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `claim`, `heartbeat`, `update`, `comment`, `move` and `release` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
+| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `project` (move it to another project, by key), `claim`, `heartbeat`, `update`, `comment`, `move` and `release` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
 
 `update_ticket`, `move_ticket`, `add_comment`, `claim_ticket`, `heartbeat` and `release_ticket` also take `view`: `summary` answers with only the ticket's key, status, category, version, assignee and claim (and the comment's id), the API's [short answer](/help/api#short-answers), instead of the whole ticket.
 

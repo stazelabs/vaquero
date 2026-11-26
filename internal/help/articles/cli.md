@@ -45,6 +45,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME] [--tier T] [--model M]` | Create a ticket; prints its key. `--tier` is `design`, `light`, `standard` or `heavy` (see [tiers](/help/agent-workflow#execution-tiers)), and `--model` an exact model for it |
 | `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given; `--tier ""` and `--model ""` clear them |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
+| `vaquero ticket move-to TICKET KEY [--version N]` | Move a ticket, with its sub-tickets, to the project KEY; prints its new key. Its old key keeps working. See [Moving a ticket to another project](/help/projects-and-tickets#moving-a-ticket-to-another-project) |
 | `vaquero comment TICKET TEXT` | Add a comment |
 | `vaquero plan show TICKET [--revision N]` | A ticket's [plan](/help/agent-workflow#plans): its revision, who wrote it and when, then its text; `--revision` shows an earlier one |
 | `vaquero plan save TICKET FILE\|- [--revision N]` | Write the plan from a file, or `-` for standard input. A ticket's first plan needs no `--revision`; after that, pass the revision you read. If someone saved since, nothing is written, the plan as it is now is printed and the exit code is 3 |

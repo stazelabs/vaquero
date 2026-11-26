@@ -347,9 +347,9 @@ func TestExportEveryColumn(t *testing.T) {
 
 	// Every table is exported or deliberately left out, so a new
 	// migration's table can't be forgotten.
-	// ticket_old_keys (VAQ-18) and project_links (VAQ-119) join
-	// archive.Tables with the tasks that first write them.
-	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence", "ticket_old_keys", "project_links"}
+	// project_links (VAQ-119) joins archive.Tables with the task that
+	// first writes it.
+	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence", "project_links"}
 	// The search indexes: each FTS5 virtual table and its shadow tables.
 	vt, err := d.R.QueryContext(bg, "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'")
 	if err != nil {
