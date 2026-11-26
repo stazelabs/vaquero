@@ -36,7 +36,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `list_tickets` | A project's tickets: `project`, and optionally `status`, `tag`, `mine`, `open`, `limit` |
 | `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim, version and tier, and with the [agent workflow](/help/agent-workflow#readiness) on its readiness: `key` |
 | `ready_tickets` | Tickets ready to be worked on, most urgent first, applying [readiness](/help/agent-workflow#readiness) where the agent workflow is on: optionally `project`, `limit` |
-| `search` | Find tickets by words: `query` |
+| `search` | Find tickets by words: `query`. At most 50, best first; the REST answer's `Vaquero-Total` header counts every match |
 | `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few; reorders within a column are left out |
 | `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags`, `tier`, `model` |
 | `update_ticket` | `key` and any fields to change (`tier` and `model` among them), plus `add_tags`, `remove_tags` and `version` |
@@ -51,7 +51,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
 | `release_ticket` | Give up your claim: `key` |
-| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `claim`, `heartbeat`, `update`, `comment`, `move` and `release` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
+| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `project` (move it to another project, by key), `claim`, `heartbeat`, `update`, `comment`, `move` and `release` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
 
 `update_ticket`, `move_ticket`, `add_comment`, `claim_ticket`, `heartbeat` and `release_ticket` also take `view`: `summary` answers with only the ticket's key, status, category, version, assignee and claim (and the comment's id), the API's [short answer](/help/api#short-answers), instead of the whole ticket.
 

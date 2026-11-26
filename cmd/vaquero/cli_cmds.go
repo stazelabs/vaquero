@@ -13,6 +13,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/client"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/idgen"
 )
 
 type apiTicket = api.Ticket
@@ -70,7 +71,7 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE"
+	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
@@ -78,9 +79,13 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 	c.fs.Bool("monogram", false, "icon: the project's monogram")
 	glyph := c.fs.String("glyph", "", "icon: a glyph from the list")
 	image := c.fs.String("image", "", "icon: a PNG, JPEG or WebP image file")
-	pos, err := c.parse(args, 2, 3)
+	c.fs.Bool("remove-image", false, "icon: remove the uploaded image (an icon showing it becomes the monogram)")
+	pos, err := c.parse(args, 2, 4)
 	if err != nil {
 		return c.finish(err)
+	}
+	if len(pos) == 4 && pos[0] != "link" {
+		return c.finish(usageError{usage: usage})
 	}
 	var p api.Project
 	printProject := func() {
@@ -89,6 +94,9 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			if p.Workflow {
 				fmt.Fprintln(c.stdout, "Workflow: on")
 			}
+			for _, l := range p.Links {
+				fmt.Fprintf(c.stdout, "%s %s  %s  %s\n", projectLinkWords(l), l.Key, l.Name, l.ID)
+			}
 			fmt.Fprintln(c.stdout, p.Description)
 		})
 	}
@@ -96,13 +104,13 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		return c.finish(usageError{usage: usage, hint: "--workflow is on or off, for project edit"})
 	}
 	icons := 0
-	for _, f := range []string{"monogram", "glyph", "image"} {
+	for _, f := range []string{"monogram", "glyph", "image", "remove-image"} {
 		if c.set(f) {
 			icons++
 		}
 	}
 	if icons > 0 && pos[0] != "icon" || pos[0] == "icon" && icons != 1 {
-		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME and --image FILE"})
+		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME, --image FILE and --remove-image"})
 	}
 	switch pos[0] {
 	case "create":
@@ -167,6 +175,25 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			printProject()
 			return nil
 		})
+	case "link":
+		if len(pos) != 4 || pos[2] != "depends-on" && pos[2] != "relates" {
+			return c.finish(usageError{usage: usage})
+		}
+		return c.connected(ctx, nil, func() error {
+			var l api.ProjectLink
+			if err := c.call(ctx, "POST", "/api/v1/projects/"+url.PathEscape(pos[1])+"/links", map[string]string{"kind": pos[2], "project": pos[3]}, &l); err != nil {
+				return err
+			}
+			c.emit(l, func() {
+				fmt.Fprintf(c.stdout, "%s %s %s.\n", strings.ToUpper(pos[1]), strings.ToLower(projectLinkWords(l)), l.Key)
+			})
+			return nil
+		})
+	case "unlink":
+		if len(pos) != 3 {
+			return c.finish(usageError{usage: usage})
+		}
+		return c.connected(ctx, nil, func() error { return unlinkProject(ctx, c, pos[1], pos[2]) })
 	case "icon":
 		if len(pos) != 2 {
 			return c.finish(usageError{usage: usage})
@@ -177,6 +204,12 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			switch {
 			case c.set("image"):
 				err = uploadIcon(ctx, c, path+"/icon", *image, &p)
+			case c.set("remove-image"):
+				if err = c.call(ctx, "DELETE", path+"/icon", nil, &p); err != nil {
+					return err
+				}
+				c.emit(p, func() { fmt.Fprintf(c.stdout, "%s icon: %s (no image stored)\n", p.Key, iconWords(p)) })
+				return nil
 			case c.set("glyph"):
 				err = c.call(ctx, "PATCH", path, map[string]any{"icon": map[string]string{"kind": "glyph", "glyph": *glyph}}, &p)
 			default:
@@ -190,6 +223,55 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		})
 	}
 	return c.finish(usageError{usage: usage})
+}
+
+// projectLinkWords is how a project's link reads from its side: "Depends
+// on", "Used by" or "Relates to".
+func projectLinkWords(l api.ProjectLink) string {
+	switch {
+	case l.Kind == "depends on" && l.Direction == "out":
+		return "Depends on"
+	case l.Kind == "depends on":
+		return "Used by"
+	}
+	return "Relates to"
+}
+
+// unlinkProject removes key's link named by what: a link id, or another
+// project's key (every link between the two).
+func unlinkProject(ctx context.Context, c *cmd, key, what string) error {
+	key = strings.ToUpper(key)
+	path := "/api/v1/projects/" + url.PathEscape(key)
+	var p api.Project
+	if err := c.call(ctx, "GET", path, nil, &p); err != nil {
+		return err
+	}
+	byID := idgen.Valid(strings.ToUpper(what))
+	other, removed := strings.ToUpper(what), 0
+	for _, l := range p.Links {
+		if byID && l.ID == strings.ToUpper(what) || !byID && l.Key == other {
+			if err := c.call(ctx, "DELETE", path+"/links/"+url.PathEscape(l.ID), nil, nil); err != nil {
+				return err
+			}
+			other = l.Key
+			removed++
+		}
+	}
+	if removed == 0 && byID {
+		// Not one of key's: the server says so in its words.
+		return c.call(ctx, "DELETE", path+"/links/"+url.PathEscape(what), nil, nil)
+	}
+	if removed == 0 {
+		return fmt.Errorf("%s isn't linked to %s", key, other)
+	}
+	if !c.jsonOut {
+		noun := "link"
+		if removed > 1 {
+			noun = "links"
+		}
+		fmt.Fprintf(c.stdout, "Removed %d %s between %s and %s.\n", removed, noun, key, other)
+	}
+	return nil
 }
 
 // errIconTooLarge is the refusal of an icon image over core.MaxIcon, in
@@ -295,6 +377,9 @@ func printTicket(w io.Writer, t apiTicket) {
 	if t.Milestone != "" {
 		fmt.Fprintf(w, "Milestone: %s\n", t.Milestone)
 	}
+	if len(t.FormerKeys) > 0 {
+		fmt.Fprintf(w, "Formerly %s\n", strings.Join(t.FormerKeys, ", "))
+	}
 	switch {
 	case t.Tier != "" && t.Model != "":
 		fmt.Fprintf(w, "Tier: %s · Model: %s\n", t.Tier, t.Model)
@@ -349,7 +434,7 @@ func linkWords(l api.Link) string {
 }
 
 func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS"
+	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS | move-to TICKET KEY [--version N]"
 	c := newCmd(stdout, stderr, usage)
 	title := c.fs.String("title", "", "title")
 	body := c.fs.String("body", "", "description (- reads standard input)")
@@ -479,6 +564,30 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 				return err
 			}
 			show()
+			return nil
+		})
+	case "move-to":
+		if len(pos) != 3 {
+			return c.finish(usageError{usage: usage})
+		}
+		return c.connected(ctx, nil, func() error {
+			key, err := canon(pos[1])
+			if err != nil {
+				return err
+			}
+			// The key it has now, which an old key typed here leads to.
+			var before apiTicket
+			if err := c.call(ctx, "GET", "/api/v1/tickets/"+key, nil, &before); err != nil {
+				return err
+			}
+			b := map[string]any{"project": pos[2]}
+			if *version > 0 {
+				b["version"] = *version
+			}
+			if err := c.call(ctx, "POST", "/api/v1/tickets/"+key+"/move-to", b, &t); err != nil {
+				return err
+			}
+			c.emit(t, func() { fmt.Fprintf(c.stdout, "%s is now %s.\n", before.Key, t.Key) })
 			return nil
 		})
 	}

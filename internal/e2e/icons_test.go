@@ -3,10 +3,12 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -68,5 +70,36 @@ func TestE2ESettingsIcon(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// VAQ-146: Remove image asks first, then deletes the stored image, and a
+// project showing it shows its monogram.
+func TestE2ESettingsRemoveIconImage(t *testing.T) {
+	env := webtest.New(t)
+	f := newProject(t, env, "ICO")
+	png := append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), make([]byte, 64)...)
+	if _, err := env.Deps.Core.SetProjectIcon(context.Background(), env.Deps.Actor.ID, f.project.ID, "image", "", &core.IconImage{Data: png}); err != nil {
+		t.Fatal(err)
+	}
+	p := open(t, env, 1280, 900)
+	p.goTo("/p/ICO/settings")
+	const remove = `form[action="/p/ICO/icon/delete"] button[type="submit"]`
+	before := f.events()
+	p.click(remove)
+	p.until(`document.getElementById("vq-confirm").open`)
+	if msg := eval[string](p, `document.querySelector("[data-confirm-message]").textContent`); !strings.Contains(msg, "Remove the uploaded icon image of ICO?") {
+		t.Fatalf("asks %q", msg)
+	}
+	if f.events() != before {
+		t.Fatal("Remove image changed something before it was confirmed")
+	}
+	p.reloaded(func() { p.click("[data-confirm-ok]") },
+		`!!document.getElementById("vq-toast") && document.getElementById("vq-toast").textContent.indexOf("Image removed.") >= 0`)
+	if !eval[bool](p, `!!document.querySelector("[data-monogram]") && !document.querySelector('img[src="/p/ICO/icon"]') && !document.querySelector(`+js(remove)+`)`) {
+		t.Fatal("after removing, the page still shows the image or the Remove image button")
+	}
+	if got, _ := env.Deps.R.GetProjectByKey(t.Context(), "ICO"); got.IconKind != "monogram" || f.events() != before+1 {
+		t.Fatalf("%+v, %d events", got, f.events()-before)
 	}
 }

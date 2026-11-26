@@ -79,23 +79,14 @@ func searchSQL(n int) string {
 		fmt.Fprintf(&b, " JOIN m%d USING (ticket_id)", i)
 	}
 	b.WriteString(")")
-	// The inner select ranks, counts and cuts; the snippets are made only
-	// for the rows it keeps. The snippet comes from the description when it
-	// matches, else the best matching live comment, else the description's
-	// opening (a title hit never repeats the title).
-	fmt.Fprintf(&b, `
-SELECT top.project_id, top.project_name, top.icon_kind, top.icon_glyph, top.project_key, top.number, top.title, top.status_name, top.status_category,
-       CAST(coalesce(
-           (SELECT snippet(tickets_fts, 1, char(2), char(3), '…', 12) FROM tickets_fts
-            WHERE tickets_fts MATCH ? AND tickets_fts.rowid = top.rowid),
-           (SELECT snippet(comments_fts, 0, char(2), char(3), '…', 12)
-            FROM comments_fts JOIN comments c ON c.rowid = comments_fts.rowid
-            WHERE comments_fts MATCH ? AND c.ticket_id = top.id AND c.deleted_at IS NULL
-            ORDER BY bm25(comments_fts) LIMIT 1),
-           CASE WHEN length(top.body) > %[1]d THEN substr(top.body, 1, %[1]d) || '…' ELSE top.body END
-       ) AS TEXT) AS snippet,
-       top.total
-FROM (
+	// top ranks, counts and cuts; the snippets are made only for the rows
+	// it keeps. The snippet comes from the description when it matches,
+	// else the best matching live comment, else the description's opening
+	// (a title hit never repeats the title). Comment snippets are made in
+	// one pass over comments_fts for the kept tickets, the best per ticket
+	// by bm25 (VAQ-133), not by a MATCH run again for each row.
+	fmt.Fprintf(&b, `,
+top AS MATERIALIZED (
     SELECT t.rowid, t.id, t.body, p.id AS project_id, p.name AS project_name, p.icon_kind, p.icon_glyph, p.key AS project_key, t.number, t.title, s.name AS status_name,
            s.category AS status_category, x.score, t.updated_at, count(*) OVER () AS total
     FROM scored x
@@ -104,7 +95,27 @@ FROM (
     JOIN statuses s ON s.id = t.status_id
     ORDER BY x.score DESC, t.updated_at DESC, t.number
     LIMIT ?
-) top
+),
+hits AS MATERIALIZED (
+    SELECT c.ticket_id, c.rowid AS crow, snippet(comments_fts, 0, char(2), char(3), '…', 12) AS snip, bm25(comments_fts) AS rank
+    FROM comments_fts JOIN comments c ON c.rowid = comments_fts.rowid
+    WHERE comments_fts MATCH ? AND c.deleted_at IS NULL AND c.ticket_id IN (SELECT id FROM top)
+),
+csnip AS (
+    SELECT ticket_id, snip FROM (
+        SELECT ticket_id, snip, row_number() OVER (PARTITION BY ticket_id ORDER BY rank, crow) AS rn FROM hits
+    ) WHERE rn = 1
+)
+SELECT top.project_id, top.project_name, top.icon_kind, top.icon_glyph, top.project_key, top.number, top.title, top.status_name, top.status_category,
+       CAST(coalesce(
+           (SELECT snippet(tickets_fts, 1, char(2), char(3), '…', 12) FROM tickets_fts
+            WHERE tickets_fts MATCH ? AND tickets_fts.rowid = top.rowid),
+           cs.snip,
+           CASE WHEN length(top.body) > %[1]d THEN substr(top.body, 1, %[1]d) || '…' ELSE top.body END
+       ) AS TEXT) AS snippet,
+       top.total
+FROM top
+LEFT JOIN csnip cs ON cs.ticket_id = top.id
 ORDER BY top.score DESC, top.updated_at DESC, top.number;`, snippetLen)
 	return b.String()
 }
@@ -124,7 +135,7 @@ func SearchTickets(ctx context.Context, db *sql.DB, terms []string, limit int64)
 	}
 	// The snippets mark every term: any of them, in the body or a comment.
 	either := "(" + strings.Join(terms, " OR ") + ")"
-	args = append(args, "body : "+either, either, limit) // in the order they appear in the text
+	args = append(args, limit, either, "body : "+either) // in the order they appear in the text
 	rows, err := db.QueryContext(ctx, searchSQL(len(terms)), args...)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)

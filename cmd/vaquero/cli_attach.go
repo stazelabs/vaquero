@@ -144,8 +144,13 @@ func errUnwrapped(err error) error {
 	return err
 }
 
-// cmdAttachments is vaquero attachments TICKET: the ticket's files.
+// cmdAttachments is vaquero attachments TICKET: the ticket's files. vaquero
+// attachments move is the offline move to other storage (no ticket key is
+// "move").
 func cmdAttachments(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	if len(args) > 0 && args[0] == "move" {
+		return cmdAttachmentsMove(ctx, stdout, stderr, args[1:])
+	}
 	c := newCmd(stdout, stderr, "vaquero attachments TICKET")
 	pos, err := c.parse(args, 1, 1)
 	return c.connected(ctx, err, func() error {

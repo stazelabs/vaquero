@@ -8,6 +8,7 @@ package gen
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
 
 const addApproval = `-- name: AddApproval :exec
@@ -91,6 +92,31 @@ func (q *Queries) AnswerDecision(ctx context.Context, arg AnswerDecisionParams) 
 		arg.ID,
 	)
 	return err
+}
+
+const countOpenDecisionsNaming = `-- name: CountOpenDecisionsNaming :one
+SELECT count(DISTINCT d.id) FROM decisions d
+JOIN decision_tickets dt ON dt.decision_id = d.id
+WHERE d.state = 'open' AND dt.ticket_id IN (/*SLICE:ids*/?)
+`
+
+// Open decisions naming any of the given tickets (a ticket that moves
+// leaves them in its old project).
+func (q *Queries) CountOpenDecisionsNaming(ctx context.Context, ids []string) (int64, error) {
+	query := countOpenDecisionsNaming
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	row := q.db.QueryRowContext(ctx, query, queryParams...)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createDecision = `-- name: CreateDecision :exec
@@ -329,7 +355,8 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string)
 
 const listDecisionTicketPins = `-- name: ListDecisionTicketPins :many
 SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children,
-       t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number
+       t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number,
+       t.project_id
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
@@ -348,6 +375,7 @@ type ListDecisionTicketPinsRow struct {
 	CurrentParentID string
 	ProjectKey      string
 	Number          int64
+	ProjectID       string
 }
 
 // What a plan approval asked about for each of its tickets, by number.
@@ -371,6 +399,7 @@ func (q *Queries) ListDecisionTicketPins(ctx context.Context, decisionID string)
 			&i.CurrentParentID,
 			&i.ProjectKey,
 			&i.Number,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}

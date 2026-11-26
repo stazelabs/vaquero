@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/archive"
 	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/core/coreseed"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
@@ -227,5 +228,34 @@ func TestExportHasNoThumbs(t *testing.T) {
 		if strings.Contains(n, "thumb") {
 			t.Errorf("thumbnail in the archive: %s", n)
 		}
+	}
+}
+
+// VAQ-132: past archive.MaxDocument, GET and HEAD refuse with the same
+// message before any byte of the archive, and read no file.
+func TestAPIExportTooLarge(t *testing.T) {
+	e, tok := exportEnv(t)
+	saved := archive.MaxDocument
+	archive.MaxDocument = 1000
+	t.Cleanup(func() { archive.MaxDocument = saved })
+	counted := &countingStore{Store: e.Deps.Blobs}
+	e.Deps.Blobs = counted
+	e.Rebuild()
+	r := e.Client().API("GET", "/api/v1/export", tok, nil)
+	var f api.Failure
+	decode(t, r.Body, &struct{ Error *api.Failure }{&f})
+	if r.Status != 422 || f.Code != "export_too_large" || !strings.Contains(f.Message, "vaquero import") ||
+		r.Header.Get("Content-Disposition") != "" || counted.gets.Load() != 0 {
+		t.Fatalf("GET: %d %v %q, %d reads", r.Status, r.Header, r.Body, counted.gets.Load())
+	}
+	req, _ := http.NewRequest(http.MethodHead, e.Server.URL+"/api/v1/export", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 422 || res.Header.Get("Content-Disposition") != "" {
+		t.Fatalf("HEAD: %d %v", res.StatusCode, res.Header)
 	}
 }

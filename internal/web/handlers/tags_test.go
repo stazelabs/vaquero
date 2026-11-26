@@ -117,14 +117,91 @@ func TestTagRefusals(t *testing.T) {
 	contains(t, c.Follow(r).Body, "That no longer exists.")
 }
 
-// Tag changes are project events: the help says they show on the Activity
-// page only, not in a ticket's history.
-func TestHelpSaysTagChangesSkipTicketHistory(t *testing.T) {
+// Tag changes show in the history of each ticket they changed (VAQ-134),
+// and the help says so.
+func TestHelpSaysTagChangesShowInTicketHistory(t *testing.T) {
 	b, err := os.ReadFile("../../help/articles/projects-and-tickets.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !regexp.MustCompile(`Every change is recorded in the ticket's history[^\n]*renaming, merging or deleting a tag[^\n]*Activity page only`).Match(b) {
-		t.Error("the history sentence doesn't name tag changes among its exceptions")
+	if !regexp.MustCompile(`Renaming, merging or deleting a tag[^\n]*history of each ticket it changed`).Match(b) {
+		t.Error("the help doesn't say tag changes show in each changed ticket's history")
 	}
+}
+
+// VAQ-134: a rename, a merge and a delete each show a line in the history
+// of every ticket they changed, and only those; the Activity page keeps
+// its project-level sentence.
+func TestTagChangesInTicketHistory(t *testing.T) {
+	e := webtest.New(t)
+	p, ids := tagged(t, e)
+	by := e.Deps.Actor.ID
+	if err := e.Deps.Core.RenameTag(bg, by, p.ID, ids["bug"], "defect", true); err != nil {
+		t.Fatal(err)
+	}
+	rows, _ := e.Deps.R.ListProjectTags(bg, p.ID)
+	for _, r := range rows {
+		ids[r.Name] = r.ID
+	}
+	if err := e.Deps.Core.MergeTag(bg, by, p.ID, ids["defect"], ids["ui"]); err != nil {
+		t.Fatal(err)
+	}
+	three := ticket(t, e, p, core.TicketInput{Title: "T", Tags: []string{"wontfix"}})
+	rows, _ = e.Deps.R.ListProjectTags(bg, p.ID)
+	for _, r := range rows {
+		ids[r.Name] = r.ID
+	}
+	if err := e.Deps.Core.DeleteTag(bg, by, p.ID, ids["wontfix"]); err != nil {
+		t.Fatal(err)
+	}
+	c := e.Client()
+	contains(t, c.Get("/t/VAQ-1").Body, "renamed tag bug → defect", "merged tag defect into ui")
+	lacks(t, c.Get("/t/VAQ-2").Body, "renamed tag", "merged tag", "deleted tag")
+	contains(t, c.Get("/t/"+core.TicketKey{Project: "VAQ", Number: three.Number}.String()).Body, "deleted tag wontfix")
+	lacks(t, c.Get("/t/VAQ-1").Body, "deleted tag")
+	contains(t, c.Get("/activity").Body, "renamed tag bug to defect in VAQ (1 ticket)", "merged tag defect into ui in VAQ (1 ticket)",
+		"deleted tag wontfix from VAQ (1 ticket)")
+
+	// A tag event from before ticket_ids were recorded names no ticket, so
+	// it shows on no ticket's history (and breaks nothing).
+	if _, err := e.Deps.Core.DB.Exec(`UPDATE events SET payload = json_remove(payload, '$.ticket_ids') WHERE kind = 'tag.renamed'`); err != nil {
+		t.Fatal(err)
+	}
+	page := c.Get("/t/VAQ-1")
+	if page.Status != 200 {
+		t.Fatal(page.Status)
+	}
+	lacks(t, page.Body, "renamed tag")
+	contains(t, page.Body, "merged tag defect into ui")
+}
+
+// VAQ-134: a ?tag= filter naming no tag in the project (a saved link from
+// before a rename) says so on Focus, the board and the list, with a link
+// that clears only the tag, instead of showing empty lanes.
+func TestFilterNamingNoTag(t *testing.T) {
+	e := webtest.New(t)
+	tagged(t, e)
+	c := e.Client()
+	clear := func(href string) *regexp.Regexp {
+		return regexp.MustCompile(`href="` + regexp.QuoteMeta(href) + `"[^>]*>Clear the tag filter<`)
+	}
+	for _, tc := range []struct{ path, clear, live string }{
+		{"/p/VAQ?tag=nope", "/p/VAQ", `id="focus"`},
+		{"/p/VAQ/board?tag=nope", "/p/VAQ/board", `id="board"`},
+		{"/p/VAQ/list?tag=nope", "/p/VAQ/list", `id="list"`},
+		{"/p/VAQ/board?tag=nope&mine=1", "/p/VAQ/board?mine=1", `id="board"`},
+	} {
+		r := c.Get(tc.path)
+		if r.Status != 200 {
+			t.Fatalf("%s: %d", tc.path, r.Status)
+		}
+		contains(t, r.Body, "No tag nope in this project.")
+		if !clear(tc.clear).MatchString(r.Body) {
+			t.Errorf("%s: no link to %s", tc.path, tc.clear)
+		}
+		lacks(t, r.Body, tc.live)
+	}
+	// A tag matches in any case; an escaped name stays text.
+	lacks(t, c.Get("/p/VAQ/board?tag=BUG").Body, "in this project.")
+	contains(t, c.Get("/p/VAQ/board?tag=%3Cb%3E").Body, "No tag &lt;b&gt; in this project.")
 }

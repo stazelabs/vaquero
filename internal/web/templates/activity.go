@@ -13,6 +13,9 @@ import (
 type EventView struct {
 	Actor, Kind, ProjectKey, TicketKey, TicketTitle, Ago string
 	Payload                                              map[string]any
+	// Seq is the event's sequence number (the history's "Show changes"
+	// reads its diff by it).
+	Seq int64
 
 	// Reader is the key of the ticket whose page shows the line, so a link
 	// event reads from that ticket's side; "" on the activity feed.
@@ -168,6 +171,16 @@ func EventSentence(e EventView) string {
 		return "restored project " + e.ProjectKey
 	case core.EvProjectDeleted:
 		return "deleted project " + s("key")
+	case core.EvProjectLinked, core.EvProjectUnlinked:
+		verb := "depends on"
+		if s("kind") == "relates" {
+			verb = "relates to"
+		}
+		said := e.ProjectKey + " " + verb + " " + s("to")
+		if e.Kind == core.EvProjectUnlinked {
+			return "removed the note that " + said
+		}
+		return "noted that " + said
 	case core.EvStatusCreated:
 		return fmt.Sprintf("added status %s to %s", s("name"), e.ProjectKey)
 	case core.EvStatusUpdated:
@@ -196,6 +209,8 @@ func EventSentence(e EventView) string {
 		return "created " + e.TicketKey + " " + title
 	case core.EvTicketUpdated:
 		return ticketUpdated(e)
+	case core.EvTicketMoved:
+		return movedSentence(e)
 	case core.EvTicketReordered:
 		if e.Times > 1 {
 			return fmt.Sprintf("reordered %s in %s %d times", e.TicketKey, s("status"), e.Times)
@@ -244,11 +259,22 @@ func EventSentence(e EventView) string {
 		return "revised the plan for " + e.TicketKey
 	case core.EvDecisionAsked, core.EvDecisionRuled, core.EvDecisionAnswered, core.EvDecisionWithdrawn:
 		return decisionSentence(e)
+	// A tag event is a project's; on a ticket's history (Reader set) it
+	// reads as what happened to that ticket's tag.
 	case core.EvTagRenamed:
+		if e.Reader != "" {
+			return fmt.Sprintf("renamed tag %s → %s", s("from"), s("to"))
+		}
 		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagMerged:
+		if e.Reader != "" {
+			return fmt.Sprintf("merged tag %s into %s", s("from"), s("to"))
+		}
 		return fmt.Sprintf("merged tag %s into %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagDeleted:
+		if e.Reader != "" {
+			return "deleted tag " + s("name")
+		}
 		return fmt.Sprintf("deleted tag %s from %s (%s)", s("name"), e.ProjectKey, tagTickets(e.Payload))
 	}
 	return "made a change"
@@ -305,6 +331,24 @@ func decisionSentence(e EventView) string {
 	return "withdrew a question " + scope("about")
 }
 
+// movedSentence words a ticket.moved event, naming both projects: "moved
+// VAQ-4 to OTH as OTH-2 with 2 sub-tickets; 1 open decision stays in VAQ".
+func movedSentence(e EventView) string {
+	s := func(k string) string { v, _ := e.Payload[k].(string); return v }
+	out := fmt.Sprintf("moved %s to %s as %s", s("from"), s("to_project"), s("to"))
+	if subs, _ := e.Payload["sub_tickets"].([]any); len(subs) > 0 {
+		out += " with " + countLabel(int64(len(subs)), "sub-ticket", "sub-tickets")
+	}
+	if n, _ := e.Payload["open_decisions"].(float64); n > 0 {
+		verb := " stays in "
+		if n > 1 {
+			verb = " stay in "
+		}
+		out += "; " + countLabel(int64(n), "open decision", "open decisions") + verb + s("from_project")
+	}
+	return out
+}
+
 // tagTickets is a tag event's ticket count: "1 ticket", "3 tickets".
 func tagTickets(p map[string]any) string {
 	n, _ := p["tickets"].(float64)
@@ -343,8 +387,8 @@ func change(p map[string]any, field string) (from, to string, ok bool) {
 }
 
 // projectUpdated is a project.updated sentence: the agent workflow turned
-// on or off and the tier map changed, when they did, or an icon change on
-// its own, else "updated project VAQ".
+// on or off and the tier map changed, when they did, a removed icon image,
+// or an icon change on its own, else "updated project VAQ".
 func projectUpdated(e EventView) string {
 	changes, _ := e.Payload["changes"].(map[string]any)
 	_, tierMap := changes["tier_map"]
@@ -362,6 +406,9 @@ func projectUpdated(e EventView) string {
 	}
 	if tierMap {
 		return "changed the tier map of " + e.ProjectKey
+	}
+	if _, removed := changes["icon_image"]; removed {
+		return "removed the icon image of " + e.ProjectKey
 	}
 	if _, icon := changes["icon"]; icon && len(changes) == 1 {
 		return "changed the icon of " + e.ProjectKey
@@ -393,9 +440,10 @@ func eventHref(e EventView) string {
 
 // eventIcons are the glyphs for event kinds that don't follow their prefix.
 var eventIcons = map[string]string{
-	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved",
+	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved", core.EvTicketMoved: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
 	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+	core.EvProjectLinked: "link", core.EvProjectUnlinked: "delete",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
 	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
 }

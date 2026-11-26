@@ -41,6 +41,9 @@ const importFile = "vaquero.import.db"
 // (no cleanup) leaves import.pending for the next import or serve
 // (cleanPending).
 func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	if len(args) > 0 && args[0] == "linear" {
+		return cmdImportLinear(ctx, stdout, stderr, args[1:])
+	}
 	c := newCmd(stdout, stderr, "vaquero import FILE")
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {

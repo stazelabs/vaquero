@@ -148,7 +148,9 @@ func TestListViewShowsEverything(t *testing.T) {
 	lacks(t, boardPage, "long done")
 	list := c.Get("/p/VAQ/list").Body
 	contains(t, list, "in backlog", "cancelled one", "long done", `href="/p/VAQ"`)
-	contains(t, c.Get("/p/VAQ/list?tag=nothing").Body, "No tickets match.")
+	contains(t, c.Get("/p/VAQ/list?priority=1").Body, "No tickets match.")
+	// A tag no ticket carries says so instead (VAQ-134).
+	contains(t, c.Get("/p/VAQ/list?tag=nothing").Body, "No tag nothing in this project.")
 }
 
 // "N older" leads to the list's done tickets, and the list has a chip per

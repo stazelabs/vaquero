@@ -34,9 +34,20 @@ func refuse(format string, a ...any) error { return &Refused{fmt.Sprintf(format,
 // and a bound on the work a crafted file can make.
 const MaxTrailing = 1 << 20
 
-// MaxDocument is the largest export.json Read takes: far beyond any real
-// instance's, but a bound on the memory a crafted file can claim.
-const MaxDocument = 256 << 20
+// MaxDocument is the largest export.json Read takes, and so the largest
+// Write and Check let an export hold (VAQ-132): an archive this version
+// writes, it can import. Room for every real instance, and a bound on the
+// memory a crafted file can claim. A variable only so tests can lower it:
+// set only in tests, never in a t.Parallel test; nothing else writes it.
+var MaxDocument int64 = 256 << 20
+
+// TooLarge is an export whose export.json would pass MaxDocument: Write
+// and Check refuse it before anything is written.
+type TooLarge struct{}
+
+func (*TooLarge) Error() string {
+	return fmt.Sprintf("This instance's export.json would be larger than %d MB, more than vaquero import reads.", MaxDocument>>20)
+}
 
 var errNotExport = &Refused{"This file isn't a Vaquero export."}
 

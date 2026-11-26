@@ -173,6 +173,15 @@ type ProjectIcon struct {
 	UpdatedAt string
 }
 
+type ProjectLink struct {
+	ID          string
+	FromProject string
+	ToProject   string
+	Kind        string
+	CreatedAt   string
+	CreatedBy   string
+}
+
 type Setting struct {
 	Key       string
 	Value     string
@@ -223,6 +232,13 @@ type TicketLink struct {
 	ToID      string
 	Kind      string
 	CreatedAt string
+}
+
+type TicketOldKey struct {
+	ProjectID string
+	Number    int64
+	TicketID  string
+	MovedAt   string
 }
 
 type TicketTag struct {

@@ -28,6 +28,32 @@ func init() {
 				return err
 			}},
 	)
+	ops = append(ops,
+		coreOp{"RemoveProjectIconImage",
+			func(c *core.Core, f fixture) error {
+				// A stored image in use, arranged without an event.
+				if _, err := c.DB.Exec(`INSERT INTO project_icons (project_id, type, data, etag, updated_at) VALUES (?, 'image/png', 'eA==', 'abc', '2026-11-18T12:00:00.000Z')`, f.Project.ID); err != nil {
+					return err
+				}
+				if _, err := c.DB.Exec(`UPDATE projects SET icon_kind = 'image' WHERE id = ?`, f.Project.ID); err != nil {
+					return err
+				}
+				_, err := c.RemoveProjectIconImage(bg, f.Owner.ID, f.Project.ID)
+				return err
+			},
+			func(c *core.Core, f fixture) error {
+				_, err := c.RemoveProjectIconImage(bg, f.Owner.ID, "no-such-project")
+				return err
+			}},
+	)
+	lateFail["RemoveProjectIconImage"] = func(c *core.Core, f fixture, snap func()) error {
+		if _, err := c.SetProjectIcon(bg, f.Owner.ID, f.Project.ID, "image", "", &core.IconImage{Data: pngIcon}); err != nil {
+			return err
+		}
+		snap()
+		_, err := c.RemoveProjectIconImage(bg, f.Owner.ID, f.Project.ID)
+		return err
+	}
 	// The icon row is written, then the event refuses.
 	lateFail["SetProjectIcon"] = func(c *core.Core, f fixture, snap func()) error {
 		snap()
@@ -223,5 +249,79 @@ func TestDeleteProjectRemovesItsIcon(t *testing.T) {
 	var n int
 	if err := d.R.QueryRow(`SELECT count(*) FROM project_icons`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("%d %v", n, err)
+	}
+}
+
+// VAQ-146: removing the stored image deletes it with one project.updated
+// event; an image in use falls back to the monogram, a glyph in use stays,
+// and with no image stored nothing is written.
+func TestRemoveProjectIconImage(t *testing.T) {
+	c, d, f := newFixture(t)
+	newest := func() map[string]any {
+		t.Helper()
+		var kind, payload string
+		if err := d.R.QueryRow(`SELECT kind, payload FROM events ORDER BY seq DESC LIMIT 1`).Scan(&kind, &payload); err != nil {
+			t.Fatal(err)
+		}
+		var body struct{ Changes map[string]any }
+		if err := json.Unmarshal([]byte(payload), &body); err != nil || kind != core.EvProjectUpdated {
+			t.Fatalf("%s %s %v", kind, payload, err)
+		}
+		return body.Changes
+	}
+	stored := func() bool {
+		t.Helper()
+		var n int
+		if err := d.R.QueryRow(`SELECT count(*) FROM project_icons WHERE project_id = ?`, f.Project.ID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n == 1
+	}
+	// Nothing stored: nothing to do.
+	before := eventCount(t, d)
+	p, err := c.RemoveProjectIconImage(bg, f.Owner.ID, f.Project.ID)
+	if err != nil || p.IconKind != "monogram" || eventCount(t, d) != before {
+		t.Fatalf("%+v %v, %d events", p, err, eventCount(t, d)-before)
+	}
+
+	// In use: back to the monogram.
+	if _, err := c.SetProjectIcon(bg, f.Owner.ID, f.Project.ID, "image", "", &core.IconImage{Data: pngIcon}); err != nil {
+		t.Fatal(err)
+	}
+	icon, _ := d.RQ.GetProjectIcon(bg, f.Project.ID)
+	before = eventCount(t, d)
+	p, err = c.RemoveProjectIconImage(bg, f.Owner.ID, f.Project.ID)
+	if err != nil || p.IconKind != "monogram" || p.IconGlyph != "" || stored() || eventCount(t, d) != before+1 {
+		t.Fatalf("%+v %v stored %v", p, err, stored())
+	}
+	ch := newest()
+	if got, _ := json.Marshal(ch); string(got) != `{"icon":{"from":{"etag":"`+icon.Etag+`","kind":"image"},"to":{"kind":"monogram"}},"icon_image":{"from":"`+icon.Etag+`","to":null}}` {
+		t.Fatalf("in use: %s", got)
+	}
+	if again, _ := d.RQ.GetProject(bg, f.Project.ID); again.IconKind != "monogram" {
+		t.Fatalf("stored kind %q", again.IconKind)
+	}
+	// Choosing the image again now asks for an upload.
+	if _, err := c.SetProjectIcon(bg, f.Owner.ID, f.Project.ID, "image", "", nil); !errors.As(err, new(*core.Invalid)) {
+		t.Fatalf("image with none stored: %v", err)
+	}
+
+	// Not in use: the glyph stays.
+	if _, err := c.SetProjectIcon(bg, f.Owner.ID, f.Project.ID, "image", "", &core.IconImage{Data: webpIcon}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.SetProjectIcon(bg, f.Owner.ID, f.Project.ID, "glyph", "rocket", nil); err != nil {
+		t.Fatal(err)
+	}
+	before = eventCount(t, d)
+	p, err = c.RemoveProjectIconImage(bg, f.Owner.ID, f.Project.ID)
+	if err != nil || p.IconKind != "glyph" || p.IconGlyph != "rocket" || stored() || eventCount(t, d) != before+1 {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if ch := newest(); ch["icon"] != nil || ch["icon_image"] == nil || len(ch) != 1 {
+		t.Fatalf("not in use: %v", ch)
+	}
+	if _, err := c.RemoveProjectIconImage(bg, f.Owner.ID, "nope"); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("missing project: %v", err)
 	}
 }

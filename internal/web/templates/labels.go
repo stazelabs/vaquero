@@ -3,6 +3,7 @@ package templates
 import (
 	"strings"
 
+	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
@@ -154,4 +155,42 @@ func PriorityIcon(p int64) string {
 		return ""
 	}
 	return priorityIcons[p]
+}
+
+// ProjectLinkKindOptions are the add-link form's kinds, as the sentence
+// "This project depends on / relates to …" reads.
+func ProjectLinkKindOptions() []Option {
+	return []Option{{Value: "depends on", Label: "Depends on"}, {Value: "relates", Label: "Relates to"}}
+}
+
+// projectLinkLabel is how a project's link reads from its side: "Depends
+// on", "Used by" or "Relates to".
+func projectLinkLabel(l board.ProjectLink) string {
+	switch {
+	case l.Kind == "depends on" && l.Direction == "out":
+		return "Depends on"
+	case l.Kind == "depends on":
+		return "Used by"
+	}
+	return "Relates to"
+}
+
+// linkGroup is the projects a project's links name under one label.
+type linkGroup struct {
+	Label string
+	Links []board.ProjectLink
+}
+
+// linkGroups gathers links (in LoadProjectLinks' order) under their labels.
+func linkGroups(links []board.ProjectLink) []linkGroup {
+	var out []linkGroup
+	for _, l := range links {
+		label := projectLinkLabel(l)
+		if n := len(out); n > 0 && out[n-1].Label == label {
+			out[n-1].Links = append(out[n-1].Links, l)
+			continue
+		}
+		out = append(out, linkGroup{Label: label, Links: []board.ProjectLink{l}})
+	}
+	return out
 }

@@ -182,3 +182,35 @@ func TestRunIgnoresLoneCombiningMark(t *testing.T) {
 		t.Fatal("a lone mark matched")
 	}
 }
+
+// VAQ-133: with comment snippets made in one pass, each ticket still gets
+// its own best comment, and a ticket whose description matches keeps the
+// description's snippet.
+func TestRunCommentSnippetsPerTicket(t *testing.T) {
+	c, d, by, pid := setup(t)
+	ctx := context.Background()
+	a, _ := c.CreateTicket(ctx, by, pid, core.TicketInput{Title: "First", Body: "nothing here"})
+	b, _ := c.CreateTicket(ctx, by, pid, core.TicketInput{Title: "Second", Body: "nothing either"})
+	both, _ := c.CreateTicket(ctx, by, pid, core.TicketInput{Title: "Third", Body: "the widget in the body"})
+	for _, x := range []struct{ id, body string }{
+		{a.ID, "first ticket talks about the widget once"},
+		{a.ID, "unrelated words"},
+		{b.ID, "second ticket mentions widget widget widget"},
+		{both.ID, "a comment on the widget too"},
+	} {
+		if _, err := c.AddComment(ctx, by, x.id, x.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := search.Run(ctx, d.R, "widget", 50)
+	if err != nil || len(res.Hits) != 3 {
+		t.Fatalf("%v %s", err, keys(res.Hits))
+	}
+	want := map[string]string{"VAQ-1": "first ticket", "VAQ-2": "second ticket", "VAQ-3": "in the body"}
+	for _, h := range res.Hits {
+		plain, marked := snippetText(h)
+		if !strings.Contains(plain, want[h.Key]) || !strings.Contains(marked, "widget") {
+			t.Errorf("%s: plain %q marked %q, want it to hold %q", h.Key, plain, marked, want[h.Key])
+		}
+	}
+}

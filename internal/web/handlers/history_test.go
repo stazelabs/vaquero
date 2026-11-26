@@ -1,6 +1,8 @@
 package handlers_test
 
 import (
+	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -18,12 +20,57 @@ func TestHistoryShowsDescriptionDiff(t *testing.T) {
 	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: new("keep\nnew line")}, 0); err != nil {
 		t.Fatal(err)
 	}
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
 	c := e.Client()
 	page := c.Get("/t/VAQ-1").Body
-	contains(t, page, "changed the description of VAQ-1", "<details", "Show changes", "old line", "new line")
+	// VAQ-143: the page carries only the toggle; the diff is read when it
+	// is opened.
+	changes := fmt.Sprintf("/t/VAQ-1/changes/%d", seq)
+	contains(t, page, "changed the description of VAQ-1", "<details", "Show changes", `hx-get="`+changes+`"`, `hx-trigger="toggle once"`)
+	lacks(t, page, "old line")
+	diff := c.GetHX(changes)
+	if diff.Status != 200 {
+		t.Fatalf("changes: %d %s", diff.Status, diff.Body)
+	}
+	contains(t, diff.Body, "<pre", "old line", "new line")
+	lacks(t, diff.Body, "<html")
 	act := c.Get("/activity").Body
 	contains(t, act, "changed the description of VAQ-1")
 	lacks(t, act, "Show changes", "old line")
+}
+
+// VAQ-143: the changes of an event that isn't this ticket's description
+// edit aren't served: a stale or hand-made address reloads the ticket with
+// a toast.
+func TestHistoryChangesBelongToTheTicket(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "x", Body: "one"})
+	ticket(t, e, p, core.TicketInput{Title: "y"})
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: new("two")}, 0); err != nil {
+		t.Fatal(err)
+	}
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
+	c := e.Client()
+	for _, path := range []string{
+		fmt.Sprintf("/t/VAQ-2/changes/%d", seq), // another ticket's edit
+		"/t/VAQ-1/changes/1",                    // not a description edit
+		"/t/VAQ-1/changes/999",                  // no such event
+		"/t/VAQ-1/changes/x",
+	} {
+		r := c.GetHX(path)
+		if r.Status != 200 || r.Header.Get("HX-Refresh") != "true" {
+			t.Fatalf("%s: %d %v %s", path, r.Status, r.Header, r.Body)
+		}
+		lacks(t, r.Body, "one", "two")
+		// Opened without htmx, it goes back to the ticket.
+		if r := c.Get(path); r.Status != 303 || r.Header.Get("Location") != "/t/VAQ-1" && r.Header.Get("Location") != "/t/VAQ-2" {
+			t.Fatalf("%s without htmx: %d %v", path, r.Status, r.Header)
+		}
+	}
+	if r := c.GetHX(fmt.Sprintf("/t/VAQ-1/changes/%d", seq)); r.Header.Get("HX-Refresh") != "" {
+		t.Fatalf("own edit refused: %v", r.Header)
+	}
 }
 
 // VAQ-21: an event from before the change (no stored text) still renders,
@@ -47,8 +94,11 @@ func TestHistoryOldAndLongDescriptionEvents(t *testing.T) {
 	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: &long}, 0); err != nil {
 		t.Fatal(err)
 	}
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
 	page = c.Get("/t/VAQ-1").Body
-	contains(t, page, "Show changes", "The description is too long to show.")
+	contains(t, page, "Show changes")
+	lacks(t, page, "The description is too long to show.")
+	contains(t, c.GetHX(fmt.Sprintf("/t/VAQ-1/changes/%d", seq)).Body, "The description is too long to show.")
 }
 
 // reorderWorld is two tickets in one column, so each can be dragged above
@@ -209,4 +259,24 @@ func TestHistoryLinkWithoutTargetID(t *testing.T) {
 	page := e.Client().Get("/t/VAQ-1").Body
 	contains(t, page, "marked this ticket as blocking OTH-1")
 	lacks(t, page, `href="/t/OTH-1"`)
+}
+
+// The changes fragment is part of a page, never the page a redirect lands
+// on: reading it leaves a queued toast for the page.
+func TestHistoryChangesKeepTheToast(t *testing.T) {
+	e := webtest.New(t)
+	tk := ticket(t, e, project(t, e), core.TicketInput{Title: "x", Body: "one"})
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: new("two")}, 0); err != nil {
+		t.Fatal(err)
+	}
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
+	c := e.Client()
+	if r := c.Post("/t/VAQ-1/comments", url.Values{"body": {"Noted."}}); r.Status != 303 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	diff := c.Get(fmt.Sprintf("/t/VAQ-1/changes/%d", seq))
+	if diff.Status != 200 || strings.Contains(strings.Join(diff.Header.Values("Set-Cookie"), ";"), "vq_flash") {
+		t.Fatalf("%d %v", diff.Status, diff.Header.Values("Set-Cookie"))
+	}
+	contains(t, c.Get("/t/VAQ-1").Body, "Comment added.")
 }

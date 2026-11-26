@@ -28,7 +28,7 @@ func Activity(d Deps) http.HandlerFunc {
 				Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
 			}
 			if e.TicketNumber > 0 {
-				v.TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
+				v.TicketKey = core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String()
 			}
 			events[i] = v
 		}

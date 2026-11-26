@@ -164,6 +164,11 @@ func TestProjectsStatsOneQuery(t *testing.T) {
 			if _, err := e.c.CreateMilestone(ctx, e.owner.ID, p.ID, core.MilestoneInput{Name: "M"}); err != nil {
 				t.Fatal(err)
 			}
+			if i > 0 { // VAQ-119: every later project depends on P0
+				if _, err := e.c.AddProjectLink(ctx, e.owner.ID, p.ID, "depends on", "P0"); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 		cdb := &countingDB{DBTX: e.d.R}
 		got, err := board.LoadProjectStats(ctx, gen.New(cdb))
@@ -179,9 +184,61 @@ func TestProjectsStatsOneQuery(t *testing.T) {
 	if one != six {
 		t.Fatalf("%d queries for 2 projects, %d for 6", one, six)
 	}
-	// Three stats queries, then readiness's batch (three for tickets
-	// without parents).
-	if six > 6 {
-		t.Fatalf("%d queries, want at most 6", six)
+	// Three stats queries, then readiness's batch (four for tickets
+	// without parents: tickets, plans, approvals, and moves for N-R5),
+	// then every project link in one (VAQ-119).
+	if six > 8 {
+		t.Fatalf("%d queries, want at most 8", six)
+	}
+}
+
+// VAQ-119, ruling N-R3: each project's stats carry its links, both ends:
+// what it depends on, what depends on it, and what it relates to, in that
+// order, by key.
+func TestProjectStatsLinks(t *testing.T) {
+	e := newEnv(t)
+	for _, k := range []string{"APP", "WEB", "API", "DOC"} {
+		if _, err := e.c.CreateProject(ctx, e.owner.ID, core.ProjectInput{Key: k, Name: k + " project"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids := map[string]string{}
+	rows, err := e.d.RQ.ListProjects(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range rows {
+		ids[r.Key] = r.ID
+	}
+	for _, l := range [][3]string{{"WEB", "depends on", "API"}, {"APP", "depends on", "API"}, {"WEB", "relates", "DOC"}, {"DOC", "depends on", "WEB"}} {
+		if _, err := e.c.AddProjectLink(ctx, e.owner.ID, ids[l[0]], l[1], l[2]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := board.LoadProjectStats(ctx, e.d.RQ)
+	if err != nil {
+		t.Fatal(err)
+	}
+	words := func(key string) string {
+		var out []string
+		for _, l := range got[ids[key]].Links {
+			out = append(out, l.Kind+" "+l.Direction+" "+l.Key+" "+l.Name)
+		}
+		return fmt.Sprint(out)
+	}
+	for key, want := range map[string]string{
+		"WEB": "[depends on out API API project depends on in DOC DOC project relates out DOC DOC project]",
+		"API": "[depends on in APP APP project depends on in WEB WEB project]",
+		"DOC": "[depends on out WEB WEB project relates in WEB WEB project]",
+		"APP": "[depends on out API API project]",
+	} {
+		if g := words(key); g != want {
+			t.Errorf("%s: %s, want %s", key, g, want)
+		}
+	}
+	for _, l := range got[ids["WEB"]].Links {
+		if l.ID == "" {
+			t.Fatal("a link without its id")
+		}
 	}
 }

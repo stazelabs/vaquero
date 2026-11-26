@@ -196,3 +196,62 @@ func TestProjectsPageShowsIcon(t *testing.T) {
 		t.Fatal("no monogram on the projects page")
 	}
 }
+
+// VAQ-146: DELETE /api/v1/projects/{key}/icon removes the stored image:
+// in use, the icon falls back to the monogram; with none stored it
+// answers the project and writes nothing.
+func TestAPIProjectIconDelete(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	if r := c.Multipart("PUT", "/api/v1/projects/VAQ/icon", tok, nil, "a.png", "", pngBytes); r.Status != 200 {
+		t.Fatalf("upload: %d", r.Status)
+	}
+	before, _ := e.Deps.R.MaxEventSeq(bg)
+	r := c.API("DELETE", "/api/v1/projects/vaq/icon", tok, nil)
+	var p api.Project
+	decode(t, r.Body, &p)
+	if r.Status != 200 || p.Key != "VAQ" || *p.Icon != (api.ProjectIcon{Kind: "monogram"}) {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if after, _ := e.Deps.R.MaxEventSeq(bg); after != before+1 {
+		t.Fatalf("%d events", after-before)
+	}
+	if got := c.Get("/p/VAQ/icon"); got.Status != http.StatusNotFound {
+		t.Fatalf("image still served: %d", got.Status)
+	}
+	contains(t, c.Get("/activity").Body, "removed the icon image of VAQ")
+	// Again: nothing stored, nothing written.
+	if r := c.API("DELETE", "/api/v1/projects/VAQ/icon", tok, nil); r.Status != 200 {
+		t.Fatalf("again: %d %s", r.Status, r.Body)
+	}
+	if after, _ := e.Deps.R.MaxEventSeq(bg); after != before+1 {
+		t.Fatal("a second delete wrote an event")
+	}
+	if r := c.API("DELETE", "/api/v1/projects/NOPE/icon", tok, nil); r.Status != 404 {
+		t.Fatalf("missing project: %d", r.Status)
+	}
+	if r := c.API("DELETE", "/api/v1/projects/VAQ/icon", "", nil); r.Status != 401 {
+		t.Fatalf("no token: %d", r.Status)
+	}
+}
+
+// VAQ-146: settings offer "Remove image", behind the confirm dialog, only
+// when an image is stored; removing it while in use shows the monogram.
+func TestSettingsRemoveIconImage(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	lacks(t, c.Get("/p/VAQ/settings").Body, "Remove image", `action="/p/VAQ/icon/delete"`)
+	e2, c2 := iconWorld(t)
+	page := c2.Get("/p/VAQ/settings").Body
+	contains(t, page, `action="/p/VAQ/icon/delete"`, `data-confirm="Remove the uploaded icon image of VAQ?`, "Remove image")
+	r := c2.Post("/p/VAQ/icon/delete", nil)
+	if r.Status != http.StatusSeeOther || r.Location != "/p/VAQ/settings" {
+		t.Fatalf("%d %q %s", r.Status, r.Location, r.Body)
+	}
+	page = c2.Follow(r).Body
+	contains(t, page, "Image removed.")
+	lacks(t, page, `src="/p/VAQ/icon"`, "Remove image")
+	if p, _ := e2.Deps.R.GetProjectByKey(bg, "VAQ"); p.IconKind != "monogram" {
+		t.Fatalf("%+v", p)
+	}
+}

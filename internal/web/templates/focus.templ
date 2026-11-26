@@ -18,7 +18,11 @@ templ FocusPage(v FocusView) {
 				@helpLink("the-board", "About Focus")
 			</div>
 		</div>
-		@FocusSection(v.Focus)
+		if v.Bar.MissingTag() != "" {
+			@noTagNotice(v.Bar)
+		} else {
+			@FocusSection(v.Focus)
+		}
 	}
 }
 

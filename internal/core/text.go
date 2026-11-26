@@ -8,6 +8,10 @@ import (
 
 const controlMsg = "Remove the hidden control characters."
 
+// HasControl is hasControl, for a client that checks text before sending
+// it (vaquero import linear).
+func HasControl(s string) bool { return hasControl(s) }
+
 // hasControl reports a control character other than tab, newline or
 // carriage return. A NUL in particular would slip past Go's checks and then
 // trip SQLite's (its length() stops at NUL).

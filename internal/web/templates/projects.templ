@@ -62,8 +62,12 @@ type SettingsView struct {
 	// HasIconImage is whether the project has a stored icon image, offered
 	// again in the icon form.
 	HasIconImage bool
+	// Links are the project's links (VAQ-119); LinkTargets the other
+	// projects the add form offers.
+	Links       []board.ProjectLink
+	LinkTargets []Option
 
-	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag SubForm
+	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag, NewLink SubForm
 }
 
 // workflowOn is "on" when p uses the agent workflow, as its checkbox posts.
@@ -207,6 +211,7 @@ templ projectCard(c ProjectCard, f QuickEdit, open bool) {
 				@projectMilestone(c.Stats.Milestone, true)
 			</div>
 			@projectLastChange(c.LastChange, "mt-2")
+			@projectLinks(c.Row.Key, c.Stats.Links, "mt-2")
 		</div>
 		@quickSettings(c, f, open)
 	</li>
@@ -227,6 +232,7 @@ templ projectRow(c ProjectCard, f QuickEdit, open bool) {
 			@projectMilestone(c.Stats.Milestone, false)
 		</div>
 		@projectLastChange(c.LastChange, "")
+		@projectLinks(c.Row.Key, c.Stats.Links, "basis-full")
 		@quickSettings(c, f, open)
 	</li>
 }
@@ -286,6 +292,31 @@ templ projectLastChange(ago, class string) {
 		<p class={ "inline-flex items-center gap-1.5 text-xs text-muted " + class } title="Last change">
 			@Icon("history")
 			{ ago }
+		</p>
+	}
+}
+
+// projectLinks is a project's links on the projects page (ruling N-R3):
+// "Depends on OTH · Used by APP · Relates to DOC", each key a link to
+// its project; nothing when it has none.
+templ projectLinks(key string, links []board.ProjectLink, class string) {
+	if len(links) > 0 {
+		<p data-project-links={ key } class={ "flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted " + class }>
+			@Icon("link")
+			for i, g := range linkGroups(links) {
+				if i > 0 {
+					<span aria-hidden="true">·</span>
+				}
+				<span>
+					{ g.Label }
+					for j, l := range g.Links {
+						if j > 0 {
+							{ ", " }
+						}
+						<a href={ templ.SafeURL("/p/" + l.Key) } class="font-mono text-ink/80 hover:text-accent" title={ l.Name }>{ l.Key }</a>
+					}
+				</span>
+			}
 		</p>
 	}
 }
@@ -480,6 +511,7 @@ templ ProjectSettingsPage(v SettingsView) {
 				</ul>
 			}
 		</section>
+		@linksSection(v)
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>
 				@Icon("archive")
@@ -502,7 +534,7 @@ templ ProjectSettingsPage(v SettingsView) {
 				@Icon("delete")
 				Delete project
 			</h2>
-			<p class="mt-1 max-w-lg text-sm text-ink/80">This removes { v.Project.Key } and everything in it: its tickets, comments, links, milestones, statuses and history. Links to its tickets from other projects are removed too. A backup of the whole database is saved first.</p>
+			<p class="mt-1 max-w-lg text-sm text-ink/80">This removes { v.Project.Key } and everything in it: its tickets, comments, links, milestones, statuses and history. Links to its tickets from other projects, and its links to other projects, are removed too. A backup of the whole database is saved first.</p>
 			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/delete") } class="mt-3 flex max-w-lg items-end gap-3">
 				<div class="flex-1">
 					@TextInput(InputProps{Name: "confirm", Label: "Type " + v.Project.Key + " to delete this project and everything in it", Required: true})
@@ -647,4 +679,43 @@ templ tagItem(key string, t TagRow, edit SubForm, mergeInto string) {
 			<button type="submit" class="text-sm text-danger hover:underline" aria-label={ "Delete tag " + t.Name }>Delete</button>
 		</form>
 	</li>
+}
+
+// linksSection is the project's links to other projects (VAQ-119): each
+// with its remove button behind the confirm dialog, then the add form.
+templ linksSection(v SettingsView) {
+	<section id="links" class="mt-10">
+		<h2 class={ h2IconClass }>
+			@Icon("link")
+			Links
+		</h2>
+		<p class="mt-1 max-w-2xl text-sm text-muted">Say which projects this one depends on or relates to. Links show on the projects page and in the API; they don't hold up any work.</p>
+		if len(v.Links) == 0 {
+			<p class="mt-2 text-sm text-muted">No links yet.</p>
+		} else {
+			<ul class="mt-3 max-w-2xl divide-y divide-line rounded-md border border-line">
+				for _, l := range v.Links {
+					<li data-project-link={ l.ID } class="flex flex-wrap items-center gap-3 px-3 py-2">
+						<span class="w-24 text-sm text-muted">{ projectLinkLabel(l) }</span>
+						<a href={ templ.SafeURL("/p/" + l.Key) } class="font-mono text-sm font-semibold text-accent hover:underline">{ l.Key }</a>
+						<span class="min-w-0 flex-1 truncate text-sm text-ink">{ l.Name }</span>
+						<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/links/" + l.ID + "/delete") } data-confirm={ "Remove the link between " + v.Project.Key + " and " + l.Key + "?" }>
+							<button type="submit" class="text-sm text-danger hover:underline" aria-label={ "Remove the link to " + l.Key }>Remove</button>
+						</form>
+					</li>
+				}
+			</ul>
+		}
+		if len(v.LinkTargets) == 0 {
+			<p class="mt-4 text-sm text-muted">No other projects to link to yet.</p>
+		} else {
+			<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/links") } class="mt-4 flex max-w-2xl flex-wrap items-end gap-3">
+				@Select(SelectProps{Name: "kind", Label: "This project", Selected: v.NewLink.Val("kind", "depends on"), Options: ProjectLinkKindOptions(), Error: v.NewLink.Errors["kind"]})
+				<div class="min-w-0 flex-1">
+					@Select(SelectProps{Name: "project", Label: "Project", Selected: v.NewLink.Val("project", ""), Options: v.LinkTargets, Error: v.NewLink.Errors["project"]})
+				</div>
+				<button type="submit" class={ btnSecondary }>Add link</button>
+			</form>
+		}
+	</section>
 }

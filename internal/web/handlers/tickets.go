@@ -24,9 +24,12 @@ import (
 )
 
 // ticketFromURL loads the {ticket} ticket. A GET with a non-canonical key
-// ("vaq-012") is redirected 301 to the canonical path ("VAQ-12"); a key
-// that doesn't parse or doesn't exist goes home with a toast. ok is false
-// when the response is already written.
+// ("vaq-012") is redirected 301 to the canonical path ("VAQ-12"); a GET
+// with a key the ticket had before it moved to another project is
+// redirected 302 to its key now (302: the old key may lead elsewhere
+// later, when the ticket moves again or its project goes). A key that
+// doesn't parse or doesn't exist goes home with a toast. ok is false when
+// the response is already written.
 func ticketFromURL(w http.ResponseWriter, r *http.Request, d Deps) (t gen.Ticket, p gen.Project, ok bool) {
 	templates.LoadEventSeq(r.Context()) // before the ticket is read
 	raw := chi.URLParam(r, "ticket")
@@ -35,21 +38,33 @@ func ticketFromURL(w http.ResponseWriter, r *http.Request, d Deps) (t gen.Ticket
 		redirectWithFlash(w, r, flash.Error, "That isn't a ticket key.", "/")
 		return t, p, false
 	}
-	if raw != k.String() && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
-		to := strings.Replace(r.URL.Path, "/t/"+raw, "/t/"+k.String(), 1)
+	get := r.Method == http.MethodGet || r.Method == http.MethodHead
+	redirect := func(key string, status int) {
+		to := strings.Replace(r.URL.Path, "/t/"+raw, "/t/"+key, 1)
 		if r.URL.RawQuery != "" {
 			to += "?" + r.URL.RawQuery
 		}
-		http.Redirect(w, r, to, http.StatusMovedPermanently)
-		return t, p, false
+		http.Redirect(w, r, to, status)
 	}
 	t, p, err := d.Core.ResolveTicket(r.Context(), d.R, k)
 	if errors.Is(err, core.ErrNotFound) {
+		if raw != k.String() && get {
+			redirect(k.String(), http.StatusMovedPermanently)
+			return t, p, false
+		}
 		redirectWithFlash(w, r, flash.Error, "No ticket "+k.String()+".", "/")
 		return t, p, false
 	}
 	if err != nil {
 		serverError(w, r, d, err)
+		return t, p, false
+	}
+	if now := ticketKey(p, t.Number); now != raw && get {
+		status := http.StatusMovedPermanently
+		if now != k.String() {
+			status = http.StatusFound // an old key
+		}
+		redirect(now, status)
 		return t, p, false
 	}
 	return t, p, true
@@ -342,6 +357,17 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	for _, tag := range tags {
 		v.Tags = append(v.Tags, tag.Name)
 	}
+	if !t.ParentID.Valid {
+		projects, err := d.R.ListProjects(ctx)
+		if err != nil {
+			return v, err
+		}
+		for _, o := range projects {
+			if o.ID != p.ID && !o.ArchivedAt.Valid {
+				v.MoveTargets = append(v.MoveTargets, templates.Option{Value: o.Key, Label: o.Key + " · " + o.Name})
+			}
+		}
+	}
 	subs, err := d.R.ListSubTickets(ctx, sqlNull(t.ID))
 	if err != nil {
 		return v, err
@@ -388,9 +414,9 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 		at, _ := timefmt.Parse(e.At)
 		v.Events = append(v.Events, templates.EventView{
 			Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey,
-			TicketKey:   core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String(),
+			TicketKey:   core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String(),
 			TicketTitle: e.TicketTitle, Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
-			Reader: v.Key, ActorID: e.ActorID,
+			Reader: v.Key, ActorID: e.ActorID, Seq: e.Seq,
 		})
 	}
 	if err := resolveLinkTargets(ctx, d, v.Events); err != nil {
@@ -398,6 +424,48 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	}
 	v.Events = templates.FoldReorders(v.Events)
 	return v, nil
+}
+
+// TicketChanges is a description edit's diff, the fragment a history
+// line's "Show changes" reads when first opened (VAQ-143): the page itself
+// never diffs. The event must be one of this ticket's description edits;
+// any other answers as a stale page does.
+func TicketChanges(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, _, ok := ticketFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		key := "/t/" + chi.URLParam(r, "ticket")
+		gone := func() {
+			const msg = "Those changes are no longer in this ticket's history."
+			if r.Header.Get("HX-Request") == "true" {
+				refreshWith(w, msg)
+				return
+			}
+			redirectWithFlash(w, r, flash.Error, msg, key)
+		}
+		seq, err := strconv.ParseInt(chi.URLParam(r, "seq"), 10, 64)
+		if err != nil {
+			gone()
+			return
+		}
+		ev, err := d.R.GetTicketEvent(r.Context(), gen.GetTicketEventParams{Seq: seq, TicketID: sql.NullString{String: t.ID, Valid: true}})
+		if errors.Is(err, sql.ErrNoRows) {
+			gone()
+			return
+		}
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		diff, ok := templates.BodyChangesOf(ev.Kind, templates.ParsePayload(ev.Payload))
+		if !ok {
+			gone()
+			return
+		}
+		renderPart(w, r, d, http.StatusOK, templates.BodyChanges(diff))
+	}
 }
 
 // planView is the ticket's plan for its page, nil when it has none.
@@ -550,6 +618,44 @@ func LinkCreate(d Deps) http.HandlerFunc {
 			return
 		}
 		redirectWithFlash(w, r, flash.Success, "Link added.", "/t/"+ticketKey(p, t.Number))
+	}
+}
+
+// TicketMoveTo moves the ticket, with its sub-tickets, to the project
+// named by the form's key (behind the page's confirm dialog), then shows it
+// under its new key. A refusal goes back to the ticket with the message.
+func TicketMoveTo(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, p, ok := ticketFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		back := "/t/" + ticketKey(p, t.Number)
+		key := strings.ToUpper(strings.TrimSpace(r.PostFormValue("project")))
+		to, err := d.R.GetProjectByKey(r.Context(), key)
+		if errors.Is(err, sql.ErrNoRows) {
+			redirectWithFlash(w, r, flash.Error, "Choose a project to move it to.", back)
+			return
+		}
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		nt, err := d.Core.MoveTicketToProject(r.Context(), d.Actor.ID, t.ID, to.ID, 0)
+		var inv *core.Invalid
+		switch {
+		case errors.As(err, &inv):
+			redirectWithFlash(w, r, flash.Error, inv.Error(), back)
+			return
+		case errors.Is(err, core.ErrNotFound):
+			redirectWithFlash(w, r, flash.Error, "That no longer exists.", "/")
+			return
+		case err != nil:
+			serverError(w, r, d, err)
+			return
+		}
+		now := ticketKey(to, nt.Number)
+		redirectWithFlash(w, r, flash.Success, "Moved to "+now+".", "/t/"+now)
 	}
 }
 

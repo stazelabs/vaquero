@@ -162,7 +162,7 @@ func TestRoundTrip(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("%d %q", code, e)
 			}
-			if want := "Imported 2 projects, 8 tickets and 2 attachments into " + backend + importTail; out != want {
+			if want := "Imported 2 projects, 9 tickets and 2 attachments into " + backend + importTail; out != want {
 				t.Fatalf("got %q, want %q", out, want)
 			}
 			if left := importLeftovers(t, dataDir); len(left) != 0 {

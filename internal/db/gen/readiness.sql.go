@@ -16,12 +16,14 @@ SELECT dt.ticket_id, d.id AS decision_id,
        CAST(a.id IS NOT NULL AS BOOLEAN) AS approved,
        CAST(coalesce(a.requirement_hash, '') AS TEXT) AS requirement_hash,
        CAST(coalesce(a.plan_revision, 0) AS INTEGER) AS plan_revision,
-       CAST(coalesce(a.pins, '[]') AS TEXT) AS pins
+       CAST(coalesce(a.pins, '[]') AS TEXT) AS pins,
+       d.asked_at
 FROM decision_tickets dt
 JOIN decisions d ON d.id = dt.decision_id
 LEFT JOIN approvals a ON a.decision_id = d.id AND a.ticket_id = dt.ticket_id
 WHERE dt.ticket_id IN (/*SLICE:ids*/?)
   AND d.kind = 'approval' AND d.subject = 'plan' AND d.state = 'answered'
+  AND d.project_id = (SELECT tk.project_id FROM tickets tk WHERE tk.id = dt.ticket_id)
 ORDER BY dt.ticket_id, d.answered_at DESC, d.asked_at DESC, d.id DESC
 `
 
@@ -32,11 +34,14 @@ type ListPlanApprovalAnswersRow struct {
 	RequirementHash string
 	PlanRevision    int64
 	Pins            string
+	AskedAt         string
 }
 
 // Every answered plan approval naming one of the given tickets, latest
 // answer first for each ticket, with the approval row it wrote for that
-// ticket (none: it was answered otherwise than Approve).
+// ticket (none: it was answered otherwise than Approve). Only decisions
+// of the ticket's own project count: a ticket moved to another project
+// needs approving there (ruling N-R1); its approvals stay in history.
 func (q *Queries) ListPlanApprovalAnswers(ctx context.Context, ids []string) ([]ListPlanApprovalAnswersRow, error) {
 	query := listPlanApprovalAnswers
 	var queryParams []interface{}
@@ -63,6 +68,7 @@ func (q *Queries) ListPlanApprovalAnswers(ctx context.Context, ids []string) ([]
 			&i.RequirementHash,
 			&i.PlanRevision,
 			&i.Pins,
+			&i.AskedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -168,6 +174,55 @@ func (q *Queries) ListReadinessTickets(ctx context.Context, ids []string) ([]Lis
 			&i.ParentID,
 			&i.StatusCategory,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTicketArrivals = `-- name: ListTicketArrivals :many
+SELECT ticket_id, CAST(max(moved_at) AS TEXT) AS arrived_at
+FROM ticket_old_keys
+WHERE ticket_id IN (/*SLICE:ids*/?)
+GROUP BY ticket_id
+`
+
+type ListTicketArrivalsRow struct {
+	TicketID  string
+	ArrivedAt string
+}
+
+// When each of the given tickets last arrived in its project: its newest
+// re-keying move, its own or one that carried it (ruling N-R7), whatever
+// its parents are now. A ticket that never moved has no row. Through
+// ticket_old_keys_ticket.
+func (q *Queries) ListTicketArrivals(ctx context.Context, ids []string) ([]ListTicketArrivalsRow, error) {
+	query := listTicketArrivals
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTicketArrivalsRow{}
+	for rows.Next() {
+		var i ListTicketArrivalsRow
+		if err := rows.Scan(&i.TicketID, &i.ArrivedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

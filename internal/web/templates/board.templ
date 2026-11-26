@@ -93,7 +93,11 @@ templ BoardPage(v BoardView) {
 				@helpLink("the-board", "About the board")
 			</div>
 		</div>
-		@BoardSection(v.Board)
+		if v.Bar.MissingTag() != "" {
+			@noTagNotice(v.Bar)
+		} else {
+			@BoardSection(v.Board)
+		}
 	}
 }
 
@@ -319,6 +323,16 @@ templ ListPage(v ListView) {
 	@Shell(v.Project.Name) {
 		@projectHeader(v.Project, "list", v.Filter)
 		@filterBar(v.Bar)
+		if v.Bar.MissingTag() != "" {
+			@noTagNotice(v.Bar)
+		} else {
+			@listSection(v)
+		}
+	}
+}
+
+// listSection is the list's live part.
+templ listSection(v ListView) {
 		<div
 			id="list"
 			data-list-project={ v.Project.Key }
@@ -358,7 +372,6 @@ templ ListPage(v ListView) {
 				}
 			}
 		</div>
-	}
 }
 
 // ListRows is a list group's rows and, when more are left, its "Show 50

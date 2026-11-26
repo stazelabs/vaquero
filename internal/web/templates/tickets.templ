@@ -78,6 +78,9 @@ type TicketView struct {
 	Events                    []EventView
 	LinkKind, LinkTo, LinkErr string
 	CommentBody, CommentErr   string
+	// MoveTargets are the projects the ticket can move to (active ones but
+	// its own), by key; none hides the move form.
+	MoveTargets []Option
 }
 
 // TicketFormPage is the form for a new ticket or an edit.
@@ -157,13 +160,13 @@ templ TicketPage(v TicketView) {
 			<span><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }</span>
 		</p>
 		<div class="flex flex-wrap items-start justify-between gap-4">
-			<h1 class={ h1Class }>{ v.Ticket.Title }</h1>
+			<h1 class={ h1Class + " min-w-0 wrap-anywhere" }>{ v.Ticket.Title }</h1>
 			<a href={ templ.SafeURL("/t/" + v.Key + "/edit") } class={ btnSecondary + " gap-1.5" }>
 				@Icon("edit")
 				Edit ticket
 			</a>
 		</div>
-		<div class="mt-6 grid gap-8 lg:grid-cols-3">
+		<div class="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-3">
 			<div class="space-y-10 lg:col-span-2">
 				<section>
 					<h2 class={ h2IconClass + " mb-2" }>
@@ -362,8 +365,29 @@ templ TicketPage(v TicketView) {
 						}
 					</p>
 				</div>
+				@moveToProject(v)
 			</aside>
 		</div>
+	}
+}
+
+// moveToProject is the ticket's move to another project, behind the
+// confirm dialog. A sub-ticket moves only with its parent, so its page
+// says so instead.
+templ moveToProject(v TicketView) {
+	if v.Parent != nil {
+		<div data-move-project class="border-t border-line pt-3">
+			<p class={ labelClass }>Move to project</p>
+			<p class="text-muted">Move its parent, or detach it first.</p>
+		</div>
+	} else if len(v.MoveTargets) > 0 {
+		<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/move-to") } data-move-project data-confirm={ moveQuestion(v) } class="space-y-2 border-t border-line pt-3">
+			@Select(SelectProps{Name: "project", Label: "Move to project", Options: v.MoveTargets})
+			<button type="submit" class={ btnSecondary + " gap-1.5" }>
+				@Icon("moved")
+				Move ticket
+			</button>
+		</form>
 	}
 }
 
@@ -490,23 +514,31 @@ templ EventLine(e EventView) {
 			@Icon(EventIcon(e.Kind))
 		</span>
 		<span class="font-medium text-ink">{ e.Actor }</span>
-		<span>
+		<span class="min-w-0 wrap-anywhere">
 			@sentenceParts(EventParts(e))
 		</span>
 		<span class="text-xs text-muted">· { e.Ago }</span>
-		if d := bodyChanges(e); d.Show {
-			<details class="w-full pl-6">
+		if bodyChanges(e).Show {
+			<details class="w-full pl-6" hx-get={ changesHref(e) } hx-trigger="toggle once" hx-target="find [data-changes]" hx-swap="innerHTML">
 				<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
-				if d.TooLong {
-					<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
-				} else {
-					<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
-						for _, l := range d.Lines {
-							<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
-						}
-					</pre>
-				}
+				<div data-changes>
+					<p class="mt-1 text-xs text-muted">Loading changes…</p>
+				</div>
 			</details>
 		}
 	</li>
+}
+
+// BodyChanges is a description edit's diff, read into its history line's
+// "Show changes" when that is first opened.
+templ BodyChanges(d bodyDiff) {
+	if d.TooLong {
+		<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
+	} else {
+		<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+			for _, l := range d.Lines {
+				<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+			}
+		</pre>
+	}
 }

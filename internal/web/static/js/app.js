@@ -347,6 +347,11 @@ window.vqDragging = false;
     }
   });
   dialog.addEventListener("close", function () {
+    // The close event comes a task after close(): when a new question has
+    // reopened the dialog since, this one is stale and must leave it be.
+    if (dialog.open) {
+      return;
+    }
     var p = pending;
     pending = null;
     if (p && p.submitter && p.submitter.isConnected) {
@@ -710,25 +715,47 @@ document.addEventListener("toggle", function (ev) {
       s.focus({ preventScroll: true });
     }
   }
+  // The rail opened most recently: toggle events come a task late, so two
+  // quick taps would otherwise let the first rail's event close the second.
+  var latest = null;
+  function onlyOpen(d) {
+    document.querySelectorAll("details[data-rail][open]").forEach(function (o) {
+      if (o !== d) {
+        o.open = false;
+      }
+    });
+  }
   document.addEventListener("click", function (ev) {
     var btn = ev.target.closest ? ev.target.closest("[data-rail-close]") : null;
     var d = btn ? btn.closest("details[data-rail]") : null;
     if (d) {
       ev.preventDefault();
       closeRail(d);
+      return;
     }
+    // A tap on a closed rail's strip opens it once this click is done:
+    // close the others now, in the same task.
+    var s = ev.target.closest ? ev.target.closest("details[data-rail] > summary") : null;
+    d = s ? s.parentElement : null;
+    if (!narrow.matches || !d || d.open || ev.defaultPrevented) {
+      return;
+    }
+    latest = d;
+    onlyOpen(d);
   });
-  // toggle doesn't bubble: listen in the capture phase.
+  // A rail opened another way (the keyboard opens one through a click
+  // too). toggle doesn't bubble: listen in the capture phase.
   document.addEventListener("toggle", function (ev) {
     var d = ev.target;
     if (!narrow.matches || !d.matches || !d.matches("details[data-rail]") || !d.open) {
       return;
     }
-    document.querySelectorAll("details[data-rail][open]").forEach(function (o) {
-      if (o !== d) {
-        o.open = false;
-      }
-    });
+    if (latest && latest !== d && latest.open && latest.isConnected) {
+      d.open = false; // a later tap opened another rail
+      return;
+    }
+    latest = d;
+    onlyOpen(d);
   }, true);
   document.addEventListener("keydown", function (ev) {
     if (ev.key !== "Escape" || !narrow.matches || ev.defaultPrevented) {

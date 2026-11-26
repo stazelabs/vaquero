@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -42,8 +43,10 @@ func TestAPIEventsHideDescriptionText(t *testing.T) {
 	if strings.Contains(text, "body_before") || strings.Contains(text, "secret") || !strings.Contains(text, `"body_diff":true`) && !strings.Contains(text, `"body_diff": true`) {
 		t.Fatalf("MCP: %s", text)
 	}
-	// The ticket page still shows the diff.
-	contains(t, c.Get("/t/VAQ-1").Body, "Show changes", "secret before")
+	// The ticket page still shows the diff, once it is opened.
+	contains(t, c.Get("/t/VAQ-1").Body, "Show changes")
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
+	contains(t, c.GetHX(fmt.Sprintf("/t/VAQ-1/changes/%d", seq)).Body, "secret before")
 }
 
 // K1 review M1: the other write answers on a claimed ticket warn too, and a

@@ -92,6 +92,19 @@ func (q *Queries) DeleteProjectMilestones(ctx context.Context, projectID string)
 	return err
 }
 
+const deleteProjectOldKeys = `-- name: DeleteProjectOldKeys :exec
+DELETE FROM ticket_old_keys
+WHERE ticket_old_keys.project_id = ?1
+   OR ticket_old_keys.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1)
+`
+
+// Old keys in the project (of tickets that moved away) and the old keys
+// elsewhere of the project's tickets (that moved in).
+func (q *Queries) DeleteProjectOldKeys(ctx context.Context, pid string) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectOldKeys, pid)
+	return err
+}
+
 const deleteProjectRow = `-- name: DeleteProjectRow :exec
 DELETE FROM projects WHERE id = ?
 `
@@ -408,6 +421,19 @@ func (q *Queries) NextTicketNumber(ctx context.Context, id string) (int64, error
 	return column_1, err
 }
 
+const rehomeMovedTicketEvents = `-- name: RehomeMovedTicketEvents :exec
+UPDATE events SET project_id = (SELECT t.project_id FROM tickets t WHERE t.id = events.ticket_id)
+WHERE events.project_id = ?1
+  AND events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id <> ?1)
+`
+
+// The project's events on tickets that have since moved to another project
+// go with the ticket, so its history outlives the old project.
+func (q *Queries) RehomeMovedTicketEvents(ctx context.Context, pid sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, rehomeMovedTicketEvents, pid)
+	return err
+}
+
 const setProjectArchived = `-- name: SetProjectArchived :exec
 UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?
 `
@@ -436,6 +462,25 @@ type SetProjectKeyParams struct {
 func (q *Queries) SetProjectKey(ctx context.Context, arg SetProjectKeyParams) error {
 	_, err := q.db.ExecContext(ctx, setProjectKey, arg.Key, arg.UpdatedAt, arg.ID)
 	return err
+}
+
+const takeTicketNumber = `-- name: TakeTicketNumber :execrows
+UPDATE projects SET next_number = ?1 WHERE id = ?2 AND next_number < ?1
+`
+
+type TakeTicketNumberParams struct {
+	Next int64
+	ID   string
+}
+
+// TakeTicketNumber gives an imported ticket the number before next and
+// numbers on from next; it changes no row when that number was given before.
+func (q *Queries) TakeTicketNumber(ctx context.Context, arg TakeTicketNumberParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, takeTicketNumber, arg.Next, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateProject = `-- name: UpdateProject :exec

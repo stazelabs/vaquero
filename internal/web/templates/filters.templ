@@ -26,6 +26,12 @@ templ filterBar(b FilterBar) {
 	</div>
 }
 
+// noTagNotice stands in for a page's tickets when the tag filter names no
+// tag in the project.
+templ noTagNotice(b FilterBar) {
+	@emptyStateLink("tag", "No tag "+b.MissingTag()+" in this project.", b.clearTag(), "Clear the tag filter")
+}
+
 templ toggleChip(c Chip) {
 	<a
 		href={ templ.SafeURL(c.Href) }

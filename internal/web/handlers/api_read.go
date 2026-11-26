@@ -81,9 +81,17 @@ func apiTicket(w http.ResponseWriter, r *http.Request, d Deps) (gen.Ticket, gen.
 	return t, p, true
 }
 
-func projectDTO(p gen.Project, open int64) api.Project {
-	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open,
-		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap), Icon: projectIconDTO(p)}
+func projectDTO(p gen.Project, open int64, links []board.ProjectLink) api.Project {
+	out := api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open, NextNumber: p.NextNumber,
+		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap), Icon: projectIconDTO(p), Links: []api.ProjectLink{}}
+	for _, l := range links {
+		out.Links = append(out.Links, projectLinkDTO(l))
+	}
+	return out
+}
+
+func projectLinkDTO(l board.ProjectLink) api.ProjectLink {
+	return api.ProjectLink{ID: l.ID, Kind: l.Kind, Direction: l.Direction, Key: l.Key, Name: l.Name}
 }
 
 // projectIconDTO is p's icon as the API shows it.
@@ -106,10 +114,15 @@ func APIProjects(d Deps) http.HandlerFunc {
 			apiFail(w, r, d, api.Internal(), err)
 			return
 		}
+		links, err := board.LoadProjectLinks(r.Context(), d.R)
+		if err != nil {
+			apiFail(w, r, d, api.Internal(), err)
+			return
+		}
 		out := make([]api.Project, len(rows))
 		for i, p := range rows {
 			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap,
-				IconKind: p.IconKind, IconGlyph: p.IconGlyph}, p.OpenCount)
+				IconKind: p.IconKind, IconGlyph: p.IconGlyph}, p.OpenCount, links[p.ID])
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -126,8 +139,8 @@ func APIProject(d Deps) http.HandlerFunc {
 	}
 }
 
-// writeProject answers p with its open ticket count, as a read or after a
-// write.
+// writeProject answers p with its open ticket count and its links, as a
+// read or after a write.
 func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, status int) {
 	rows, err := d.R.ListProjects(r.Context())
 	if err != nil {
@@ -140,7 +153,12 @@ func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 			open = row.OpenCount
 		}
 	}
-	api.WriteJSON(w, status, projectDTO(p, open))
+	links, err := board.LoadProjectLinks(r.Context(), d.R)
+	if err != nil {
+		apiFail(w, r, d, api.Internal(), err)
+		return
+	}
+	api.WriteJSON(w, status, projectDTO(p, open, links[p.ID]))
 }
 
 func summary(k board.Card, s gen.Status) api.TicketSummary {
@@ -251,6 +269,13 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 			return out, err
 		}
 		out.Assignee = a.Name
+	}
+	former, err := d.R.ListTicketOldKeys(ctx, t.ID)
+	if err != nil {
+		return out, err
+	}
+	for _, k := range former {
+		out.FormerKeys = append(out.FormerKeys, core.TicketKey{Project: k.ProjectKey, Number: k.Number}.String())
 	}
 	if t.MilestoneID.Valid {
 		m, err := d.R.GetMilestone(ctx, t.MilestoneID.String)
@@ -386,6 +411,9 @@ func APISearch(d Deps) http.HandlerFunc {
 			}
 			out[i] = api.SearchHit{Key: h.Key, Title: h.Title, Status: h.Status, Snippet: b.String()}
 		}
+		// Vaquero-Total counts every match, past the limit (VAQ-133); the
+		// body stays the bare array.
+		w.Header().Set("Vaquero-Total", strconv.Itoa(res.Total))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
 }
@@ -424,7 +452,7 @@ func APIEvents(d Deps) http.HandlerFunc {
 			views[i] = templates.EventView{Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey, TicketTitle: e.TicketTitle,
 				Payload: templates.ParsePayload(e.Payload)}
 			if e.TicketNumber > 0 {
-				views[i].TicketKey = core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String()
+				views[i].TicketKey = core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String()
 			}
 		}
 		if err := resolveLinkTargets(r.Context(), d, views); err != nil {

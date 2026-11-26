@@ -57,6 +57,15 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 	if err := c.DeleteComment(bg, f.Owner.ID, gone.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Project links both ways (the fixture's VAQ relates to OTH, and OTH
+	// depends on VAQ), and one between two other projects, which stays.
+	if _, err := c.AddProjectLink(bg, f.Owner.ID, f.Other.ID, "depends on", "VAQ"); err != nil {
+		t.Fatal(err)
+	}
+	thr := projectFor(t, c, f, "THR")
+	if _, err := c.AddProjectLink(bg, f.Owner.ID, thr, "relates", "OTH"); err != nil {
+		t.Fatal(err)
+	}
 	otherEvents := count(t, d, `SELECT count(*) FROM events WHERE project_id = ?`, f.Other.ID)
 	if err := c.DeleteProject(bg, f.Owner.ID, f.Project.ID, "vaq"); err != nil {
 		t.Fatal(err)
@@ -80,7 +89,8 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 		`SELECT count(*) FROM ticket_links`:                          0,
 		`SELECT count(*) FROM ticket_tags`:                           0,
 		`SELECT count(*) FROM tickets`:                               1, // OTH-1 survives
-		`SELECT count(*) FROM projects`:                              1,
+		`SELECT count(*) FROM projects`:                              2, // OTH and THR
+		`SELECT count(*) FROM project_links`:                         1, // THR relates to OTH
 		`SELECT count(*) FROM events WHERE kind = 'project.deleted'`: 1,
 	} {
 		if n := count(t, d, q); n != want {

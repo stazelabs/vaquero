@@ -6,6 +6,8 @@ order: 5
 ---
 The agent workflow is a project setting for teams where agents do much of the building. It is off in a new project, and a project with it off works as it always has. Turn it on in the project's settings, under Workflow, or with `vaquero project edit KEY --workflow on`.
 
+Only you, the owner, turn the workflow on or off and change the [tier map](#the-tier-map), acting yourself: a request made as an agent (with `--agent`, a `Vaquero-Agent` header, or through MCP) is refused with "Only the owner turns the agent workflow on or off." For the same reason an agent can't move a ticket out of a project with the workflow on into one with it off; only you can.
+
 ## Turning it on
 
 With the workflow on, the Workflow section of the settings page offers to add two backlog statuses, Needs decision and Needs design, if the project lacks them. The workflow parks tickets there: one waiting on an answer from you, one that needs a spec or a plan first. Each is added at the end of the backlog category, as any new status is.
@@ -70,6 +72,7 @@ Which approval counts:
 - **A ticket with no plan and no epic** can be approved as it is, for a small change.
 - **An approval holds under the epic it was asked under.** A ticket moved to another epic, out of its epic, or under an epic when it had none is not ready ("Epic's plan not approved.") until it is approved again where it now is.
 - **Leaning goes up the tree.** When a ticket's epic has no plan of its own, the epic relies on its own epic in turn, up to the first one with a plan, and every approval on the way must be current. Revising the plan at the top makes the grandchildren not ready too, with the reason for the link that broke: "Epic's requirement changed since approval.", "Epic's plan changed since approval." or "Epic's plan not approved."
+- **A move to another project voids it.** An approval counts only if it was asked after the ticket last arrived in its project; and when a ticket leans on an epic's approval, any ticket in the chain from it up to that epic moving to another project after the approval was asked voids it ("Plan not approved."), even if the ticket came back or was detached and attached again.
 
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that fails this. Every ticket in the API answer, and the summary of a todo ticket in a list, then carries `readiness`: `ready`, and the `reasons` it is not, in this order:
 

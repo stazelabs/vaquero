@@ -12,6 +12,8 @@ type Project struct {
 	Description string `json:"description"`
 	Archived    bool   `json:"archived"`
 	OpenCount   int64  `json:"open_count"`
+	// NextNumber is the number the project's next new ticket gets.
+	NextNumber int64 `json:"next_number"`
 	// Workflow is the agent workflow switch. TierMap is the project's
 	// effective tier map, harness → tier → model: its own, else the
 	// default.
@@ -20,6 +22,21 @@ type Project struct {
 	// Icon is how the project is drawn: its monogram, a glyph, or an
 	// uploaded image served at URL.
 	Icon *ProjectIcon `json:"icon,omitempty"`
+	// Links are the project's links to other projects (VAQ-119), both
+	// ends: what it depends on, what depends on it, what it relates to.
+	Links []ProjectLink `json:"links"`
+}
+
+// ProjectLink is one of a project's links as that project sees it. Kind
+// is "depends on" or "relates"; Direction "out" (this project depends on
+// or relates to Key) or "in" (Key depends on or relates to this one);
+// Key and Name are the other project's. ID removes it.
+type ProjectLink struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Direction string `json:"direction"`
+	Key       string `json:"key"`
+	Name      string `json:"name"`
 }
 
 // ProjectIcon is a project's icon. Kind is monogram, glyph or image; Glyph
@@ -37,6 +54,13 @@ type Status struct {
 	Position int64  `json:"position"`
 	// TicketCount is how many tickets have this status.
 	TicketCount int64 `json:"ticket_count"`
+}
+
+// Tag is one of a project's tags: a tag is shared by every project, so
+// TicketCount counts only this project's tickets that carry it.
+type Tag struct {
+	Name        string `json:"name"`
+	TicketCount int64  `json:"ticket_count"`
 }
 
 type Milestone struct {
@@ -93,8 +117,11 @@ type Ticket struct {
 	Links       []Link          `json:"links"`
 	Comments    []Comment       `json:"comments"`
 	Attachments []Attachment    `json:"attachments"`
-	CreatedAt   string          `json:"created_at"`
-	UpdatedAt   string          `json:"updated_at"`
+	// FormerKeys are the keys the ticket had before it moved to another
+	// project, each still leading to it; absent when it never moved.
+	FormerKeys []string `json:"former_keys,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+	UpdatedAt  string   `json:"updated_at"`
 	// Warning is set on a write's answer when someone other than the
 	// caller holds a claim on the ticket: "Claimed by bot until 12:15
 	// UTC." Claims are advisory, so the write went through.

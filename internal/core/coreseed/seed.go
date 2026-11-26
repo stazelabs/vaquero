@@ -113,6 +113,10 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if _, err := c.AddLink(ctx, by, done.ID, "duplicates", core.TicketKey{Project: "OLD", Number: 1}); err != nil {
 		return err
 	}
+	// A project link (VAQ-119).
+	if _, err := c.AddProjectLink(ctx, by, vaq.ID, "depends on", "OLD"); err != nil {
+		return err
+	}
 	// This release's event payloads: a description edit (body_before and
 	// body_after), a tag rename (ticket_ids) and a reorder.
 	body := "Everything **needed** for v0.1.0, and a checklist."
@@ -125,7 +129,7 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	}
 	for _, t := range tags {
 		if t.Name == "docs" {
-			if err := c.RenameTag(ctx, by, vaq.ID, t.ID, "documentation"); err != nil {
+			if err := c.RenameTag(ctx, by, vaq.ID, t.ID, "documentation", true); err != nil {
 				return err
 			}
 		}
@@ -196,6 +200,15 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if _, err := c.AnswerDecision(ctx, by, approval.ID, core.Answer{Option: core.ApproveLabel, Note: "Go.", RelayedBy: agent.ID, Words: "Looks good, go."}); err != nil {
+		return err
+	}
+	// A ticket moved from OLD to VAQ: it is VAQ-8 now, and OLD-2 still
+	// leads to it (ticket_old_keys).
+	moving, err := c.CreateTicket(ctx, by, old.ID, core.TicketInput{Title: "A ticket that moved"})
+	if err != nil {
+		return err
+	}
+	if _, err := c.MoveTicketToProject(ctx, by, moving.ID, vaq.ID, 0); err != nil {
 		return err
 	}
 	// Archived last: an archived project takes no new tickets or links.

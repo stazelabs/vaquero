@@ -133,3 +133,58 @@ func TestWorkflowWording(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-134: on a ticket's history a tag event reads as what happened to the
+// ticket's tag; on the Activity page it keeps the project and the count.
+func TestTagWordingOnTicketHistory(t *testing.T) {
+	ids := []any{"a"}
+	for _, tc := range []struct {
+		kind    string
+		payload map[string]any
+		history string
+		feed    string
+	}{
+		{core.EvTagRenamed, map[string]any{"from": "bug", "to": "defect", "tickets": 1.0, "ticket_ids": ids}, "renamed tag bug → defect", "renamed tag bug to defect in VAQ (1 ticket)"},
+		{core.EvTagMerged, map[string]any{"from": "bugs", "to": "bug", "tickets": 1.0, "ticket_ids": ids}, "merged tag bugs into bug", "merged tag bugs into bug in VAQ (1 ticket)"},
+		{core.EvTagDeleted, map[string]any{"name": "wontfix", "tickets": 1.0, "ticket_ids": ids}, "deleted tag wontfix", "deleted tag wontfix from VAQ (1 ticket)"},
+	} {
+		e := EventView{Kind: tc.kind, ProjectKey: "VAQ", Payload: tc.payload}
+		if got := EventSentence(e); got != tc.feed {
+			t.Errorf("feed %q, want %q", got, tc.feed)
+		}
+		e.Reader = "VAQ-1"
+		if got := EventSentence(e); got != tc.history {
+			t.Errorf("history %q, want %q", got, tc.history)
+		}
+	}
+}
+
+func TestMovedWording(t *testing.T) {
+	p := map[string]any{"from": "VAQ-4", "to": "OTH-2", "from_project": "VAQ", "to_project": "OTH",
+		"sub_tickets": []any{map[string]any{}, map[string]any{}}, "open_decisions": float64(1)}
+	if got := EventSentence(EventView{Kind: core.EvTicketMoved, TicketKey: "OTH-2", Payload: p}); got != "moved VAQ-4 to OTH as OTH-2 with 2 sub-tickets; 1 open decision stays in VAQ" {
+		t.Fatal(got)
+	}
+	p = map[string]any{"from": "VAQ-4", "to": "OTH-2", "from_project": "VAQ", "to_project": "OTH", "sub_tickets": []any{}}
+	if got := EventSentence(EventView{Kind: core.EvTicketMoved, Payload: p}); got != "moved VAQ-4 to OTH as OTH-2" {
+		t.Fatal(got)
+	}
+}
+
+// VAQ-119: a project link reads as what it says about the two projects.
+func TestProjectLinkWording(t *testing.T) {
+	for _, tc := range []struct{ kind, link, want string }{
+		{core.EvProjectLinked, "depends on", "noted that VAQ depends on OTH"},
+		{core.EvProjectLinked, "relates", "noted that VAQ relates to OTH"},
+		{core.EvProjectUnlinked, "depends on", "removed the note that VAQ depends on OTH"},
+		{core.EvProjectUnlinked, "relates", "removed the note that VAQ relates to OTH"},
+	} {
+		e := EventView{Kind: tc.kind, ProjectKey: "VAQ", Payload: map[string]any{"kind": tc.link, "to": "OTH"}}
+		if got := EventSentence(e); got != tc.want {
+			t.Errorf("%s %s: %q", tc.kind, tc.link, got)
+		}
+	}
+	if EventIcon(core.EvProjectLinked) != "link" || EventIcon(core.EvProjectUnlinked) != "delete" {
+		t.Fatal("icon")
+	}
+}

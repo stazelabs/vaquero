@@ -36,16 +36,17 @@ Every change records where it came from, as the caller reports it, in the event'
 |---|---|
 | `GET /api/v1/me` | The actor the token belongs to |
 | `GET /api/v1/projects` | Every project, with `open_count` and `icon` |
-| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
+| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on), `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default, and `links`, its [project links](/help/projects-and-tickets#project-links) as `[{"id", "kind", "direction", "key", "name"}]`: `kind` is `depends on` or `relates`, `direction` is `out` (this project depends on or relates to `key`) or `in` (`key` depends on or relates to this one). `GET /api/v1/projects` carries `links` too |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
+| `GET /api/v1/projects/{key}/tags` | The tags its tickets carry, by name, each with its `ticket_count` (this project's tickets only) |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
 | `GET /api/v1/tickets/{ticket}/plan` | The ticket's [plan](/help/agent-workflow#plans): `ticket`, `revision`, `body`, `updated_by` and `updated_at`; `404` when it has none |
 | `GET /api/v1/tickets/{ticket}/plan/revisions/{n}` | Revision `n` of the plan, the current one included, in the same shape: `updated_by` and `updated_at` are who wrote that revision and when |
 | `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |
-| `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words; a ticket found by its title alone has the start of its description, unmarked, or an empty snippet |
+| `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words; a ticket found by its title alone has the start of its description, unmarked, or an empty snippet. At most `limit` hits (50 unless you ask, up to 500), best first; the answer's `Vaquero-Total` header is how many tickets matched in all |
 | `GET /api/v1/export` | Everything, as a `.tar.gz` download (`application/gzip`); the owner's token only, `403` for anyone else, including an agent acting through it. `HEAD` makes the same checks and sends no body. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. A plan's events (`plan.created`, `plan.revised`) carry only its `revision`, never its text. Each event's `meta` says where it came from (see [Where a change came from](#where-a-change-came-from)), left out when it has none. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
 
@@ -62,19 +63,25 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
 | `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map", "icon"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default; `icon` is `{"kind": "monogram"}`, `{"kind": "glyph", "glyph": "rocket"}` (a name from [the list](/help/projects-and-tickets#project-icons)), or `{"kind": "image"}` for the image already uploaded |
 | `PUT /api/v1/projects/{key}/icon` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the project's icon, and the answer is the project. Up to 256 KB: more is `413`, and another type (SVG included) is `422` |
+| `DELETE /api/v1/projects/{key}/icon` | Remove the uploaded icon image. If the project was showing it, it shows its monogram instead. The answer is the project; with no image stored nothing changes |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
+| `POST /api/v1/projects/{key}/links` | `{"kind", "project"}`: `depends on` (or `depends-on`) or `relates`, and the other project's key. Answers `201` with the link as this project sees it |
+| `DELETE /api/v1/projects/{key}/links/{id}` | Nothing; removes a link of the project's, from either end. Answers `204` |
 | `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
 | `POST /api/v1/projects/{key}/statuses/{name}/move` | `{"before"}` or `{"after"}`: another status's name; the status moves there in one step. Answers with the status and its new `position` |
 | `DELETE /api/v1/projects/{key}/statuses/{name}` | Nothing; a status no ticket uses, and not the last of its category. Answers `204` |
+| `PATCH /api/v1/projects/{key}/tags/{name}` | `{"name", "merge"}`: renames the tag on this project's tickets (other projects keep it). A name another of the project's tags has is a merge, refused with `409` naming that tag in `message` and in `current` unless you send `"merge": true`. Answers with the tag the tickets now carry |
+| `DELETE /api/v1/projects/{key}/tags/{name}` | Nothing; takes the tag off every ticket in the project. Answers `204` |
 | `POST /api/v1/projects/{key}/milestones` | `{"name", "description", "due_on"}`; only `name` is required, and `due_on` looks like `2026-12-31`. Answers `201` with the milestone |
 | `PATCH /api/v1/projects/{key}/milestones/{name}` | Any of `{"name", "description", "due_on"}`; `"due_on": ""` clears the date. Answers with the milestone |
 | `POST /api/v1/projects/{key}/milestones/{name}/close` | Nothing; closes the milestone and answers with it |
 | `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
-| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either |
+| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either. `number` keeps a number from another tracker, as `vaquero import linear` does. Only the owner, acting directly, sends it (an agent's is `422`), and it is at most 1,000,000,000 and above every number the project has given (else `422`). Numbering goes on after it, and the project's `next_number` says where numbering is |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
-| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
+| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: move to another project, claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
+| `POST /api/v1/tickets/{ticket}/move-to` | `{"project", "version"}`: move the ticket, with its sub-tickets, to the project of that key; `version` is optional. Answers with the ticket under its new key; see [Moving a ticket to another project](/help/projects-and-tickets#moving-a-ticket-to-another-project) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
 | `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan (`0` is `422`); to revise it, send the revision you read. The body limit is 1 MiB, as for every request. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
@@ -87,7 +94,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/tokens` | `{"name"}`; the answer holds the token, shown this once |
 | `POST /api/v1/tokens/{prefix}/revoke` | Nothing; revokes the token with that prefix |
 
-Statuses and milestones are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
+Statuses, milestones and tags are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
 
 A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"milestone"`, `"parent"`) to clear one; `"tags"` replaces the whole list, while `add_tags` and `remove_tags` change it one tag at a time.
 
@@ -132,15 +139,15 @@ A decision has `id`, `project`, `tickets`, `kind`, `subject` (approvals), `quest
       {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "release": true}
     ]}
 
-- An item names a ticket by `key` and any of `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
-- An item's actions run in that order: claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
-- An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim in the same item changes the version, which is allowed for: send the version you read.
+- An item names a ticket by `key` and any of `project` (another project's key: the ticket moves there with its sub-tickets, as `move-to` moves it, and the rest of the item names that project's statuses and milestones; the project it is already in changes nothing), `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
+- An item's actions run in that order: project, claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
+- An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim or a move to another project in the same item changes the version, which is allowed for: send the version you read. A result names the ticket by its key after the item, its new key when it moved.
 - `heartbeat` renews your claim from now without changing the version, as its endpoint does. A `release` after the same item's update or move ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds; a claim that ended any other way (it lapsed, or was released elsewhere) gets the normal release, which refuses.
 - Items stand alone and run in request order. One refused item never stops the others, and the same key may appear in more than one item.
 - Each action is the same change its own endpoint makes, recorded in the ticket's history the same way.
 - At most 100 items, within the 1 MiB body limit.
 
-A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, an item with both `claim` and `heartbeat` (it can claim or renew, not both), a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move`.
+A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, an item with both `claim` and `heartbeat` (it can claim or renew, not both), a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move` or `project`.
 
 The answer is `200` with one result per item, in request order:
 
@@ -173,5 +180,6 @@ Every refusal has the same shape:
 | 500 | `server_error` | Something broke on the server; its log has the details |
 | 500 | `missing_file` | An export found an attachment whose file is missing from storage; `message` names it and its ticket |
 | 500 | `damaged_file` | An export found an attachment whose file in storage isn't the size its record says; `message` names it and its ticket |
+| 422 | `export_too_large` | An export's `export.json` would be larger than 256 MB, more than `vaquero import` reads; nothing is sent |
 
 On a `409`, read `current`, decide, and send again with its `version`. See [Editing and conflicts](/help/editing-and-conflicts).

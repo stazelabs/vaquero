@@ -25,6 +25,7 @@ const maxBulk = 100
 type bulkItem struct {
 	Key       string         `json:"key"`
 	Version   int64          `json:"version"`
+	Project   *string        `json:"project"`
 	Claim     *leaseBody     `json:"claim"`
 	Heartbeat *leaseBody     `json:"heartbeat"`
 	Update    *ticketRequest `json:"update"`
@@ -34,11 +35,13 @@ type bulkItem struct {
 }
 
 // bulkActions is the fixed order an item's actions run in.
-var bulkActions = []string{"claim", "heartbeat", "update", "comment", "move", "release"}
+// A move to another project runs first, so the rest of the item names the
+// new project's statuses and milestones.
+var bulkActions = []string{"project", "claim", "heartbeat", "update", "comment", "move", "release"}
 
 // actions are the item's actions, in bulkActions order.
 func (it bulkItem) actions() []string {
-	has := map[string]bool{"claim": it.Claim != nil, "heartbeat": it.Heartbeat != nil, "update": it.Update != nil, "comment": it.Comment != nil,
+	has := map[string]bool{"project": it.Project != nil, "claim": it.Claim != nil, "heartbeat": it.Heartbeat != nil, "update": it.Update != nil, "comment": it.Comment != nil,
 		"move": it.Move != nil, "release": it.Release}
 	var out []string
 	for _, a := range bulkActions {
@@ -67,7 +70,7 @@ func checkBulk(items []bulkItem) map[string]string {
 			fields[at+".key"] = fmt.Sprintf("Item %d has no key.", n)
 		}
 		if len(it.actions()) == 0 {
-			fields[at] = fmt.Sprintf("Item %d has nothing to do. Give it a claim, heartbeat, update, comment, move or release.", n)
+			fields[at] = fmt.Sprintf("Item %d has nothing to do. Give it a project, claim, heartbeat, update, comment, move or release.", n)
 		}
 		if it.Version != 0 && it.Update == nil {
 			fields[at+".version"] = fmt.Sprintf("Item %d has a version but no update to check it against.", n)
@@ -78,6 +81,9 @@ func checkBulk(items []bulkItem) map[string]string {
 		if it.Claim != nil && it.Heartbeat != nil {
 			fields[at+".heartbeat"] = fmt.Sprintf("Item %d can claim or renew, not both.", n)
 		}
+		if it.Project != nil && strings.TrimSpace(*it.Project) == "" {
+			fields[at+".project"] = fmt.Sprintf("Name the project to move item %d to.", n)
+		}
 		if it.Move != nil && strings.TrimSpace(*it.Move) == "" {
 			fields[at+".move"] = fmt.Sprintf("Name the status to move item %d to.", n)
 		}
@@ -86,11 +92,13 @@ func checkBulk(items []bulkItem) map[string]string {
 }
 
 // APITicketsBulk is POST /api/v1/tickets/bulk {items: [{key, version?,
-// claim?, heartbeat?, update?, comment?, move?, release?}]}: up to 100
+// project?, claim?, heartbeat?, update?, comment?, move?, release?}]}: up to 100
 // items, each run on its own, in request order, as the request's actor.
 // Each action is the same core operation its own endpoint makes, with its
 // own transaction and event (a heartbeat has none, as on its endpoint);
-// the call itself writes nothing. Within an item the actions run claim,
+// the call itself writes nothing. Within an item the actions run project
+// (a move to another project, by key: the ticket and its sub-tickets, as
+// POST /tickets/{ticket}/move-to; its own project is nothing to do), claim,
 // heartbeat, update, comment, move, release, and the first failure skips
 // the rest of that item. A key may appear more than once; its items run in
 // order. A call that can't run as sent (no items, more than 100, an item
@@ -186,6 +194,9 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 	}
 	res.Key = k.String()
 	t, p, err := d.Core.ResolveTicket(ctx, d.R, k)
+	if err == nil {
+		res.Key = ticketKey(p, t.Number) // an old key answers for the new one
+	}
 	if errors.Is(err, core.ErrNotFound) {
 		return fail(api.NotFound("No ticket "+k.String()+"."), nil, todo)
 	}
@@ -227,6 +238,16 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 		bulkStep(i, act, cancel)
 		var nt gen.Ticket
 		switch act {
+		case "project":
+			to, f, terr := moveTarget(ctx, d, *it.Project)
+			if failed, cause = f, terr; failed == nil && to.ID != cur.ProjectID {
+				if nt, err = d.Core.MoveTicketToProject(ctx, by, t.ID, to.ID, version); err == nil {
+					cur, p, res.Key = nt, to, ticketKey(to, nt.Number)
+					if version != 0 && nt.Version == version+1 {
+						version = nt.Version
+					}
+				}
+			}
 		case "claim":
 			nt, err = d.Core.Claim(ctx, by, t.ID, time.Duration(it.Claim.LeaseMinutes)*time.Minute)
 			if err == nil {

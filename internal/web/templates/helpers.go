@@ -240,3 +240,22 @@ func hasImages(as []AttachmentRow) bool {
 	}
 	return false
 }
+
+// moveQuestion is the confirm dialog's question before a ticket moves to
+// another project.
+func moveQuestion(v TicketView) string {
+	q := "Move " + v.Key + " to the chosen project? It takes a new key there, and " + v.Key + " keeps leading to it."
+	if len(v.Subs) > 0 {
+		q += " Its sub-tickets move with it."
+	}
+	return q
+}
+
+// removeImageNote finishes the Remove image question: what the project
+// shows afterwards.
+func removeImageNote(kind string) string {
+	if kind == core.IconKindImage {
+		return " The project shows its monogram instead."
+	}
+	return " Uploading it again brings it back."
+}

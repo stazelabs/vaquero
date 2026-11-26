@@ -27,6 +27,11 @@ UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?;
 -- name: NextTicketNumber :one
 UPDATE projects SET next_number = next_number + 1 WHERE id = ? RETURNING next_number - 1;
 
+-- TakeTicketNumber gives an imported ticket the number before next and
+-- numbers on from next; it changes no row when that number was given before.
+-- name: TakeTicketNumber :execrows
+UPDATE projects SET next_number = sqlc.arg(next) WHERE id = sqlc.arg(id) AND next_number < sqlc.arg(next);
+
 -- name: SetProjectKey :exec
 UPDATE projects SET key = ?, updated_at = ? WHERE id = ?;
 
@@ -43,6 +48,20 @@ DELETE FROM comments WHERE ticket_id IN (SELECT id FROM tickets WHERE project_id
 DELETE FROM ticket_links
 WHERE ticket_links.from_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid))
    OR ticket_links.to_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid));
+
+-- name: DeleteProjectOldKeys :exec
+-- Old keys in the project (of tickets that moved away) and the old keys
+-- elsewhere of the project's tickets (that moved in).
+DELETE FROM ticket_old_keys
+WHERE ticket_old_keys.project_id = sqlc.arg(pid)
+   OR ticket_old_keys.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid));
+
+-- name: RehomeMovedTicketEvents :exec
+-- The project's events on tickets that have since moved to another project
+-- go with the ticket, so its history outlives the old project.
+UPDATE events SET project_id = (SELECT t.project_id FROM tickets t WHERE t.id = events.ticket_id)
+WHERE events.project_id = sqlc.arg(pid)
+  AND events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id <> sqlc.arg(pid));
 
 -- name: DeleteProjectEvents :exec
 DELETE FROM events

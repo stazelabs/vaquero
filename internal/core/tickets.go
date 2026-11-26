@@ -224,6 +224,32 @@ func (c *Core) nextPosition(ctx context.Context, q *gen.Queries, statusID string
 
 // CreateTicket adds a ticket to a project, numbering it next.
 func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in TicketInput) (gen.Ticket, error) {
+	return c.createTicket(ctx, by, projectID, 0, in)
+}
+
+// ImportTicket is CreateTicket for an import that keeps the number the
+// ticket had in another tracker (vaquero import linear), so branch names and
+// commit references naming it still resolve. The number must be above every
+// number the project has given (deleted and moved tickets' included);
+// numbering goes on after it, and the numbers it skips are never given.
+// Imports send their tickets in ascending order. Ruling N-R11: the number
+// is at most MaxTicketNumber, and only the owner acting directly chooses
+// one (an agent acting for the owner is its own actor).
+func (c *Core) ImportTicket(ctx context.Context, by, projectID string, number int64, in TicketInput) (gen.Ticket, error) {
+	switch {
+	case number < 1:
+		return gen.Ticket{}, invalid("number", "Give a ticket number of 1 or more.")
+	case number > MaxTicketNumber:
+		return gen.Ticket{}, invalid("number", "Use a number of 1,000,000,000 or less.")
+	}
+	return c.createTicket(ctx, by, projectID, number, in)
+}
+
+// MaxTicketNumber is the highest number ImportTicket gives.
+const MaxTicketNumber = 1_000_000_000
+
+// createTicket is CreateTicket with number, or the next number when it is 0.
+func (c *Core) createTicket(ctx context.Context, by, projectID string, number int64, in TicketInput) (gen.Ticket, error) {
 	var t gen.Ticket
 	err := c.tx(ctx, func(q *gen.Queries) error {
 		p, err := q.GetProject(ctx, projectID)
@@ -241,9 +267,9 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 		if err != nil {
 			return err
 		}
-		num, err := q.NextTicketNumber(ctx, p.ID)
+		num, err := c.ticketNumber(ctx, q, by, p, number)
 		if err != nil {
-			return fmt.Errorf("next number: %w", err)
+			return err
 		}
 		pos, err := c.nextPosition(ctx, q, tf.StatusID)
 		if err != nil {
@@ -268,6 +294,33 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 		return c.emit(ctx, q, by, EvTicketCreated, p.ID, t.ID, map[string]string{"title": t.Title})
 	})
 	return t, err
+}
+
+// ticketNumber takes the project's next number, or number when it isn't 0
+// and no number at or above it was given yet.
+func (c *Core) ticketNumber(ctx context.Context, q *gen.Queries, by string, p gen.Project, number int64) (int64, error) {
+	if number == 0 {
+		num, err := q.NextTicketNumber(ctx, p.ID)
+		if err != nil {
+			return 0, fmt.Errorf("next number: %w", err)
+		}
+		return num, nil
+	}
+	owner, err := byOwner(ctx, q, by)
+	if err != nil {
+		return 0, err
+	}
+	if !owner {
+		return 0, invalid("number", "Only the owner chooses a ticket's number.")
+	}
+	n, err := q.TakeTicketNumber(ctx, gen.TakeTicketNumberParams{Next: number + 1, ID: p.ID})
+	if err != nil {
+		return 0, fmt.Errorf("take number: %w", err)
+	}
+	if n == 0 {
+		return 0, invalid("number", fmt.Sprintf("%s-%d is taken or was used before; %s numbers new tickets from %d.", p.Key, number, p.Key, p.NextNumber))
+	}
+	return number, nil
 }
 
 // UpdateTicket replaces every editable field of a ticket, its tag set
@@ -357,13 +410,19 @@ func (c *Core) replaceTags(ctx context.Context, q *gen.Queries, ticketID string,
 	return nil
 }
 
-// ResolveTicket finds a ticket by key through q (normally the reader).
+// ResolveTicket finds a ticket by key through q (normally the reader). A
+// key the ticket had before it moved to another project leads to it too:
+// the answer is the ticket and the project it is in now, so callers name
+// it by its current key (TicketKey{p.Key, t.Number}).
 func (c *Core) ResolveTicket(ctx context.Context, q *gen.Queries, key TicketKey) (gen.Ticket, gen.Project, error) {
 	p, err := q.GetProjectByKey(ctx, key.Project)
 	if err != nil {
 		return gen.Ticket{}, gen.Project{}, notFound(err, "get project")
 	}
 	t, err := q.GetTicketByNumber(ctx, gen.GetTicketByNumberParams{ProjectID: p.ID, Number: key.Number})
+	if errors.Is(err, sql.ErrNoRows) {
+		t, p, err = resolveOldKey(ctx, q, p, key.Number)
+	}
 	if err != nil {
 		return gen.Ticket{}, p, notFound(err, "get ticket")
 	}

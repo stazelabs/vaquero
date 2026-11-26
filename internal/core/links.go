@@ -29,7 +29,7 @@ func (c *Core) AddLink(ctx context.Context, by, fromTicketID, kind string, to Ti
 		if !slices.Contains(LinkKinds, kind) {
 			f.add("kind", "Choose blocks, relates to or duplicates.")
 		}
-		target, _, err := c.ResolveTicket(ctx, q, to)
+		target, tp, err := c.ResolveTicket(ctx, q, to)
 		switch {
 		case errors.Is(err, ErrNotFound):
 			f.add("to", "No ticket "+to.String()+".")
@@ -62,7 +62,7 @@ func (c *Core) AddLink(ctx context.Context, by, fromTicketID, kind string, to Ti
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
-		return c.emit(ctx, q, by, EvLinkCreated, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": kind, "to": to.String(), "to_id": target.ID})
+		return c.emit(ctx, q, by, EvLinkCreated, from.ProjectID, from.ID, map[string]string{"link_id": l.ID, "kind": kind, "to": TicketKey{Project: tp.Key, Number: target.Number}.String(), "to_id": target.ID})
 	})
 	return l, err
 }

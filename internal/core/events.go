@@ -30,6 +30,9 @@ import (
 //   - link.*: {"link_id", "kind", "to": "VAQ-7", "to_id"}, the
 //     target ticket by id (migration 0008 gave older events theirs where
 //     it could be known; a ticket's history matches link events by to_id).
+//   - project.linked, project.unlinked: {"link_id", "kind", "to": "OTH",
+//     "to_id"}, on the link's from project: kind is "depends on" or
+//     "relates", to the other project's key then and to_id its id.
 //   - actor.created: {"kind", "name"}.
 //   - token.created, token.revoked: {"name", "prefix"}.
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
@@ -46,6 +49,14 @@ import (
 //     decision's one ticket; a decision naming several (a group approval)
 //     or none is a project event, ticket_ids naming them. A group answer is
 //     one event, however many approval rows it writes.
+//   - ticket.moved: {"from": "VAQ-7", "to": "OTH-3", "from_project",
+//     "from_project_id", "to_project", "changes"?, "sub_tickets",
+//     "ticket_ids", "open_decisions"?}, on the moved ticket in its new
+//     project. changes holds the status and milestone when the move changed
+//     their names; sub_tickets the sub-tickets that moved along
+//     (MovedTicket), ticket_ids their ids (their histories find the move
+//     through it); open_decisions how many open decisions naming them stay
+//     in the old project, left out when none do.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -56,6 +67,8 @@ const (
 	EvProjectArchived   = "project.archived"
 	EvProjectRestored   = "project.restored"
 	EvProjectDeleted    = "project.deleted"
+	EvProjectLinked     = "project.linked"
+	EvProjectUnlinked   = "project.unlinked"
 	EvStatusCreated     = "status.created"
 	EvStatusUpdated     = "status.updated"
 	EvStatusMoved       = "status.moved"
@@ -89,6 +102,7 @@ const (
 	EvDecisionRuled     = "decision.ruled"
 	EvDecisionAnswered  = "decision.answered"
 	EvDecisionWithdrawn = "decision.withdrawn"
+	EvTicketMoved       = "ticket.moved"
 )
 
 // PlanPayload is a plan.created or plan.revised event's payload.
@@ -140,6 +154,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 func EventKinds() []string {
 	return []string{
 		EvProjectCreated, EvProjectUpdated, EvProjectArchived, EvProjectRestored, EvProjectDeleted,
+		EvProjectLinked, EvProjectUnlinked,
 		EvStatusCreated, EvStatusUpdated, EvStatusMoved, EvStatusDeleted,
 		EvMilestoneCreated, EvMilestoneUpdated, EvMilestoneClosed, EvMilestoneReopened,
 		EvTicketCreated, EvTicketUpdated, EvTicketReordered,
@@ -149,7 +164,7 @@ func EventKinds() []string {
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
-		EvPlanCreated, EvPlanRevised,
+		EvPlanCreated, EvPlanRevised, EvTicketMoved,
 		EvDecisionAsked, EvDecisionRuled, EvDecisionAnswered, EvDecisionWithdrawn,
 	}
 }

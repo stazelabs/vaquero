@@ -20,6 +20,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero backup compact` | Shrink the database to what it holds (deleted attachments leave space behind), saving it as a snapshot first; all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#compacting-the-database) |
 | `vaquero export FILE\|-` | Write all your data to a `.tar.gz`, or with `-` to standard output; the owner only. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `vaquero import FILE` | Restore an export into an empty instance, all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#importing-an-export) |
+| `vaquero import linear FILE.csv [--project KEY]` | Make tickets from Linear's issue export, keeping team keys and issue numbers, into a new or empty project. See [Importing from Linear](/help/data-and-backups#importing-from-linear) |
 | `vaquero logs [-n 100] [-f] [--path]` | The last lines of the server's log (100 unless `-n`); `-f` keeps printing new lines, across the log's move to `.1` at 10 MB, until Ctrl-C; `--path` prints only where the log is. Reads `vaquero.log` in the data directory, or the service's log under `brew services`; needs no server. See [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero projects` | List projects with their open ticket counts |
@@ -27,12 +28,17 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero project show KEY` | Show a project |
 | `vaquero project edit KEY [--name NAME] [--description TEXT] [--workflow on\|off]` | Change its name or description, or turn the [agent workflow](/help/agent-workflow) on or off |
 | `vaquero project key KEY NEWKEY` | Change its key (links that use the old key stop working) |
-| `vaquero project icon KEY --monogram\|--glyph NAME\|--image FILE` | Set its [icon](/help/projects-and-tickets#project-icons): its monogram, a glyph from the list, or a PNG, JPEG or WebP image of up to 256 KB |
+| `vaquero project icon KEY --monogram\|--glyph NAME\|--image FILE\|--remove-image` | Set its [icon](/help/projects-and-tickets#project-icons): its monogram, a glyph from the list, or a PNG, JPEG or WebP image of up to 256 KB. `--remove-image` deletes the uploaded image; if the project was showing it, it shows its monogram instead |
+| `vaquero project link KEY depends-on\|relates OTHER` | Say the project depends on or relates to another; see [Project links](/help/projects-and-tickets#project-links). `vaquero project show` lists its links with their ids |
+| `vaquero project unlink KEY ID\|OTHER` | Remove one of its links by id, or every link between it and another project |
 | `vaquero statuses KEY` | A project's statuses in board order, with each one's category and ticket count |
 | `vaquero status add KEY NAME --category C [--before S \| --after S]` | Add a status; without `--before` or `--after` it goes after the last status of its category. Categories are `backlog`, `todo`, `in progress`, `in review`, `done` and `cancelled` |
 | `vaquero status rename KEY NAME NEW` | Rename a status |
 | `vaquero status move KEY NAME --before S \| --after S` | Move a status next to another, in one step |
 | `vaquero status delete KEY NAME` | Delete a status no ticket uses; each category keeps at least one |
+| `vaquero tags KEY` | The tags a project's tickets carry, with how many of its tickets carry each |
+| `vaquero tag rename KEY NAME NEW [--merge]` | Rename a tag on the project's tickets; a name another of its tags has is refused (exit 3) unless `--merge`, which merges the two |
+| `vaquero tag delete KEY NAME` | Take a tag off every ticket in the project |
 | `vaquero milestones KEY` | A project's milestones with their due dates, done and total tickets, and whether each is open |
 | `vaquero milestone add KEY NAME [--description TEXT] [--due DATE]` | Add a milestone; dates look like 2026-12-31, and `-` as the description reads it from standard input |
 | `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT] [--due DATE]` | Change only what is given; `--due ""` clears the date, and `-` as the description reads it from standard input |
@@ -42,6 +48,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME] [--tier T] [--model M]` | Create a ticket; prints its key. `--tier` is `design`, `light`, `standard` or `heavy` (see [tiers](/help/agent-workflow#execution-tiers)), and `--model` an exact model for it |
 | `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given; `--tier ""` and `--model ""` clear them |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
+| `vaquero ticket move-to TICKET KEY [--version N]` | Move a ticket, with its sub-tickets, to the project KEY; prints its new key. Its old key keeps working. See [Moving a ticket to another project](/help/projects-and-tickets#moving-a-ticket-to-another-project) |
 | `vaquero comment TICKET TEXT` | Add a comment |
 | `vaquero plan show TICKET [--revision N]` | A ticket's [plan](/help/agent-workflow#plans): its revision, who wrote it and when, then its text; `--revision` shows an earlier one |
 | `vaquero plan save TICKET FILE\|- [--revision N]` | Write the plan from a file, or `-` for standard input. A ticket's first plan needs no `--revision`; after that, pass the revision you read. If someone saved since, nothing is written, the plan as it is now is printed and the exit code is 3 |
@@ -49,6 +56,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero attach TICKET FILE... [--name NAME]` | Attach files (up to 10 MB each) and print a Markdown reference for each, to paste into a description or comment; `-` reads standard input and needs `--name`. See [Attachments](/help/attachments) |
 | `vaquero attachments TICKET` | A ticket's files: id, name, size, who attached it and when |
+| `vaquero attachments move --to sqlite\|dir\|s3 [--delete-old]` | Move every attachment's file to other storage, checking each copy, then switch to it; `--delete-old` deletes the old copies once the switch is made; resumes if interrupted; stop the server first. See [Your data and backups](/help/data-and-backups#moving-attachments-to-other-storage) |
 | `vaquero detach ID` | Remove an attachment; only the person who attached it, or the owner, can |
 | `vaquero search WORDS...` | Search titles, descriptions and comments |
 | `vaquero activity [--after SEQ] [--limit N]` | The newest changes (oldest of them first), or those after SEQ; reorders within a column are left out |

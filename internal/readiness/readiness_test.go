@@ -435,3 +435,217 @@ func TestGrandchildLeansThroughItsParent(t *testing.T) {
 	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
 	expect(t, all[e.ID], readiness.NoTier, readiness.PlanNotApproved)
 }
+
+// N-R1: a ticket moved to another project keeps its approvals in history,
+// but they no longer make it ready; its plan moves with it, and an approval
+// asked in the new project makes it ready again. Its sub-tickets, which
+// moved with it, lean on nothing until then.
+func TestMovedTicketNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, other.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	if n := count(t, w, `SELECT count(*) FROM approvals WHERE ticket_id = ?`, epic.ID); n != 1 {
+		t.Fatalf("approvals %d, want the old one kept", n)
+	}
+	if n := count(t, w, `SELECT count(*) FROM plans WHERE ticket_id = ?`, epic.ID); n != 1 {
+		t.Fatal("plan didn't move with it")
+	}
+	vaq := w.p
+	w.p = other
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+	// N-R5: back in VAQ, its VAQ approval from before it left doesn't
+	// count again; neither does OTH's.
+	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, vaq.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	w.p = vaq
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+}
+
+// N-R5: a sub-ticket with its own approval, carried to another project and
+// back by its epic, needs approving again too, and so does the epic it
+// leans on.
+func TestCarriedSubTicketNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(sub, "1. One column.", 0)
+	w.approve(epic)
+	w.approve(sub)
+	expect(t, w.check(sub))
+	vaq := w.p
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []string{other.ID, vaq.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, to, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	w.approve(sub)
+	expect(t, w.check(sub)) // its own plan: nothing of its epic
+	w.approve(epic)
+	expect(t, w.check(epic))
+}
+
+func count(t *testing.T, w *world, q string, args ...any) int {
+	t.Helper()
+	var n int
+	if err := w.d.R.QueryRow(q, args...).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// N-R7, the review's probe: a ticket approved on its own, put under an
+// unapproved epic, carried to another project and back by it, then
+// detached, is not ready on its old approval. Every step after the
+// approval is an agent's.
+func TestDetachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	s := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "light"})
+	w.approve(s)
+	expect(t, w.check(s))
+	r := w.ticket(core.TicketInput{Title: "Board", Tier: "standard"})
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	under, none := r.ID, ""
+	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &under}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []string{other.ID, w.p.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, agent.ID, r.ID, to, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &none}, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(s), readiness.PlanNotApproved)
+	w.approve(s)
+	expect(t, w.check(s))
+}
+
+// roundTrip moves tk to OTH (workflow on, made on first use) and back, as
+// actor.
+func (w *world) roundTrip(actor string, tk gen.Ticket) {
+	w.t.Helper()
+	other, err := w.d.RQ.GetProjectByKey(bg, "OTH")
+	if err != nil {
+		if other, err = w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+			w.t.Fatal(err)
+		}
+		on := true
+		if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+			w.t.Fatal(err)
+		}
+	}
+	for _, to := range []string{other.ID, w.p.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, actor, tk.ID, to, 0); err != nil {
+			w.t.Fatal(err)
+		}
+	}
+}
+
+func (w *world) parent(actor string, tk gen.Ticket, parentID string) {
+	w.t.Helper()
+	if _, err := w.c.PatchTicket(bg, actor, tk.ID, core.TicketPatch{ParentID: &parentID}, 0); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// N-R8, the review's first probe: an approved epic lists X; an agent
+// detaches X, moves it out and back, and attaches it again. The epic's
+// approval was asked before X last arrived, so X doesn't lean on it.
+func TestReattachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.approve(epic)
+	expect(t, w.check(x))
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.parent(agent.ID, x, "")
+	w.roundTrip(agent.ID, x)
+	w.parent(agent.ID, x, epic.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	expect(t, w.check(epic))
+	w.approve(epic)
+	expect(t, w.check(x))
+}
+
+// N-R8, the second probe: F lists X; an agent puts X under R, carries it
+// out and back with R, and attaches it to F again. A grandchild leaning
+// through a plan-less X is covered by the same chain.
+func TestCarriedAndReattachedNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	f := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(f, "1. Columns.", 0)
+	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: f.ID, Tier: "light"})
+	w.approve(f)
+	expect(t, w.check(x))
+	r := w.ticket(core.TicketInput{Title: "Other epic", Tier: "standard"})
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.parent(agent.ID, x, r.ID)
+	w.roundTrip(agent.ID, r)
+	w.parent(agent.ID, x, f.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	// Approved again, with a grandchild G leaning on X's own approval and,
+	// through X (no plan), on F's; then X goes out and back carrying G:
+	// G loses the lean too.
+	g := w.ticket(core.TicketInput{Title: "One column", ParentID: x.ID, Tier: "light"})
+	w.approve(f)
+	w.approve(x)
+	expect(t, w.check(x))
+	expect(t, w.check(g))
+	w.parent(agent.ID, x, "")
+	w.roundTrip(agent.ID, x) // carries g
+	w.parent(agent.ID, x, f.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	if got := w.check(g); got.Ready {
+		t.Fatalf("grandchild ready: %+v", got)
+	}
+}

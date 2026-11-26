@@ -13,7 +13,8 @@ VALUES (?, ?, ?, ?, ?, ?);
 -- name: ListDecisionTicketPins :many
 -- What a plan approval asked about for each of its tickets, by number.
 SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children,
-       t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number
+       t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number,
+       t.project_id
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
@@ -79,3 +80,10 @@ WHERE ticket_id IN (SELECT tk.id FROM tickets tk WHERE tk.project_id = sqlc.arg(
 
 -- name: DeleteProjectDecisions :exec
 DELETE FROM decisions WHERE project_id = ?;
+
+-- name: CountOpenDecisionsNaming :one
+-- Open decisions naming any of the given tickets (a ticket that moves
+-- leaves them in its old project).
+SELECT count(DISTINCT d.id) FROM decisions d
+JOIN decision_tickets dt ON dt.decision_id = d.id
+WHERE d.state = 'open' AND dt.ticket_id IN (sqlc.slice('ids'));

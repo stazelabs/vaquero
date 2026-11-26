@@ -51,31 +51,57 @@ func (q *Queries) CountEvents(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const getTicketEvent = `-- name: GetTicketEvent :one
+SELECT seq, kind, payload FROM events WHERE seq = ? AND ticket_id = ?
+`
+
+type GetTicketEventParams struct {
+	Seq      int64
+	TicketID sql.NullString
+}
+
+type GetTicketEventRow struct {
+	Seq     int64
+	Kind    string
+	Payload string
+}
+
+// One event recorded on a ticket, for the history's "Show changes".
+func (q *Queries) GetTicketEvent(ctx context.Context, arg GetTicketEventParams) (GetTicketEventRow, error) {
+	row := q.db.QueryRowContext(ctx, getTicketEvent, arg.Seq, arg.TicketID)
+	var i GetTicketEventRow
+	err := row.Scan(&i.Seq, &i.Kind, &i.Payload)
+	return i, err
+}
+
 const listEvents = `-- name: ListEvents :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
-       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
+       coalesce(tp.key, '') AS ticket_project_key
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+LEFT JOIN projects tp ON tp.id = t.project_id
 WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?
 `
 
 type ListEventsRow struct {
-	Seq          int64
-	At           string
-	ActorID      string
-	Kind         string
-	ProjectID    sql.NullString
-	TicketID     sql.NullString
-	Payload      string
-	Meta         string
-	ActorName    string
-	ProjectKey   string
-	TicketNumber int64
-	TicketTitle  string
+	Seq              int64
+	At               string
+	ActorID          string
+	Kind             string
+	ProjectID        sql.NullString
+	TicketID         sql.NullString
+	Payload          string
+	Meta             string
+	ActorName        string
+	ProjectKey       string
+	TicketNumber     int64
+	TicketTitle      string
+	TicketProjectKey string
 }
 
 // The activity feed, newest first. Reorders within a column are left out
@@ -102,6 +128,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 			&i.ProjectKey,
 			&i.TicketNumber,
 			&i.TicketTitle,
+			&i.TicketProjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -118,11 +145,13 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 
 const listEventsAfter = `-- name: ListEventsAfter :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
-       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
+       coalesce(tp.key, '') AS ticket_project_key
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+LEFT JOIN projects tp ON tp.id = t.project_id
 WHERE e.seq > ? AND e.kind <> 'ticket.reordered'
 ORDER BY e.seq
 LIMIT ?
@@ -134,18 +163,19 @@ type ListEventsAfterParams struct {
 }
 
 type ListEventsAfterRow struct {
-	Seq          int64
-	At           string
-	ActorID      string
-	Kind         string
-	ProjectID    sql.NullString
-	TicketID     sql.NullString
-	Payload      string
-	Meta         string
-	ActorName    string
-	ProjectKey   string
-	TicketNumber int64
-	TicketTitle  string
+	Seq              int64
+	At               string
+	ActorID          string
+	Kind             string
+	ProjectID        sql.NullString
+	TicketID         sql.NullString
+	Payload          string
+	Meta             string
+	ActorName        string
+	ProjectKey       string
+	TicketNumber     int64
+	TicketTitle      string
+	TicketProjectKey string
 }
 
 // Events after a sequence number, oldest first, for clients that poll;
@@ -172,6 +202,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.ProjectKey,
 			&i.TicketNumber,
 			&i.TicketTitle,
+			&i.TicketProjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -188,29 +219,32 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 
 const listEventsNewest = `-- name: ListEventsNewest :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
-       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
+       coalesce(tp.key, '') AS ticket_project_key
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+LEFT JOIN projects tp ON tp.id = t.project_id
 WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?
 `
 
 type ListEventsNewestRow struct {
-	Seq          int64
-	At           string
-	ActorID      string
-	Kind         string
-	ProjectID    sql.NullString
-	TicketID     sql.NullString
-	Payload      string
-	Meta         string
-	ActorName    string
-	ProjectKey   string
-	TicketNumber int64
-	TicketTitle  string
+	Seq              int64
+	At               string
+	ActorID          string
+	Kind             string
+	ProjectID        sql.NullString
+	TicketID         sql.NullString
+	Payload          string
+	Meta             string
+	ActorName        string
+	ProjectKey       string
+	TicketNumber     int64
+	TicketTitle      string
+	TicketProjectKey string
 }
 
 // The newest events, newest first (callers reverse them); reorders left
@@ -237,6 +271,7 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 			&i.ProjectKey,
 			&i.TicketNumber,
 			&i.TicketTitle,
+			&i.TicketProjectKey,
 		); err != nil {
 			return nil, err
 		}
@@ -252,40 +287,66 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 }
 
 const listTicketEvents = `-- name: ListTicketEvents :many
+WITH RECURSIVE up(id, depth) AS (
+    SELECT ut.parent_id, 1 FROM tickets ut WHERE ut.id = ?1 AND ut.parent_id IS NOT NULL
+    UNION ALL
+    SELECT ut.parent_id, up.depth + 1 FROM tickets ut JOIN up ON ut.id = up.id
+    WHERE ut.parent_id IS NOT NULL AND up.depth < 1000
+)
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
-       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
+       coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
+       coalesce(tp.key, '') AS ticket_project_key
 FROM (
     SELECT o.seq FROM events o WHERE o.ticket_id = ?1
     UNION ALL
     SELECT l.seq FROM events l
     WHERE l.kind IN ('link.created', 'link.deleted') AND json_extract(l.payload, '$.to_id') = ?1
+    UNION ALL
+    SELECT g.seq FROM events g
+    WHERE g.kind IN ('tag.renamed', 'tag.merged', 'tag.deleted')
+      AND g.project_id IN (SELECT tc.project_id FROM tickets tc WHERE tc.id = ?1
+                           UNION SELECT ok.project_id FROM ticket_old_keys ok WHERE ok.ticket_id = ?1)
+      AND EXISTS (SELECT 1 FROM json_each(g.payload, '$.ticket_ids') j WHERE j.value = ?1)
+    UNION ALL
+    SELECT v.seq FROM events v
+    WHERE v.kind = 'ticket.moved'
+      AND v.ticket_id IN (SELECT up.id FROM up)
+      AND EXISTS (SELECT 1 FROM json_each(v.payload, '$.ticket_ids') j WHERE j.value = ?1)
 ) m
 JOIN events e ON e.seq = m.seq
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+LEFT JOIN projects tp ON tp.id = t.project_id
 ORDER BY e.seq DESC
 `
 
 type ListTicketEventsRow struct {
-	Seq          int64
-	At           string
-	ActorID      string
-	Kind         string
-	ProjectID    sql.NullString
-	TicketID     sql.NullString
-	Payload      string
-	Meta         string
-	ActorName    string
-	ProjectKey   string
-	TicketNumber int64
-	TicketTitle  string
+	Seq              int64
+	At               string
+	ActorID          string
+	Kind             string
+	ProjectID        sql.NullString
+	TicketID         sql.NullString
+	Payload          string
+	Meta             string
+	ActorName        string
+	ProjectKey       string
+	TicketNumber     int64
+	TicketTitle      string
+	TicketProjectKey string
 }
 
-// A ticket's history: its own events, and link events that name it as the
-// "to" side by id (a link is one event, recorded on the "from" ticket).
-// Two indexed lookups (events_ticket, events_link_to), never a scan; a
-// link never names its own ticket, so no event comes twice.
+// A ticket's history: its own events, link events that name it as the
+// "to" side by id (a link is one event, recorded on the "from" ticket),
+// its project's tag events whose payload.ticket_ids lists it (a tag
+// change is one project event), its old projects' too (a ticket moved
+// from them keeps their tag history), and the moves of its ancestors that
+// took it along (payload.ticket_ids: a move is one event, on the ticket
+// moved). Four indexed lookups (events_ticket, events_link_to, events_tag,
+// events_ticket again), never a scan of events; a link never names its
+// own ticket, a tag event names no ticket, and a move's ticket_ids never
+// name the ticket it is on, so no event comes twice.
 func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString) ([]ListTicketEventsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTicketEvents, ticketID)
 	if err != nil {
@@ -308,6 +369,7 @@ func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString)
 			&i.ProjectKey,
 			&i.TicketNumber,
 			&i.TicketTitle,
+			&i.TicketProjectKey,
 		); err != nil {
 			return nil, err
 		}

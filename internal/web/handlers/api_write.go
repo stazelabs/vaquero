@@ -179,7 +179,7 @@ func APIProjectCreate(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, projectDTO(p, 0))
+		api.WriteJSON(w, http.StatusCreated, projectDTO(p, 0, nil))
 	}
 }
 
@@ -285,6 +285,13 @@ func (in ticketRequest) patch(n *names) core.TicketPatch {
 	return p
 }
 
+// createRequest is a new ticket: its fields, and optionally the number it
+// keeps from another tracker (vaquero import linear; core.ImportTicket).
+type createRequest struct {
+	ticketRequest
+	Number *int64 `json:"number"`
+}
+
 // APITicketCreate is POST /api/v1/projects/{key}/tickets.
 func APITicketCreate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -292,8 +299,9 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		var in ticketRequest
-		if f := api.Decode(r, &in); f != nil {
+		var cr createRequest
+		in := &cr.ticketRequest
+		if f := api.Decode(r, &cr); f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
@@ -325,7 +333,13 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 			input.Priority = *pt.Priority
 		}
 		input.Tags = append(pt.Tags, pt.AddTags...)
-		t, err := d.Core.CreateTicket(r.Context(), apiActor(r).ID, p.ID, input)
+		var t gen.Ticket
+		var err error
+		if cr.Number != nil {
+			t, err = d.Core.ImportTicket(r.Context(), apiActor(r).ID, p.ID, *cr.Number, input)
+		} else {
+			t, err = d.Core.CreateTicket(r.Context(), apiActor(r).ID, p.ID, input)
+		}
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
 			return
@@ -401,6 +415,61 @@ func APITicketMove(d Deps) http.HandlerFunc {
 		}
 		writeTicketView(w, r, d, nt, p, http.StatusOK, short)
 	}
+}
+
+// APITicketMoveTo is POST /api/v1/tickets/{ticket}/move-to {project,
+// version?}: the ticket, with its sub-tickets, moves to the project of
+// that key (core.MoveTicketToProject), and the answer names it by its new
+// key; ?view=summary answers with the short answer. Its old key keeps
+// leading to it.
+func APITicketMoveTo(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		short, ok := viewParam(w, r)
+		if !ok {
+			return
+		}
+		t, p, ok := apiTicket(w, r, d)
+		if !ok {
+			return
+		}
+		var in struct {
+			Project string `json:"project"`
+			Version int64  `json:"version"`
+		}
+		if f := api.Decode(r, &in); f != nil {
+			api.WriteFailure(w, f)
+			return
+		}
+		to, f, err := moveTarget(r.Context(), d, in.Project)
+		if f != nil {
+			apiFail(w, r, d, f, err)
+			return
+		}
+		nt, err := d.Core.MoveTicketToProject(r.Context(), apiActor(r).ID, t.ID, to.ID, in.Version)
+		if err != nil {
+			apiCoreFail(w, r, d, p, err)
+			return
+		}
+		writeTicketView(w, r, d, nt, to, http.StatusOK, short)
+	}
+}
+
+// moveTarget is the project a ticket moves to, by key (any case): a 422
+// naming the project field when there is none, a 500 (err its cause) when
+// it can't be read.
+func moveTarget(ctx context.Context, d Deps, key string) (gen.Project, *api.Failure, error) {
+	k := strings.ToUpper(strings.TrimSpace(key))
+	if k == "" {
+		return gen.Project{}, invalidFields(map[string]string{"project": "Name the project to move it to."}, ""), nil
+	}
+	p, err := d.R.GetProjectByKey(ctx, k)
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, invalidFields(map[string]string{"project": "No project " + k + "."}, ""), nil
+	}
+	if err != nil {
+		return p, api.Internal(), err
+	}
+	return p, nil, nil
 }
 
 func commentDTO(c gen.Comment, author string) api.Comment {

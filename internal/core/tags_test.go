@@ -16,13 +16,19 @@ func init() {
 	ops = append(ops,
 		coreOp{"RenameTag",
 			func(c *core.Core, f fixture) error {
-				return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect")
+				return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect", true)
 			},
-			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "  ") }},
+			func(c *core.Core, f fixture) error {
+				return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "  ", true)
+			}},
 		// Renaming onto another tag's name merges the two.
 		coreOp{"RenameTagOntoAnother",
-			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI") },
-			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID, "UI") }},
+			func(c *core.Core, f fixture) error {
+				return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI", true)
+			},
+			func(c *core.Core, f fixture) error {
+				return c.RenameTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID, "UI", true)
+			}},
 		coreOp{"MergeTag",
 			func(c *core.Core, f fixture) error {
 				return c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.UI.ID)
@@ -86,7 +92,7 @@ func TestProjectTagsCountTickets(t *testing.T) {
 func TestRenameTag(t *testing.T) {
 	c, d, f := newFixture(t)
 	v := f.T1.Version
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, " defect "); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, " defect ", true); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"defect": 1, "ui": 1})
@@ -102,7 +108,7 @@ func TestRenameTag(t *testing.T) {
 	// The same name again changes nothing and writes nothing.
 	before := eventCount(t, d)
 	tag, _ := d.RQ.ListTicketTags(bg, f.T1.ID)
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, tag[0].ID, "defect"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, tag[0].ID, "defect", true); err != nil {
 		t.Fatal(err)
 	}
 	if eventCount(t, d) != before {
@@ -116,7 +122,7 @@ func TestRenameSharedTagLeavesOtherProjects(t *testing.T) {
 	if _, err := c.CreateTicket(bg, f.Owner.ID, f.Other.ID, core.TicketInput{Title: "Other", Tags: []string{"bug"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect", true); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"defect": 1, "ui": 1})
@@ -126,7 +132,7 @@ func TestRenameSharedTagLeavesOtherProjects(t *testing.T) {
 // A change of case alone renames the tag in place.
 func TestRenameTagCase(t *testing.T) {
 	c, d, f := newFixture(t)
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "Bug"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "Bug", true); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"Bug": 1, "ui": 1})
@@ -145,7 +151,7 @@ func TestRenameOntoExistingMerges(t *testing.T) {
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"bug": 2, "ui": 2})
 	before, _ := d.RQ.MaxEventSeq(bg)
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI", true); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"ui": 3})
@@ -196,8 +202,8 @@ func TestDeleteTag(t *testing.T) {
 
 func TestTagOperationsRefuse(t *testing.T) {
 	c, _, f := newFixture(t)
-	fieldErr(t, c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, ""), "name", "Enter a name.")
-	fieldErr(t, c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, strings.Repeat("x", 41)), "name", "Keep the name under 40 characters.")
+	fieldErr(t, c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "", true), "name", "Enter a name.")
+	fieldErr(t, c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, strings.Repeat("x", 41), true), "name", "Keep the name under 40 characters.")
 	fieldErr(t, c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.Bug.ID), "name", "Choose another tag.")
 	// A tag the project doesn't use isn't the project's to change.
 	if err := c.DeleteTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID); !errors.Is(err, core.ErrNotFound) {
@@ -212,7 +218,7 @@ func TestRenameOntoOtherProjectsTag(t *testing.T) {
 	if _, err := c.CreateTicket(bg, f.Owner.ID, f.Other.ID, core.TicketInput{Title: "Other", Tags: []string{"Defect"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect"); err != nil {
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect", true); err != nil {
 		t.Fatal(err)
 	}
 	wantTags(t, d, f.Project.ID, map[string]int64{"Defect": 1, "ui": 1})
@@ -262,7 +268,7 @@ func TestTagEventsNameTheirTickets(t *testing.T) {
 	}
 	t.Run("renamed", func(t *testing.T) {
 		c, d, f, both := setup(t)
-		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect"); err != nil {
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect", true); err != nil {
 			t.Fatal(err)
 		}
 		_, p := lastEvent(t, d)
@@ -270,7 +276,7 @@ func TestTagEventsNameTheirTickets(t *testing.T) {
 	})
 	t.Run("renamed in place", func(t *testing.T) {
 		c, d, f, _ := setup(t)
-		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.UI.ID, "UI"); err != nil {
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.UI.ID, "UI", true); err != nil {
 			t.Fatal(err)
 		}
 		_, p := lastEvent(t, d)
@@ -290,7 +296,7 @@ func TestTagEventsNameTheirTickets(t *testing.T) {
 	})
 	t.Run("merged by rename", func(t *testing.T) {
 		c, d, f, both := setup(t)
-		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI"); err != nil {
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI", true); err != nil {
 			t.Fatal(err)
 		}
 		_, p := lastEvent(t, d)
@@ -313,4 +319,23 @@ func ticketWith(t *testing.T, d dbtest.DB, title string) string {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// A rename that would merge, sent without merge, is refused inside the
+// transaction (the handler's own check can be stale): nothing is written.
+func TestRenameWithoutMergeRefusesAMerge(t *testing.T) {
+	c, d, f := newFixture(t)
+	snap := snapshot(t, d)
+	err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "ui", false)
+	mr, ok := errors.AsType[*core.MergeRefused](err)
+	if !ok || mr.Into != "ui" || mr.Error() != "VAQ already has the tag ui. Merge the two, or choose another name." {
+		t.Fatalf("%v", err)
+	}
+	if got := snapshot(t, d); !maps.Equal(got, snap) {
+		t.Fatal("a refused merge wrote")
+	}
+	// A plain rename needs no merge.
+	if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect", false); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -56,3 +56,33 @@ func TestCLIProjectIcon(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-146: --remove-image removes the stored image; one in use gives way
+// to the monogram.
+func TestCLIProjectIconRemoveImage(t *testing.T) {
+	e := cliEnv(t)
+	png := writeFile(t, "logo.png", tinyPNG)
+	mustCLI(t, "project", "icon", "VAQ", "--image", png)
+	if out := mustCLI(t, "project", "icon", "vaq", "--remove-image"); strings.TrimSpace(out) != "VAQ icon: monogram VA (no image stored)" {
+		t.Fatalf("%q", out)
+	}
+	vaq, err := e.Deps.R.GetProjectByKey(t.Context(), "VAQ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.R.GetProjectIconEtag(t.Context(), vaq.ID); err == nil {
+		t.Fatal("the image is still stored")
+	}
+	// Nothing stored: the same answer.
+	if out := mustCLI(t, "project", "icon", "VAQ", "--remove-image"); strings.TrimSpace(out) != "VAQ icon: monogram VA (no image stored)" {
+		t.Fatalf("again: %q", out)
+	}
+	for _, args := range [][]string{
+		{"project", "icon", "VAQ", "--remove-image", "--monogram"},
+		{"project", "edit", "VAQ", "--remove-image"},
+	} {
+		if code, _, _ := cli(t, args...); code != 2 {
+			t.Errorf("%v: exit %d", args, code)
+		}
+	}
+}

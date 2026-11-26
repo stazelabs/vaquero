@@ -100,6 +100,21 @@ func (c *Core) UpdateProject(ctx context.Context, by, projectID string, patch Pr
 				maps.Copy(f, inv.Fields)
 			}
 		}
+		// Ruling N-R6: the workflow switch and the tier map are the
+		// owner's alone, acting directly (an agent acting for the owner
+		// is its own actor).
+		if workflow != (p.Workflow == 1) || (patch.TierMap != nil && tierMap != p.TierMap) {
+			owner, err := byOwner(ctx, q, by)
+			if err != nil {
+				return err
+			}
+			if !owner && workflow != (p.Workflow == 1) {
+				f.add("workflow", "Only the owner turns the agent workflow on or off.")
+			}
+			if !owner && patch.TierMap != nil && tierMap != p.TierMap {
+				f.add("tier_map", "Only the owner changes the tier map.")
+			}
+		}
 		now := timefmt.Format(c.Now())
 		var icon *Change
 		if patch.IconKind != nil {
@@ -207,7 +222,11 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 // DeleteProject removes a project and everything in it: its tickets, their
 // tags, comments, plans (every revision) and links (including links from
 // other projects' tickets), its decisions with their tickets and approvals,
-// its icon, milestones, statuses and history. confirm must be the project's key
+// its icon, milestones, statuses and history, and the old keys of tickets
+// that moved in or out (VAQ-18), and its project links either way round
+// (VAQ-119). A ticket that moved away keeps its
+// history: its events from its time here go with it to its project now.
+// confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
 // Callers take a backup first.
 func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string) error {
@@ -233,6 +252,11 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"approvals", q.DeleteProjectApprovals},
 			{"decision tickets", q.DeleteProjectDecisionTickets},
 			{"decisions", q.DeleteProjectDecisions},
+			{"old keys", q.DeleteProjectOldKeys},
+			{"project links", q.DeleteProjectProjectLinks},
+			{"moved tickets' events", func(ctx context.Context, id string) error {
+				return q.RehomeMovedTicketEvents(ctx, nullString(id))
+			}},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))
 			}},

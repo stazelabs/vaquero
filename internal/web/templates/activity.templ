@@ -20,7 +20,7 @@ templ ActivityPage(events []EventView) {
 									@sentenceParts(parts)
 								</span>
 							} else if href := eventHref(e); href != "" {
-								<a href={ templ.SafeURL(href) } class="hover:text-accent hover:underline">{ EventSentence(e) }</a>
+								<a href={ templ.SafeURL(href) } class="wrap-anywhere hover:text-accent hover:underline">{ EventSentence(e) }</a>
 							} else {
 								<span>{ EventSentence(e) }</span>
 							}

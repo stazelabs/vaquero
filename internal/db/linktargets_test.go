@@ -186,10 +186,12 @@ func ticketEventsQuery(t *testing.T) string {
 	return strings.ReplaceAll(strings.TrimSpace(q), "sqlc.arg(ticket_id)", "?1")
 }
 
-var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|events)\b`)
+var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|g|v|events)\b`)
 
-// Review Focus 2: a ticket's history is two index lookups, never a scan of
-// events, on a new database and on every released one migrated.
+// Review Focus 2: a ticket's history is four index lookups (its own
+// events, link events aimed at it, its projects' tag events, its
+// ancestors' moves that took it along), never a scan of events, on a new
+// database and on every released one migrated.
 func TestTicketHistoryUsesIndexes(t *testing.T) {
 	dbs := map[string]*sql.DB{"new": dbtest.New(t).W}
 	files, _ := filepath.Glob(filepath.Join(fixtureDir, "*.sqlite"))
@@ -227,10 +229,46 @@ func TestTicketHistoryUsesIndexes(t *testing.T) {
 		if scansEvents.MatchString(all) {
 			t.Errorf("%s: the history query scans events:\n%s", name, all)
 		}
-		for _, idx := range []string{"events_ticket", "events_link_to"} {
+		if !strings.Contains(all, "SEARCH v USING INDEX events_ticket") {
+			t.Errorf("%s: the ancestors' moves aren't found through events_ticket:\n%s", name, all)
+		}
+		for _, idx := range []string{"events_ticket", "events_link_to", "events_tag"} {
 			if !strings.Contains(all, idx) {
 				t.Errorf("%s: the plan doesn't use %s:\n%s", name, idx, all)
 			}
 		}
+	}
+}
+
+// Ruling N-R7: readiness reads when each ticket last arrived in its
+// project (ListTicketArrivals) through ticket_old_keys' index on ticket_id.
+func TestTicketArrivalsUsesIndex(t *testing.T) {
+	raw, err := os.ReadFile("queries/readiness.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "-- name: ListTicketArrivals :many\n")
+	if !ok {
+		t.Fatal("no ListTicketArrivals")
+	}
+	q, _, _ := strings.Cut(rest, "-- name:")
+	q = strings.ReplaceAll(strings.TrimSpace(q), "sqlc.slice('ids')", "?1, ?2")
+	rows, err := dbtest.New(t).W.Query("EXPLAIN QUERY PLAN "+q, "a", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	all := strings.Join(plan, "\n")
+	if strings.Contains(all, "SCAN ticket_old_keys") || !strings.Contains(all, "ticket_old_keys_ticket") {
+		t.Fatalf("plan:\n%s", all)
 	}
 }
