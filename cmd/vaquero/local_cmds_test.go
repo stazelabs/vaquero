@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -55,10 +56,18 @@ func TestStopEndsBackgroundServer(t *testing.T) {
 }
 
 // brewServiceFileExists writes the file brew services keeps for Vaquero
-// under the test's HOME, as for macOS.
+// under the test's HOME, as for macOS, with Homebrew's current name,
+// sh.brew.vaquero.plist.
 func brewServiceFileExists(t *testing.T) {
 	t.Helper()
-	p := brewServiceFile(os.Getenv("HOME"), "darwin")
+	brewServiceFileNamed(t, "sh.brew.vaquero")
+}
+
+// brewServiceFileNamed writes the launchd agent called label under the
+// test's HOME, as for macOS.
+func brewServiceFileNamed(t *testing.T, label string) {
+	t.Helper()
+	p := brewServiceFile(os.Getenv("HOME"), "darwin", label)
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +84,12 @@ func brewServiceFileExists(t *testing.T) {
 // (set in VQ_DATA_DIR too, so a server started here uses it on any OS).
 func brewEnv(t *testing.T) (dataDir, addr string) {
 	t.Helper()
+	return brewEnvNamed(t, "sh.brew.vaquero")
+}
+
+// brewEnvNamed is brewEnv with the service file called label.
+func brewEnvNamed(t *testing.T, label string) (dataDir, addr string) {
+	t.Helper()
 	_, addr = localEnv(t)
 	home := os.Getenv("HOME")
 	dataDir, err := config.DefaultDataDir("darwin", os.Getenv)
@@ -83,7 +98,7 @@ func brewEnv(t *testing.T) (dataDir, addr string) {
 	}
 	t.Setenv("VQ_DATA_DIR", dataDir)
 	t.Cleanup(func() { killTestServer(dataDir) })
-	brewServiceFileExists(t)
+	brewServiceFileNamed(t, label)
 	return dataDir, addr
 }
 
@@ -100,11 +115,11 @@ func TestBrewManaged(t *testing.T) {
 	}
 	mac := filepath.Join(home, "Library", "Application Support", "vaquero")
 	linux := filepath.Join(home, ".local", "share", "vaquero")
-	if brewManaged("darwin", mac, env()) {
+	if _, ok := brewManaged("darwin", mac, env()); ok {
 		t.Fatal("managed without a service file")
 	}
 	for _, goos := range []string{"darwin", "linux"} {
-		p := brewServiceFile(home, goos)
+		p := brewServiceFile(home, goos, "sh.brew.vaquero")
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -126,8 +141,39 @@ func TestBrewManaged(t *testing.T) {
 		"linux XDG, plain dir": {"linux", linux, env("XDG_DATA_HOME", filepath.Join(home, "xdg")), false},
 		"no HOME":              {"darwin", mac, func(string) string { return "" }, false},
 	} {
-		if got := brewManaged(c.goos, c.dir, c.get); got != c.want {
+		if _, got := brewManaged(c.goos, c.dir, c.get); got != c.want {
 			t.Errorf("%s: got %v, want %v", name, got, c.want)
+		}
+	}
+}
+
+// Homebrew names the service sh.brew.vaquero, and before that
+// homebrew.mxcl.vaquero (homebrew.vaquero under systemd): either file means
+// brew services runs Vaquero.
+func TestBrewManagedEitherServiceName(t *testing.T) {
+	for _, c := range []struct{ goos, rel, dir string }{
+		{"darwin", "Library/LaunchAgents/sh.brew.vaquero.plist", "Library/Application Support/vaquero"},
+		{"darwin", "Library/LaunchAgents/homebrew.mxcl.vaquero.plist", "Library/Application Support/vaquero"},
+		{"linux", ".config/systemd/user/sh.brew.vaquero.service", ".local/share/vaquero"},
+		{"linux", ".config/systemd/user/homebrew.vaquero.service", ".local/share/vaquero"},
+	} {
+		home := t.TempDir()
+		get := func(k string) string {
+			if k == "HOME" {
+				return home
+			}
+			return ""
+		}
+		p := filepath.Join(home, filepath.FromSlash(c.rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		label, ok := brewManaged(c.goos, filepath.Join(home, filepath.FromSlash(c.dir)), get)
+		if want := strings.TrimSuffix(filepath.Base(c.rel), filepath.Ext(c.rel)); !ok || label != want {
+			t.Errorf("%s %s: got %q %v, want %q", c.goos, c.rel, label, ok, want)
 		}
 	}
 }
@@ -141,7 +187,7 @@ func TestBrewManagedSymlink(t *testing.T) {
 		}
 		return ""
 	}
-	p := brewServiceFile(home, "darwin")
+	p := brewServiceFile(home, "darwin", "sh.brew.vaquero")
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -156,16 +202,45 @@ func TestBrewManagedSymlink(t *testing.T) {
 	if err := os.Symlink(def, link); err != nil {
 		t.Fatal(err)
 	}
-	if !brewManaged("darwin", link, get) {
+	if _, ok := brewManaged("darwin", link, get); !ok {
 		t.Fatal("symlink to the default directory not recognised")
 	}
 }
 
+// stop refuses under either name, and names the service it found.
 func TestStopUnderBrewServices(t *testing.T) {
-	brewEnv(t)
-	code, _, e := runCLI(t, "stop")
-	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services; run brew services stop vaquero.") {
-		t.Fatalf("%d %q", code, e)
+	for _, label := range []string{"sh.brew.vaquero", "homebrew.mxcl.vaquero"} {
+		t.Run(label, func(t *testing.T) {
+			brewEnvNamed(t, label)
+			code, _, e := runCLI(t, "stop")
+			if want := "Vaquero runs under brew services (" + label + "); run brew services stop vaquero."; code != 1 || !strings.Contains(e, want) {
+				t.Fatalf("%d %q", code, e)
+			}
+		})
+	}
+}
+
+// Homebrew's own names, exactly: a typo here is the bug of 2026-11-25
+// again (VAQ-123).
+func TestBrewServiceFileNames(t *testing.T) {
+	for _, c := range []struct{ goos, label, want string }{
+		{"darwin", "sh.brew.vaquero", "/h/Library/LaunchAgents/sh.brew.vaquero.plist"},
+		{"darwin", "homebrew.mxcl.vaquero", "/h/Library/LaunchAgents/homebrew.mxcl.vaquero.plist"},
+		{"linux", "sh.brew.vaquero", "/h/.config/systemd/user/sh.brew.vaquero.service"},
+		{"linux", "homebrew.vaquero", "/h/.config/systemd/user/homebrew.vaquero.service"},
+	} {
+		if !slices.Contains(brewLabels(c.goos), c.label) {
+			t.Errorf("%s: %s is not one of %v", c.goos, c.label, brewLabels(c.goos))
+		}
+		if got := brewServiceFile("/h", c.goos, c.label); got != c.want {
+			t.Errorf("%s %s: %s, want %s", c.goos, c.label, got, c.want)
+		}
+	}
+	if l := brewLabels("darwin"); len(l) != 2 || l[0] != "sh.brew.vaquero" {
+		t.Errorf("darwin labels %v", l)
+	}
+	if l := brewLabels("linux"); len(l) != 2 || l[0] != "sh.brew.vaquero" {
+		t.Errorf("linux labels %v", l)
 	}
 }
 
