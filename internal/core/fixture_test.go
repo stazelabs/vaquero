@@ -118,6 +118,22 @@ func init() {
 		coreOp{"MoveStatus",
 			func(c *core.Core, f fixture) error { return c.MoveStatus(bg, f.Owner.ID, f.Statuses[0].ID, +1) },
 			func(c *core.Core, f fixture) error { return c.MoveStatus(bg, f.Owner.ID, f.Statuses[0].ID, -1) }},
+		coreOp{"CreateStatusAt",
+			func(c *core.Core, f fixture) error {
+				_, err := c.CreateStatusAt(bg, f.Owner.ID, f.Project.ID, "Blocked", "in_progress", core.StatusPlace{Before: f.Statuses[0].ID})
+				return err
+			},
+			func(c *core.Core, f fixture) error {
+				_, err := c.CreateStatusAt(bg, f.Owner.ID, f.Project.ID, "Blocked", "in_progress", core.StatusPlace{After: f.OtherTodo.ID})
+				return err
+			}},
+		coreOp{"MoveStatusTo",
+			func(c *core.Core, f fixture) error {
+				return c.MoveStatusTo(bg, f.Owner.ID, f.Statuses[len(f.Statuses)-1].ID, core.StatusPlace{After: f.Statuses[1].ID})
+			},
+			func(c *core.Core, f fixture) error {
+				return c.MoveStatusTo(bg, f.Owner.ID, f.Statuses[0].ID, core.StatusPlace{Before: f.Statuses[0].ID})
+			}},
 		coreOp{"DeleteStatus",
 			func(c *core.Core, f fixture) error {
 				return c.DeleteStatus(bg, f.Owner.ID, f.Statuses[len(f.Statuses)-1].ID)

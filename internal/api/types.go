@@ -18,6 +18,8 @@ type Status struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`
 	Position int64  `json:"position"`
+	// TicketCount is how many tickets have this status.
+	TicketCount int64 `json:"ticket_count"`
 }
 
 type Milestone struct {

@@ -61,6 +61,7 @@ func TestCLISubcommandsDocumented(t *testing.T) {
 		{"cli_cmds.go", "cmdTicket", "ticket"},
 		{"cli_cmds.go", "cmdToken", "token"},
 		{"cli_cmds.go", "cmdProfile", "profile"},
+		{"cli_statuses.go", "cmdStatus", "status"},
 	} {
 		src := sourceOf(t, c.file)
 		i := strings.Index(src, "\nfunc "+c.fn+"(")

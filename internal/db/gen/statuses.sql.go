@@ -25,6 +25,40 @@ func (q *Queries) CountStatusesInCategory(ctx context.Context, arg CountStatuses
 	return count, err
 }
 
+const countTicketsByStatus = `-- name: CountTicketsByStatus :many
+SELECT status_id, count(*) AS n FROM tickets WHERE project_id = ? GROUP BY status_id
+`
+
+type CountTicketsByStatusRow struct {
+	StatusID string
+	N        int64
+}
+
+// How many tickets each of a project's statuses has (statuses with none
+// are left out).
+func (q *Queries) CountTicketsByStatus(ctx context.Context, projectID string) ([]CountTicketsByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, countTicketsByStatus, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountTicketsByStatusRow{}
+	for rows.Next() {
+		var i CountTicketsByStatusRow
+		if err := rows.Scan(&i.StatusID, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countTicketsInStatus = `-- name: CountTicketsInStatus :one
 SELECT count(*) FROM tickets WHERE status_id = ?
 `

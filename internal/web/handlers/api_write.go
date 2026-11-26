@@ -47,18 +47,22 @@ func (n *names) lookup(err error) bool {
 	return err == nil
 }
 
-func (n *names) status(name string) string {
+func (n *names) status(name string) string { return n.statusIn("status", name).ID }
+
+// statusIn resolves the status called name in field; the zero status when
+// none is.
+func (n *names) statusIn(field, name string) gen.Status {
 	ss, err := n.d.R.ListStatuses(n.ctx, n.p.ID)
 	if !n.lookup(err) {
-		return ""
+		return gen.Status{}
 	}
 	for _, s := range ss {
 		if strings.EqualFold(s.Name, strings.TrimSpace(name)) {
-			return s.ID
+			return s
 		}
 	}
-	n.fields["status"] = "No status " + name + " in " + n.p.Key + "."
-	return ""
+	n.fields[field] = "No status " + name + " in " + n.p.Key + "."
+	return gen.Status{}
 }
 
 func (n *names) assignee(name string) string {

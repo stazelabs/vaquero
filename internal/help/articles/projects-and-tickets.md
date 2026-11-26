@@ -10,7 +10,7 @@ A project has a name and a key. The key is 2 to 10 capital letters or digits, st
 
 ## Statuses
 
-Every new project starts with six statuses: Backlog, Todo, In progress, In review, Done and Cancelled. Each status belongs to a category of the same names, and the category decides where it shows on [the board](/help/the-board) and whether a ticket counts as open. In project settings you can rename statuses, add more (say, Testing in the in progress category), reorder them, or delete one no ticket uses. A new status goes after the last status of its category. Each category keeps at least one status.
+Every new project starts with six statuses: Backlog, Todo, In progress, In review, Done and Cancelled. Each status belongs to a category of the same names, and the category decides where it shows on [the board](/help/the-board) and whether a ticket counts as open. In project settings you can rename statuses, add more (say, Testing in the in progress category), reorder them, or delete one no ticket uses. A new status goes after the last status of its category. Each category keeps at least one status. The [command line](/help/cli) (`vaquero statuses`, `vaquero status`) and [the API](/help/api) make the same changes.
 
 ## Tickets
 

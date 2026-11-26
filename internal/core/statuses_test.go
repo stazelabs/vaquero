@@ -128,3 +128,79 @@ func TestClaimUsesTheFirstInProgressStatus(t *testing.T) {
 		t.Fatalf("claimed into %s, want Building", got.StatusID)
 	}
 }
+
+func TestCreateStatusFollowsTheLastOfItsCategory(t *testing.T) {
+	c, d, owner, p := newProject(t)
+	ss, _ := d.RQ.ListStatuses(bg, p.ID)
+	// Move Todo to the end: Backlog, In progress, In review, Done, Cancelled, Todo.
+	if err := c.MoveStatusTo(bg, owner.ID, ss[1].ID, core.StatusPlace{After: ss[5].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateStatus(bg, owner.ID, p.ID, "Ready", "todo"); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, p.ID), "Backlog", "In progress", "In review", "Done", "Cancelled", "Todo", "Ready")
+}
+
+func TestCreateStatusAtANeighbour(t *testing.T) {
+	c, d, owner, p := newProject(t)
+	ss, _ := d.RQ.ListStatuses(bg, p.ID)
+	if _, err := c.CreateStatusAt(bg, owner.ID, p.ID, "Triage", "backlog", core.StatusPlace{Before: ss[0].ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.CreateStatusAt(bg, owner.ID, p.ID, "Blocked", "in_progress", core.StatusPlace{After: ss[3].ID}); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, p.ID), "Triage", "Backlog", "Todo", "In progress", "In review", "Blocked", "Done", "Cancelled")
+
+	_, err := c.CreateStatusAt(bg, owner.ID, p.ID, "X", "todo", core.StatusPlace{Before: ss[0].ID, After: ss[1].ID})
+	fieldErr(t, err, "after", "Give before or after, not both.")
+	other, _ := c.CreateProject(bg, owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	os, _ := d.RQ.ListStatuses(bg, other.ID)
+	_, err = c.CreateStatusAt(bg, owner.ID, p.ID, "X", "todo", core.StatusPlace{After: os[0].ID})
+	fieldErr(t, err, "after", "Choose a status from this project.")
+}
+
+func TestMoveStatusTo(t *testing.T) {
+	c, d, owner, p := newProject(t)
+	ss, _ := d.RQ.ListStatuses(bg, p.ID)
+	backlog, todo, done, cancelled := ss[0], ss[1], ss[4], ss[5]
+
+	before, _ := d.RQ.MaxEventSeq(bg)
+	if err := c.MoveStatusTo(bg, owner.ID, cancelled.ID, core.StatusPlace{Before: todo.ID}); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, p.ID), "Backlog", "Cancelled", "Todo", "In progress", "In review", "Done")
+	if after, _ := d.RQ.MaxEventSeq(bg); after != before+1 {
+		t.Fatalf("%d events", after-before)
+	}
+	evs, _ := d.RQ.ListEventsNewest(bg, 1)
+	if evs[0].Kind != core.EvStatusMoved || evs[0].Payload != `{"from":6,"name":"Cancelled","to":2}` {
+		t.Fatalf("%s %s", evs[0].Kind, evs[0].Payload)
+	}
+
+	if err := c.MoveStatusTo(bg, owner.ID, backlog.ID, core.StatusPlace{After: done.ID}); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, p.ID), "Cancelled", "Todo", "In progress", "In review", "Done", "Backlog")
+
+	// Already there: nothing changes and no event.
+	seq, _ := d.RQ.MaxEventSeq(bg)
+	if err := c.MoveStatusTo(bg, owner.ID, backlog.ID, core.StatusPlace{After: done.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.MoveStatusTo(bg, owner.ID, done.ID, core.StatusPlace{Before: backlog.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if now, _ := d.RQ.MaxEventSeq(bg); now != seq {
+		t.Fatal("a move to where it already is wrote an event")
+	}
+
+	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{}), "before", "Choose a status to move it before or after.")
+	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{Before: done.ID, After: done.ID}), "after", "Give before or after, not both.")
+	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{Before: todo.ID}), "before", "Choose another status.")
+	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{After: "nope"}), "after", "Choose a status from this project.")
+	other, _ := c.CreateProject(bg, owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	os, _ := d.RQ.ListStatuses(bg, other.ID)
+	fieldErr(t, c.MoveStatusTo(bg, owner.ID, todo.ID, core.StatusPlace{Before: os[0].ID}), "before", "Choose a status from this project.")
+}
