@@ -58,7 +58,7 @@ Agent rules for each area are in `.claude/rules/` (database, handlers, security,
 
 - Module `github.com/stazelabs/vaquero`; binary `vaquero`; `go 1.27.0`, `toolchain go1.27.3`; always `CGO_ENABLED=0`.
 - Env prefix `VQ_`.
-- Dependency versions match startcase's `go.mod`. No ORM, no cgo SQLite, no React, no validation library, no testify, no cobra.
+- Dependency versions match startcase's `go.mod`. No ORM, no cgo SQLite, no React, no validation library, no testify, no cobra. One exception, for tests only (owner, 2026-11-25): `chromedp` drives the installed Chrome for browser tests behind the `e2e` build tag (`make e2e`), on `webtest`; it is never linked into `cmd/vaquero`, and the tests skip when no Chrome is found.
 - Licence Apache 2.0. Supported platforms for the local binary: macOS and Linux.
 - `VQ_MODE=hosted` is refused at boot until Phase 4 adds sign-in.
 - Local mode binds loopback only and rejects any request whose Host is not `localhost`, `127.0.0.1` or `::1`.
