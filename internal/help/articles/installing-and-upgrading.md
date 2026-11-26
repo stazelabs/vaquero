@@ -17,7 +17,9 @@ That is all: run any `vaquero` command and the server starts in the background. 
 
     brew services start vaquero
 
-`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again. The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual.
+`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again, and says so. Vaquero knows the service by the file Homebrew writes for it (`~/Library/LaunchAgents/sh.brew.vaquero.plist` on macOS, `~/.config/systemd/user/sh.brew.vaquero.service` on Linux, or the older `homebrew.mxcl.vaquero` and `homebrew.vaquero` names), or, after `brew services run vaquero`, which writes no file, by asking launchd or systemd whether the service is loaded.
+
+The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual. On Linux the default comes from the systemd user manager's `XDG_DATA_HOME`, which can differ from your shell's.
 
 ## Installing from a release archive
 

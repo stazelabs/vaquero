@@ -72,30 +72,10 @@ jobs:
       # The formula is rendered from packaging/homebrew/vaquero.rb.tmpl and
       # this release's checksums, then written to the tap through the
       # contents API. A re-run with the same tag updates the file in place,
-      # or leaves it alone when it is already this release's.
+      # or leaves it alone when it is already this release's. If only this
+      # step fails, the formula workflow re-runs it for the existing release.
       - name: Publish the Homebrew formula
         env:
           TAG: ${{ inputs.tag }}
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: |
-          go run ./scripts/formula -version "$TAG" -checksums dist/checksums.txt -o dist/vaquero.rb
-          path=repos/stazelabs/homebrew-vaquero/contents/Formula/vaquero.rb
-          # The file's blob sha, empty when it doesn't exist yet. On an error gh
-          # prints the error body to stdout (skipping --jq), so only a real 404
-          # counts as missing; any other error stops here.
-          err=$(mktemp)
-          if out=$(gh api "$path" --jq .sha 2>"$err"); then
-            sha=$out
-          elif grep -q 'HTTP 404' "$err"; then
-            sha=
-          else
-            cat "$err" >&2
-            exit 1
-          fi
-          if [ "$sha" = "$(git hash-object dist/vaquero.rb)" ]; then
-            echo "Formula/vaquero.rb is already the $TAG formula"
-            exit 0
-          fi
-          args=(--method PUT "$path" -f message="vaquero $TAG" -f content="$(base64 -w0 dist/vaquero.rb)")
-          if [ -n "$sha" ]; then args+=(-f sha="$sha"); fi
-          gh api "${args[@]}" --jq '"Formula/vaquero.rb updated: " + .commit.html_url'
+        run: scripts/publish-formula.sh "$TAG" dist/checksums.txt

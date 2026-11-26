@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -30,72 +29,14 @@ func init() {
 // directory: longer than serve's 30-second drain.
 const stopWait = 40 * time.Second
 
-// Hooks for tests: the clock, and the operating system brew services is
-// looked up for.
-var (
-	localNow  = time.Now
-	serviceOS = runtime.GOOS
-)
+// localNow is the clock the local commands use; tests replace it.
+var localNow = time.Now
 
 // localConfig is the data directory and address `vaquero serve` would use
 // (config.Local: VQ_MODE, VQ_ADDR, VQ_DATA_DIR), for stop and backup; a bad
 // server-only setting doesn't stop them.
 func localConfig() (config.Config, error) {
 	return config.Local(os.Getenv)
-}
-
-// brewLabels are Homebrew's names for Vaquero's service, in the order brew
-// services tries them (Service#plist_names and #service_names in Homebrew's
-// service.rb, for a formula that names none of its own): the canonical
-// sh.brew.vaquero, then the legacy homebrew.mxcl.vaquero (launchd) or
-// homebrew.vaquero (systemd).
-func brewLabels(goos string) []string {
-	if goos == "darwin" {
-		return []string{"sh.brew.vaquero", "homebrew.mxcl.vaquero"}
-	}
-	return []string{"sh.brew.vaquero", "homebrew.vaquero"}
-}
-
-// brewServiceFile is where brew services keeps the launchd agent or
-// systemd unit called label.
-func brewServiceFile(home, goos, label string) string {
-	if goos == "darwin" {
-		return filepath.Join(home, "Library", "LaunchAgents", label+".plist")
-	}
-	return filepath.Join(home, ".config", "systemd", "user", label+".service")
-}
-
-// brewService reports whether the server on dataDir is the one brew
-// services runs, which restarts it whenever it stops, and the service's
-// label.
-func brewService(dataDir string) (label string, ok bool) {
-	return brewManaged(serviceOS, dataDir, os.Getenv)
-}
-
-// brewManaged reports whether brew services runs Vaquero on dataDir, and
-// under which label: a service file of either name exists, and dataDir is
-// the default data directory, the one the formula's service uses (it sets
-// no VQ_DATA_DIR). An instance with a data directory of its own is never
-// the service's, so stop and upgrades treat it as any other.
-func brewManaged(goos, dataDir string, get func(string) string) (label string, ok bool) {
-	home := get("HOME")
-	if home == "" {
-		return "", false
-	}
-	for _, l := range brewLabels(goos) {
-		if _, err := os.Stat(brewServiceFile(home, goos, l)); err == nil {
-			label = l
-			break
-		}
-	}
-	if label == "" {
-		return "", false
-	}
-	def, err := config.DefaultDataDir(goos, get)
-	if err != nil || !sameDir(dataDir, def) {
-		return "", false
-	}
-	return label, true
 }
 
 // sameDir reports whether a and b name the same directory: the same file

@@ -74,6 +74,12 @@ func brewServiceFileNamed(t *testing.T, label string) {
 	if err := os.WriteFile(p, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	useDarwin(t)
+}
+
+// useDarwin makes the brew services checks look for macOS's service.
+func useDarwin(t *testing.T) {
+	t.Helper()
 	old := serviceOS
 	serviceOS = "darwin"
 	t.Cleanup(func() { serviceOS = old })
@@ -98,7 +104,11 @@ func brewEnvNamed(t *testing.T, label string) (dataDir, addr string) {
 	}
 	t.Setenv("VQ_DATA_DIR", dataDir)
 	t.Cleanup(func() { killTestServer(dataDir) })
-	brewServiceFileNamed(t, label)
+	if label != "" {
+		brewServiceFileNamed(t, label)
+	} else {
+		useDarwin(t)
+	}
 	return dataDir, addr
 }
 
@@ -115,7 +125,7 @@ func TestBrewManaged(t *testing.T) {
 	}
 	mac := filepath.Join(home, "Library", "Application Support", "vaquero")
 	linux := filepath.Join(home, ".local", "share", "vaquero")
-	if _, ok := brewManaged("darwin", mac, env()); ok {
+	if _, ok := brewManaged("darwin", mac, env(), noManager); ok {
 		t.Fatal("managed without a service file")
 	}
 	for _, goos := range []string{"darwin", "linux"} {
@@ -141,7 +151,7 @@ func TestBrewManaged(t *testing.T) {
 		"linux XDG, plain dir": {"linux", linux, env("XDG_DATA_HOME", filepath.Join(home, "xdg")), false},
 		"no HOME":              {"darwin", mac, func(string) string { return "" }, false},
 	} {
-		if _, got := brewManaged(c.goos, c.dir, c.get); got != c.want {
+		if _, got := brewManaged(c.goos, c.dir, c.get, noManager); got != c.want {
 			t.Errorf("%s: got %v, want %v", name, got, c.want)
 		}
 	}
@@ -171,7 +181,7 @@ func TestBrewManagedEitherServiceName(t *testing.T) {
 		if err := os.WriteFile(p, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		label, ok := brewManaged(c.goos, filepath.Join(home, filepath.FromSlash(c.dir)), get)
+		label, ok := brewManaged(c.goos, filepath.Join(home, filepath.FromSlash(c.dir)), get, noManager)
 		if want := strings.TrimSuffix(filepath.Base(c.rel), filepath.Ext(c.rel)); !ok || label != want {
 			t.Errorf("%s %s: got %q %v, want %q", c.goos, c.rel, label, ok, want)
 		}
@@ -202,7 +212,7 @@ func TestBrewManagedSymlink(t *testing.T) {
 	if err := os.Symlink(def, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := brewManaged("darwin", link, get); !ok {
+	if _, ok := brewManaged("darwin", link, get, noManager); !ok {
 		t.Fatal("symlink to the default directory not recognised")
 	}
 }
