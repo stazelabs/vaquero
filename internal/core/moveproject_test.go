@@ -13,6 +13,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
 func init() {
@@ -196,6 +197,10 @@ func TestMoveTicketToProjectTakesSubTickets(t *testing.T) {
 		if tk.ID != want.id || p.Key != "OTH" || tk.Number != want.number {
 			t.Errorf("%s: %s %s-%d", key, tk.ID, p.Key, tk.Number)
 		}
+	}
+	// Every re-keyed ticket records when it moved (N-R7).
+	if n := count(t, d, `SELECT count(*) FROM ticket_old_keys WHERE moved_at = ?`, timefmt.Format(start)); n != 3 {
+		t.Fatalf("%d old keys with moved_at", n)
 	}
 	g, _ := resolve(t, c, d, "OTH-4")
 	if g.ParentID.String != child.ID {

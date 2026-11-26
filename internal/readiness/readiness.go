@@ -33,9 +33,11 @@
 //     and moved back, is not ready.
 //
 // An approval counts only if its decision was asked after the ticket last
-// arrived in its project (ruling N-R5): a ticket moved to another project
-// and back, or carried there and back by its epic, needs approving again,
-// and so does an epic a sub-ticket leans on. Only decisions of the
+// arrived in its project (rulings N-R5 and N-R7: its newest
+// ticket_old_keys.moved_at, whatever its parents are now): a ticket moved
+// to another project and back, or carried there and back by its epic,
+// needs approving again, even once detached, and so does an epic a
+// sub-ticket leans on. Only decisions of the
 // ticket's own project count at all (N-R1).
 //
 // An approval holds only under the parent it was asked under (its pins'
@@ -54,7 +56,6 @@ package readiness
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -162,7 +163,7 @@ func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Rea
 	if err != nil {
 		return nil, fmt.Errorf("readiness approvals: %w", err)
 	}
-	arrived, err := arrivals(ctx, q, tickets, every)
+	arrived, err := arrivals(ctx, q, every)
 	if err != nil {
 		return nil, err
 	}
@@ -189,59 +190,19 @@ func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Rea
 	return out, nil
 }
 
-// arrivals is when each ticket last arrived in its project, by id: the
-// newest ticket.moved event on the ticket itself, or on an ancestor whose
-// move carried it along (its payload.ticket_ids lists the ticket). A
-// ticket that never moved is absent ("", before every instant). One read
-// for all of them, through events_ticket (ruling N-R5).
-func arrivals(ctx context.Context, q *gen.Queries, tickets map[string]gen.ListReadinessTicketsRow, ids []string) (map[string]string, error) {
-	out := map[string]string{}
-	keys := make([]sql.NullString, len(ids))
-	for i, id := range ids {
-		keys[i] = sql.NullString{String: id, Valid: true}
-	}
-	moves, err := q.ListTicketMoves(ctx, keys)
+// arrivals is when each ticket last arrived in its project, by id: its
+// newest ticket_old_keys.moved_at, written for every ticket a move
+// re-keyed (the one moved and each sub-ticket it carried), whatever its
+// parents are now (ruling N-R7). A ticket that never moved is absent (""
+// is before every instant). One read for all of them.
+func arrivals(ctx context.Context, q *gen.Queries, ids []string) (map[string]string, error) {
+	rows, err := q.ListTicketArrivals(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("readiness moves: %w", err)
+		return nil, fmt.Errorf("readiness arrivals: %w", err)
 	}
-	if len(moves) == 0 {
-		return out, nil
-	}
-	type move struct {
-		at      string
-		carried []string
-	}
-	byTicket := map[string][]move{}
-	for _, m := range moves {
-		mv := move{at: m.At}
-		// A payload that doesn't parse carried nothing.
-		_ = json.Unmarshal([]byte(m.Carried), &mv.carried)
-		byTicket[m.TicketID.String] = append(byTicket[m.TicketID.String], mv)
-	}
-	later := func(id, at string) {
-		if at > out[id] {
-			out[id] = at
-		}
-	}
-	for id, t := range tickets {
-		for _, m := range byTicket[id] {
-			later(id, m.at)
-		}
-		// Up the chain this read knows (at most MaxDepth levels).
-		seen := map[string]bool{id: true}
-		for p := t.ParentID; p.Valid && !seen[p.String]; {
-			seen[p.String] = true
-			for _, m := range byTicket[p.String] {
-				if slices.Contains(m.carried, id) {
-					later(id, m.at)
-				}
-			}
-			up, ok := tickets[p.String]
-			if !ok {
-				break
-			}
-			p = up.ParentID
-		}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.TicketID] = r.ArrivedAt
 	}
 	return out, nil
 }

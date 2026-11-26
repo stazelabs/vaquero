@@ -78,7 +78,7 @@ JOIN tickets t ON t.id = k.ticket_id
 WHERE k.project_id = ? AND k.number = ?;
 
 -- name: AddTicketOldKey :exec
-INSERT INTO ticket_old_keys (project_id, number, ticket_id) VALUES (?, ?, ?);
+INSERT INTO ticket_old_keys (project_id, number, ticket_id, moved_at) VALUES (?, ?, ?, ?);
 
 -- name: ListTicketOldKeys :many
 -- The keys a ticket had before it moved, oldest project first by name.

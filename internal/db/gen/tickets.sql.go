@@ -12,17 +12,23 @@ import (
 )
 
 const addTicketOldKey = `-- name: AddTicketOldKey :exec
-INSERT INTO ticket_old_keys (project_id, number, ticket_id) VALUES (?, ?, ?)
+INSERT INTO ticket_old_keys (project_id, number, ticket_id, moved_at) VALUES (?, ?, ?, ?)
 `
 
 type AddTicketOldKeyParams struct {
 	ProjectID string
 	Number    int64
 	TicketID  string
+	MovedAt   string
 }
 
 func (q *Queries) AddTicketOldKey(ctx context.Context, arg AddTicketOldKeyParams) error {
-	_, err := q.db.ExecContext(ctx, addTicketOldKey, arg.ProjectID, arg.Number, arg.TicketID)
+	_, err := q.db.ExecContext(ctx, addTicketOldKey,
+		arg.ProjectID,
+		arg.Number,
+		arg.TicketID,
+		arg.MovedAt,
+	)
 	return err
 }
 

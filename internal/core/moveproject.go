@@ -117,7 +117,7 @@ func (c *Core) MoveTicketToProject(ctx context.Context, by, ticketID, targetID s
 			if err != nil {
 				return fmt.Errorf("next number: %w", err)
 			}
-			if err := q.AddTicketOldKey(ctx, gen.AddTicketOldKeyParams{ProjectID: from.ID, Number: s.Number, TicketID: s.ID}); err != nil {
+			if err := q.AddTicketOldKey(ctx, gen.AddTicketOldKeyParams{ProjectID: from.ID, Number: s.Number, TicketID: s.ID, MovedAt: now}); err != nil {
 				return fmt.Errorf("add old key: %w", err)
 			}
 			st := m.status(s.StatusID)

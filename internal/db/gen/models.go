@@ -238,6 +238,7 @@ type TicketOldKey struct {
 	ProjectID string
 	Number    int64
 	TicketID  string
+	MovedAt   string
 }
 
 type TicketTag struct {

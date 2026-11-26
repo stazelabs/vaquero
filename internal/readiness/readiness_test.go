@@ -523,3 +523,42 @@ func count(t *testing.T, w *world, q string, args ...any) int {
 	}
 	return n
 }
+
+// N-R7, the review's probe: a ticket approved on its own, put under an
+// unapproved epic, carried to another project and back by it, then
+// detached, is not ready on its old approval. Every step after the
+// approval is an agent's.
+func TestDetachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	s := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "light"})
+	w.approve(s)
+	expect(t, w.check(s))
+	r := w.ticket(core.TicketInput{Title: "Board", Tier: "standard"})
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	under, none := r.ID, ""
+	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &under}, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []string{other.ID, w.p.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, agent.ID, r.ID, to, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &none}, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(s), readiness.PlanNotApproved)
+	w.approve(s)
+	expect(t, w.check(s))
+}

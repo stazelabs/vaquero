@@ -187,26 +187,24 @@ func (q *Queries) ListReadinessTickets(ctx context.Context, ids []string) ([]Lis
 	return items, nil
 }
 
-const listTicketMoves = `-- name: ListTicketMoves :many
-SELECT e.ticket_id, e.seq, e.at,
-       CAST(coalesce(json_extract(e.payload, '$.ticket_ids'), '[]') AS TEXT) AS carried
-FROM events e
-WHERE e.kind = 'ticket.moved' AND e.ticket_id IN (/*SLICE:ids*/?)
-ORDER BY e.seq
+const listTicketArrivals = `-- name: ListTicketArrivals :many
+SELECT ticket_id, CAST(max(moved_at) AS TEXT) AS arrived_at
+FROM ticket_old_keys
+WHERE ticket_id IN (/*SLICE:ids*/?)
+GROUP BY ticket_id
 `
 
-type ListTicketMovesRow struct {
-	TicketID sql.NullString
-	Seq      int64
-	At       string
-	Carried  string
+type ListTicketArrivalsRow struct {
+	TicketID  string
+	ArrivedAt string
 }
 
-// Every move to another project made on one of the given tickets, with
-// the ids of the sub-tickets it carried along (a JSON list): when each
-// ticket last arrived in its project (ruling N-R5). Through events_ticket.
-func (q *Queries) ListTicketMoves(ctx context.Context, ids []sql.NullString) ([]ListTicketMovesRow, error) {
-	query := listTicketMoves
+// When each of the given tickets last arrived in its project: its newest
+// re-keying move, its own or one that carried it (ruling N-R7), whatever
+// its parents are now. A ticket that never moved has no row. Through
+// ticket_old_keys_ticket.
+func (q *Queries) ListTicketArrivals(ctx context.Context, ids []string) ([]ListTicketArrivalsRow, error) {
+	query := listTicketArrivals
 	var queryParams []interface{}
 	if len(ids) > 0 {
 		for _, v := range ids {
@@ -221,15 +219,10 @@ func (q *Queries) ListTicketMoves(ctx context.Context, ids []sql.NullString) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTicketMovesRow{}
+	items := []ListTicketArrivalsRow{}
 	for rows.Next() {
-		var i ListTicketMovesRow
-		if err := rows.Scan(
-			&i.TicketID,
-			&i.Seq,
-			&i.At,
-			&i.Carried,
-		); err != nil {
+		var i ListTicketArrivalsRow
+		if err := rows.Scan(&i.TicketID, &i.ArrivedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

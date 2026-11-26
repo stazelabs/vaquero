@@ -12,11 +12,16 @@ WHERE kind IN ('tag.renamed', 'tag.merged', 'tag.deleted');
 -- A ticket moved to another project keeps answering to its old key
 -- (VAQ-18): the old project and number lead to the ticket. A project
 -- whose key changes keeps its id, so its moved tickets' old keys follow
--- the new key. Only internal/core writes this table.
+-- the new key. moved_at is when the move that re-keyed the ticket was
+-- made (the ticket's own, or its ancestor's that carried it): a ticket's
+-- newest moved_at is when it last arrived in its project, whatever its
+-- parents are now, and an approval asked before then doesn't count
+-- (ruling N-R7). Only internal/core writes this table.
 CREATE TABLE ticket_old_keys (
     project_id TEXT NOT NULL REFERENCES projects (id),
     number     INTEGER NOT NULL,
     ticket_id  TEXT NOT NULL REFERENCES tickets (id),
+    moved_at   TEXT NOT NULL,
     PRIMARY KEY (project_id, number)
 );
 CREATE INDEX ticket_old_keys_ticket ON ticket_old_keys (ticket_id);

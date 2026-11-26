@@ -33,12 +33,12 @@ WHERE dt.ticket_id IN (sqlc.slice('ids'))
   AND d.project_id = (SELECT tk.project_id FROM tickets tk WHERE tk.id = dt.ticket_id)
 ORDER BY dt.ticket_id, d.answered_at DESC, d.asked_at DESC, d.id DESC;
 
--- name: ListTicketMoves :many
--- Every move to another project made on one of the given tickets, with
--- the ids of the sub-tickets it carried along (a JSON list): when each
--- ticket last arrived in its project (ruling N-R5). Through events_ticket.
-SELECT e.ticket_id, e.seq, e.at,
-       CAST(coalesce(json_extract(e.payload, '$.ticket_ids'), '[]') AS TEXT) AS carried
-FROM events e
-WHERE e.kind = 'ticket.moved' AND e.ticket_id IN (sqlc.slice('ids'))
-ORDER BY e.seq;
+-- name: ListTicketArrivals :many
+-- When each of the given tickets last arrived in its project: its newest
+-- re-keying move, its own or one that carried it (ruling N-R7), whatever
+-- its parents are now. A ticket that never moved has no row. Through
+-- ticket_old_keys_ticket.
+SELECT ticket_id, CAST(max(moved_at) AS TEXT) AS arrived_at
+FROM ticket_old_keys
+WHERE ticket_id IN (sqlc.slice('ids'))
+GROUP BY ticket_id;

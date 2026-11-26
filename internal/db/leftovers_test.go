@@ -45,7 +45,7 @@ func TestLeftoversSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := func(project string, number int, ticket string) error {
-		_, err := d.W.Exec(`INSERT INTO ticket_old_keys (project_id, number, ticket_id) VALUES (?, ?, ?)`, project, number, ticket)
+		_, err := d.W.Exec(`INSERT INTO ticket_old_keys (project_id, number, ticket_id, moved_at) VALUES (?, ?, ?, '2026-11-26T00:00:00.000Z')`, project, number, ticket)
 		return err
 	}
 	if err := old(p1, 7, tk); err != nil {
