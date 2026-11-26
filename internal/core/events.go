@@ -16,6 +16,9 @@ import (
 //   - *.updated: {"changes": {field: {"from", "to"}}}, only changed fields;
 //     ticket tags are sorted name lists. milestone.updated also carries
 //     {"name"}; a project key change is project.updated with a "key" change.
+//     A ticket.updated that changes the body also carries "body_before" and
+//     "body_after" (the whole text, from 0.1.5 on), or "body_too_long": true
+//     when either side is over BodyHistoryMax bytes.
 //   - project.archived, project.restored, milestone.closed,
 //     milestone.reopened: {}.
 //   - status.moved: {"name", "from": position, "to": position}.
@@ -121,3 +124,7 @@ func EventKinds() []string {
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 	}
 }
+
+// BodyHistoryMax is the most bytes of a description a ticket.updated event
+// keeps on either side of an edit.
+const BodyHistoryMax = 64 << 10

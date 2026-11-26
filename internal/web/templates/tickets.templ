@@ -359,6 +359,20 @@ templ EventLine(e EventView) {
 		</span>
 		<span class="font-medium text-ink">{ e.Actor }</span> { EventSentence(e) }
 		<span class="text-xs text-muted">· { e.Ago }</span>
+		if d := bodyChanges(e); d.Show {
+			<details class="w-full pl-6">
+				<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
+				if d.TooLong {
+					<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
+				} else {
+					<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+						for _, l := range d.Lines {
+							<span class={ diffLineClass(l.Op) }>{ diffLineText(l) }</span>
+						}
+					</pre>
+				}
+			</details>
+		}
 	</li>
 }
 

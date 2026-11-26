@@ -23,6 +23,10 @@ A ticket has a title (up to 200 characters), a description in markdown, a status
 
 Every change is recorded in the ticket's history and on the Activity page.
 
+## History
+
+A ticket's page ends with its history, newest first. When the description changes, "Show changes" under that line opens the edit as a line diff: removed lines marked `-`, added lines `+`, with long unchanged stretches folded. Descriptions longer than 64 KB on either side are noted as too long to show, and edits made before Vaquero 0.1.5 show the line only. The Activity page shows the line without the diff.
+
 ## Links
 
 A ticket can block, relate to or duplicate another ticket, in any project. Vaquero refuses a link that would make a loop of blockers, directly or through a chain (`VAQ-1` blocks `VAQ-2` blocks `VAQ-3` blocks `VAQ-1`), and refuses two tickets duplicating each other. An open blocker keeps a ticket from being ready on the board.

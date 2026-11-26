@@ -102,9 +102,25 @@ func (c *Core) PatchTicket(ctx context.Context, by, ticketID string, patch Ticke
 		if t, err = q.GetTicket(ctx, t.ID); err != nil {
 			return fmt.Errorf("reload ticket: %w", err)
 		}
-		return c.emit(ctx, q, by, EvTicketUpdated, p.ID, t.ID, map[string]any{"changes": changes})
+		return c.emit(ctx, q, by, EvTicketUpdated, p.ID, t.ID, updatePayload(changes, old.Body, tf.Body))
 	})
 	return t, err
+}
+
+// updatePayload is a ticket.updated event's payload. A description edit
+// also keeps the text before and after, unless either side is over
+// BodyHistoryMax bytes; then only body_too_long says why there is none.
+func updatePayload(changes map[string]Change, before, after string) map[string]any {
+	out := map[string]any{"changes": changes}
+	if _, ok := changes["body"]; !ok {
+		return out
+	}
+	if len(before) > BodyHistoryMax || len(after) > BodyHistoryMax {
+		out["body_too_long"] = true
+	} else {
+		out["body_before"], out["body_after"] = before, after
+	}
+	return out
 }
 
 // applyPatch is the ticket's current fields with patch laid over them.
