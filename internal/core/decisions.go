@@ -44,8 +44,9 @@ const (
 	decisionPayloadClip = 200
 )
 
-// ApproveLabel is the option that approves when an approval has one; else
-// its first option approves. An approval asked with no options gets
+// ApproveLabel is the one option that approves an approval (matched in
+// any case); an approval's options must include it. One asked with no
+// options gets
 // Approve and Request changes.
 const ApproveLabel = "Approve"
 
@@ -83,7 +84,7 @@ type Answer struct {
 // DecisionPayload is a decision.* event's payload. Question and Answer are
 // cut to 200 characters (the decision holds them whole); the owner's
 // relayed words stay on the decision. Overruled is the answer an
-// overruling replaced, whole.
+// overruling replaced, its answer and note cut the same way.
 type DecisionPayload struct {
 	DecisionID string     `json:"decision_id"`
 	Kind       string     `json:"kind"`
@@ -164,6 +165,9 @@ func checkDecision(ctx context.Context, q *gen.Queries, in DecisionInput, kinds 
 	}
 	if in.Kind == DecisionApproval && len(opts) == 0 {
 		opts = []Option{{Label: ApproveLabel}, {Label: "Request changes"}}
+	}
+	if in.Kind == DecisionApproval && ApproveOption(opts) < 0 {
+		f.add("options", "An approval needs an Approve option.")
 	}
 	in.Options = opts
 	var ids []string
@@ -254,17 +258,14 @@ func resolveAnswer(opts []Option, a Answer) (answer, note string, index int, err
 	return answer, note, index, f.err()
 }
 
-// approves reports whether option index approves: the one labelled
-// Approve, else the first.
-func approves(opts []Option, index int) bool {
-	if index < 0 {
-		return false
-	}
-	if i := slices.IndexFunc(opts, func(o Option) bool { return strings.EqualFold(o.Label, ApproveLabel) }); i >= 0 {
-		return index == i
-	}
-	return index == 0
+// ApproveOption is the index of the option labelled Approve (any case),
+// the only one that approves; -1 when there is none.
+func ApproveOption(opts []Option) int {
+	return slices.IndexFunc(opts, func(o Option) bool { return strings.EqualFold(o.Label, ApproveLabel) })
 }
+
+// approves reports whether option index approves.
+func approves(opts []Option, index int) bool { return index >= 0 && index == ApproveOption(opts) }
 
 // decisionEvent is the event's ticket: the one ticket a decision names,
 // else none (a project event, ticket_ids naming them).
@@ -363,11 +364,14 @@ func (c *Core) RecordRuling(ctx context.Context, by string, in DecisionInput, a 
 // answers as itself, whoever asked. With a.RelayedBy (an agent) the answer
 // is relayed: the agent recorded what the owner said, quoted in a.Words,
 // which it then needs. Without it the answer is direct, and carries no
-// words. An approval of a plan answered with its approving option (see
-// ApproveLabel) writes one approvals row per ticket, pinning each ticket's
-// RequirementHash and plan revision (its own plan's, else its parent's,
-// else 0). One decision.answered event either way, the group's ticket_ids
-// in it.
+// words. Through MCP (the Origin's surface) an answer must be relayed: the
+// bridge without an agent can't answer directly. An approval of a plan
+// answered Approve writes one approvals row per ticket, pinning each
+// ticket's RequirementHash and its own plan's revision (0 with none: a
+// sub-ticket then leans on its epic's own approval). An answered approval
+// is final; a later approval answered otherwise takes its place. One
+// decision.answered event either way, the group's ticket_ids in it. The
+// project must not be archived.
 func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a Answer) (gen.Decision, error) {
 	var d gen.Decision
 	err := c.tx(ctx, func(q *gen.Queries) error {
@@ -382,6 +386,16 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 		}
 		if !IsOwner(who) {
 			return invalid("answer", "Only the owner answers a decision; relay the owner's answer with their words.")
+		}
+		if a.RelayedBy == "" && OriginFrom(ctx).Surface == SurfaceMCP {
+			return invalid("agent", "Run vaquero mcp with --agent NAME to relay the owner's answer.")
+		}
+		p, err := q.GetProject(ctx, d.ProjectID)
+		if err != nil {
+			return fmt.Errorf("get project: %w", err)
+		}
+		if p.ArchivedAt.Valid {
+			return invalid("project", "Restore this project to record decisions in it.")
 		}
 		words := strings.TrimSpace(norm.NFC.String(a.Words))
 		var relayer gen.Actor
@@ -427,7 +441,7 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 			pl.Relayed, pl.RelayedBy = true, relayer.Name
 		}
 		if d.State == "answered" {
-			pl.Overruled = &Overruled{Answer: d.Answer, Note: d.AnswerNote, AnsweredBy: d.AnsweredBy.String, AnsweredAt: d.AnsweredAt.String, RelayedBy: d.RelayedBy.String}
+			pl.Overruled = &Overruled{Answer: units.Clip(d.Answer, decisionPayloadClip), Note: units.Clip(d.AnswerNote, decisionPayloadClip), AnsweredBy: d.AnsweredBy.String, AnsweredAt: d.AnsweredAt.String, RelayedBy: d.RelayedBy.String}
 		}
 		now := timefmt.Format(c.Now())
 		d.State, d.Answer, d.AnswerNote = "answered", answer, note
@@ -466,11 +480,6 @@ func (c *Core) approve(ctx context.Context, q *gen.Queries, decisionID, ticketID
 	rev, err := planRevision(ctx, q, t.ID)
 	if err != nil {
 		return err
-	}
-	if rev == 0 && t.ParentID.Valid {
-		if rev, err = planRevision(ctx, q, t.ParentID.String); err != nil {
-			return err
-		}
 	}
 	if err := q.AddApproval(ctx, gen.AddApprovalParams{
 		ID: idgen.New(), TicketID: t.ID, DecisionID: decisionID,

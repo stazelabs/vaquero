@@ -145,7 +145,8 @@ type Plan struct {
 // made, or an approval of a plan, a merge or a release. Tickets are keys;
 // people are names. Answered is "direct" when the owner answered without an
 // agent, "relayed" when RelayedBy recorded the owner's answer, quoting
-// Words. Approvals are the pins a plan approval recorded, one per ticket.
+// Words. Approves is an approval's approving option, its Approve label as
+// spelled. Approvals are the pins a plan approval recorded, one per ticket.
 type Decision struct {
 	ID             string             `json:"id"`
 	Project        string             `json:"project"`
@@ -155,6 +156,7 @@ type Decision struct {
 	Subject        string             `json:"subject,omitempty"`
 	Question       string             `json:"question"`
 	Options        []DecisionOption   `json:"options"`
+	Approves       string             `json:"approves,omitempty"`
 	Recommendation string             `json:"recommendation,omitempty"`
 	Why            string             `json:"why,omitempty"`
 	State          string             `json:"state"`

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
+	"strings"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -355,15 +356,29 @@ func TestGroupPlanApprovalWritesRowsAndOneEvent(t *testing.T) {
 	if n := count(t, d, `SELECT count(*) FROM approvals WHERE decision_id IN (?, ?)`, q2.ID, q3.ID); n != 0 {
 		t.Fatalf("%d approvals from a refusal", n)
 	}
-	// Without an option labelled Approve, the first option approves.
+	// An approval's options must include Approve (any case), and only it
+	// approves: an approval without one is refused.
 	in := planApproval(f, f.T2.ID)
-	in.Options = []core.Option{{Label: "Ship it"}, {Label: "Not yet"}}
-	q4, _ := c.AskDecision(bg, a.ID, in)
-	if _, err := c.AnswerDecision(bg, f.Owner.ID, q4.ID, core.Answer{Option: "ship it"}); err != nil {
+	in.Options = []core.Option{{Label: "Hold off"}, {Label: "Go"}}
+	_, err = c.AskDecision(bg, a.ID, in)
+	fieldErr(t, err, "options", "An approval needs an Approve option.")
+	in.Options = []core.Option{{Label: "Not yet"}, {Label: "approve", Tradeoff: "Ship it"}}
+	q4, err := c.AskDecision(bg, a.ID, in)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if n := count(t, d, `SELECT count(*) FROM approvals WHERE decision_id = ?`, q4.ID); n != 1 {
-		t.Fatalf("%d approvals from the first option", n)
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, q4.ID, core.Answer{Option: "Not yet"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, d, `SELECT count(*) FROM approvals WHERE decision_id = ?`, q4.ID); n != 0 {
+		t.Fatalf("%d approvals from the first option, which isn't Approve", n)
+	}
+	q6, _ := c.AskDecision(bg, a.ID, in)
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, q6.ID, core.Answer{Option: "APPROVE"}); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, d, `SELECT count(*) FROM approvals WHERE decision_id = ?`, q6.ID); n != 1 {
+		t.Fatalf("%d approvals from Approve", n)
 	}
 	// A merge approval records no approval rows.
 	m := planApproval(f, f.T2.ID)
@@ -389,8 +404,9 @@ func TestGroupPlanApprovalWritesRowsAndOneEvent(t *testing.T) {
 func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 	c, d, f := newFixture(t)
 	a := builder(t, c, f)
-	// T1 has its own plan at revision 2; its child leans on it; T2 has
-	// none and no parent.
+	// T1 has its own plan at revision 2; its child has none, so it pins 0
+	// (readiness leans on the epic's own approval); T2 has none and no
+	// parent.
 	if _, err := c.SavePlan(bg, a.ID, f.T1.ID, "One.", 0); err != nil {
 		t.Fatal(err)
 	}
@@ -411,7 +427,7 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		rev  int64
 	}{
 		f.T1.ID:  {sum("First\n"), 2},
-		child.ID: {sum("Café\nCafé menu."), 2},
+		child.ID: {sum("Café\nCafé menu."), 0},
 		f.T2.ID:  {sum("Second\n"), 0},
 	} {
 		var hash, pins, at string
@@ -495,5 +511,62 @@ func TestDeleteProjectRemovesDecisions(t *testing.T) {
 	}
 	if decisionRow(t, c, keep.ID).ID != keep.ID {
 		t.Fatal("the other project's decision went")
+	}
+}
+
+// Ruling L-R2: through MCP, an answer is relayed by an agent; the owner's
+// token without one can't answer directly there.
+func TestMCPDirectAnswerRefused(t *testing.T) {
+	c, d, f := newFixture(t)
+	a := builder(t, c, f)
+	q, _ := c.AskDecision(bg, a.ID, question(f))
+	mcp := core.WithOrigin(bg, core.Origin{Surface: core.SurfaceMCP})
+	snap := snapshot(t, d)
+	_, err := c.AnswerDecision(mcp, f.Owner.ID, q.ID, core.Answer{Option: "By age"})
+	fieldErr(t, err, "agent", "Run vaquero mcp with --agent NAME to relay the owner's answer.")
+	if got := snapshot(t, d); !maps.Equal(got, snap) {
+		t.Fatal("a refused answer changed rows")
+	}
+	if _, err := c.AnswerDecision(mcp, f.Owner.ID, q.ID, core.Answer{Option: "By age", RelayedBy: a.ID, Words: "By age."}); err != nil {
+		t.Fatal(err)
+	}
+	// The web, the CLI and the API answer directly.
+	for _, s := range []string{core.SurfaceWeb, core.SurfaceCLI, core.SurfaceAPI} {
+		q, _ := c.AskDecision(bg, a.ID, question(f))
+		if _, err := c.AnswerDecision(core.WithOrigin(bg, core.Origin{Surface: s}), f.Owner.ID, q.ID, core.Answer{Option: "By age"}); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+}
+
+func TestAnswerRefusedInArchivedProject(t *testing.T) {
+	c, _, f := newFixture(t)
+	q, _ := c.AskDecision(bg, f.Owner.ID, question(f))
+	if err := c.SetProjectArchived(bg, f.Owner.ID, f.Project.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "By age"})
+	fieldErr(t, err, "project", "Restore this project to record decisions in it.")
+}
+
+// An overruled answer and note are cut to 200 characters in the event,
+// like the payload's other texts.
+func TestOverruledAnswerIsClipped(t *testing.T) {
+	c, d, f := newFixture(t)
+	a := builder(t, c, f)
+	in := question(f)
+	in.Kind = core.DecisionRuling
+	long := strings.Repeat("é", 300)
+	r, err := c.RecordRuling(bg, a.ID, in, core.Answer{Text: long, Note: long})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, r.ID, core.Answer{Option: "By age"}); err != nil {
+		t.Fatal(err)
+	}
+	_, p := lastEvent(t, d)
+	old, _ := p["overruled"].(map[string]any)
+	if old["answer"] != strings.Repeat("é", 200) || old["note"] != strings.Repeat("é", 200) {
+		t.Fatalf("%v", old)
 	}
 }

@@ -152,7 +152,7 @@ type (
 		Question       string           `json:"question" jsonschema:"What is to be decided, in a sentence or two."`
 		Tickets        []string         `json:"tickets,omitempty" jsonschema:"The tickets it concerns, by key, all in the project. A plan approval names at least one; leave it out for a project-level decision."`
 		Subject        string           `json:"subject,omitempty" jsonschema:"For an approval: plan, merge or release."`
-		Options        []decisionOption `json:"options,omitempty" jsonschema:"The answers offered, each a label and its trade-off. An approval without options offers Approve and Request changes."`
+		Options        []decisionOption `json:"options,omitempty" jsonschema:"The answers offered, each a label and its trade-off. An approval's must include Approve, the only option that approves; without options it offers Approve and Request changes."`
 		Recommendation string           `json:"recommendation,omitempty" jsonschema:"The option you recommend, and why."`
 		Why            string           `json:"why,omitempty" jsonschema:"Why the decision matters."`
 		Run            string           `json:"run,omitempty" jsonschema:"The run it was made in."`
@@ -388,7 +388,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return post("/decisions", b)
 		})
 	add(s, c, "answer_decision", "Relay the owner's answer", false,
-		"Record the answer the owner gave you in conversation to an open question or approval, or the owner's overruling of a ruling, quoting the owner's words. Only the owner decides; the answer is stored as relayed by you.",
+		"Record the answer the owner gave you in conversation to an open question or approval, or the owner's overruling of a ruling, quoting the owner's words. Only the owner decides; the answer is stored as relayed by you, the agent vaquero mcp --agent names, and is refused without one.",
 		func(in answerDecisionArgs) request {
 			b := map[string]string{}
 			for k, v := range map[string]string{"option": in.Option, "text": in.Text, "note": in.Note, "words": in.Words} {

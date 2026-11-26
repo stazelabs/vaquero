@@ -282,6 +282,13 @@ func decisionDTO(ctx context.Context, d Deps, dec gen.Decision) (api.Decision, e
 	if err := json.Unmarshal([]byte(dec.Options), &out.Options); err != nil {
 		return api.Decision{}, err
 	}
+	if dec.Kind == core.DecisionApproval {
+		for _, o := range out.Options {
+			if strings.EqualFold(o.Label, core.ApproveLabel) {
+				out.Approves = o.Label
+			}
+		}
+	}
 	for _, s := range []struct {
 		into *string
 		id   string

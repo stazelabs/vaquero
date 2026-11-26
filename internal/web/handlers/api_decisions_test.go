@@ -99,7 +99,7 @@ func TestAPIDecisionsRoundTrip(t *testing.T) {
 	})
 	var ap api.Decision
 	decode(t, r.Body, &ap)
-	if r.Status != 201 || len(ap.Options) != 2 || ap.Options[0].Label != "Approve" || ap.Subject != "plan" || len(ap.Approvals) != 0 {
+	if r.Status != 201 || len(ap.Options) != 2 || ap.Options[0].Label != "Approve" || ap.Approves != "Approve" || ap.Subject != "plan" || len(ap.Approvals) != 0 {
 		t.Fatalf("approval: %d %s", r.Status, r.Body)
 	}
 	r = c.API("POST", "/api/v1/decisions/"+ap.ID+"/answer", tok, map[string]any{"option": "Approve"})
@@ -107,6 +107,18 @@ func TestAPIDecisionsRoundTrip(t *testing.T) {
 	if r.Status != 200 || len(ap.Approvals) != 2 || ap.Approvals[0].Ticket != "VAQ-1" || ap.Approvals[1].Ticket != "VAQ-2" ||
 		len(ap.Approvals[0].RequirementHash) != 64 || ap.Approvals[0].PlanRevision != 0 {
 		t.Fatalf("approved: %d %s", r.Status, r.Body)
+	}
+
+	// An approval's options need Approve; a question has nothing that approves.
+	r = c.API("POST", "/api/v1/decisions", tok, map[string]any{
+		"project": "VAQ", "kind": "approval", "subject": "merge", "question": "Merge?", "options": []map[string]string{{"label": "Hold off"}, {"label": "Go"}},
+	})
+	decode(t, r.Body, &inv)
+	if r.Status != 422 || inv.Error.Fields["options"] != "An approval needs an Approve option." {
+		t.Fatalf("no Approve: %d %s", r.Status, r.Body)
+	}
+	if q.Approves != "" || strings.Contains(c.API("GET", "/api/v1/decisions/"+q.ID, tok, nil).Body, `"approves"`) {
+		t.Fatal("a question names an approving option")
 	}
 
 	// Tickets come from the decision's project; unknown ones are named.
@@ -242,5 +254,26 @@ func TestMCPDecisionToolsMatchTheAPI(t *testing.T) {
 	})
 	if res.IsError || !strings.Contains(text, `"state": "answered"`) || !strings.Contains(text, `"answered_by": "builder"`) {
 		t.Fatalf("ruling: %s", text)
+	}
+}
+
+// Ruling L-R2: the MCP bridge without --agent can't answer directly.
+func TestMCPAnswerNeedsAnAgent(t *testing.T) {
+	e, tok := agentEnv(t)
+	cs := mcpConnect(t, e, tok, "")
+	res, text := mcpCall(t, cs, "ask_decision", map[string]any{"project": "VAQ", "kind": "question", "question": "Which?", "options": []map[string]string{{"label": "A"}, {"label": "B"}}})
+	if res.IsError {
+		t.Fatalf("ask: %s", text)
+	}
+	var q api.Decision
+	decode(t, text, &q)
+	for _, args := range []map[string]any{{"id": q.ID, "option": "A"}, {"id": q.ID, "option": "A", "words": "A."}} {
+		res, text = mcpCall(t, cs, "answer_decision", args)
+		if !res.IsError || !strings.Contains(text, "Run vaquero mcp with --agent NAME to relay the owner's answer.") {
+			t.Fatalf("%v: %s", args, text)
+		}
+	}
+	if got := e.Client().API("GET", "/api/v1/decisions/"+q.ID, tok, nil).Body; !strings.Contains(got, `"state": "open"`) {
+		t.Fatalf("answered: %s", got)
 	}
 }

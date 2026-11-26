@@ -47,8 +47,10 @@ A decision is a question parked for the owner, a ruling an agent made, or an app
 
 - **Questions** wait for the owner. Only the owner answers one; an agent never answers a question, its own or another's.
 - **Rulings** are calls an agent made and recorded as its own, already answered. The owner can overrule one; the history keeps the answer it replaced.
-- **Approvals** are of a plan, a merge or a release. Merges and releases always need one. An approval with no options offers Approve and Request changes.
+- **Approvals** are of a plan, a merge or a release. Merges and releases always need one. Only the option labelled Approve approves, so every approval has one; an approval with no options offers Approve and Request changes.
 
-When the owner answers in conversation, the agent records the answer as relayed, quoting the owner's words; an answer given without an agent, in the command line or the API, is direct. Both count the same, and each decision shows which it was. Until Vaquero has sign-in, every agent on this machine uses your token, so this rests on trust.
+When the owner answers in conversation, the agent records the answer as relayed, quoting the owner's words; an answer given without an agent, in the command line or the API, is direct. Through MCP every answer is relayed, so run `vaquero mcp` with `--agent NAME`. Both count the same, and each decision shows which it was. Until Vaquero has sign-in, every agent on this machine uses your token, so this rests on trust.
 
-Approving a plan, with Approve (or, without such an option, the first one), records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, and the plan revision approved: the ticket's own plan, or for a sub-ticket without one, its epic's. One approval can cover several tickets. Any other answer records no approval.
+Approving a plan, with Approve, records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, and the revision of the ticket's own plan (none, for a sub-ticket without one: it relies on its epic's own approval). One approval can cover several tickets. Any other answer records no approval.
+
+An answered approval is final. To take one back, ask for a new plan approval and answer it Request changes: the latest answered plan approval of a ticket is the one that counts. Editing the ticket's requirement or plan also leaves the approval behind.
