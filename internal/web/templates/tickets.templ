@@ -380,7 +380,7 @@ templ EventLine(e EventView) {
 				} else {
 					<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
 						for _, l := range d.Lines {
-							<span class={ diffLineClass(l.Op) }>{ diffLineText(l) }</span>
+							<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
 						}
 					</pre>
 				}

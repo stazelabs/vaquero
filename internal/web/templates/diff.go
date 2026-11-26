@@ -1,6 +1,10 @@
 package templates
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/stazelabs/vaquero/internal/core"
+)
 
 // DiffLine is one line of a line diff: Op is ' ' (unchanged), '-'
 // (removed), '+' (added) or '…' (unchanged lines left out).
@@ -143,7 +147,7 @@ type bodyDiff struct {
 }
 
 func bodyChanges(e EventView) bodyDiff {
-	if e.Kind != "ticket.updated" {
+	if e.Kind != core.EvTicketUpdated {
 		return bodyDiff{}
 	}
 	if long, _ := e.Payload["body_too_long"].(bool); long {
@@ -157,24 +161,35 @@ func bodyChanges(e EventView) bodyDiff {
 	return bodyDiff{Show: true, Lines: LineDiff(before, after)}
 }
 
-// diffLineClass colours a diff line by what happened to it.
+// diffLineClass marks a diff line by what happened to it, by more than
+// hue: a removed line is faint with its text struck through
+// (diffTextClass), an added one full strength on a tinted band, an
+// unchanged one plain and a little faint.
 func diffLineClass(op rune) string {
 	switch op {
-	case '-':
-		return "block bg-danger/10 text-danger"
+	case '-', '…':
+		return "block text-muted"
 	case '+':
-		return "block bg-accent/10 text-accent"
+		return "block bg-accent/10 font-medium text-ink"
 	}
-	return "block text-muted"
+	return "block text-ink/70"
 }
 
-// diffLineText is a diff line as shown: its mark, then the text.
-func diffLineText(l DiffLine) string {
-	switch l.Op {
+// diffTextClass strikes a removed line's text, leaving its "-" mark plain.
+func diffTextClass(op rune) string {
+	if op == '-' {
+		return "line-through"
+	}
+	return ""
+}
+
+// diffMark is a diff line's leading mark: "- ", "+ ", two spaces, or "…".
+func diffMark(op rune) string {
+	switch op {
 	case '…':
 		return "…"
 	case ' ':
-		return "  " + l.Text
+		return "  "
 	}
-	return string(l.Op) + " " + l.Text
+	return string(op) + " "
 }

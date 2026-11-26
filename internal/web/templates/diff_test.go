@@ -62,3 +62,16 @@ func TestLineDiffBounded(t *testing.T) {
 		t.Fatal(len(got))
 	}
 }
+
+// K1 review M2: removed and added lines differ by more than colour.
+func TestDiffLineClasses(t *testing.T) {
+	if c := diffTextClass('-'); c != "line-through" || diffTextClass('+') != "" || diffTextClass(' ') != "" {
+		t.Errorf("removed: %q", c)
+	}
+	if c := diffLineClass('+'); !strings.Contains(c, "bg-accent/10") || strings.Contains(c, "line-through") {
+		t.Errorf("added: %q", c)
+	}
+	if diffLineClass(' ') == diffLineClass('-') || diffLineClass(' ') == diffLineClass('+') {
+		t.Error("unchanged lines look changed")
+	}
+}
