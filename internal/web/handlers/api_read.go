@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"errors"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -381,10 +382,26 @@ func APIEvents(d Deps) http.HandlerFunc {
 				at = timefmt.Format(parsed)
 			}
 			out[i] = api.Event{Seq: e.Seq, At: at, Actor: e.ActorName, Kind: e.Kind, Project: e.ProjectKey,
-				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: ev.Payload}
+				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload)}
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// apiPayload is an event's payload as the API shows it: a description
+// edit's stored text (body_before, body_after) stays on the server, for the
+// ticket history's diff, and "body_diff": true says it was kept.
+func apiPayload(p map[string]any) map[string]any {
+	_, before := p["body_before"]
+	_, after := p["body_after"]
+	if !before && !after {
+		return p
+	}
+	out := maps.Clone(p)
+	delete(out, "body_before")
+	delete(out, "body_after")
+	out["body_diff"] = true
+	return out
 }
 
 // orList joins words as "a, b or c".
