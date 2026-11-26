@@ -52,7 +52,7 @@ By default, in the database file, with everything else. Two settings move them, 
 | `VQ_S3_SECRET_ACCESS_KEY` | For `s3`: the secret; never logged |
 | `VQ_S3_REGION` | For `s3`: the region; default `auto` |
 
-All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, or the same one pointed somewhere else (another `VQ_BLOB_DIR`, or another S3 endpoint or bucket), saying where the files are, since their bytes would be out of reach. To move attachments to other storage, export, then import into an empty instance with the new setting; see [Your data and backups](/help/data-and-backups#importing-an-export).
+All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, or the same one pointed somewhere else (another `VQ_BLOB_DIR`, or another S3 endpoint or bucket), saying where the files are, since their bytes would be out of reach. To move attachments to other storage, stop the server and run `vaquero attachments move`; see [Your data and backups](/help/data-and-backups#moving-attachments-to-other-storage).
 
 ## Backups
 

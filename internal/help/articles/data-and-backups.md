@@ -1,7 +1,7 @@
 ---
 title: Your data and backups
 section: getting-started
-summary: Where Vaquero keeps its data, what each file is for, how to export and import it, how to restore a backup, and how to compact the database.
+summary: Where Vaquero keeps its data, what each file is for, how to export and import it, how to restore a backup, how to move attachments to other storage, and how to compact the database.
 order: 3
 ---
 ## The data directory
@@ -23,6 +23,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `vaquero.lock` | Held while a server runs, so two servers never share one directory |
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
 | `vaquero.log` | The output of a server the command line started in the background; at 10 MB it moves to `vaquero.log.1`, replacing the one before. `vaquero logs` prints its end. Under `brew services` the log is elsewhere; see [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
+| `move.pending` | Present only while a move of attachments to other storage is unfinished; see [Moving attachments](#moving-attachments-to-other-storage) |
 | `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import or a compaction |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.
@@ -94,6 +95,24 @@ The database as it was is saved as a new snapshot first, so a restore can itself
 A database written by a newer Vaquero is refused by an older one, with a message saying so; upgrade Vaquero rather than editing the file.
 
 A copied data directory shares the original's instance id. Never run a copy against the same attachment directory or bucket as the original: the two would write and sweep each other's files.
+
+## Moving attachments to other storage
+
+Where attachment files are kept is set by `VQ_BLOB_STORE` and the settings beside it (see [Attachments](/help/attachments#where-the-bytes-are-kept)). Once there are attachments, the server refuses to start pointed anywhere else. To move them, stop the server, set the new storage's settings in your shell, and move:
+
+    vaquero stop
+    export VQ_BLOB_STORE=dir
+    vaquero attachments move --to dir
+
+`--to` names the new storage: `sqlite` (into the database), `dir` or `s3`. Its directory or bucket comes from `VQ_BLOB_DIR` or the `VQ_S3_` settings, as for the server. If `VQ_BLOB_STORE` is set to something else, the move stops and says so, since the server must be started with the same storage afterwards. The files are read from where the database says they are now; from a bucket, with the `VQ_S3_ACCESS_KEY_ID` and `VQ_S3_SECRET_ACCESS_KEY` in your shell.
+
+Each file is copied, then read back and compared with the original by size and checksum. Only when every file is in place and checked does Vaquero switch to the new storage. Before copying into a directory or the database, it checks that the copies fit there. Previews of images aren't copied; they're made again the first time they're shown. A move to the storage already in use is refused: "Attachments are already stored there."
+
+The old copies stay where they were unless you add `--delete-old`, which deletes them, previews included, once the switch is made. After a move out of the database, `vaquero backup compact` gives their space back.
+
+If a move stops part way (a file missing from the old storage, a copy that doesn't match, a full disk, Ctrl-C), the old storage is still the one in use and the server starts on it as before; `--delete-old` deletes nothing. The move records its progress in `move.pending` in the data directory: run the same command again and it resumes, skipping the files already copied and checked. A move to somewhere else instead first deletes what the stopped one copied, from a directory or the database; copies left in a bucket are named for you to remove by hand. Until then, the server notes in its log that a move is unfinished.
+
+Afterwards, start the server with the new settings. Under `brew services` the server's environment is the service's, not your shell's: set the same storage there before starting it, or it refuses to start and names both.
 
 ## Compacting the database
 
