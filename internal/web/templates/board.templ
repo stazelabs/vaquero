@@ -105,7 +105,7 @@ templ BoardPage(v BoardView) {
 }
 
 // BoardSection is the board's swappable part: rails, columns and the
-// milestone panel. data-filter carries the filter for drops and refreshes.
+// milestone panel (beside the board from lg, a disclosure above it below). data-filter carries the filter for drops and refreshes.
 templ BoardSection(b board.Board) {
 	<div
 		id="board"
@@ -114,20 +114,23 @@ templ BoardSection(b board.Board) {
 		hx-trigger="vq:change"
 		hx-swap="outerHTML"
 		data-live
-		class="mt-6 flex items-start gap-3"
+		class="mt-6"
 	>
-		for _, r := range railsIn(b, "backlog") {
-			@rail(b, r)
-		}
-		<div data-board-scroll class="flex min-w-0 flex-1 items-start gap-3 overflow-x-auto pb-2">
-			for _, c := range b.Active {
-				@column(b, c)
+		@milestoneDisclosure(b)
+		<div data-board-row class="flex items-start gap-3">
+			for _, r := range railsIn(b, "backlog") {
+				@rail(b, r)
 			}
+			<div data-board-scroll class="flex min-w-0 flex-1 items-start gap-3 overflow-x-auto pb-2">
+				for _, c := range b.Active {
+					@column(b, c)
+				}
+			</div>
+			for _, r := range railsIn(b, "cancelled") {
+				@rail(b, r)
+			}
+			@milestonePanel(b)
 		</div>
-		for _, r := range railsIn(b, "cancelled") {
-			@rail(b, r)
-		}
-		@milestonePanel(b)
 	</div>
 }
 
@@ -230,35 +233,62 @@ templ milestonePanel(b board.Board) {
 			@Icon("milestone")
 			Milestones
 		</h2>
-		if len(b.Milestones) == 0 {
-			<p class="text-muted">No open milestones.</p>
-		}
-		for _, m := range b.Milestones {
-			<a
-				href={ templ.SafeURL(milestoneHref(b, m.ID)) }
-				class="block hover:text-accent"
-				if b.Filter.Milestone == m.ID {
-					aria-current="true"
-				}
-			>
-				<span class="font-medium text-ink">{ m.Name }</span>
-				if m.Due != "" {
-					<span class="text-muted">· { m.Due }</span>
-				}
-				<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="mt-1 block h-1.5 w-full accent-accent">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
-				<span class="text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
-			</a>
-		}
+		@milestoneLinks(b)
+	</aside>
+}
+
+// milestoneDisclosure is the milestone panel below lg: a closed
+// disclosure above the board, naming the milestone the board is filtered
+// to. app.js keeps it open across board refreshes.
+templ milestoneDisclosure(b board.Board) {
+	<details data-milestones class="group mb-3 rounded-md border border-line text-xs lg:hidden">
+		<summary class="flex cursor-pointer list-none items-center gap-1.5 px-3 py-2 font-semibold uppercase tracking-wider text-muted hover:text-accent">
+			@Icon("milestone")
+			Milestones
+			if name := milestoneFilterName(b); name != "" {
+				<span class="truncate font-normal normal-case tracking-normal text-ink">· { name }</span>
+			}
+			<span class="ml-auto transition-transform group-open:rotate-180">
+				@Icon("expand")
+			</span>
+		</summary>
+		<div class="space-y-4 border-t border-line px-3 py-3">
+			@milestoneLinks(b)
+		</div>
+	</details>
+}
+
+// milestoneLinks are the milestone filter links, shared by the panel and
+// the disclosure.
+templ milestoneLinks(b board.Board) {
+	if len(b.Milestones) == 0 {
+		<p class="text-muted">No open milestones.</p>
+	}
+	for _, m := range b.Milestones {
 		<a
-			href={ templ.SafeURL(milestoneHref(b, "none")) }
-			class="block text-muted hover:text-accent"
-			if b.Filter.Milestone == "none" {
+			href={ templ.SafeURL(milestoneHref(b, m.ID)) }
+			class="block hover:text-accent"
+			if b.Filter.Milestone == m.ID {
 				aria-current="true"
 			}
 		>
-			No milestone · { itoa(b.NoMilestone) } open
+			<span class="font-medium text-ink">{ m.Name }</span>
+			if m.Due != "" {
+				<span class="text-muted">· { m.Due }</span>
+			}
+			<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="mt-1 block h-1.5 w-full accent-accent">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
+			<span class="text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
 		</a>
-	</aside>
+	}
+	<a
+		href={ templ.SafeURL(milestoneHref(b, "none")) }
+		class="block text-muted hover:text-accent"
+		if b.Filter.Milestone == "none" {
+			aria-current="true"
+		}
+	>
+		No milestone · { itoa(b.NoMilestone) } open
+	</a>
 }
 
 // ListPage is every status of a project with every matching ticket.

@@ -259,10 +259,12 @@ window.vqDragging = false;
   }
 })();
 
-// A board refresh replaces #board: rails that were open stay open and the
-// columns keep their sideways scroll.
+// A board refresh replaces #board: rails that were open stay open, so does
+// the milestones disclosure (below lg), and the columns keep their sideways
+// scroll.
 (function () {
   var openRails = null;
+  var openMilestones = false;
   var scroll = 0;
   document.body.addEventListener("htmx:beforeSwap", function (ev) {
     var target = ev.detail && ev.detail.target;
@@ -272,6 +274,7 @@ window.vqDragging = false;
     openRails = Array.prototype.map.call(target.querySelectorAll("details[data-rail][open]"), function (d) {
       return d.dataset.rail;
     });
+    openMilestones = !!target.querySelector("details[data-milestones][open]");
     var cols = target.querySelector("[data-board-scroll]");
     scroll = cols ? cols.scrollLeft : 0;
   });
@@ -286,6 +289,10 @@ window.vqDragging = false;
         d.open = true;
       }
     });
+    var ms = board.querySelector("details[data-milestones]");
+    if (ms && openMilestones) {
+      ms.open = true;
+    }
     var cols = board.querySelector("[data-board-scroll]");
     if (cols) {
       cols.scrollLeft = scroll;

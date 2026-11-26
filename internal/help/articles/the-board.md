@@ -14,7 +14,7 @@ A card marked **Ready**, with an accent edge, is a ticket someone could start no
 
 ## Filters
 
-The chips under the project name narrow the board: Mine (assigned to you), Agents (assigned to agents), a tag, or a priority. Click a milestone in the side panel to show only its tickets, or "No milestone" for tickets without one. Filters live in the address, so you can bookmark or share a filtered board. Clear filters puts everything back.
+The chips under the project name narrow the board: Mine (assigned to you), Agents (assigned to agents), a tag, or a priority. Click a milestone in the side panel to show only its tickets, or "No milestone" for tickets without one. On a narrower screen the panel is a Milestones disclosure above the board, with the same links. Filters live in the address, so you can bookmark or share a filtered board. Clear filters puts everything back.
 
 ## Moving cards
 

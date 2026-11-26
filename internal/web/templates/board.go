@@ -70,6 +70,20 @@ func milestoneHref(b board.Board, id string) string {
 
 func maxOne(n int64) int64 { return max(n, 1) }
 
+// milestoneFilterName names the milestone the board is filtered to ("No
+// milestone" for none), or "" when it isn't filtered by one.
+func milestoneFilterName(b board.Board) string {
+	if b.Filter.Milestone == "none" {
+		return "No milestone"
+	}
+	for _, m := range b.Milestones {
+		if m.ID == b.Filter.Milestone {
+			return m.Name
+		}
+	}
+	return ""
+}
+
 func listEmpty(cols []board.Column) bool {
 	for _, c := range cols {
 		if len(c.Cards) > 0 {
