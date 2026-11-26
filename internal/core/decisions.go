@@ -542,11 +542,14 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 	return d, nil
 }
 
-// ApprovalPins is an approval row's pins: the ticket's sub-tickets as the
-// owner was asked about them, the only children its approval covers, each
+// ApprovalPins is an approval row's pins: the ticket's parent and its
+// sub-tickets as the owner was asked about them, the only children its approval covers, each
 // with its requirement then (rulings L-R8 and L-R9). Repo pins arrive in
 // part 2.
 type ApprovalPins struct {
+	// Parent is the id of the ticket's parent when asked, "" for none: a
+	// ticket moved since leans on nothing it was approved under (L-R11).
+	Parent   string        `json:"parent"`
 	Children []PinnedChild `json:"children"`
 }
 
@@ -560,10 +563,18 @@ type PinnedChild struct {
 // approve writes one ticket's approval row for decision decisionID from
 // what was asked, which askedUnchanged found still current.
 func approve(ctx context.Context, q *gen.Queries, decisionID string, p gen.ListDecisionTicketPinsRow, at string) error {
+	pins := ApprovalPins{Parent: p.ParentID}
+	if err := json.Unmarshal([]byte(p.Children), &pins.Children); err != nil {
+		return fmt.Errorf("asked children: %w", err)
+	}
+	b, err := json.Marshal(pins)
+	if err != nil {
+		return fmt.Errorf("approval pins: %w", err)
+	}
 	if err := q.AddApproval(ctx, gen.AddApprovalParams{
 		ID: idgen.New(), TicketID: p.TicketID, DecisionID: decisionID,
 		RequirementHash: p.RequirementHash, PlanRevision: p.PlanRevision,
-		Pins: `{"children":` + p.Children + `}`, At: at,
+		Pins: string(b), At: at,
 	}); err != nil {
 		return fmt.Errorf("add approval: %w", err)
 	}

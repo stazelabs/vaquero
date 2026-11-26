@@ -86,9 +86,10 @@ CREATE INDEX decision_tickets_ticket ON decision_tickets (ticket_id);
 -- An approval of a ticket's requirement and plan, as they stood when the
 -- owner approved: requirement_hash is hex(sha256(NFC(title) + "\n" +
 -- NFC(description))), plan_revision the plan approved (0: no plan), pins
--- a JSON value: {"children": [{"id", "requirement_hash"}]}, the
--- sub-tickets it was asked about, the only ones its approval covers, each
--- with its requirement as asked (repo pins arrive in part 2).
+-- a JSON value: {"parent": id or "", "children": [{"id",
+-- "requirement_hash"}]}, the parent and sub-tickets it was asked about: the
+-- approval holds only under that parent, and covers only those children,
+-- each with its requirement as asked (repo pins arrive in part 2).
 CREATE TABLE approvals (
     id               TEXT PRIMARY KEY,
     ticket_id        TEXT NOT NULL REFERENCES tickets (id),

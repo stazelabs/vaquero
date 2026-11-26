@@ -422,14 +422,14 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
-	// Each pins its sub-tickets then (ruling L-R8).
+	// Each pins its parent and its sub-tickets then (rulings L-R8, L-R11).
 	for id, want := range map[string]struct {
 		hash, pins string
 		rev        int64
 	}{
-		f.T1.ID:  {sum("First\n"), `{"children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}]}`, 2},
-		child.ID: {sum("Café\nCafé menu."), `{"children":[]}`, 0},
-		f.T2.ID:  {sum("Second\n"), `{"children":[]}`, 0},
+		f.T1.ID:  {sum("First\n"), `{"parent":"","children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}]}`, 2},
+		child.ID: {sum("Café\nCafé menu."), `{"parent":"` + f.T1.ID + `","children":[]}`, 0},
+		f.T2.ID:  {sum("Second\n"), `{"parent":"","children":[]}`, 0},
 	} {
 		var hash, pins, at string
 		var rev int64
