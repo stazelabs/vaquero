@@ -549,3 +549,36 @@ func TestBlobLocationOutsideDataDirIsAbsolute(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+// VAQ-122: a database that recorded its blob dir absolute, through a
+// symlink to the data directory (before Location resolved symlinks), still
+// boots on the same setup, and the boot records the corrected location.
+func TestServeAcceptsSymlinkedBlobLocationRecordedBefore(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"VQ_BLOB_STORE": "dir", "VQ_BLOB_DIR": filepath.Join(link, "attachments")}
+	if err := bootOnce(t, dir, env); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSetting(t, dir, "blob_location"); got != "{data dir}/attachments" {
+		t.Fatalf("blob_location = %q", got)
+	}
+	addAttachmentRow(t, dir)
+	db, err := sql.Open("sqlite", filepath.Join(dir, "vaquero.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE settings SET value = ? WHERE key = 'blob_location'`, filepath.Join(link, "attachments")); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if err := bootOnce(t, dir, env); err != nil {
+		t.Fatalf("the same directory was refused: %v", err)
+	}
+	if got := readSetting(t, dir, "blob_location"); got != "{data dir}/attachments" {
+		t.Fatalf("blob_location = %q", got)
+	}
+}

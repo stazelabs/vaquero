@@ -264,14 +264,24 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		return out, err
 	}
 	slices.SortFunc(subs, func(a, b gen.ListBoardTicketsRow) int { return cmp.Compare(a.Number, b.Number) })
-	for _, s := range subs {
-		subTags, err := d.R.ListTicketTags(ctx, s.ID)
+	subTags := map[string][]string{}
+	if len(subs) > 0 {
+		ids := make([]string, len(subs))
+		for i, s := range subs {
+			ids[i] = s.ID
+		}
+		pairs, err := d.R.ListTagsForTickets(ctx, ids)
 		if err != nil {
 			return out, err
 		}
-		names := make([]string, 0, len(subTags))
-		for _, g := range subTags {
-			names = append(names, g.Name)
+		for _, g := range pairs {
+			subTags[g.TicketID] = append(subTags[g.TicketID], g.Name)
+		}
+	}
+	for _, s := range subs {
+		names := subTags[s.ID]
+		if names == nil {
+			names = []string{}
 		}
 		out.SubTickets = append(out.SubTickets, api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
 			Category: s.StatusCategory, Priority: s.Priority, Assignee: s.AssigneeName, Tags: names, Ready: s.Ready, Version: s.Version,

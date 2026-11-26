@@ -138,6 +138,10 @@ func APITicketsBulk(d Deps) http.HandlerFunc {
 	}
 }
 
+// lateReadTimeout bounds the one read an item makes after its request
+// ended (the name of the ticket's status).
+const lateReadTimeout = 2 * time.Second
+
 // bulkStep runs before item i and before each of its actions (action ""
 // for the item itself). It is a test hook: it can end the request with
 // cancel, or change the ticket from outside, at that point.
@@ -232,7 +236,9 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 				}
 			}
 		case "heartbeat":
-			_, err = d.Core.Heartbeat(ctx, by, t.ID, time.Duration(it.Heartbeat.LeaseMinutes)*time.Minute)
+			if nt, err = d.Core.Heartbeat(ctx, by, t.ID, time.Duration(it.Heartbeat.LeaseMinutes)*time.Minute); err == nil {
+				cur = nt
+			}
 		case "update":
 			n := &names{ctx: ctx, d: d, p: p, fields: map[string]string{}}
 			pt := it.Update.patch(n)
@@ -255,7 +261,9 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 			}
 		case "release":
 			if !held || !ended {
-				_, err = d.Core.Release(ctx, by, t.ID)
+				if nt, err = d.Core.Release(ctx, by, t.ID); err == nil {
+					cur = nt
+				}
 			}
 		}
 		if (err != nil || failed != nil) && ctx.Err() != nil {
@@ -272,8 +280,19 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 	}
 	if ctx.Err() != nil {
 		// The request ended after the item's last action: it ran, but the
-		// ticket isn't read again.
+		// ticket isn't read again. Its version is the one the last action
+		// that returned the ticket left (a comment leaves it alone), and
+		// its status that ticket's, named by one read the ended request
+		// doesn't stop.
 		res.OK = res.Error == nil
+		res.Version = cur.Version
+		sctx, done := context.WithTimeout(context.WithoutCancel(ctx), lateReadTimeout)
+		defer done()
+		if st, err := d.R.GetStatus(sctx, cur.StatusID); err == nil {
+			res.Status = st.Name
+		} else {
+			d.Logger.WarnContext(ctx, "api bulk item status", "err", err, "key", res.Key, "request_id", middleware.GetRequestID(ctx))
+		}
 		return res
 	}
 	// The ticket as the item left it.

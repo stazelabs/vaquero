@@ -499,3 +499,30 @@ func TestAPIBulkClaimAndHeartbeatRefused(t *testing.T) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 }
+
+// VAQ-122: a request that ends after an item's last action has run reports
+// the item done, with the status and version of the ticket that action
+// returned. Here the move to Done ends the claim, so the release has
+// nothing to do and the request ends as it is reached.
+func TestAPIBulkLateCancelKeepsStatusAndVersion(t *testing.T) {
+	e, tok := bulkEnv(t)
+	c := e.Client()
+	c.Agent = "builder"
+	handlers.OnBulkStep(t, 0, "release", func(cancel context.CancelFunc) { cancel() })
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "move": "Done", "release": true},
+		map[string]any{"key": "VAQ-2", "comment": "Doesn't."})
+	var tk struct {
+		Status  string
+		Version int64
+	}
+	decode(t, c.API("GET", "/api/v1/tickets/VAQ-1", tok, nil).Body, &tk)
+	if tk.Status != "Done" {
+		t.Fatalf("%+v", tk)
+	}
+	if got := out.Items[0]; !got.OK || got.Error != nil || got.Status != "Done" || got.Version != tk.Version {
+		t.Fatalf("item 1: %+v, ticket %+v", got, tk)
+	}
+	if got := out.Items[1]; got.OK || got.Error == nil || got.Error.Code != "cancelled" {
+		t.Fatalf("item 2: %+v", got)
+	}
+}

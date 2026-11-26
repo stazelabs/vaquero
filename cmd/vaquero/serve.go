@@ -233,7 +233,7 @@ func ensureInstance(ctx context.Context, w *sql.DB, now time.Time) (string, erro
 }
 
 // checkBlobBackend refuses a boot whose configured backend, or the place it
-// keeps the bytes (blobs.Location), differs from the one recorded in
+// keeps the bytes (blobs.Location, compared by blobs.SameLocation), differs from the one recorded in
 // settings while attachments exist, since their bytes would be unreachable.
 // A location not recorded yet (a database from before it was) is no
 // refusal.
@@ -246,7 +246,7 @@ func checkBlobBackend(ctx context.Context, r *gen.Queries, cfg config.Config) er
 		return err
 	}
 	loc, err := r.GetSetting(ctx, settingBlobLocation)
-	locChanged := err == nil && store.Value == cfg.BlobBackend && loc.Value != blobs.Location(cfg)
+	locChanged := err == nil && store.Value == cfg.BlobBackend && !blobs.SameLocation(loc.Value, cfg)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
