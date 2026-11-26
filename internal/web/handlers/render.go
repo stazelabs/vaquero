@@ -28,6 +28,17 @@ func render(w http.ResponseWriter, r *http.Request, d Deps, status int, c templ.
 	}
 }
 
+// renderPart renders a fragment of a page (one htmx or app.js reads into
+// a page already shown). Unlike render it never pops the toast: a queued
+// toast belongs to the next full page.
+func renderPart(w http.ResponseWriter, r *http.Request, d Deps, status int, c templ.Component) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := c.Render(r.Context(), w); err != nil {
+		d.Logger.ErrorContext(r.Context(), "render", "err", err, "path", middleware.RedactPath(r.URL.Path))
+	}
+}
+
 // serverError logs err and answers with the themed 500 page.
 func serverError(w http.ResponseWriter, r *http.Request, d Deps, err error) {
 	d.Logger.ErrorContext(r.Context(), "handler error", "err", err, "path", middleware.RedactPath(r.URL.Path),

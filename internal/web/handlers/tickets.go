@@ -464,7 +464,7 @@ func TicketChanges(d Deps) http.HandlerFunc {
 			gone()
 			return
 		}
-		render(w, r, d, http.StatusOK, templates.BodyChanges(diff))
+		renderPart(w, r, d, http.StatusOK, templates.BodyChanges(diff))
 	}
 }
 

@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -258,4 +259,24 @@ func TestHistoryLinkWithoutTargetID(t *testing.T) {
 	page := e.Client().Get("/t/VAQ-1").Body
 	contains(t, page, "marked this ticket as blocking OTH-1")
 	lacks(t, page, `href="/t/OTH-1"`)
+}
+
+// The changes fragment is part of a page, never the page a redirect lands
+// on: reading it leaves a queued toast for the page.
+func TestHistoryChangesKeepTheToast(t *testing.T) {
+	e := webtest.New(t)
+	tk := ticket(t, e, project(t, e), core.TicketInput{Title: "x", Body: "one"})
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: new("two")}, 0); err != nil {
+		t.Fatal(err)
+	}
+	seq, _ := e.Deps.R.MaxEventSeq(bg)
+	c := e.Client()
+	if r := c.Post("/t/VAQ-1/comments", url.Values{"body": {"Noted."}}); r.Status != 303 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	diff := c.Get(fmt.Sprintf("/t/VAQ-1/changes/%d", seq))
+	if diff.Status != 200 || strings.Contains(strings.Join(diff.Header.Values("Set-Cookie"), ";"), "vq_flash") {
+		t.Fatalf("%d %v", diff.Status, diff.Header.Values("Set-Cookie"))
+	}
+	contains(t, c.Get("/t/VAQ-1").Body, "Comment added.")
 }
