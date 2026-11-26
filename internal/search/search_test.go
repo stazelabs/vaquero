@@ -28,10 +28,10 @@ func TestMatchQuery(t *testing.T) {
 		// part of its word, not a break in it.
 		"re\u0301sume\u0301": `"résumé"*`,
 		// A word of combining marks alone is no word (K1 review M8).
-		"\u0301":          "",
+		"\u0301":           "",
 		"\u0301\u0302 abc": `"abc"*`,
-		"x \u0301":        `"x"*`,
-		`say "hi"`:           `"say"* "hi"*`,
+		"x \u0301":         `"x"*`,
+		`say "hi"`:         `"say"* "hi"*`,
 	} {
 		if got := search.MatchQuery(in); got != want {
 			t.Errorf("%q → %q, want %q", in, got, want)
