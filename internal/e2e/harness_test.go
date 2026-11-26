@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -313,11 +314,13 @@ var (
 	enter  = kb.Enter
 )
 
-// recorder wraps env's handler: it counts requests by method and path.
+// recorder wraps env's handler: it counts requests by method and path, and
+// can answer some with a 500 to stand in for a server that failed.
 type recorder struct {
 	next  http.Handler
 	mu    sync.Mutex
 	count map[string]int
+	fail  atomic.Value // func(*http.Request) bool, or nil
 }
 
 func record(env *webtest.Env) *recorder {
@@ -330,6 +333,10 @@ func (r *recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.mu.Lock()
 	r.count[req.Method+" "+req.URL.Path]++
 	r.mu.Unlock()
+	if f, _ := r.fail.Load().(func(*http.Request) bool); f != nil && f(req) {
+		http.Error(w, "test failure", http.StatusInternalServerError)
+		return
+	}
 	r.next.ServeHTTP(w, req)
 }
 
@@ -339,6 +346,9 @@ func (r *recorder) requests(methodPath string) int {
 	defer r.mu.Unlock()
 	return r.count[methodPath]
 }
+
+// failWhen makes matching requests answer 500 (nil stops it).
+func (r *recorder) failWhen(f func(*http.Request) bool) { r.fail.Store(f) }
 
 // fixture is a project arranged through core, the way the pages make
 // changes.
