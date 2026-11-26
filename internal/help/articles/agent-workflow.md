@@ -6,6 +6,8 @@ order: 5
 ---
 The agent workflow is a project setting for teams where agents do much of the building. It is off in a new project, and a project with it off works as it always has. Turn it on in the project's settings, under Workflow, or with `vaquero project edit KEY --workflow on`.
 
+Only you, the owner, turn the workflow on or off and change the [tier map](#the-tier-map), acting yourself: a request made as an agent (with `--agent`, a `Vaquero-Agent` header, or through MCP) is refused with "Only the owner turns the agent workflow on or off." For the same reason an agent can't move a ticket out of a project with the workflow on into one with it off; only you can.
+
 ## Turning it on
 
 With the workflow on, the Workflow section of the settings page offers to add two backlog statuses, Needs decision and Needs design, if the project lacks them. The workflow parks tickets there: one waiting on an answer from you, one that needs a spec or a plan first. Each is added at the end of the backlog category, as any new status is.

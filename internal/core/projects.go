@@ -100,6 +100,21 @@ func (c *Core) UpdateProject(ctx context.Context, by, projectID string, patch Pr
 				maps.Copy(f, inv.Fields)
 			}
 		}
+		// Ruling N-R6: the workflow switch and the tier map are the
+		// owner's alone, acting directly (an agent acting for the owner
+		// is its own actor).
+		if workflow != (p.Workflow == 1) || (patch.TierMap != nil && tierMap != p.TierMap) {
+			owner, err := byOwner(ctx, q, by)
+			if err != nil {
+				return err
+			}
+			if !owner && workflow != (p.Workflow == 1) {
+				f.add("workflow", "Only the owner turns the agent workflow on or off.")
+			}
+			if !owner && patch.TierMap != nil && tierMap != p.TierMap {
+				f.add("tier_map", "Only the owner changes the tier map.")
+			}
+		}
 		now := timefmt.Format(c.Now())
 		var icon *Change
 		if patch.IconKind != nil {

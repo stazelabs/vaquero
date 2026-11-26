@@ -493,6 +493,11 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 			if err != nil {
 				return err
 			}
+			// The key it has now, which an old key typed here leads to.
+			var before apiTicket
+			if err := c.call(ctx, "GET", "/api/v1/tickets/"+key, nil, &before); err != nil {
+				return err
+			}
 			b := map[string]any{"project": pos[2]}
 			if *version > 0 {
 				b["version"] = *version
@@ -500,7 +505,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 			if err := c.call(ctx, "POST", "/api/v1/tickets/"+key+"/move-to", b, &t); err != nil {
 				return err
 			}
-			c.emit(t, func() { fmt.Fprintf(c.stdout, "%s is now %s.\n", key, t.Key) })
+			c.emit(t, func() { fmt.Fprintf(c.stdout, "%s is now %s.\n", before.Key, t.Key) })
 			return nil
 		})
 	}

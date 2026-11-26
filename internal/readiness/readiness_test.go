@@ -467,10 +467,52 @@ func TestMovedTicketNeedsApprovalAgain(t *testing.T) {
 	if n := count(t, w, `SELECT count(*) FROM plans WHERE ticket_id = ?`, epic.ID); n != 1 {
 		t.Fatal("plan didn't move with it")
 	}
+	vaq := w.p
 	w.p = other
 	w.approve(epic)
 	expect(t, w.check(epic))
 	expect(t, w.check(sub))
+	// N-R5: back in VAQ, its VAQ approval from before it left doesn't
+	// count again; neither does OTH's.
+	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, vaq.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	w.p = vaq
+	w.approve(epic)
+	expect(t, w.check(epic))
+	expect(t, w.check(sub))
+}
+
+// N-R5: a sub-ticket with its own approval, carried to another project and
+// back by its epic, needs approving again too, and so does the epic it
+// leans on.
+func TestCarriedSubTicketNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(sub, "1. One column.", 0)
+	w.approve(epic)
+	w.approve(sub)
+	expect(t, w.check(sub))
+	vaq := w.p
+	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []string{other.ID, vaq.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, to, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expect(t, w.check(epic), readiness.PlanNotApproved)
+	expect(t, w.check(sub), readiness.PlanNotApproved)
+	w.approve(sub)
+	expect(t, w.check(sub)) // its own plan: nothing of its epic
+	w.approve(epic)
+	expect(t, w.check(epic))
 }
 
 func count(t *testing.T, w *world, q string, args ...any) int {

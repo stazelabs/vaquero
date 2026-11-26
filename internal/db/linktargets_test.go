@@ -239,3 +239,36 @@ func TestTicketHistoryUsesIndexes(t *testing.T) {
 		}
 	}
 }
+
+// Ruling N-R5: readiness reads when each ticket last arrived in its
+// project (ListTicketMoves) through events_ticket, never a scan of events.
+func TestTicketMovesUsesIndex(t *testing.T) {
+	raw, err := os.ReadFile("queries/readiness.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rest, ok := strings.Cut(string(raw), "-- name: ListTicketMoves :many\n")
+	if !ok {
+		t.Fatal("no ListTicketMoves")
+	}
+	q, _, _ := strings.Cut(rest, "-- name:")
+	q = strings.ReplaceAll(strings.TrimSpace(q), "sqlc.slice('ids')", "?1, ?2")
+	rows, err := dbtest.New(t).W.Query("EXPLAIN QUERY PLAN "+q, "a", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	all := strings.Join(plan, "\n")
+	if scansEvents.MatchString(all) || !strings.Contains(all, "events_ticket") {
+		t.Fatalf("plan:\n%s", all)
+	}
+}

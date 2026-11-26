@@ -384,3 +384,29 @@ func TestLinkByOldKeyRecordsTheKeyNow(t *testing.T) {
 		t.Fatalf("%v", p)
 	}
 }
+
+// Ruling N-R6, in core: an agent can't flip the workflow, change the tier
+// map, or move a ticket out of the workflow; the owner can.
+func TestWorkflowGateIsTheOwners(t *testing.T) {
+	c, _, f := newFixture(t)
+	a, err := c.EnsureAgent(bg, f.Owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	on, tm := true, `{"claude":{"light":"small"}}`
+	if _, err := c.UpdateProject(bg, a.ID, f.Project.ID, core.ProjectPatch{Workflow: &on}); invalidMsg(err) != "Only the owner turns the agent workflow on or off." {
+		t.Fatalf("workflow: %v", err)
+	}
+	if _, err := c.UpdateProject(bg, a.ID, f.Project.ID, core.ProjectPatch{TierMap: &tm}); invalidMsg(err) != "Only the owner changes the tier map." {
+		t.Fatalf("tier map: %v", err)
+	}
+	if _, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, core.ProjectPatch{Workflow: &on, TierMap: &tm}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MoveTicketToProject(bg, a.ID, f.T1.ID, f.Other.ID, 0); invalidMsg(err) != "Only the owner moves a ticket out of a project with the agent workflow on." {
+		t.Fatalf("move out: %v", err)
+	}
+	if _, err := c.MoveTicketToProject(bg, a.ID, f.O1.ID, f.Project.ID, 0); err != nil {
+		t.Fatalf("move in: %v", err)
+	}
+}

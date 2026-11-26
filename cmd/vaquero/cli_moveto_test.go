@@ -34,6 +34,13 @@ func TestCLITicketMoveTo(t *testing.T) {
 	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Formerly VAQ-1") {
 		t.Fatalf("%q", out)
 	}
+	// Typed by its old key, it names the key it had just before.
+	if _, err := e.Deps.Core.CreateProject(context.Background(), e.Deps.Actor.ID, core.ProjectInput{Key: "THR", Name: "Third"}); err != nil {
+		t.Fatal(err)
+	}
+	if out := mustCLI(t, "ticket", "move-to", "VAQ-1", "THR"); strings.TrimSpace(out) != "OTH-1 is now THR-1." {
+		t.Fatalf("%q", out)
+	}
 	if code, _, errOut := cli(t, "ticket", "move-to", "VAQ-2", "NOPE"); code != 1 || !strings.Contains(errOut, "No project NOPE.") {
 		t.Fatalf("%d %q", code, errOut)
 	}

@@ -21,6 +21,19 @@ const OwnerName = "Owner"
 // An agent acting through the owner's token is not.
 func IsOwner(a gen.Actor) bool { return a.Kind == "human" && a.Name == OwnerName }
 
+// byOwner reports whether actor id is the owner, read inside q's
+// transaction. A missing actor is not the owner.
+func byOwner(ctx context.Context, q *gen.Queries, id string) (bool, error) {
+	a, err := q.GetActor(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("get actor: %w", err)
+	}
+	return IsOwner(a), nil
+}
+
 // EnsureOwner returns the local owner: the human actor named "Owner",
 // created (with its own actor.created event) on first call.
 func (c *Core) EnsureOwner(ctx context.Context) (gen.Actor, error) {

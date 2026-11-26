@@ -78,7 +78,7 @@ On a ticket's page, choose a project under "Move to project", then Move ticket a
 - Its sub-tickets move with it, each taking a new number too. A sub-ticket can't move on its own: move its parent, or detach it first.
 - Its status, milestone and assignee carry over by name. A status the new project doesn't have becomes that project's first status of the same kind (a todo stays a todo); a milestone it doesn't have is dropped.
 - Its comments, attachments, links, plan and history stay with it. The move is one line in its history and on the Activity page, naming both projects.
-- With the [agent workflow](/help/agent-workflow) on, a moved ticket needs approving again in its new project: its earlier approvals stay in its history but no longer make it ready. Open decisions about it stay in the old project; the move's line counts them, and a plan approval asked there can no longer approve it.
+- With the [agent workflow](/help/agent-workflow) on, a moved ticket needs approving again in its new project, and again if it comes back: an approval counts only when it was asked after the ticket last arrived where it is. Its earlier approvals stay in its history but no longer make it ready. Only you, not an agent, can move a ticket out of a project with the workflow on into one with it off. Open decisions about it stay in the old project; the move's line counts them, and a plan approval asked there can no longer approve it.
 
 ## Changing a project key
 

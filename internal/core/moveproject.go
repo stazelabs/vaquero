@@ -70,6 +70,16 @@ func (c *Core) MoveTicketToProject(ctx context.Context, by, ticketID, targetID s
 		case to.ArchivedAt.Valid:
 			return invalid("project", "Restore "+to.Key+" to move tickets into it.")
 		}
+		// Ruling N-R6: out of the agent workflow's gate only by the owner.
+		if from.Workflow == 1 && to.Workflow == 0 {
+			owner, err := byOwner(ctx, q, by)
+			if err != nil {
+				return err
+			}
+			if !owner {
+				return invalid("project", "Only the owner moves a ticket out of a project with the agent workflow on.")
+			}
+		}
 		subs, err := q.ListDescendants(ctx, nullString(t.ID))
 		if err != nil {
 			return fmt.Errorf("list sub-tickets: %w", err)
