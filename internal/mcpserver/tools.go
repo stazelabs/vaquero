@@ -270,7 +270,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/ready", q)
 		})
 	add(s, c, "search", "Search", true,
-		"Find tickets by words in their titles, descriptions and comments: at most 50, best first. GET /api/v1/search reports how many matched in all in its Vaquero-Total header.",
+		"Find tickets by words in their titles, descriptions and comments: at most 50, best first.",
 		func(in searchArgs) request { return get("/search", url.Values{"q": {in.Query}}) })
 	add(s, c, "recent_activity", "Recent activity", true,
 		"Changes across every project, oldest first, each with a seq: pass after to see only newer ones, or newest for the latest few.",

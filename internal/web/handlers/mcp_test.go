@@ -80,6 +80,10 @@ func TestMCPToolList(t *testing.T) {
 		if tool.Description == "" || tool.InputSchema == nil {
 			t.Errorf("%s: no description or schema", tool.Name)
 		}
+		// A tool's caller sees the answer's body, never its headers.
+		if strings.Contains(tool.Description, "Vaquero-") {
+			t.Errorf("%s: its description names a header", tool.Name)
+		}
 	}
 	slices.Sort(names)
 	if !slices.Equal(names, frozenTools) {
