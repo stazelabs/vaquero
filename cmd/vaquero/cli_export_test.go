@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stazelabs/vaquero/internal/archive"
 	"github.com/stazelabs/vaquero/internal/client"
 )
 
@@ -103,5 +104,29 @@ func TestCLIExportAtomic(t *testing.T) {
 				t.Fatalf("left %v", ents)
 			}
 		})
+	}
+}
+
+// VAQ-132: an export whose export.json would pass archive.MaxDocument is
+// refused with the server's message, and nothing is written, to a file or
+// to standard output.
+func TestCLIExportTooLarge(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Exported")
+	saved := archive.MaxDocument
+	archive.MaxDocument = 100
+	t.Cleanup(func() { archive.MaxDocument = saved })
+	file := filepath.Join(t.TempDir(), "out.tar.gz")
+	code, out, e := cli(t, "export", file)
+	if code != 1 || !strings.Contains(e, "export.json") || !strings.Contains(e, "Nothing was saved at "+file) {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	for _, p := range []string{file, file + ".tmp"} {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s: %v", p, err)
+		}
+	}
+	if code, out, e := cli(t, "export", "-"); code != 1 || out != "" || !strings.Contains(e, "export.json") {
+		t.Fatalf("stdout: %d %q %q", code, out, e)
 	}
 }

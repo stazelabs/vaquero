@@ -72,8 +72,31 @@ type column struct {
 	pk        int
 }
 
-// dump writes export.json to buf, reading through tx.
-func dump(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, h Header) error {
+// docSize keeps export.json within MaxDocument as dump writes it. With
+// keep unset (Check) it counts the text and drops it after every row, so
+// checking holds one row at a time, never the document.
+type docSize struct {
+	keep    bool
+	dropped int64 // bytes counted and dropped
+}
+
+// grew checks the document so far, buf included, and drops buf unless
+// keeping it. Called between rows, where buf ends on a whole value.
+func (d *docSize) grew(buf *bytes.Buffer) error {
+	if d.dropped+int64(buf.Len()) > MaxDocument {
+		return &TooLarge{}
+	}
+	if !d.keep {
+		d.dropped += int64(buf.Len())
+		buf.Reset()
+	}
+	return nil
+}
+
+// dump writes export.json to buf, reading through tx, refusing with
+// *TooLarge as soon as it passes MaxDocument. With size.keep unset buf
+// ends up holding only the text since the last row.
+func dump(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, h Header, size *docSize) error {
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false)
 	buf.WriteString(`{"format":`)
@@ -90,26 +113,12 @@ func dump(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, h Header) error {
 	}
 	for _, t := range Tables {
 		buf.WriteString(`,"` + t + `":`)
-		if err := dumpTable(ctx, tx, buf, enc, t); err != nil {
+		if err := dumpTable(ctx, tx, buf, enc, t, size); err != nil {
 			return fmt.Errorf("export %s: %w", t, err)
 		}
 	}
 	buf.WriteString("}\n")
-	return nil
-}
-
-// checkTables makes dump's refusals that don't depend on a value: a
-// settings key in neither set, a missing table, a BLOB column.
-func checkTables(ctx context.Context, tx *sql.Tx) error {
-	if err := checkSettings(ctx, tx); err != nil {
-		return fmt.Errorf("export settings: %w", err)
-	}
-	for _, t := range Tables {
-		if _, err := columns(ctx, tx, t); err != nil {
-			return fmt.Errorf("export %s: %w", t, err)
-		}
-	}
-	return nil
+	return size.grew(buf)
 }
 
 // columns reads a table's columns, refusing a BLOB one.
@@ -144,7 +153,7 @@ func quote(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`
 
 // dumpTable writes one table as a JSON array of row objects, keys sorted,
 // rows in primary-key order.
-func dumpTable(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, enc *json.Encoder, table string) error {
+func dumpTable(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, enc *json.Encoder, table string, size *docSize) error {
 	cols, err := columns(ctx, tx, table)
 	if err != nil {
 		return err
@@ -221,6 +230,9 @@ func dumpTable(ctx context.Context, tx *sql.Tx, buf *bytes.Buffer, enc *json.Enc
 			}
 		}
 		buf.WriteByte('}')
+		if err := size.grew(buf); err != nil {
+			return err
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return err

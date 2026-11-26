@@ -62,7 +62,7 @@ Left out on purpose:
 - live claims: tickets keep their status and assignee, but no claim;
 - the settings that describe this server rather than its data, such as where attachments are kept.
 
-If an attachment's file is missing from storage, or isn't the size its record says (for example, someone deleted or changed it in the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
+If an attachment's file is missing from storage, or isn't the size its record says (for example, someone deleted or changed it in the directory or bucket), the export stops, names the attachment and its ticket, and writes nothing. So does an export whose `export.json` would be larger than 256 MB, the most `vaquero import` reads: Vaquero never writes an export it can't import. `HEAD /api/v1/export` makes the same checks without sending the file. The file is written under a temporary name and renamed when complete, so a failed or interrupted export never leaves a partial file behind.
 
 ## Importing an export
 

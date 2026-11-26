@@ -179,5 +179,6 @@ Every refusal has the same shape:
 | 500 | `server_error` | Something broke on the server; its log has the details |
 | 500 | `missing_file` | An export found an attachment whose file is missing from storage; `message` names it and its ticket |
 | 500 | `damaged_file` | An export found an attachment whose file in storage isn't the size its record says; `message` names it and its ticket |
+| 500 | `export_too_large` | An export's `export.json` would be larger than 256 MB, more than `vaquero import` reads; nothing is sent |
 
 On a `409`, read `current`, decide, and send again with its `version`. See [Editing and conflicts](/help/editing-and-conflicts).

@@ -458,7 +458,7 @@ func TestExportWrongSizeFails(t *testing.T) {
 	if !strings.Contains(err.Error(), id) || !strings.Contains(err.Error(), ticket) || buf.Len() != 0 {
 		t.Fatalf("%q, %d bytes", err, buf.Len())
 	}
-	if err := archive.Check(bg, d.R, store); !errors.As(err, &fe) {
+	if err := archive.Check(bg, d.R, store, header); !errors.As(err, &fe) {
 		t.Fatalf("Check: %v", err)
 	}
 }
@@ -467,7 +467,7 @@ func TestExportWrongSizeFails(t *testing.T) {
 // secret.
 func TestExportUnknownSettingRefused(t *testing.T) {
 	d, store := seeded(t)
-	if err := archive.Check(bg, d.R, store); err != nil {
+	if err := archive.Check(bg, d.R, store, header); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := d.W.ExecContext(bg, "INSERT INTO settings (key, value, updated_at) VALUES ('smtp_password', 'hunter2', 'x')"); err != nil {
@@ -478,7 +478,7 @@ func TestExportUnknownSettingRefused(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "smtp_password") || buf.Len() != 0 {
 		t.Fatalf("%v, %d bytes", err, buf.Len())
 	}
-	if err := archive.Check(bg, d.R, store); err == nil || !strings.Contains(err.Error(), "smtp_password") {
+	if err := archive.Check(bg, d.R, store, header); err == nil || !strings.Contains(err.Error(), "smtp_password") {
 		t.Fatalf("Check: %v", err)
 	}
 }

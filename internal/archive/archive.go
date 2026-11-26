@@ -149,20 +149,24 @@ type attachment struct {
 	size            int64
 }
 
-// Check makes Write's checks without building export.json or reading any
-// attachment: the settings keys and table columns Write would refuse, and
-// every attachment's size in the store (a Stat each). What it can't see is
-// a value Write can't encode (text that isn't UTF-8, a REAL with no JSON
-// form), which core never stores.
-func Check(ctx context.Context, db *sql.DB, store blobs.Store) error {
-	_, _, err := prepare(ctx, db, store, nil)
+// Check makes Write's checks without keeping export.json or reading any
+// attachment: the settings keys and table columns Write would refuse,
+// export.json's size (counted row by row as Write would write it, *TooLarge
+// past MaxDocument), and every attachment's size in the store (a Stat
+// each). It also refuses what Write can't encode (text that isn't UTF-8, a
+// REAL with no JSON form), which core never stores.
+// h is the header Write would be given, so the count is the one Write
+// would make.
+func Check(ctx context.Context, db *sql.DB, store blobs.Store, h Header) error {
+	_, _, err := prepare(ctx, db, store, h, false)
 	return err
 }
 
-// prepare reads the attachment list and, when h is set, export.json, then
-// checks every attachment's bytes are in store at their recorded size.
-func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h *Header) ([]byte, []attachment, error) {
-	doc, atts, err := snapshot(ctx, db, h)
+// prepare reads the attachment list and export.json (kept only when keep
+// is set), then checks every attachment's bytes are in store at their
+// recorded size.
+func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h Header, keep bool) ([]byte, []attachment, error) {
+	doc, atts, err := snapshot(ctx, db, h, keep)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -176,12 +180,14 @@ func prepare(ctx context.Context, db *sql.DB, store blobs.Store, h *Header) ([]b
 
 // Write writes the export of db, with attachment bytes from store, to w.
 // Every table is read in one read transaction, so all see one snapshot.
-// Every attachment's size is checked (Stat) before the first byte reaches
-// w: a missing or wrongly sized one is *FileError and w gets nothing. Each
+// export.json is built whole first: past MaxDocument it is *TooLarge (the
+// building stops there) and w gets nothing. Every attachment's size is
+// checked (Stat) before the first byte reaches w: a missing or wrongly
+// sized one is *FileError and w gets nothing. Each
 // is then read once, as it is copied; one that vanishes or changes by then
 // is an error too, and the caller must treat what reached w as broken.
 func Write(ctx context.Context, w io.Writer, db *sql.DB, store blobs.Store, h Header) error {
-	doc, atts, err := prepare(ctx, db, store, &h)
+	doc, atts, err := prepare(ctx, db, store, h, true)
 	if err != nil {
 		return err
 	}
@@ -235,22 +241,16 @@ func fileHeader(name string, size int64) *tar.Header {
 	}
 }
 
-// snapshot reads export.json (only when h is set; otherwise it makes the
-// same settings and column checks) and the attachment list in one read
-// transaction.
-func snapshot(ctx context.Context, db *sql.DB, h *Header) ([]byte, []attachment, error) {
+// snapshot reads export.json (returned only with keep; otherwise only
+// measured) and the attachment list in one read transaction.
+func snapshot(ctx context.Context, db *sql.DB, h Header, keep bool) ([]byte, []attachment, error) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Rollback()
 	var buf bytes.Buffer
-	if h != nil {
-		err = dump(ctx, tx, &buf, *h)
-	} else {
-		err = checkTables(ctx, tx)
-	}
-	if err != nil {
+	if err := dump(ctx, tx, &buf, h, &docSize{keep: keep}); err != nil {
 		return nil, nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT a.id, a.blob_key, a.size, p.key || '-' || t.number
@@ -272,6 +272,9 @@ func snapshot(ctx context.Context, db *sql.DB, h *Header) ([]byte, []attachment,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
+	}
+	if !keep {
+		buf = bytes.Buffer{}
 	}
 	return buf.Bytes(), atts, tx.Commit()
 }
