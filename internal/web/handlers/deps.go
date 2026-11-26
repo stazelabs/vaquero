@@ -35,9 +35,15 @@ type Deps struct {
 	// RenewLocalToken (nil in tests) makes sure the local token file holds a
 	// live token; called after a revoke, in case it was the local one.
 	RenewLocalToken func(context.Context) error
-	// BackupDir is where a snapshot is saved before a project is deleted.
+	// BackupDir is where snapshots are kept: one is saved before a project
+	// is deleted, and the admin backups page lists, takes and deletes them.
 	BackupDir string
 	Now       func() time.Time
+	// Started is when the server started, for the admin page's uptime.
+	Started time.Time
+	// BrewService (nil in tests: no) reports whether brew services runs this
+	// server; serve asks the service manager once, on first use.
+	BrewService func() bool
 	// Blobs holds attachment bytes, written only through it; Instance is
 	// this database's instance id, which names the blob keys.
 	Blobs    blobs.Store

@@ -24,7 +24,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
 | `vaquero.log` | The output of a server the command line started in the background; at 10 MB it moves to `vaquero.log.1`, replacing the one before. `vaquero logs` prints its end. Under `brew services` the log is elsewhere; see [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `move.pending` | Present only while a move of attachments to other storage is unfinished; see [Moving attachments](#moving-attachments-to-other-storage) |
-| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import, a compaction or a move of attachments to other storage |
+| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import, a compaction or a move of attachments to other storage, plus any you take on the [backups page](#the-backups-page) |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.
 
@@ -46,6 +46,18 @@ A Vaquero older than 0.1.2 doesn't list snapshots whose names carry a kind. To r
 Snapshots hold attachments only with the default `sqlite` storage; files kept in a directory or an S3 bucket are yours to back up. See [Attachments](/help/attachments#backups).
 
 For your own backups, copy the data directory while no server is running, or copy a snapshot.
+
+## The backups page
+
+`/admin/backups` (Admin, then Backups) lists every snapshot in `backups/`, newest first, with why it was taken, when (UTC), its size and the database layout it records (its schema version), and the free space left on the disk that holds `backups/`.
+
+- **Take a snapshot now** saves a snapshot while the server runs, without stopping anyone working. Its name carries the kind `manual` (`vaquero-manual-…`), and the newest seven of those are kept, like every other kind.
+- **Delete** removes one snapshot, after asking. It deletes only a snapshot the page lists, never anything else in the data directory.
+- **Restoring** stays on the command line, with the server stopped: each row shows its exact `vaquero backup restore NAME` command (see [Restoring a snapshot](#restoring-a-snapshot)).
+
+Taking or deleting a snapshot isn't a change to your projects, so neither shows in the activity history.
+
+`/admin` itself shows the system: the version, how long the server has been running, whether it runs under `brew services`, the data directory, the size of the database and of its write-ahead log (`vaquero.db-wal`), and the schema version. Its Storage section shows where attachments are kept, how many there are and their total size, each storage setting with where it came from (the environment, `vaquero.env` or the default), and the command that changes it. It can't be edited there. The S3 secret shows only its last 4 characters and the access key ID its first 4 and last 4, or just "set" when either is too short for that.
 
 ## Exporting everything
 

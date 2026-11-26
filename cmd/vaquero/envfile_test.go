@@ -260,7 +260,7 @@ func TestRedactNeverLeaks(t *testing.T) {
 	s3EnvFile(t, dir)
 	log := bootLogged(t, dir, nil, func(base string) {
 		tok, _ := os.ReadFile(filepath.Join(dir, "token"))
-		for _, path := range []string{"/admin", "/", "/api/v1/projects", "/api/v1/events"} {
+		for _, path := range []string{"/admin", "/admin/backups", "/", "/api/v1/projects", "/api/v1/events"} {
 			req, _ := http.NewRequest(http.MethodGet, base+path, nil)
 			req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(tok)))
 			resp, err := http.DefaultClient.Do(req)
@@ -270,6 +270,11 @@ func TestRedactNeverLeaks(t *testing.T) {
 			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
 			configtest.NoLeak(t, path, string(b))
+			// VAQ-148: the admin page's Storage section shows the keys redacted.
+			if path == "/admin" && (!strings.Contains(string(b), config.Redact("VQ_S3_SECRET_ACCESS_KEY", configtest.Secret)) ||
+				!strings.Contains(string(b), config.Redact("VQ_S3_ACCESS_KEY_ID", configtest.AccessKeyID))) {
+				t.Fatal("the admin page doesn't show the redacted keys")
+			}
 		}
 	})
 	configtest.NoLeak(t, "the boot log", log)

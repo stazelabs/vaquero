@@ -117,6 +117,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		Cfg: cfg, DB: d.W, R: d.RQ, RDB: d.R, Core: c, Actor: owner, Touch: d.Q, MCPCalls: d.Q,
 		Logger:     slog.New(slog.DiscardHandler),
 		Now:        now,
+		Started:    Start,
 		Shutdown:   shutdown,
 		StreamPoll: 20 * time.Millisecond,
 		BackupDir:  filepath.Join(dir, "backups"),

@@ -8,6 +8,7 @@
     "archive": "archive",
     "article": "book-open",
     "attachment": "paperclip",
+    "backups": "database-backup",
     "board": "square-kanban",
     "cards": "layout-grid",
     "cat-backlog": "circle-dashed",

@@ -78,6 +78,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.With(fs).Post("/tokens", handlers.AdminTokenCreate(d))
 			r.Post("/tokens/{id}/revoke", handlers.AdminTokenRevoke(d))
 			r.Get("/mcp", handlers.AdminMCP(d))
+			r.Get("/backups", handlers.AdminBackups(d))
+			r.Post("/backups/snapshot", handlers.AdminBackupSnapshot(d))
+			r.Post("/backups/{name}/delete", handlers.AdminBackupDelete(d))
 		})
 
 		r.Get("/", handlers.ProjectList(d))

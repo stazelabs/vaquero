@@ -30,12 +30,14 @@ const (
 	KindPreImport  Kind = "preimport"
 	KindPreCompact Kind = "precompact"
 	KindPreMove    Kind = "premove"
+	// KindManual is a snapshot taken from the admin backups page.
+	KindManual Kind = "manual"
 )
 
 // BackupNamePattern is the exact shape of a snapshot's file name. Every name
 // that arrives from a request is checked against it before any path is built,
 // so nothing can reach outside the backup directory.
-var BackupNamePattern = regexp.MustCompile(`^vaquero-(?:(premigrate|predelete|prerestore|preimport|precompact|premove)-)?(\d{8}-\d{6})\.sqlite$`)
+var BackupNamePattern = regexp.MustCompile(`^vaquero-(?:(premigrate|predelete|prerestore|preimport|precompact|premove|manual)-)?(\d{8}-\d{6})\.sqlite$`)
 
 // MinBackupMargin is the least free space that must remain on the volume
 // after a snapshot (see RequiredFree).
@@ -52,12 +54,27 @@ var (
 	ErrLowSpace = errors.New("not enough free space for a snapshot")
 )
 
-// BackupInfo describes one snapshot file.
+// BackupInfo describes one snapshot file. Taken is the instant in its
+// name (UTC); ModTime is the file's.
 type BackupInfo struct {
 	Name    string
 	Kind    Kind
 	Size    int64
 	ModTime time.Time
+	Taken   time.Time
+}
+
+// takenAt is the instant in a valid snapshot name, zero if there is none.
+func takenAt(name string) time.Time {
+	_, stamp, ok := kindAndStamp(name)
+	if !ok {
+		return time.Time{}
+	}
+	t, err := time.ParseInLocation(backupStamp, stamp, time.UTC)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // backupStamp is the layout of the instant in a snapshot's file name.
@@ -148,13 +165,13 @@ func snapshot(ctx context.Context, src *sql.DB, dir string, kind Kind, now time.
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	return BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime()}, nil
+	return BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime(), Taken: takenAt(name)}, nil
 }
 
 const tempPrefix = ".tmp-"
 
 // tempPattern matches a temporary snapshot name.
-var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-(?:(?:premigrate|predelete|prerestore|preimport|precompact|premove)-)?\d{8}-\d{6}\.sqlite$`)
+var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-(?:(?:premigrate|predelete|prerestore|preimport|precompact|premove|manual)-)?\d{8}-\d{6}\.sqlite$`)
 
 // removeStaleTemps deletes temporary snapshots a crash left behind. A file
 // younger than StaleTempAge is left alone.
@@ -356,7 +373,7 @@ func ListBackups(dir string) ([]BackupInfo, error) {
 			continue
 		}
 		kind, _, _ := kindAndStamp(e.Name())
-		out = append(out, BackupInfo{Name: e.Name(), Kind: kind, Size: info.Size(), ModTime: info.ModTime()})
+		out = append(out, BackupInfo{Name: e.Name(), Kind: kind, Size: info.Size(), ModTime: info.ModTime(), Taken: takenAt(e.Name())})
 	}
 	slices.SortFunc(out, func(a, b BackupInfo) int {
 		_, sa, _ := kindAndStamp(a.Name)
@@ -402,7 +419,19 @@ func OpenBackup(dir, name string) (*os.File, BackupInfo, error) {
 		return nil, BackupInfo{}, err
 	}
 	kind, _, _ := kindAndStamp(name)
-	return f, BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime()}, nil
+	return f, BackupInfo{Name: name, Kind: kind, Size: st.Size(), ModTime: st.ModTime(), Taken: takenAt(name)}, nil
+}
+
+// BackupSchema is the schema version the snapshot called name in dir
+// records, read without writing to it. ok is false for a name that isn't a
+// snapshot's, a snapshot that isn't there (or isn't a regular file), and
+// one that can't be read.
+func BackupSchema(dir, name string) (v int64, ok bool) {
+	p, _, err := backupPath(dir, name)
+	if err != nil {
+		return 0, false
+	}
+	return snapshotVersion(p)
 }
 
 // DeleteBackup removes one snapshot.

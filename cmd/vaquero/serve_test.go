@@ -582,3 +582,30 @@ func TestServeAcceptsSymlinkedBlobLocationRecordedBefore(t *testing.T) {
 		t.Fatalf("blob_location = %q", got)
 	}
 }
+
+// VAQ-150: /admin says "Running under brew services" only when
+// brewServiceState says the service runs this data directory, asked
+// through the test probe, never the real service manager.
+func TestAdminShowsBrewService(t *testing.T) {
+	adminPage := func(dataDir string) string {
+		var page string
+		bootLogged(t, dataDir, nil, func(base string) {
+			resp, err := http.Get(base + "/admin")
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			page = string(b)
+		})
+		return page
+	}
+	dataDir, _ := brewEnv(t)
+	if page := adminPage(dataDir); !strings.Contains(page, "Running under brew services") || !strings.Contains(page, "brew services stop vaquero") {
+		t.Fatal("the service's server doesn't say it runs under brew services")
+	}
+	useManager(t, &fakeManager{}) // nothing loaded
+	if page := adminPage(dataDir); strings.Contains(page, "Running under brew services") {
+		t.Fatal("brew services named with no service loaded")
+	}
+}

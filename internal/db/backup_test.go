@@ -408,3 +408,50 @@ func TestPruneKeepsOnePreMigratePerSchemaVersion(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-150: a snapshot taken from the admin page is of kind manual, pruned
+// on its own like every other kind, and lists with the instant in its name.
+func TestManualSnapshotsPruneOnTheirOwn(t *testing.T) {
+	d := dbtest.New(t)
+	dir := t.TempDir()
+	info, err := appdb.SnapshotNext(context.Background(), d.R, dir, appdb.KindManual, snapAt)
+	if err != nil || info.Kind != appdb.KindManual || info.Name != "vaquero-manual-20261013-093005.sqlite" {
+		t.Fatalf("%+v %v", info, err)
+	}
+	touch(t, dir, appdb.BackupNameKind(appdb.KindPreDelete, snapAt))
+	for i := 1; i <= appdb.BackupKeep+1; i++ {
+		touch(t, dir, appdb.BackupNameKind(appdb.KindManual, snapAt.Add(time.Duration(i)*time.Second)))
+	}
+	removed, err := appdb.PruneBackups(dir, appdb.BackupKeep)
+	if err != nil || len(removed) != 2 || removed[0] != "vaquero-manual-20261013-093006.sqlite" || removed[1] != info.Name {
+		t.Fatalf("pruned %v %v", removed, err)
+	}
+	list, _ := appdb.ListBackups(dir)
+	if len(list) != appdb.BackupKeep+1 || !list[0].Taken.Equal(snapAt.Add(8*time.Second)) {
+		t.Fatalf("%+v", list)
+	}
+}
+
+// BackupSchema reads the schema version a snapshot records, only for a
+// snapshot's name in the directory.
+func TestBackupSchema(t *testing.T) {
+	d := dbtest.New(t)
+	dir := t.TempDir()
+	info, err := appdb.SnapshotNext(context.Background(), d.R, dir, appdb.KindManual, snapAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := appdb.Version(d.R)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := appdb.BackupSchema(dir, info.Name); !ok || v != want {
+		t.Fatalf("%d %v, want %d", v, ok, want)
+	}
+	touch(t, dir, "vaquero-20261013-000000.sqlite")
+	for _, name := range []string{"vaquero-20261013-000000.sqlite", "vaquero-20261014-000000.sqlite", "../vaquero.db"} {
+		if _, ok := appdb.BackupSchema(dir, name); ok {
+			t.Errorf("%s read", name)
+		}
+	}
+}

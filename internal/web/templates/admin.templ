@@ -7,10 +7,10 @@ import (
 )
 
 // AdminPages are the admin section's pages, in its side list.
-var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/tokens", "API tokens"}, {"/admin/mcp", "MCP activity"}}
+var AdminPages = [][2]string{{"/admin", "Overview"}, {"/admin/backups", "Backups"}, {"/admin/tokens", "API tokens"}, {"/admin/mcp", "MCP activity"}}
 
 // adminIcons are the side list's glyphs.
-var adminIcons = map[string]string{"/admin": "overview", "/admin/tokens": "token", "/admin/mcp": "agent"}
+var adminIcons = map[string]string{"/admin": "overview", "/admin/backups": "backups", "/admin/tokens": "token", "/admin/mcp": "agent"}
 
 // AdminShell is an admin page: the side list, then the page.
 templ AdminShell(title, current string) {
@@ -42,29 +42,215 @@ templ AdminShell(title, current string) {
 	}
 }
 
-// AdminInfo is the admin home's facts.
+// AdminInfo is the admin home's facts. Uptime and Since are empty when the
+// start time isn't known; Brew is whether brew services runs the server.
 type AdminInfo struct {
-	Version, DataDir, DBSize string
-	Schema                   int64
+	Version, DataDir, DBSize, WALSize string
+	Uptime, Since                     string
+	Schema                            int64
+	Brew                              bool
+	Storage                           StorageInfo
+}
+
+// StorageInfo is the read-only Storage section (VAQ-148): the backend, where
+// it keeps the bytes ("" for sqlite: in the database), the attachments,
+// each storage setting already redacted with its source, and the settings
+// file.
+type StorageInfo struct {
+	Backend, Location string
+	Count             int64
+	Size              string
+	Settings          []SettingRow
+	EnvFile           string
+	EnvFileExists     bool
+}
+
+// SettingRow is one setting: its name, its value as it may be shown
+// (config.Redact) and where it came from (config.Source*).
+type SettingRow struct{ Key, Value, Source string }
+
+// sourceLabel words a setting's source.
+func sourceLabel(s string) string {
+	switch s {
+	case "file":
+		return "vaquero.env"
+	case "environment":
+		return "environment"
+	}
+	return "default"
+}
+
+func attachmentCount(n int64) string {
+	if n == 1 {
+		return "1 attachment"
+	}
+	return itoa(n) + " attachments"
 }
 
 templ AdminHomePage(i AdminInfo) {
 	@AdminShell("Admin", "/admin") {
 		<h1 class={ h1Class }>Overview</h1>
-		<dl class="mt-6 grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
-			<dt class="text-muted">Version</dt>
-			<dd class="text-ink">{ i.Version }</dd>
-			<dt class="text-muted">Data directory</dt>
-			<dd class="break-all font-mono text-xs text-ink">{ i.DataDir }</dd>
-			<dt class="text-muted">Database size</dt>
-			<dd class="text-ink">{ i.DBSize }</dd>
-			<dt class="text-muted">Schema version</dt>
-			<dd class="text-ink">{ itoa(i.Schema) }</dd>
-		</dl>
+		<section id="system" class="mt-6">
+			<h2 class={ h2Class }>System</h2>
+			<dl class="mt-3 grid max-w-xl grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+				<dt class="text-muted">Version</dt>
+				<dd class="break-all text-ink">{ i.Version }</dd>
+				if i.Uptime != "" {
+					<dt class="text-muted">Uptime</dt>
+					<dd class="text-ink">{ i.Uptime } <span class="text-muted">· since { i.Since }</span></dd>
+				}
+				<dt class="text-muted">Service</dt>
+				<dd class="text-ink">
+					if i.Brew {
+						Running under brew services
+					} else {
+						Not a brew service
+					}
+				</dd>
+				<dt class="text-muted">Data directory</dt>
+				<dd class="break-all font-mono text-xs text-ink">{ i.DataDir }</dd>
+				<dt class="text-muted">Database size</dt>
+				<dd class="text-ink">{ i.DBSize }</dd>
+				<dt class="text-muted">Write-ahead log (WAL)</dt>
+				<dd class="text-ink">{ i.WALSize }</dd>
+				<dt class="text-muted">Schema version</dt>
+				<dd class="text-ink">{ itoa(i.Schema) }</dd>
+			</dl>
+		</section>
+		@storageSection(i.Storage, i.Brew)
 		<ul class="mt-8 space-y-2 text-sm">
+			<li><a href="/admin/backups" class={ btnLink }>Backups</a> <span class="text-muted">· snapshots of the database, taken and deleted here</span></li>
 			<li><a href="/admin/tokens" class={ btnLink }>API tokens</a> <span class="text-muted">· for the CLI, scripts and agents</span></li>
 			<li><a href="/admin/mcp" class={ btnLink }>MCP activity</a> <span class="text-muted">· every tool call agents made over MCP</span></li>
 		</ul>
+	}
+}
+
+templ storageSection(s StorageInfo, brew bool) {
+	<section id="storage" class="mt-8 max-w-xl">
+		<h2 class={ h2Class }>Storage</h2>
+		<dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
+			<dt class="text-muted">Attachments</dt>
+			<dd class="text-ink">
+				if s.Count == 0 {
+					No attachments yet.
+				} else {
+					{ attachmentCount(s.Count) }, { s.Size }
+				}
+			</dd>
+			<dt class="text-muted">Kept in</dt>
+			<dd class="break-all text-ink">
+				if s.Backend == "sqlite" {
+					In the database (vaquero.db)
+				} else if s.Backend == "dir" {
+					A directory: <span class="font-mono text-xs">{ s.Location }</span>
+				} else {
+					An S3 bucket: <span class="font-mono text-xs">{ s.Location }</span>
+				}
+			</dd>
+		</dl>
+		<table class="mt-4 w-full text-left text-sm">
+			<thead class="text-xs uppercase tracking-wider text-muted">
+				<tr><th class="py-2">Setting</th><th>Value</th><th>From</th></tr>
+			</thead>
+			<tbody class="divide-y divide-line">
+				for _, row := range s.Settings {
+					<tr>
+						<td class="break-all py-2 pr-3 font-mono text-xs">{ row.Key }</td>
+						<td class="break-all pr-3 font-mono text-xs">{ row.Value }</td>
+						<td class="text-muted">{ sourceLabel(row.Source) }</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		<p class="mt-3 text-sm text-muted">
+			Settings file: <span class="break-all font-mono text-xs text-ink">{ s.EnvFile }</span>
+			if !s.EnvFileExists {
+				(not there yet)
+			}
+		</p>
+		<p class="mt-3 text-sm text-muted">
+			These settings can't be changed here. To move attachments to other storage, stop the server
+			(<code class="font-mono text-xs text-ink">
+				if brew {
+					brew services stop vaquero
+				} else {
+					vaquero stop
+				}
+			</code>) and run <code class="font-mono text-xs text-ink">vaquero attachments move --to sqlite|dir|s3</code>, which saves the new settings in vaquero.env.
+			<a href="/help/data-and-backups#moving-attachments-to-other-storage" class={ btnLink }>How moving works</a>
+		</p>
+	</section>
+}
+
+// BackupsView is the backups page: the snapshots, newest first, the
+// backups directory and its volume's free space ("" when unreadable), and
+// whether brew services runs the server (restore says how to stop it).
+type BackupsView struct {
+	Rows      []BackupRow
+	Dir, Free string
+	Brew      bool
+}
+
+// BackupRow is one snapshot; Schema is 0 when it can't be read.
+type BackupRow struct {
+	Name, Kind, Date, Size, Restore string
+	Schema                          int64
+}
+
+templ BackupsPage(v BackupsView) {
+	@AdminShell("Backups", "/admin/backups") {
+		@titleWithHelp("Backups", "data-and-backups", "About backups")
+		<p class="mt-2 max-w-xl text-sm text-muted">Snapshots of the whole database, kept in <span class="break-all font-mono text-xs text-ink">{ v.Dir }</span>. Vaquero takes one before anything that can't be undone otherwise and keeps the newest seven of each kind.</p>
+		<div class="mt-6 flex flex-wrap items-center gap-3">
+			<form method="post" action="/admin/backups/snapshot">
+				<button type="submit" class={ btnPrimary }>Take a snapshot now</button>
+			</form>
+			if v.Free != "" {
+				<p class="text-sm text-muted" data-backups-free>{ v.Free } free on the backups volume</p>
+			}
+		</div>
+		<p class="mt-4 max-w-xl text-sm text-muted">
+			To restore one, stop the server
+			(<code class="font-mono text-xs text-ink">
+				if v.Brew {
+					brew services stop vaquero
+				} else {
+					vaquero stop
+				}
+			</code>), then run the command on its row. The database as it was is saved as a snapshot first.
+		</p>
+		if len(v.Rows) == 0 {
+			<div class="mt-6">
+				@emptyState("backups", "No snapshots yet.")
+			</div>
+		} else {
+			<ul class="mt-6 max-w-3xl divide-y divide-line border-y border-line" data-backups>
+				for _, b := range v.Rows {
+					<li class="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between" data-backup={ b.Name }>
+						<div class="min-w-0 space-y-1">
+							<p class="break-all font-mono text-xs text-ink">{ b.Name }</p>
+							<p class="text-sm text-muted">
+								{ b.Kind }
+								if b.Date != "" {
+									· { b.Date }
+								}
+								· { b.Size }
+								if b.Schema > 0 {
+									· Schema { itoa(b.Schema) }
+								} else {
+									· Schema unknown
+								}
+							</p>
+							<code class="block break-all rounded bg-paper-alt px-2 py-1 font-mono text-xs text-ink">{ b.Restore }</code>
+						</div>
+						<form method="post" action={ templ.SafeURL("/admin/backups/" + b.Name + "/delete") } data-confirm={ "Delete " + b.Name + "? It can't be undone." } class="shrink-0">
+							<button type="submit" class={ btnDanger } aria-label={ "Delete " + b.Name }>Delete</button>
+						</form>
+					</li>
+				}
+			</ul>
+		}
 	}
 }
 

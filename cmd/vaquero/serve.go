@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -143,6 +144,8 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown, Touch: gen.New(w), MCPCalls: gen.New(w),
 		Blobs: store, Instance: instance, Git: c.Git, Files: readiness.NewFiles(c.Git),
 		BackupDir:       filepath.Join(cfg.DataDir, "backups"),
+		Started:         time.Now(),
+		BrewService:     underBrewService(cfg.DataDir),
 		RenewLocalToken: func(ctx context.Context) error { return ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir) }}
 	srv := &http.Server{
 		Handler:           web.NewRouter(d),
@@ -369,4 +372,14 @@ func writeSecret(path string, b []byte) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// underBrewService reports whether brew services runs the server on
+// dataDir (brewServiceState says it is running), for the admin page. The
+// service manager is asked once, on first use, never at boot.
+func underBrewService(dataDir string) func() bool {
+	return sync.OnceValue(func() bool {
+		_, state := brewServiceState(dataDir)
+		return state == brewRunning
+	})
 }

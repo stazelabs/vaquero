@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const attachmentTotals = `-- name: AttachmentTotals :one
+SELECT count(*) AS count, CAST(coalesce(sum(size), 0) AS INTEGER) AS size FROM attachments
+`
+
+type AttachmentTotalsRow struct {
+	Count int64
+	Size  int64
+}
+
+func (q *Queries) AttachmentTotals(ctx context.Context) (AttachmentTotalsRow, error) {
+	row := q.db.QueryRowContext(ctx, attachmentTotals)
+	var i AttachmentTotalsRow
+	err := row.Scan(&i.Count, &i.Size)
+	return i, err
+}
+
 const countAttachments = `-- name: CountAttachments :one
 SELECT count(*) FROM attachments
 `

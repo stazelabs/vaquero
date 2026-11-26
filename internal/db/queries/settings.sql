@@ -7,3 +7,6 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 
 -- name: CountAttachments :one
 SELECT count(*) FROM attachments;
+
+-- name: AttachmentTotals :one
+SELECT count(*) AS count, CAST(coalesce(sum(size), 0) AS INTEGER) AS size FROM attachments;

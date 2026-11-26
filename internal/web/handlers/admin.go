@@ -2,21 +2,27 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
+	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/units"
 	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
 
-// AdminHome is GET /admin: the instance's version, data directory,
-// database size and schema version, and links to the admin pages.
+// AdminHome is GET /admin: the system details (version, uptime, data
+// directory, database and WAL sizes, schema version, whether brew services
+// runs it) and the read-only Storage section (VAQ-148), with links to the
+// admin pages.
 func AdminHome(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		schema, err := appdb.Version(d.RDB)
@@ -24,29 +30,60 @@ func AdminHome(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		var size int64
-		for _, suffix := range []string{"", "-wal"} {
-			if fi, err := os.Stat(d.Cfg.DBPath + suffix); err == nil {
-				size += fi.Size()
-			}
+		totals, err := d.R.AttachmentTotals(r.Context())
+		if err != nil {
+			serverError(w, r, d, err)
+			return
 		}
-		render(w, r, d, http.StatusOK, templates.AdminHomePage(templates.AdminInfo{
-			Version: version.Line(), DataDir: d.Cfg.DataDir, DBSize: humanBytes(size), Schema: schema,
-		}))
+		info := templates.AdminInfo{
+			Version: version.Line(), DataDir: d.Cfg.DataDir,
+			DBSize: units.SizeWords(fileSize(d.Cfg.DBPath)), WALSize: units.SizeWords(fileSize(d.Cfg.DBPath + "-wal")),
+			Schema: schema, Brew: d.BrewService != nil && d.BrewService(),
+			Storage: storageInfo(d.Cfg, totals),
+		}
+		if !d.Started.IsZero() {
+			info.Uptime = timefmt.Duration(d.Now().Sub(d.Started))
+			info.Since = timefmt.DisplayUTC(d.Started)
+		}
+		render(w, r, d, http.StatusOK, templates.AdminHomePage(info))
 	}
 }
 
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
+// fileSize is a file's size, 0 when it isn't there.
+func fileSize(p string) int64 {
+	if fi, err := os.Stat(p); err == nil {
+		return fi.Size()
 	}
-	div, exp := int64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
+	return 0
+}
+
+// storageInfo is the Storage section: where attachments are kept, how many
+// there are, and each storage setting's value (through config.Redact, so a
+// key is never shown whole) and source.
+func storageInfo(cfg config.Config, totals gen.AttachmentTotalsRow) templates.StorageInfo {
+	s := templates.StorageInfo{Backend: cfg.BlobBackend, Count: totals.Count, Size: units.SizeWords(totals.Size),
+		EnvFile: config.EnvFilePath(cfg.DataDir)}
+	if _, err := os.Stat(s.EnvFile); err == nil {
+		s.EnvFileExists = true
 	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+	values := map[string]string{"VQ_BLOB_STORE": cfg.BlobBackend}
+	keys := []string{"VQ_BLOB_STORE"}
+	switch cfg.BlobBackend {
+	case "dir":
+		s.Location = cfg.BlobDir
+		keys = append(keys, "VQ_BLOB_DIR")
+		values["VQ_BLOB_DIR"] = cfg.BlobDir
+	case "s3":
+		s.Location = blobs.Location(cfg)
+		keys = append(keys, "VQ_S3_ENDPOINT", "VQ_S3_BUCKET", "VQ_S3_REGION", "VQ_S3_ACCESS_KEY_ID", "VQ_S3_SECRET_ACCESS_KEY")
+		values["VQ_S3_ENDPOINT"], values["VQ_S3_BUCKET"], values["VQ_S3_REGION"] = cfg.S3Endpoint, cfg.S3Bucket, cfg.S3Region
+		values["VQ_S3_ACCESS_KEY_ID"] = cfg.S3AccessKeyID
+		values["VQ_S3_SECRET_ACCESS_KEY"] = string(cfg.S3SecretAccessKey)
+	}
+	for _, k := range keys {
+		s.Settings = append(s.Settings, templates.SettingRow{Key: k, Value: config.Redact(k, values[k]), Source: cfg.Source(k)})
+	}
+	return s
 }
 
 func tokensPage(w http.ResponseWriter, r *http.Request, d Deps, status int, v templates.TokensView) {
