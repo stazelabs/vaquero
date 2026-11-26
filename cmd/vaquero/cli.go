@@ -63,6 +63,9 @@ type cmd struct {
 	restartLocal func(ctx context.Context) (string, error)
 	// upgradeTold: the upgrade message was printed; it shows once a run.
 	upgradeTold bool
+	// outsideTold: the note that the server runs outside brew services
+	// was printed; it too shows once a run.
+	outsideTold bool
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
@@ -122,7 +125,7 @@ func (c *cmd) connect(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := startLocal(ctx, exe, p); err != nil {
+		if err := c.startLocal(ctx, exe, p); err != nil {
 			return err
 		}
 		// Read the token now: the server may have just written it, or
@@ -133,7 +136,7 @@ func (c *cmd) connect(ctx context.Context) error {
 		}
 		p.Token = client.LocalToken(p.DataDir)
 		c.restartLocal = func(ctx context.Context) (string, error) {
-			if err := startLocal(ctx, exe, p); err != nil {
+			if err := c.startLocal(ctx, exe, p); err != nil {
 				return "", err
 			}
 			return client.LocalToken(p.DataDir), nil
@@ -148,8 +151,9 @@ func (c *cmd) connect(ctx context.Context) error {
 }
 
 // brewRestartWait is how long to wait for brew services to bring the
-// server back: launchd may hold a restart for up to 10 seconds.
-const brewRestartWait = 20 * time.Second
+// server back: launchd may hold a restart for up to 10 seconds. Tests
+// shorten it.
+var brewRestartWait = 20 * time.Second
 
 // replaceStale restarts the local server when it runs an older release than
 // this CLI: after `brew upgrade vaquero`, the running server is still the
@@ -179,19 +183,45 @@ func (c *cmd) replaceStale(ctx context.Context, exe string, p client.Profile) er
 	if stopped, err := stopLocal(ctx, p.DataDir, stopWait, pid); err != nil || !stopped {
 		return err // not stopped: another command already replaced it
 	}
-	return startLocal(ctx, exe, p)
+	return c.startLocal(ctx, exe, p)
 }
+
+// errBrewGone is the answer when the brew service is loaded but its server
+// never answers.
+var errBrewGone = message("The brew service didn't come back; run brew services restart vaquero.")
 
 // startLocal makes sure the local server answers, starting it when nothing
 // listens. Under brew services the service manager starts it: a server
-// started here would hold the data directory, and the service's own would
-// fail and be retried every few seconds for as long as it ran. So wait for
-// the service first, and start one here only if it never comes.
-func startLocal(ctx context.Context, exe string, p client.Profile) error {
-	if _, ok := brewService(p.DataDir); ok && client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
+// started here would hold the port and the data directory, and the
+// service's own would fail and be retried every few seconds for as long as
+// it ran. So wait for the service, and when it never comes, say so and
+// start nothing. With the service file there but nothing loaded (brew
+// services stop --keep), no service will start it: start it here, and say
+// once how to hand it back.
+func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) error {
+	label, state := brewServiceState(p.DataDir)
+	if state == brewRunning {
+		if client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
+			return nil
+		}
+		if label, state = brewServiceState(p.DataDir); state == brewRunning {
+			return errBrewGone
+		}
+	}
+	if state != brewStopped {
+		return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
+	}
+	if client.WaitUp(ctx, p.URL, 0) == nil {
 		return nil
 	}
-	return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
+	if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
+		return err
+	}
+	if !c.outsideTold {
+		c.outsideTold = true
+		fmt.Fprintf(c.stderr, "vaquero: the brew service (%s) isn't loaded, so this server runs outside brew services; to hand it back, run vaquero stop, then brew services start vaquero\n", label)
+	}
+	return nil
 }
 
 // call sends one API request; after it, an outdated CLI says so.

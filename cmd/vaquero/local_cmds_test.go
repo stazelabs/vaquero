@@ -13,6 +13,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/lockfile"
+	"github.com/stazelabs/vaquero/internal/version"
 )
 
 // runCLI runs a command in-process and returns its exit code and output.
@@ -106,6 +107,7 @@ func brewEnvNamed(t *testing.T, label string) (dataDir, addr string) {
 	t.Cleanup(func() { killTestServer(dataDir) })
 	if label != "" {
 		brewServiceFileNamed(t, label)
+		useManager(t, &fakeManager{ok: map[string]string{launchctlPrint(label): "loaded\n"}})
 	} else {
 		useDarwin(t)
 	}
@@ -125,7 +127,7 @@ func TestBrewManaged(t *testing.T) {
 	}
 	mac := filepath.Join(home, "Library", "Application Support", "vaquero")
 	linux := filepath.Join(home, ".local", "share", "vaquero")
-	if _, ok := brewManaged("darwin", mac, env(), noManager); ok {
+	if _, ok := brewRunningOn("darwin", mac, env(), noManager); ok {
 		t.Fatal("managed without a service file")
 	}
 	for _, goos := range []string{"darwin", "linux"} {
@@ -151,7 +153,7 @@ func TestBrewManaged(t *testing.T) {
 		"linux XDG, plain dir": {"linux", linux, env("XDG_DATA_HOME", filepath.Join(home, "xdg")), false},
 		"no HOME":              {"darwin", mac, func(string) string { return "" }, false},
 	} {
-		if _, got := brewManaged(c.goos, c.dir, c.get, noManager); got != c.want {
+		if _, got := brewRunningOn(c.goos, c.dir, c.get, everythingLoaded); got != c.want {
 			t.Errorf("%s: got %v, want %v", name, got, c.want)
 		}
 	}
@@ -181,7 +183,7 @@ func TestBrewManagedEitherServiceName(t *testing.T) {
 		if err := os.WriteFile(p, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		label, ok := brewManaged(c.goos, filepath.Join(home, filepath.FromSlash(c.dir)), get, noManager)
+		label, ok := brewRunningOn(c.goos, filepath.Join(home, filepath.FromSlash(c.dir)), get, everythingLoaded)
 		if want := strings.TrimSuffix(filepath.Base(c.rel), filepath.Ext(c.rel)); !ok || label != want {
 			t.Errorf("%s %s: got %q %v, want %q", c.goos, c.rel, label, ok, want)
 		}
@@ -212,7 +214,7 @@ func TestBrewManagedSymlink(t *testing.T) {
 	if err := os.Symlink(def, link); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := brewManaged("darwin", link, get, noManager); !ok {
+	if _, ok := brewRunningOn("darwin", link, get, everythingLoaded); !ok {
 		t.Fatal("symlink to the default directory not recognised")
 	}
 }
@@ -323,10 +325,8 @@ func TestStopWithOwnDataDirUnderBrewServices(t *testing.T) {
 
 // The restore refusal names the command that stops this instance.
 func TestRestoreRefusedNamesBrewServices(t *testing.T) {
-	brewEnv(t)
-	if code, _, e := runCLI(t, "projects"); code != 0 {
-		t.Fatalf("projects: %s", e)
-	}
+	dataDir, _ := brewEnv(t)
+	serverAt(t, dataDir, version.Version)
 	code, _, e := runCLI(t, "backup", "restore", "vaquero-20261118-120000.sqlite")
 	if code != 1 || !strings.Contains(e, "Stop vaquero first: brew services stop vaquero") {
 		t.Fatalf("%d %q", code, e)

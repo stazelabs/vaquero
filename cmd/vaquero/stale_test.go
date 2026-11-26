@@ -30,8 +30,11 @@ func asRelease(t *testing.T, v string) {
 func serverAt(t *testing.T, dataDir, v string) int {
 	t.Helper()
 	asRelease(t, v)
-	if code, _, e := runCLI(t, "projects"); code != 0 {
-		t.Fatalf("projects: %s", e)
+	// Started directly, as a service manager would (the CLI under brew
+	// services leaves starting to it).
+	exe, _ := os.Executable()
+	if err := client.EnsureLocal(t.Context(), exe, "http://"+os.Getenv("VQ_ADDR"), dataDir, 30*time.Second); err != nil {
+		t.Fatalf("start: %v", err)
 	}
 	pid, running, _ := lockfile.Holder(dataDir)
 	if !running {
