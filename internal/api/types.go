@@ -12,6 +12,11 @@ type Project struct {
 	Description string `json:"description"`
 	Archived    bool   `json:"archived"`
 	OpenCount   int64  `json:"open_count"`
+	// Workflow is the agent workflow switch. TierMap is the project's
+	// effective tier map, harness → tier → model: its own, else the
+	// default.
+	Workflow bool                         `json:"workflow"`
+	TierMap  map[string]map[string]string `json:"tier_map,omitempty"`
 }
 
 type Status struct {
@@ -48,9 +53,13 @@ type TicketSummary struct {
 
 type Ticket struct {
 	TicketSummary
-	Body        string          `json:"body"`
-	Parent      string          `json:"parent,omitempty"`
-	Milestone   string          `json:"milestone,omitempty"`
+	Body      string `json:"body"`
+	Parent    string `json:"parent,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+	// Tier is the execution tier (design, light, standard or heavy) and
+	// Model an exact model for it; both absent when unset.
+	Tier        string          `json:"tier,omitempty"`
+	Model       string          `json:"model,omitempty"`
 	SubTickets  []TicketSummary `json:"sub_tickets"`
 	Links       []Link          `json:"links"`
 	Comments    []Comment       `json:"comments"`

@@ -13,8 +13,9 @@ import (
 
 const createTicket = `-- name: CreateTicket :one
 INSERT INTO tickets (id, project_id, number, title, body, status_id, priority, assignee_id,
-                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at, version, claimed_by, claim_expires_at, claim_prev_status_id, tier, model
+                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at,
+                     tier, model)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at, version, claimed_by, claim_expires_at, claim_prev_status_id, tier, model
 `
 
 type CreateTicketParams struct {
@@ -33,6 +34,8 @@ type CreateTicketParams struct {
 	CreatedAt       string
 	UpdatedAt       string
 	StatusChangedAt string
+	Tier            string
+	Model           string
 }
 
 func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Ticket, error) {
@@ -52,6 +55,8 @@ func (q *Queries) CreateTicket(ctx context.Context, arg CreateTicketParams) (Tic
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.StatusChangedAt,
+		arg.Tier,
+		arg.Model,
 	)
 	var i Ticket
 	err := row.Scan(
@@ -481,7 +486,7 @@ func (q *Queries) SetTicketPosition(ctx context.Context, arg SetTicketPositionPa
 const updateTicket = `-- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
        parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?,
-       version = version + 1
+       tier = ?, model = ?, version = version + 1
 WHERE id = ?
 `
 
@@ -496,6 +501,8 @@ type UpdateTicketParams struct {
 	Position        float64
 	UpdatedAt       string
 	StatusChangedAt string
+	Tier            string
+	Model           string
 	ID              string
 }
 
@@ -511,6 +518,8 @@ func (q *Queries) UpdateTicket(ctx context.Context, arg UpdateTicketParams) erro
 		arg.Position,
 		arg.UpdatedAt,
 		arg.StatusChangedAt,
+		arg.Tier,
+		arg.Model,
 		arg.ID,
 	)
 	return err

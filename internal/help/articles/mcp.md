@@ -39,7 +39,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `search` | Find tickets by words: `query` |
 | `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few; reorders within a column are left out |
 | `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags` |
-| `update_ticket` | `key` and any fields to change, plus `add_tags`, `remove_tags` and `version` |
+| `update_ticket` | `key` and any fields to change (`tier` and `model` among them), plus `add_tags`, `remove_tags` and `version` |
 | `move_ticket` | `key`, `status` |
 | `add_comment` | `key`, `body` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |

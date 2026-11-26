@@ -272,12 +272,14 @@ func (q *Queries) SetProjectKey(ctx context.Context, arg SetProjectKeyParams) er
 }
 
 const updateProject = `-- name: UpdateProject :exec
-UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?
+UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?, updated_at = ? WHERE id = ?
 `
 
 type UpdateProjectParams struct {
 	Name        string
 	Description string
+	Workflow    int64
+	TierMap     string
 	UpdatedAt   string
 	ID          string
 }
@@ -286,6 +288,8 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) er
 	_, err := q.db.ExecContext(ctx, updateProject,
 		arg.Name,
 		arg.Description,
+		arg.Workflow,
+		arg.TierMap,
 		arg.UpdatedAt,
 		arg.ID,
 	)

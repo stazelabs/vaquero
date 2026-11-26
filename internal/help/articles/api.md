@@ -36,11 +36,11 @@ Every change records where it came from, as the caller reports it, in the event'
 |---|---|
 | `GET /api/v1/me` | The actor the token belongs to |
 | `GET /api/v1/projects` | Every project, with `open_count` |
-| `GET /api/v1/projects/{key}` | One project |
+| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
-| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
+| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
 | `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |
 | `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words; a ticket found by its title alone has the start of its description, unmarked, or an empty snippet |
@@ -56,7 +56,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | Request | Body |
 |---|---|
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
-| `PATCH /api/v1/projects/{key}` | `{"name"}` and/or `{"description"}` |
+| `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
@@ -66,7 +66,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `PATCH /api/v1/projects/{key}/milestones/{name}` | Any of `{"name", "description", "due_on"}`; `"due_on": ""` clears the date. Answers with the milestone |
 | `POST /api/v1/projects/{key}/milestones/{name}/close` | Nothing; closes the milestone and answers with it |
 | `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
-| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags"}`; only `title` is required |
+| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
 | `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |

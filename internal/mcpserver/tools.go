@@ -83,6 +83,8 @@ type (
 		Assignee   *string  `json:"assignee,omitempty" jsonschema:"Who to assign it to, by name; an empty string clears it."`
 		Milestone  *string  `json:"milestone,omitempty" jsonschema:"A milestone, by name; an empty string clears it."`
 		Parent     *string  `json:"parent,omitempty" jsonschema:"The parent ticket's key; an empty string clears it."`
+		Tier       *string  `json:"tier,omitempty" jsonschema:"The execution tier: design, light, standard or heavy; an empty string clears it."`
+		Model      *string  `json:"model,omitempty" jsonschema:"An exact model for the work, overriding the project's tier map; an empty string clears it."`
 		Tags       []string `json:"tags,omitempty" jsonschema:"Replace every tag with these."`
 		AddTags    []string `json:"add_tags,omitempty" jsonschema:"Tags to add."`
 		RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"Tags to remove."`
@@ -303,7 +305,7 @@ func addTools(s *mcp.Server, c *caller) {
 // given are sent.
 func (f fieldArgs) body() map[string]any {
 	b := map[string]any{}
-	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent} {
+	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent, "tier": f.Tier, "model": f.Model} {
 		if v != nil {
 			b[k] = *v
 		}

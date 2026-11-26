@@ -48,8 +48,23 @@ type SettingsView struct {
 	Milestones []gen.Milestone
 	Tags       []TagRow
 	MergeInto  string
+	// TierMap is the effective tier map as indented JSON; TriageMissing
+	// the triage statuses to offer (only with the workflow on).
+	TierMap       string
+	TriageMissing []string
+
+	// Workflow is the workflow form, set only when it was refused.
+	Workflow SubForm
 
 	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag SubForm
+}
+
+// workflowOn is "on" when p uses the agent workflow, as its checkbox posts.
+func workflowOn(p gen.Project) string {
+	if p.Workflow == 1 {
+		return "on"
+	}
+	return ""
 }
 
 // row is the refused form f when it edits id, else an empty one.
@@ -146,6 +161,7 @@ templ ProjectSettingsPage(v SettingsView) {
 				<button type="submit" class={ btnSecondary }>Change key</button>
 			</form>
 		</section>
+		@workflowSection(v)
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>
 				@Icon("cat-in-progress")
@@ -233,6 +249,38 @@ templ ProjectSettingsPage(v SettingsView) {
 			</form>
 		</section>
 	}
+}
+
+// workflowSection is the agent workflow switch and the tier map, and
+// with the workflow on, the offer of any missing triage statuses.
+templ workflowSection(v SettingsView) {
+	<section id="workflow" class="mt-10">
+		<h2 class={ h2IconClass }>
+			@Icon("agent")
+			Workflow
+		</h2>
+		<p class="mt-1 max-w-2xl text-sm text-muted">
+			With the agent workflow on, tickets carry an execution tier, and the tier map names the model that works each tier in each harness.
+			@helpLink("agent-workflow", "About the agent workflow")
+		</p>
+		<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/workflow") } class="mt-3 max-w-2xl space-y-4">
+			<label class="flex items-center gap-2 text-sm text-ink">
+				<input type="checkbox" name="workflow" value="on" checked?={ v.Workflow.Val("workflow", workflowOn(v.Project)) == "on" } class="size-4 accent-accent"/>
+				Use the agent workflow in this project
+			</label>
+			@TextArea(InputProps{Name: "tier_map", ID: "f-tier-map", Label: "Tier map", Value: v.Workflow.Val("tier_map", v.TierMap), Rows: 14, Error: v.Workflow.Errors["tier_map"], Attrs: templ.Attributes{"spellcheck": "false"}})
+			<p class="-mt-2 text-xs text-muted">JSON: each harness names a model for any of design, light, standard and heavy. Empty it to go back to the defaults.</p>
+			<button type="submit" class={ btnSecondary }>Save workflow</button>
+		</form>
+		if len(v.TriageMissing) > 0 {
+			<div class="mt-4 max-w-2xl rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink">
+				<p>The workflow parks tickets in two backlog statuses, Needs decision and Needs design. Missing here: { joinAnd(v.TriageMissing) }.</p>
+				<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/triage-statuses") } class="mt-2">
+					<button type="submit" class={ btnSecondary }>Add the triage statuses</button>
+				</form>
+			</div>
+		}
+	</section>
 }
 
 templ statusItem(key string, r StatusRow, edit SubForm) {

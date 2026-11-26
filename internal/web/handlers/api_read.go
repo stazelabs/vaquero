@@ -81,7 +81,8 @@ func apiTicket(w http.ResponseWriter, r *http.Request, d Deps) (gen.Ticket, gen.
 }
 
 func projectDTO(p gen.Project, open int64) api.Project {
-	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open}
+	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open,
+		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap)}
 }
 
 // APIProjects is GET /api/v1/projects.
@@ -94,7 +95,7 @@ func APIProjects(d Deps) http.HandlerFunc {
 		}
 		out := make([]api.Project, len(rows))
 		for i, p := range rows {
-			out[i] = api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: p.OpenCount}
+			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap}, p.OpenCount)
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -219,7 +220,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	out := api.Ticket{
 		Key: ticketKey(p, t.Number), Title: t.Title, Status: st.Name, Category: st.Category,
 		Priority: t.Priority, Tags: []string{}, Version: t.Version,
-		Body: t.Body, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
+		Body: t.Body, Tier: t.Tier, Model: t.Model, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		SubTickets: []api.TicketSummary{}, Links: []api.Link{}, Comments: []api.Comment{}, Attachments: []api.Attachment{},
 	}
 	if t.AssigneeID.Valid {

@@ -102,11 +102,11 @@ func init() {
 			}},
 		coreOp{"UpdateProject",
 			func(c *core.Core, f fixture) error {
-				_, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, "Renamed", "")
+				_, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, core.ProjectPatch{Name: new("Renamed")})
 				return err
 			},
 			func(c *core.Core, f fixture) error {
-				_, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, " ", "")
+				_, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, core.ProjectPatch{Name: new(" ")})
 				return err
 			}},
 		coreOp{"SetProjectArchived",

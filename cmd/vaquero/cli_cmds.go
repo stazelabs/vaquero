@@ -68,16 +68,28 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] | key KEY NEWKEY"
+	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
+	workflow := c.fs.String("workflow", "", "on or off: the agent workflow")
 	pos, err := c.parse(args, 2, 3)
 	if err != nil {
 		return c.finish(err)
 	}
 	var p api.Project
-	printProject := func() { c.emit(p, func() { fmt.Fprintf(c.stdout, "%s  %s\n%s\n", p.Key, p.Name, p.Description) }) }
+	printProject := func() {
+		c.emit(p, func() {
+			fmt.Fprintf(c.stdout, "%s  %s\n", p.Key, p.Name)
+			if p.Workflow {
+				fmt.Fprintln(c.stdout, "Workflow: on")
+			}
+			fmt.Fprintln(c.stdout, p.Description)
+		})
+	}
+	if c.set("workflow") && (pos[0] != "edit" || *workflow != "on" && *workflow != "off") {
+		return c.finish(usageError{usage: usage, hint: "--workflow is on or off, for project edit"})
+	}
 	switch pos[0] {
 	case "create":
 		if len(pos) != 3 {
@@ -109,9 +121,12 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		if len(pos) != 2 {
 			return c.finish(usageError{usage: usage})
 		}
-		body := map[string]string{}
+		body := map[string]any{}
 		if c.set("name") {
 			body["name"] = *name
+		}
+		if c.set("workflow") {
+			body["workflow"] = *workflow == "on"
 		}
 		return c.connected(ctx, nil, func() error {
 			if c.set("description") {
@@ -207,6 +222,14 @@ func printTicket(w io.Writer, t apiTicket) {
 	if t.Milestone != "" {
 		fmt.Fprintf(w, "Milestone: %s\n", t.Milestone)
 	}
+	switch {
+	case t.Tier != "" && t.Model != "":
+		fmt.Fprintf(w, "Tier: %s · Model: %s\n", t.Tier, t.Model)
+	case t.Tier != "":
+		fmt.Fprintf(w, "Tier: %s\n", t.Tier)
+	case t.Model != "":
+		fmt.Fprintf(w, "Model: %s\n", t.Model)
+	}
 	if t.Parent != "" {
 		fmt.Fprintf(w, "Parent: %s\n", t.Parent)
 	}
@@ -255,6 +278,8 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	parent := c.fs.String("parent", "", "parent ticket key")
 	milestone := c.fs.String("milestone", "", "milestone name")
 	assignee := c.fs.String("assignee", "", "assignee name")
+	tier := c.fs.String("tier", "", "design, light, standard or heavy; empty clears it")
+	model := c.fs.String("model", "", "exact model id; empty for the tier map's choice")
 	var tags, addTags, removeTags stringList
 	c.fs.Var(&tags, "tag", "tag (repeat for more)")
 	c.fs.Var(&addTags, "add-tag", "add a tag (repeatable)")
@@ -270,7 +295,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	// fields gathers the flags that were given into a request body.
 	fields := func() (map[string]any, error) {
 		b := map[string]any{}
-		for name, v := range map[string]*string{"title": title, "status": status, "parent": parent, "milestone": milestone, "assignee": assignee} {
+		for name, v := range map[string]*string{"title": title, "status": status, "parent": parent, "milestone": milestone, "assignee": assignee, "tier": tier, "model": model} {
 			if c.set(name) {
 				b[name] = *v
 			}

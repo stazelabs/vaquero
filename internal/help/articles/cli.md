@@ -25,7 +25,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |
 | `vaquero project show KEY` | Show a project |
-| `vaquero project edit KEY [--name NAME] [--description TEXT]` | Change its name or description |
+| `vaquero project edit KEY [--name NAME] [--description TEXT] [--workflow on\|off]` | Change its name or description, or turn the [agent workflow](/help/agent-workflow) on or off |
 | `vaquero project key KEY NEWKEY` | Change its key (links that use the old key stop working) |
 | `vaquero statuses KEY` | A project's statuses in board order, with each one's category and ticket count |
 | `vaquero status add KEY NAME --category C [--before S \| --after S]` | Add a status; without `--before` or `--after` it goes after the last status of its category. Categories are `backlog`, `todo`, `in progress`, `in review`, `done` and `cancelled` |
@@ -38,8 +38,8 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero milestone close KEY NAME` / `reopen KEY NAME` | Close a milestone when it ships, or open it again |
 | `vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]` | List tickets; done and cancelled are left out unless `--status` or `--all` |
 | `vaquero ticket show TICKET` | A ticket with its sub-tickets, links and comments |
-| `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME]` | Create a ticket; prints its key |
-| `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given |
+| `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME] [--tier T] [--model M]` | Create a ticket; prints its key. `--tier` is `design`, `light`, `standard` or `heavy` (see [tiers](/help/agent-workflow#execution-tiers)), and `--model` an exact model for it |
+| `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given; `--tier ""` and `--model ""` clear them |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
 | `vaquero comment TICKET TEXT` | Add a comment |
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |

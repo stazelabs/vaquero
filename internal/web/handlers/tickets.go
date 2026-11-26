@@ -100,9 +100,11 @@ func readTicketForm(r *http.Request, d Deps, p gen.Project, f *templates.TicketF
 	f.StatusID, f.Priority = r.PostFormValue("status"), r.PostFormValue("priority")
 	f.AssigneeID, f.MilestoneID = r.PostFormValue("assignee"), r.PostFormValue("milestone")
 	f.Parent, f.Tags = strings.TrimSpace(r.PostFormValue("parent")), r.PostFormValue("tags")
+	f.Tier, f.Model = r.PostFormValue("tier"), r.PostFormValue("model")
 	in := core.TicketInput{
 		Title: f.Title, Body: f.Body, StatusID: f.StatusID,
 		AssigneeID: f.AssigneeID, MilestoneID: f.MilestoneID, Tags: splitTags(f.Tags),
+		Tier: f.Tier, Model: f.Model,
 	}
 	errs := map[string]string{}
 	if f.Priority != "" {
@@ -189,7 +191,7 @@ func TicketEdit(d Deps) http.HandlerFunc {
 			Project: p, TicketKey: ticketKey(p, t.Number), Title: t.Title, Body: t.Body,
 			StatusID: t.StatusID, Priority: strconv.FormatInt(t.Priority, 10),
 			AssigneeID: t.AssigneeID.String, MilestoneID: t.MilestoneID.String,
-			Version: strconv.FormatInt(t.Version, 10),
+			Tier: t.Tier, Model: t.Model, Version: strconv.FormatInt(t.Version, 10),
 		}
 		if t.ParentID.Valid {
 			parent, err := d.R.GetTicket(ctx, t.ParentID.String)

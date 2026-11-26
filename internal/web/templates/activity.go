@@ -147,6 +147,7 @@ func ParsePayload(raw string) map[string]any {
 var fieldWords = [][2]string{
 	{"title", "title"}, {"body", "description"}, {"status", "status"}, {"priority", "priority"},
 	{"assignee", "assignee"}, {"parent", "parent"}, {"milestone", "milestone"}, {"tags", "tags"},
+	{"tier", "tier"}, {"model", "model"},
 }
 
 // EventSentence is what happened, after the actor's name: "moved VAQ-4
