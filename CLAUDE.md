@@ -72,7 +72,7 @@ Agent rules for each area are in `.claude/rules/` (database, handlers, security,
 - Templates use only the theme tokens; no raw hex or oklch values in `.templ` files.
 - Generated files (`*_templ.go`, `internal/db/gen`, `tailwind.css`) are committed; `make gen && git diff --exit-code` must be clean.
 - Documentation lives in `internal/help/articles` and ships in the binary; a new command, shortcut or API route needs its article line (tests enforce it). Icons are Lucide through `internal/web/icons`, never hand-drawn SVG.
-- Copy: the product is "Vaquero" in prose and `vaquero` as a command. Sentence case, no exclamation points. Documentation and UI never name competing products.
+- Copy: the product is "Vaquero" in prose and `vaquero` as a command. Sentence case, no exclamation points. Documentation and UI never name competing products. The one exception is an importer, which has to say what it imports: the `vaquero import linear` lines in the cli, api and data-and-backups articles (VAQ-8).
 - Local-first: everything works offline with the defaults; network services are optional and used only when the operator configures them. No telemetry; Vaquero never downloads or checks for releases.
 - Never add `push` or `pull_request` triggers to GitHub workflows (`TestWorkflowsHaveNoPushOrPullRequestTriggers`).
 - Commit messages: `{Area}: {summary}`.
