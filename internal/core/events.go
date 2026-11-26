@@ -35,9 +35,10 @@ import (
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
 //   - ticket.claim_lapsed: {"status"}, the status the ticket was left in;
 //     its actor is the claimant whose lease ran out.
-//   - tag.renamed, tag.merged: {"from", "to", "tickets"}; tag.deleted:
-//     {"name", "tickets"}: TagPayload, a project event (no ticket), tickets
-//     being how many of the project's tickets changed.
+//   - tag.renamed, tag.merged: {"from", "to", "tickets", "ticket_ids"};
+//     tag.deleted: {"name", "tickets", "ticket_ids"}: TagPayload, a project
+//     event (no ticket); ticket_ids names the project's tickets whose tags
+//     changed, tickets how many.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy

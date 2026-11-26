@@ -80,3 +80,9 @@ WHERE tag_id = sqlc.arg(tag_id)
 -- name: DeleteUnusedTag :exec
 -- Removes a tag no ticket carries any more.
 DELETE FROM tags WHERE id = sqlc.arg(id) AND NOT EXISTS (SELECT 1 FROM ticket_tags WHERE tag_id = sqlc.arg(id));
+
+-- name: ListProjectTaggedTicketIDs :many
+-- The project's tickets that carry a tag, by number.
+SELECT t.id FROM tickets t JOIN ticket_tags tt ON tt.ticket_id = t.id
+WHERE tt.tag_id = ? AND t.project_id = ?
+ORDER BY t.number;

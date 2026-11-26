@@ -2,6 +2,8 @@ package handlers_test
 
 import (
 	"net/url"
+	"os"
+	"regexp"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -78,7 +80,7 @@ func TestTagRenameOntoExistingAsksToMerge(t *testing.T) {
 	if r.Status != 422 {
 		t.Fatal(r.Status)
 	}
-	contains(t, r.Body, "VAQ already has the tag ui.", `value="UI"`)
+	contains(t, r.Body, "VAQ already has the tag ui.", `value="UI"`, "data-event-seq=")
 	contains(t, r.Body, `name="merge" value="1"`)
 	merge := formWithConfirm(r.Body, "/p/VAQ/tags/"+ids["bug"]+"/rename")
 	contains(t, merge, `data-confirm="Merge bug into ui? Its 1 ticket in VAQ will be tagged ui instead."`)
@@ -113,4 +115,16 @@ func TestTagRefusals(t *testing.T) {
 		t.Fatal(r.Status)
 	}
 	contains(t, c.Follow(r).Body, "That no longer exists.")
+}
+
+// Tag changes are project events: the help says they show on the Activity
+// page only, not in a ticket's history.
+func TestHelpSaysTagChangesSkipTicketHistory(t *testing.T) {
+	b, err := os.ReadFile("../../help/articles/projects-and-tickets.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`Every change is recorded in the ticket's history[^\n]*renaming, merging or deleting a tag[^\n]*Activity page only`).Match(b) {
+		t.Error("the history sentence doesn't name tag changes among its exceptions")
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"maps"
+	"slices"
 	"strings"
 	"testing"
 
@@ -219,4 +220,97 @@ func TestRenameOntoOtherProjectsTag(t *testing.T) {
 	if kind, p := lastEvent(t, d); kind != core.EvTagRenamed || p["to"] != "Defect" {
 		t.Fatalf("%s %v", kind, p)
 	}
+}
+
+// ticketIDs is a tag event payload's ticket_ids.
+func ticketIDs(t *testing.T, p map[string]any) []string {
+	t.Helper()
+	raw, ok := p["ticket_ids"].([]any)
+	if !ok {
+		t.Fatalf("no ticket_ids in %v", p)
+	}
+	out := make([]string, len(raw))
+	for i, v := range raw {
+		out[i], _ = v.(string)
+	}
+	return out
+}
+
+func wantIDs(t *testing.T, p map[string]any, want ...string) {
+	t.Helper()
+	got := ticketIDs(t, p)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("ticket_ids %v, want %v", got, want)
+	}
+}
+
+// Every tag event names the tickets whose tags changed, recorded before
+// the rows move: the project's tickets only, a ticket with both tags once.
+func TestTagEventsNameTheirTickets(t *testing.T) {
+	setup := func(t *testing.T) (*core.Core, dbtest.DB, fixture, string) {
+		c, d, f := newFixture(t)
+		both, err := c.CreateTicket(bg, f.Owner.ID, f.Project.ID, core.TicketInput{Title: "Both", Tags: []string{"bug", "ui"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.CreateTicket(bg, f.Owner.ID, f.Other.ID, core.TicketInput{Title: "Other", Tags: []string{"bug"}}); err != nil {
+			t.Fatal(err)
+		}
+		return c, d, f, both.ID
+	}
+	t.Run("renamed", func(t *testing.T) {
+		c, d, f, both := setup(t)
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect"); err != nil {
+			t.Fatal(err)
+		}
+		_, p := lastEvent(t, d)
+		wantIDs(t, p, f.T1.ID, both)
+	})
+	t.Run("renamed in place", func(t *testing.T) {
+		c, d, f, _ := setup(t)
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.UI.ID, "UI"); err != nil {
+			t.Fatal(err)
+		}
+		_, p := lastEvent(t, d)
+		wantIDs(t, p, f.T2.ID, ticketWith(t, d, "Both"))
+	})
+	t.Run("merged", func(t *testing.T) {
+		c, d, f, both := setup(t)
+		if err := c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.UI.ID); err != nil {
+			t.Fatal(err)
+		}
+		kind, p := lastEvent(t, d)
+		if kind != core.EvTagMerged || p["tickets"] != 2.0 {
+			t.Fatalf("%s %v", kind, p)
+		}
+		wantIDs(t, p, f.T1.ID, both)
+		wantTags(t, d, f.Project.ID, map[string]int64{"ui": 3})
+	})
+	t.Run("merged by rename", func(t *testing.T) {
+		c, d, f, both := setup(t)
+		if err := c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI"); err != nil {
+			t.Fatal(err)
+		}
+		_, p := lastEvent(t, d)
+		wantIDs(t, p, f.T1.ID, both)
+	})
+	t.Run("deleted", func(t *testing.T) {
+		c, d, f, both := setup(t)
+		if err := c.DeleteTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID); err != nil {
+			t.Fatal(err)
+		}
+		_, p := lastEvent(t, d)
+		wantIDs(t, p, f.T1.ID, both)
+	})
+}
+
+func ticketWith(t *testing.T, d dbtest.DB, title string) string {
+	t.Helper()
+	var id string
+	if err := d.R.QueryRow(`SELECT id FROM tickets WHERE title = ?`, title).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }

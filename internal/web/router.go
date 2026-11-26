@@ -96,7 +96,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Post("/statuses/{id}/delete", handlers.StatusDelete(d))
 			r.With(fs).Post("/milestones", handlers.MilestoneCreate(d))
 			r.With(fs).Post("/milestones/{id}", handlers.MilestoneUpdate(d))
-			r.Post("/tags/{id}/rename", handlers.TagRename(d))
+			r.With(fs).Post("/tags/{id}/rename", handlers.TagRename(d))
 			r.Post("/tags/{id}/delete", handlers.TagDelete(d))
 			r.Post("/milestones/{id}/close", handlers.MilestoneClose(d))
 			r.Post("/milestones/{id}/reopen", handlers.MilestoneReopen(d))

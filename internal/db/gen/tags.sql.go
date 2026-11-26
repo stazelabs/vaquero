@@ -96,6 +96,41 @@ func (q *Queries) GetTag(ctx context.Context, id string) (Tag, error) {
 	return i, err
 }
 
+const listProjectTaggedTicketIDs = `-- name: ListProjectTaggedTicketIDs :many
+SELECT t.id FROM tickets t JOIN ticket_tags tt ON tt.ticket_id = t.id
+WHERE tt.tag_id = ? AND t.project_id = ?
+ORDER BY t.number
+`
+
+type ListProjectTaggedTicketIDsParams struct {
+	TagID     string
+	ProjectID string
+}
+
+// The project's tickets that carry a tag, by number.
+func (q *Queries) ListProjectTaggedTicketIDs(ctx context.Context, arg ListProjectTaggedTicketIDsParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listProjectTaggedTicketIDs, arg.TagID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectTags = `-- name: ListProjectTags :many
 SELECT g.id, g.name, count(*) AS tickets FROM tags g
 JOIN ticket_tags tt ON tt.tag_id = g.id

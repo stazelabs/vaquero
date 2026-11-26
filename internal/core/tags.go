@@ -26,12 +26,15 @@ import (
 
 // TagPayload is a tag event's payload. Renamed and merged carry From and To
 // (To is the tag the tickets now carry, in its own spelling); deleted
-// carries Name. Tickets is how many of the project's tickets changed.
+// carries Name. TicketIDs are the project's tickets whose tags changed (by
+// number, read before any row moves; a ticket that had both tags of a
+// merge is named once), and Tickets is how many there are.
 type TagPayload struct {
-	From    string `json:"from,omitempty"`
-	To      string `json:"to,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Tickets int64  `json:"tickets"`
+	From      string   `json:"from,omitempty"`
+	To        string   `json:"to,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	Tickets   int64    `json:"tickets"`
+	TicketIDs []string `json:"ticket_ids"`
 }
 
 // tagName checks a new tag name: trimmed, in NFC, 1 to 40 characters, no
@@ -44,21 +47,26 @@ func tagName(f fields, name string) string {
 	return name
 }
 
-// projectTag is the tag tagID and how many of the project's tickets carry
-// it; a tag the project's tickets don't carry is ErrNotFound.
-func projectTag(ctx context.Context, q *gen.Queries, projectID, tagID string) (gen.Tag, int64, error) {
+// projectTag is the tag tagID and the project's tickets that carry it; a
+// tag the project's tickets don't carry is ErrNotFound.
+func projectTag(ctx context.Context, q *gen.Queries, projectID, tagID string) (gen.Tag, []string, error) {
 	t, err := q.GetTag(ctx, tagID)
 	if err != nil {
-		return t, 0, notFound(err, "get tag")
+		return t, nil, notFound(err, "get tag")
 	}
-	n, err := q.CountProjectTagTickets(ctx, gen.CountProjectTagTicketsParams{TagID: tagID, ProjectID: projectID})
+	ids, err := q.ListProjectTaggedTicketIDs(ctx, gen.ListProjectTaggedTicketIDsParams{TagID: tagID, ProjectID: projectID})
 	if err != nil {
-		return t, 0, fmt.Errorf("count tag: %w", err)
+		return t, nil, fmt.Errorf("tagged tickets: %w", err)
 	}
-	if n == 0 {
-		return t, 0, ErrNotFound
+	if len(ids) == 0 {
+		return t, nil, ErrNotFound
 	}
-	return t, n, nil
+	return t, ids, nil
+}
+
+// tagPayload is the payload for a change to the tickets ids.
+func tagPayload(from, to, name string, ids []string) TagPayload {
+	return TagPayload{From: from, To: to, Name: name, Tickets: int64(len(ids)), TicketIDs: ids}
 }
 
 // touchTagged raises the version of the project's tickets tagged tagID.
@@ -101,7 +109,7 @@ func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string)
 	return c.tx(ctx, func(q *gen.Queries) error {
 		f := fields{}
 		name = tagName(f, name)
-		tag, n, err := projectTag(ctx, q, projectID, tagID)
+		tag, ids, err := projectTag(ctx, q, projectID, tagID)
 		if err != nil {
 			return err
 		}
@@ -124,20 +132,20 @@ func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string)
 				return fmt.Errorf("count tag: %w", err)
 			}
 			if m > 0 {
-				return c.merge(ctx, q, by, projectID, tag, other, n)
+				return c.merge(ctx, q, by, projectID, tag, other, ids)
 			}
 			// Only other projects use that name: this project's tickets
 			// join it, which is a rename here.
 			if err := c.moveTag(ctx, q, projectID, tag.ID, other.ID); err != nil {
 				return err
 			}
-			return c.emit(ctx, q, by, EvTagRenamed, projectID, "", TagPayload{From: tag.Name, To: other.Name, Tickets: n})
+			return c.emit(ctx, q, by, EvTagRenamed, projectID, "", tagPayload(tag.Name, other.Name, "", ids))
 		}
 		total, err := q.CountTagTickets(ctx, tag.ID)
 		if err != nil {
 			return fmt.Errorf("count tag: %w", err)
 		}
-		if total == n || SameTag(tag.Name, name) {
+		if total == int64(len(ids)) || SameTag(tag.Name, name) {
 			// No other project uses it, or only the spelling changes:
 			// rename the tag itself.
 			if err := c.touchTagged(ctx, q, projectID, tag.ID); err != nil {
@@ -156,7 +164,7 @@ func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string)
 				return err
 			}
 		}
-		return c.emit(ctx, q, by, EvTagRenamed, projectID, "", TagPayload{From: tag.Name, To: name, Tickets: n})
+		return c.emit(ctx, q, by, EvTagRenamed, projectID, "", tagPayload(tag.Name, name, "", ids))
 	})
 }
 
@@ -164,7 +172,7 @@ func (c *Core) RenameTag(ctx context.Context, by, projectID, tagID, name string)
 // instead; a ticket that had both keeps one. Other projects keep fromID.
 func (c *Core) MergeTag(ctx context.Context, by, projectID, fromID, intoID string) error {
 	return c.tx(ctx, func(q *gen.Queries) error {
-		from, n, err := projectTag(ctx, q, projectID, fromID)
+		from, ids, err := projectTag(ctx, q, projectID, fromID)
 		if err != nil {
 			return err
 		}
@@ -175,22 +183,22 @@ func (c *Core) MergeTag(ctx context.Context, by, projectID, fromID, intoID strin
 		if err != nil {
 			return notFound(err, "get tag")
 		}
-		return c.merge(ctx, q, by, projectID, from, into, n)
+		return c.merge(ctx, q, by, projectID, from, into, ids)
 	})
 }
 
-func (c *Core) merge(ctx context.Context, q *gen.Queries, by, projectID string, from, into gen.Tag, n int64) error {
+func (c *Core) merge(ctx context.Context, q *gen.Queries, by, projectID string, from, into gen.Tag, ids []string) error {
 	if err := c.moveTag(ctx, q, projectID, from.ID, into.ID); err != nil {
 		return err
 	}
-	return c.emit(ctx, q, by, EvTagMerged, projectID, "", TagPayload{From: from.Name, To: into.Name, Tickets: n})
+	return c.emit(ctx, q, by, EvTagMerged, projectID, "", tagPayload(from.Name, into.Name, "", ids))
 }
 
 // DeleteTag takes a tag off every ticket of the project. Other projects
 // keep it.
 func (c *Core) DeleteTag(ctx context.Context, by, projectID, tagID string) error {
 	return c.tx(ctx, func(q *gen.Queries) error {
-		tag, n, err := projectTag(ctx, q, projectID, tagID)
+		tag, ids, err := projectTag(ctx, q, projectID, tagID)
 		if err != nil {
 			return err
 		}
@@ -200,6 +208,6 @@ func (c *Core) DeleteTag(ctx context.Context, by, projectID, tagID string) error
 		if err := c.dropTag(ctx, q, projectID, tag.ID); err != nil {
 			return err
 		}
-		return c.emit(ctx, q, by, EvTagDeleted, projectID, "", TagPayload{Name: tag.Name, Tickets: n})
+		return c.emit(ctx, q, by, EvTagDeleted, projectID, "", tagPayload("", "", tag.Name, ids))
 	})
 }

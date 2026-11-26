@@ -21,7 +21,7 @@ A ticket has a title (up to 200 characters), a description in markdown, a status
 - **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
 - **Comments** are markdown. You can edit or delete your own.
 
-Every change is recorded in the ticket's history and on the Activity page, except that reordering a card within its column shows only in the ticket's history.
+Every change is recorded in the ticket's history and on the Activity page, with two exceptions: reordering a card within its column shows only in the ticket's history, and renaming, merging or deleting a tag in project settings shows on the Activity page only.
 
 ## Tags
 
