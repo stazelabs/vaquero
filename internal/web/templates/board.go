@@ -118,3 +118,19 @@ func railPanelClass(category string) string {
 	return "px-2 pb-2 max-md:absolute max-md:top-0 max-md:z-20 max-md:w-64 max-md:max-w-[calc(100vw-5rem)] " +
 		"max-md:rounded-md max-md:border max-md:border-line max-md:bg-paper-alt max-md:pt-2 max-md:shadow-lg " + edge
 }
+
+// ClaimNote is "Claimed by bot until 12:15 UTC" plus end, when someone
+// other than viewerID holds a live claim (it ends after now); "" when the
+// viewer holds it, nobody does, or the lease has run out. The API's write
+// answers carry it as their warning and the edit form shows it: claims are
+// advisory, so neither stops the edit.
+func ClaimNote(claimantID, claimant, expires, viewerID string, now time.Time, end string) string {
+	if claimantID == "" || claimantID == viewerID || claimant == "" {
+		return ""
+	}
+	t, err := timefmt.Parse(expires)
+	if err != nil || !t.After(now) {
+		return ""
+	}
+	return "Claimed by " + claimant + " " + claimUntil(expires) + end
+}

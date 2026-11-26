@@ -29,6 +29,10 @@ While it works, the agent renews the lease with `vaquero heartbeat VAQ-12` (agai
 
 Only the holder can renew or release a claim, and only while its lease is running.
 
+## Claims are advisory
+
+A claim says who is working on a ticket; it doesn't lock it. Anyone can still edit, move or comment on a claimed ticket, and the change goes through. When the ticket is claimed by someone else, the answer says so: the API and MCP answers to an update, a move or a new comment carry `"warning": "Claimed by builder until 12:15 UTC."` (bulk updates carry it on each item), and the web edit form shows the same note above the fields. Check with the holder before changing work in progress.
+
 ## When a claim lapses
 
 Vaquero checks for lapsed claims every 30 seconds. A lapsed ticket that is still in progress goes back to the status it was claimed from, unassigned, and is ready again; the history says the claim lapsed. A ticket the agent had already moved on, to review say, keeps its status and assignee and only loses the claim.

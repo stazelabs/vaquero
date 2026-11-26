@@ -207,8 +207,24 @@ func TicketEdit(d Deps) http.HandlerFunc {
 			names[i] = tag.Name
 		}
 		f.Tags = strings.Join(names, ", ")
+		if f.ClaimNote, err = claimNote(r, d, t); err != nil {
+			serverError(w, r, d, err)
+			return
+		}
 		formPage(w, r, d, p, f, f.MilestoneID, http.StatusOK)
 	}
+}
+
+// claimNote is the edit form's note about someone else's live claim on t.
+func claimNote(r *http.Request, d Deps, t gen.Ticket) (string, error) {
+	if !t.ClaimedBy.Valid || t.ClaimedBy.String == d.Actor.ID {
+		return "", nil
+	}
+	a, err := d.R.GetActor(r.Context(), t.ClaimedBy.String)
+	if err != nil {
+		return "", err
+	}
+	return templates.ClaimNote(a.ID, a.Name, t.ClaimExpiresAt.String, d.Actor.ID, d.Now(), ""), nil
 }
 
 // TicketUpdate saves the edit form.
@@ -222,6 +238,11 @@ func TicketUpdate(d Deps) http.HandlerFunc {
 		// The version rides through every re-render, field errors included,
 		// so the next save is still checked.
 		f := templates.TicketForm{Project: p, TicketKey: key, Version: r.PostFormValue("version")}
+		var err error
+		if f.ClaimNote, err = claimNote(r, d, t); err != nil {
+			serverError(w, r, d, err)
+			return
+		}
 		in, errs := readTicketForm(r, d, p, &f)
 		if len(errs) > 0 {
 			f.Errors = errs

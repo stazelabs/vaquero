@@ -28,6 +28,7 @@ SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_ch
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
        coalesce(ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,
        coalesce(t.claim_expires_at, '') AS claim_expires_at,
+       coalesce(t.claimed_by, '') AS claimant_id,
        CAST(s.category = 'todo' AND t.assignee_id IS NULL AND t.claimed_by IS NULL
             AND NOT EXISTS (
                 SELECT 1 FROM ticket_links l
@@ -85,6 +86,7 @@ type ListBoardTicketsRow struct {
 	ClaimantName    string
 	ClaimantKind    string
 	ClaimExpiresAt  string
+	ClaimantID      string
 	Ready           bool
 }
 
@@ -127,6 +129,7 @@ func (q *Queries) ListBoardTickets(ctx context.Context, arg ListBoardTicketsPara
 			&i.ClaimantName,
 			&i.ClaimantKind,
 			&i.ClaimExpiresAt,
+			&i.ClaimantID,
 			&i.Ready,
 		); err != nil {
 			return nil, err

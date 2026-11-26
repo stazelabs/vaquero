@@ -57,6 +57,10 @@ type Ticket struct {
 	Attachments []Attachment    `json:"attachments"`
 	CreatedAt   string          `json:"created_at"`
 	UpdatedAt   string          `json:"updated_at"`
+	// Warning is set on a write's answer when someone other than the
+	// caller holds a claim on the ticket: "Claimed by bot until 12:15
+	// UTC." Claims are advisory, so the write went through.
+	Warning string `json:"warning,omitempty"`
 }
 
 // TicketBrief is the short answer to a write (?view=summary): the
@@ -70,6 +74,7 @@ type TicketBrief struct {
 	Assignee       string `json:"assignee,omitempty"`
 	ClaimedBy      string `json:"claimed_by,omitempty"`
 	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
+	Warning        string `json:"warning,omitempty"` // as on Ticket
 }
 
 // BulkResult is one item's outcome in POST /api/v1/tickets/bulk: the
@@ -83,6 +88,9 @@ type BulkResult struct {
 	Version int64    `json:"version,omitempty"`
 	Error   *Failure `json:"error,omitempty"`
 	Skipped []string `json:"skipped,omitempty"`
+	// Warning is set when someone other than the caller holds a claim on
+	// the ticket (claims are advisory; the item still ran).
+	Warning string `json:"warning,omitempty"`
 }
 
 // BulkAnswer is POST /api/v1/tickets/bulk's answer, one result per item
@@ -105,6 +113,7 @@ type Comment struct {
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
+	Warning   string `json:"warning,omitempty"` // on a new comment's answer, as on Ticket
 }
 
 // Attachment is a file on a ticket. URL is the address of its bytes on the

@@ -14,6 +14,7 @@ type TicketForm struct {
 	Parent, MilestoneID, Tags                     string
 	Version                                       string // the version the form was opened at
 	Conflict                                      string // set when a save was refused as stale
+	ClaimNote                                     string // someone else's claim (ClaimNote), "" for none
 	Statuses, Assignees, Milestones               []Option
 	Errors                                        map[string]string
 }
@@ -78,6 +79,15 @@ templ TicketFormPage(f TicketForm) {
 				<a href={ templ.SafeURL("/t/" + f.TicketKey) } class={ btnLink }>See the ticket now</a>
 				<span class="text-muted">·</span>
 				@helpLink("editing-and-conflicts", "About conflicts")
+			</div>
+		}
+		if f.ClaimNote != "" {
+			<div class="mt-4 flex flex-wrap items-center gap-x-1.5 rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink" data-claim-note>
+				<span class="text-muted">
+					@Icon("claim")
+				</span>
+				{ f.ClaimNote }. Claims are advisory: your save goes through, but they may be working on it.
+				@helpLink("agents-and-claims", "About claims")
 			</div>
 		}
 		<form method="post" action={ templ.SafeURL(formAction(f)) } class="mt-6 grid gap-6 lg:grid-cols-3">

@@ -352,15 +352,6 @@ func APITicketPatch(d Deps) http.HandlerFunc {
 	}
 }
 
-func writeTicket(w http.ResponseWriter, r *http.Request, d Deps, t gen.Ticket, p gen.Project, status int) {
-	out, err := ticketDTO(r, d, t, p)
-	if err != nil {
-		apiFail(w, r, d, api.Internal(), err)
-		return
-	}
-	api.WriteJSON(w, status, out)
-}
-
 // APITicketMove is POST /api/v1/tickets/{ticket}/move {status, before?,
 // after?}; ?view=summary answers with the short answer.
 func APITicketMove(d Deps) http.HandlerFunc {
@@ -430,7 +421,17 @@ func APICommentCreate(d Deps) http.HandlerFunc {
 			api.WriteJSON(w, http.StatusCreated, b)
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, commentDTO(c, a.Name))
+		out := commentDTO(c, a.Name)
+		// t was read before the comment, which leaves the claim alone.
+		if t.ClaimedBy.Valid {
+			claimant, err := d.R.GetActor(r.Context(), t.ClaimedBy.String)
+			if err != nil {
+				apiFail(w, r, d, api.Internal(), err)
+				return
+			}
+			out.Warning = claimWarning(r, d, t.ClaimedBy.String, claimant.Name, t.ClaimExpiresAt.String)
+		}
+		api.WriteJSON(w, http.StatusCreated, out)
 	}
 }
 

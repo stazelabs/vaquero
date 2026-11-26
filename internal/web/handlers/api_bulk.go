@@ -304,6 +304,6 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 		}
 		return res
 	}
-	res.Status, res.Version, res.OK = b.Status, b.Version, res.Error == nil
+	res.Status, res.Version, res.OK, res.Warning = b.Status, b.Version, res.Error == nil, b.Warning
 	return res
 }

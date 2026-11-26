@@ -83,7 +83,7 @@ A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"mileston
 
 ## Short answers
 
-A ticket update, a move, a new comment, a claim, a heartbeat and a release each answer with the whole ticket (a new comment answers with the comment). Add `?view=summary` to get only the ticket's state instead: `key`, `status`, `category`, `version`, and `assignee`, `claimed_by` and `claim_expires_at` when they are set, plus the new comment's `id` for a comment. `?view=full` is the default; any other view is `422` and nothing is written.
+A ticket update, a move, a new comment, a claim, a heartbeat and a release each answer with the whole ticket (a new comment answers with the comment). Add `?view=summary` to get only the ticket's state instead: `key`, `status`, `category`, `version`, and `assignee`, `claimed_by` and `claim_expires_at` when they are set, plus the new comment's `id` for a comment. `?view=full` is the default; any other view is `422` and nothing is written. When someone other than you holds a claim on the ticket, each of these answers (and each item of a bulk update) also carries `warning`, such as `"Claimed by builder until 12:15 UTC."`; the write still went through ([claims are advisory](/help/agents-and-claims#claims-are-advisory)).
 
     POST /api/v1/tickets/VAQ-12/move?view=summary
     {"key": "VAQ-12", "status": "In review", "category": "in_review", "version": 7, "assignee": "builder"}
