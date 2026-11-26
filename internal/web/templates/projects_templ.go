@@ -1220,7 +1220,7 @@ func workflowSection(v SettingsView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "Workflow</h2><p class=\"mt-1 max-w-2xl text-sm text-muted\">With the agent workflow on, tickets carry an execution tier, and the tier map names the model that works each tier in each harness.")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "Workflow</h2><p class=\"mt-1 max-w-2xl text-sm text-muted\">Tickets carry an execution tier when the agent workflow is on; the tier map names the model each tier uses in each harness.")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

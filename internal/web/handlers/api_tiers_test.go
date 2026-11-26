@@ -111,6 +111,11 @@ func TestMCPUpdateTicketTier(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &tk); err != nil || tk.Tier != "light" || tk.Model != "small-model" {
 		t.Fatalf("%v %s", err, text)
 	}
+	res, text = mcpCall(t, cs, "create_ticket", map[string]any{"project": "VAQ", "title": "Spec", "tier": "design", "model": "m-2"})
+	tk = api.Ticket{}
+	if err := json.Unmarshal([]byte(text), &tk); res.IsError || err != nil || tk.Tier != "design" || tk.Model != "m-2" {
+		t.Fatalf("create: %v %s", err, text)
+	}
 	res, text = mcpCall(t, cs, "update_ticket", map[string]any{"key": "VAQ-1", "tier": "huge"})
 	if !res.IsError || !strings.Contains(text, "Choose design, light, standard or heavy.") {
 		t.Fatalf("%v %s", res.IsError, text)
@@ -122,6 +127,9 @@ func TestTicketFormTier(t *testing.T) {
 	e := webtest.New(t)
 	p := project(t, e)
 	tk := ticket(t, e, p, core.TicketInput{Title: "Work"})
+	if _, err := e.Deps.Core.UpdateProject(bg, e.Deps.Actor.ID, p.ID, core.ProjectPatch{Workflow: new(true)}); err != nil {
+		t.Fatal(err)
+	}
 	c := e.Client()
 	contains(t, c.Get("/t/VAQ-1/edit").Body, `name="tier"`, `value="standard"`, `name="model"`)
 	form := url.Values{"title": {"Work"}, "status": {tk.StatusID}, "priority": {"0"}, "tier": {"standard"}, "model": {"m-1"}, "version": {"1"}}
@@ -222,4 +230,47 @@ func eventCount(t *testing.T, e *webtest.Env) int64 {
 		t.Fatal(err)
 	}
 	return n
+}
+
+// With the workflow off, the ticket form and page show no tier, and a save
+// from the form keeps a tier the API set.
+func TestNoTierUIWithWorkflowOff(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Work", Tier: "heavy", Model: "m-1"})
+	c := e.Client()
+	for _, path := range []string{"/p/VAQ/new", "/t/VAQ-1/edit", "/t/VAQ-1"} {
+		body := c.Get(path).Body
+		for _, bad := range []string{`name="tier"`, `name="model"`, "data-tier", "m-1", ">Tier<"} {
+			if strings.Contains(body, bad) {
+				t.Errorf("%s has %q", path, bad)
+			}
+		}
+	}
+	form := url.Values{"title": {"Work again"}, "status": {tk.StatusID}, "priority": {"0"}, "version": {"1"}}
+	if r := c.Post("/t/VAQ-1", form); r.Status != 303 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if got, _ := e.Deps.R.GetTicket(bg, tk.ID); got.Tier != "heavy" || got.Model != "m-1" || got.Title != "Work again" {
+		t.Fatalf("%q %q %q", got.Title, got.Tier, got.Model)
+	}
+}
+
+// The triage post does nothing with the workflow off.
+func TestTriageStatusesNeedTheWorkflow(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	before := eventCount(t, e)
+	r := e.Client().Post("/p/VAQ/triage-statuses", nil)
+	if r.Status != 303 || r.Location != "/p/VAQ/settings" || eventCount(t, e) != before {
+		t.Fatalf("%d %q, %d events", r.Status, r.Location, eventCount(t, e)-before)
+	}
+}
+
+// A stored empty map is sent as {}, not left out.
+func TestAPIEmptyTierMap(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	if r := c.API("PATCH", "/api/v1/projects/VAQ", tok, map[string]any{"tier_map": map[string]any{}}); r.Status != 200 || !strings.Contains(r.Body, `"tier_map": {}`) {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
 }

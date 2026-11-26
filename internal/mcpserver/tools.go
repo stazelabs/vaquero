@@ -64,6 +64,8 @@ type (
 		Milestone string   `json:"milestone,omitempty" jsonschema:"A milestone, by name."`
 		Parent    string   `json:"parent,omitempty" jsonschema:"The parent ticket's key, making this a sub-ticket."`
 		Tags      []string `json:"tags,omitempty" jsonschema:"Tags; new ones are created."`
+		Tier      string   `json:"tier,omitempty" jsonschema:"The execution tier: design, light, standard or heavy."`
+		Model     string   `json:"model,omitempty" jsonschema:"An exact model for the work, overriding the project's tier map."`
 	}
 
 	updateArgs struct {
@@ -215,7 +217,7 @@ func addTools(s *mcp.Server, c *caller) {
 		"Create a ticket in a project. Only the title is required.",
 		func(in createArgs) request {
 			b := map[string]any{"title": in.Title}
-			for k, v := range map[string]string{"body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent} {
+			for k, v := range map[string]string{"body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent, "tier": in.Tier, "model": in.Model} {
 				if v != "" {
 					b[k] = v
 				}

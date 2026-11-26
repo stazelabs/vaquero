@@ -260,7 +260,7 @@ templ workflowSection(v SettingsView) {
 			Workflow
 		</h2>
 		<p class="mt-1 max-w-2xl text-sm text-muted">
-			With the agent workflow on, tickets carry an execution tier, and the tier map names the model that works each tier in each harness.
+			Tickets carry an execution tier when the agent workflow is on; the tier map names the model each tier uses in each harness.
 			@helpLink("agent-workflow", "About the agent workflow")
 		</p>
 		<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/workflow") } class="mt-3 max-w-2xl space-y-4">

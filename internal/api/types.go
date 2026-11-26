@@ -16,7 +16,7 @@ type Project struct {
 	// effective tier map, harness → tier → model: its own, else the
 	// default.
 	Workflow bool                         `json:"workflow"`
-	TierMap  map[string]map[string]string `json:"tier_map,omitempty"`
+	TierMap  map[string]map[string]string `json:"tier_map"`
 }
 
 type Status struct {

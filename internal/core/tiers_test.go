@@ -75,6 +75,9 @@ func TestTierMapDefaultAndParse(t *testing.T) {
 	if err != nil || m.Model("claude", "light") != "a" || m.Model("claude", "standard") != "" {
 		t.Fatalf("%v %v", err, m)
 	}
+	if _, err := core.ParseTierMap(manyHarnesses(20)); err != nil {
+		t.Fatalf("20 harnesses: %v", err)
+	}
 	if m, err := core.ParseTierMap(""); err != nil || m.Model("claude", "heavy") != "claude-opus-5-5" {
 		t.Fatalf("empty: %v %v", err, m)
 	}
@@ -85,6 +88,8 @@ func TestTierMapDefaultAndParse(t *testing.T) {
 		`{"claude": {"huge": "x"}}`: "Use only the tiers design, light, standard and heavy.",
 		`{"": {"heavy": "x"}}`:      "Name each harness.",
 		`{"claude": {"heavy": "` + strings.Repeat("m", 81) + `"}}`: "Keep each model under 80 characters.",
+		`{"cl\u0007aude": {"heavy": "x"}}`:                         "Remove the hidden control characters.",
+		manyHarnesses(21):                                          "Keep the tier map to 20 harnesses or fewer.",
 	} {
 		_, err := core.ParseTierMap(in)
 		fieldErr(t, err, "tier_map", want)
@@ -132,4 +137,13 @@ func TestProjectWorkflowSwitch(t *testing.T) {
 	if eventCount(t, d) != before+3 {
 		t.Fatal("a refused map wrote")
 	}
+}
+
+// manyHarnesses is a tier map naming n harnesses.
+func manyHarnesses(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = `"h` + itoa(i) + `": {}`
+	}
+	return "{" + strings.Join(parts, ", ") + "}"
 }

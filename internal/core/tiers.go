@@ -12,8 +12,12 @@ import (
 // A ticket's tier may also be "" (none).
 var Tiers = []string{"design", "light", "standard", "heavy"}
 
-// MaxModel bounds a ticket's model and each model in a tier map.
-const MaxModel = 80
+// MaxModel bounds a ticket's model and each model in a tier map;
+// MaxHarnesses the harnesses in a tier map.
+const (
+	MaxModel     = 80
+	MaxHarnesses = 20
+)
 
 const (
 	tierMsg    = "Choose design, light, standard or heavy."
@@ -64,11 +68,17 @@ func ParseTierMap(s string) (TierMap, error) {
 	if err := dec.Decode(&m); err != nil || m == nil || dec.More() {
 		return nil, invalid("tier_map", tierMapMsg)
 	}
+	if len(m) > MaxHarnesses {
+		return nil, invalid("tier_map", "Keep the tier map to 20 harnesses or fewer.")
+	}
 	for _, h := range slices.Sorted(maps.Keys(m)) {
 		if strings.TrimSpace(h) == "" || h != strings.TrimSpace(h) {
 			return nil, invalid("tier_map", "Name each harness.")
 		}
-		if len([]rune(h)) > 40 || hasControl(h) {
+		if hasControl(h) {
+			return nil, invalid("tier_map", controlMsg)
+		}
+		if len([]rune(h)) > 40 {
 			return nil, invalid("tier_map", "Keep each harness name under 40 characters.")
 		}
 		if m[h] == nil {

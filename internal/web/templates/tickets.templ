@@ -111,8 +111,10 @@ templ TicketFormPage(f TicketForm) {
 				@Select(SelectProps{Name: "milestone", Label: "Milestone", Selected: f.MilestoneID, Options: f.Milestones, Error: f.Errors["milestone"]})
 				@TextInput(InputProps{Name: "parent", Label: "Parent ticket", Value: f.Parent, Placeholder: f.Project.Key + "-12", Error: f.Errors["parent"]})
 				@TextInput(InputProps{Name: "tags", Label: "Tags", Value: f.Tags, Placeholder: "ui, bug", Error: f.Errors["tags"]})
-				@Select(SelectProps{Name: "tier", Label: "Tier", Selected: f.Tier, Options: TierOptions(), Error: f.Errors["tier"]})
-				@TextInput(InputProps{Name: "model", Label: "Model", Value: f.Model, Placeholder: "From the tier map", Error: f.Errors["model"]})
+				if f.Project.Workflow == 1 {
+					@Select(SelectProps{Name: "tier", Label: "Tier", Selected: f.Tier, Options: TierOptions(), Error: f.Errors["tier"]})
+					@TextInput(InputProps{Name: "model", Label: "Model", Value: f.Model, Placeholder: "From the tier map", Error: f.Errors["model"]})
+				}
 			</div>
 			<div class="flex items-center gap-4 lg:col-span-3">
 				<button type="submit" class={ btnPrimary }>
@@ -290,13 +292,15 @@ templ TicketPage(v TicketView) {
 						<p class="text-muted">None</p>
 					}
 				</div>
-				<div>
-					<p class={ labelClass }>Tier</p>
-					<p class={ templ.KV("text-muted", v.Ticket.Tier == "") }>{ TierLabel(v.Ticket.Tier) }</p>
-					if v.Ticket.Model != "" {
-						<p class="font-mono text-xs text-muted">{ v.Ticket.Model }</p>
-					}
-				</div>
+				if v.Project.Workflow == 1 {
+					<div data-tier>
+						<p class={ labelClass }>Tier</p>
+						<p class={ templ.KV("text-muted", v.Ticket.Tier == "") }>{ TierLabel(v.Ticket.Tier) }</p>
+						if v.Ticket.Model != "" {
+							<p class="font-mono text-xs text-muted">{ v.Ticket.Model }</p>
+						}
+					</div>
+				}
 				<div>
 					<p class={ labelClass }>Tags</p>
 					if len(v.Tags) == 0 {

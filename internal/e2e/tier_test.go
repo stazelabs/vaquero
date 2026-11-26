@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -13,6 +14,9 @@ import (
 func TestTierSelectSaves(t *testing.T) {
 	env := webtest.New(t)
 	f := newProject(t, env, "TIE")
+	if _, err := env.Deps.Core.UpdateProject(context.Background(), env.Deps.Actor.ID, f.project.ID, core.ProjectPatch{Workflow: new(true)}); err != nil {
+		t.Fatal(err)
+	}
 	tk := f.ticket("Tiered work", "")
 	p := open(t, env, 1280, 900)
 	p.goTo("/t/TIE-1/edit")

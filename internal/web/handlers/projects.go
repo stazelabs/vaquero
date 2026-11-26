@@ -198,6 +198,11 @@ func TriageStatuses(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if p.Workflow != 1 {
+			// The offer shows only with the workflow on; a stale page changes nothing.
+			http.Redirect(w, r, projectPath(p, "/settings"), http.StatusSeeOther)
+			return
+		}
 		settingsAction(w, r, d, p, "Triage statuses added.", func() error {
 			ss, err := d.R.ListStatuses(r.Context(), p.ID)
 			if err != nil {

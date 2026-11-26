@@ -254,7 +254,12 @@ func TicketUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		version, _ := strconv.ParseInt(f.Version, 10, 64)
-		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, in.Patch(), version); err != nil {
+		patch := in.Patch()
+		if p.Workflow != 1 {
+			// The form shows no tier or model then; keep what the API set.
+			patch.Tier, patch.Model = nil, nil
+		}
+		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, patch, version); err != nil {
 			if conflict, ok := errors.AsType[*core.Conflict](err); ok {
 				// Keep what was typed; the form now carries the current
 				// version, so saving again overwrites knowingly.
