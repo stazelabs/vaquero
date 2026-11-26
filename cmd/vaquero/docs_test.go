@@ -114,8 +114,13 @@ func TestCLIFlagsDocumented(t *testing.T) {
 		for _, m := range flagRe.FindAllStringSubmatch(sourceOf(t, f), -1) {
 			name := m[1] + m[2]
 			seen++
-			if !strings.Contains(a.Markdown, "--"+name) {
-				t.Errorf("%s: --%s isn't in the cli article", f, name)
+			// A one-letter flag is written with one dash (-n, -f).
+			spelled := "--" + name
+			if len(name) == 1 {
+				spelled = "-" + name
+			}
+			if !regexp.MustCompile(regexp.QuoteMeta(spelled) + `\b`).MatchString(a.Markdown) {
+				t.Errorf("%s: %s isn't in the cli article", f, spelled)
 			}
 		}
 	}

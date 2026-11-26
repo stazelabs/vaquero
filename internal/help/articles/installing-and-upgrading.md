@@ -21,6 +21,13 @@ That is all: run any `vaquero` command and the server starts in the background. 
 
 The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual. On Linux the default comes from the systemd user manager's `XDG_DATA_HOME`, which can differ from your shell's.
 
+## The server's log
+
+    vaquero logs        # the last 100 lines
+    vaquero logs -f     # and every new line, until Ctrl-C
+
+A server the command line started writes its log to `vaquero.log` in the data directory. Under `brew services` it writes to Homebrew's log directory instead, `$(brew --prefix)/var/log/vaquero.log` (`/opt/homebrew/var/log/vaquero.log` on an Apple silicon Mac). Either way, at 10 MB the log moves to `vaquero.log.1`, replacing the one before, and a new one starts. `vaquero logs` reads whichever this Vaquero uses, with no server running; `vaquero logs --path` says which.
+
 ## Installing from a release archive
 
 On Linux without Homebrew, download the archive for your machine from the releases page, with `checksums.txt` beside it, and check it before unpacking:

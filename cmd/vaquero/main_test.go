@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stazelabs/vaquero/internal/logfile"
 )
 
 func TestRunVersion(t *testing.T) {
@@ -32,28 +34,67 @@ func TestRunUnknownCommand(t *testing.T) {
 	}
 }
 
-// VAQ-61: a server whose output is the data directory's vaquero.log (the
-// command line started it) writes its log through a rotating writer; any
-// other output is left alone.
+// VAQ-61, VAQ-121: a server whose output is a regular file (the data
+// directory's vaquero.log when the command line started it, or the log
+// brew services opened for it) writes its log through a rotating writer;
+// any other output is left alone.
 func TestBackgroundLog(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "vaquero.log")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	for _, name := range []string{"vaquero.log", "other.log"} {
+		f, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		w := backgroundLog(f)
+		if w == nil {
+			t.Fatalf("%s wasn't recognised", name)
+		}
+		w.Close()
+	}
+	r, pw, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	w := backgroundLog(dir, f)
+	defer r.Close()
+	defer pw.Close()
+	if backgroundLog(pw) != nil || backgroundLog(&bytes.Buffer{}) != nil {
+		t.Fatal("a pipe or a buffer was taken for a log file")
+	}
+}
+
+// VAQ-121: the log brew services opened (both standard output and error,
+// as the formula's log_path and error_log_path name one file) rotates at
+// logfile.Max like vaquero.log, and after the rotation both descriptors
+// write to the new file, so no line lands in the old one.
+func TestBackgroundLogRotatesTheServiceLog(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "var", "log", "vaquero.log")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), logfile.Max-10), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	w := backgroundLog(stderr)
 	if w == nil {
-		t.Fatal("the data directory's log wasn't recognised")
+		t.Fatal("the service's log wasn't recognised")
 	}
-	w.Close()
-	other, err := os.Create(filepath.Join(dir, "other.log"))
-	if err != nil {
+	defer w.Close()
+	if _, err := w.Write([]byte("a line past the limit\n")); err != nil {
 		t.Fatal(err)
 	}
-	defer other.Close()
-	if backgroundLog(dir, other) != nil || backgroundLog(dir, &bytes.Buffer{}) != nil {
-		t.Fatal("another output was taken for the log")
+	if _, err := stderr.Write([]byte("a crash trace\n")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "a line past the limit\na crash trace\n" {
+		t.Fatalf("vaquero.log holds %q", b)
+	}
+	if st, err := os.Stat(path + ".1"); err != nil || st.Size() != logfile.Max-10 {
+		t.Fatalf(".1: %v %v", st, err)
 	}
 }

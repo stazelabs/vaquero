@@ -27,6 +27,7 @@ server:
   serve        run the server (the commands below start it when needed)
   version      print the release, commit and build date
   stop         stop the background server
+  logs         print the server's log (-n 100, -f to follow, --path)
   backup       list the database snapshots, or restore one
   export       write everything to a .tar.gz (vaquero export FILE)
   import       restore an export into an empty instance (vaquero import FILE)
@@ -85,7 +86,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		ctx, stop := shutdownContext()
 		defer stop()
 		out := stderr
-		if w := backgroundLog(cfg.DataDir, stderr); w != nil {
+		if w := backgroundLog(stderr); w != nil {
 			defer w.Close()
 			out = w
 		}
@@ -210,18 +211,23 @@ func premigrateSnapshot(path string, applied int64) (string, bool) {
 	return name, true
 }
 
-// backgroundLog is a rotating writer for {dataDir}/vaquero.log when out is
-// that very file, as it is for a server the command line started in the
-// background (client.EnsureLocal); else nil. The log goes through it, and
-// each rotation points standard output and error at the new file too, so a
-// crash trace from the Go runtime lands in vaquero.log, not vaquero.log.1.
-func backgroundLog(dataDir string, out io.Writer) *logfile.Writer {
+// backgroundLog is a rotating writer for the log file out is, when out is
+// a regular file: {data dir}/vaquero.log for a server the command line
+// started in the background (client.EnsureLocal), or the file brew services
+// opened for the service ({brew prefix}/var/log/vaquero.log); else nil. The
+// log goes through it, and each rotation points standard output and error
+// (when it is the same file) at the new file too, so a crash trace from the
+// Go runtime lands in the log, not in its .1.
+func backgroundLog(out io.Writer) *logfile.Writer {
 	f, ok := out.(*os.File)
 	if !ok {
 		return nil
 	}
-	path := filepath.Join(dataDir, "vaquero.log")
 	a, err := f.Stat()
+	if err != nil || !a.Mode().IsRegular() {
+		return nil
+	}
+	path, err := logfile.PathOf(f)
 	if err != nil {
 		return nil
 	}
@@ -234,7 +240,7 @@ func backgroundLog(dataDir string, out io.Writer) *logfile.Writer {
 		return nil
 	}
 	w.Redirect(int(f.Fd())) //nolint:gosec // descriptors fit int
-	if st, err := os.Stdout.Stat(); err == nil && os.SameFile(st, b) {
+	if st, err := os.Stdout.Stat(); err == nil && os.SameFile(st, b) && os.Stdout.Fd() != f.Fd() {
 		w.Redirect(int(os.Stdout.Fd())) //nolint:gosec // descriptors fit int
 	}
 	return w

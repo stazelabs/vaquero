@@ -1,8 +1,10 @@
-// Package logfile keeps a background server's log, {data dir}/vaquero.log,
-// from growing without limit: at Max bytes it moves to vaquero.log.1
-// (replacing the one before) and a new file starts. The command line
-// rotates it before starting a server (Rotate); a server writing to it
-// rotates it as it goes (Writer).
+// Package logfile keeps a background server's log from growing without
+// limit: {data dir}/vaquero.log for a server the command line started, or
+// the file brew services sends the service's output to. At Max bytes it
+// moves to .1 (replacing the one before) and a new file starts. The command
+// line rotates vaquero.log before starting a server (Rotate); a server
+// writing to a log file rotates it as it goes (Writer). PathOf finds the
+// file a descriptor writes to.
 package logfile
 
 import (
@@ -59,8 +61,11 @@ func Open(path string, max int64) (*Writer, error) {
 	return w, nil
 }
 
+// openFile is os.OpenFile; tests replace it.
+var openFile = os.OpenFile
+
 func (w *Writer) open() error {
-	f, err := os.OpenFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err := openFile(w.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -74,7 +79,9 @@ func (w *Writer) open() error {
 }
 
 // Write appends p, first rotating the file when p would take it past max.
-// If the rotation fails the write goes to the file as it is.
+// If the rotation fails the write goes to the file as it is; when the new
+// file can't be opened, the old one moves back first, so the log keeps its
+// name.
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -82,7 +89,8 @@ func (w *Writer) Write(p []byte) (int, error) {
 		if err := os.Rename(w.path, w.path+".1"); err == nil {
 			old := w.f
 			if err := w.open(); err != nil {
-				w.f = old // keep writing where it was
+				w.f = old // keep writing where it was, under its own name
+				_ = os.Rename(w.path+".1", w.path)
 			} else {
 				old.Close()
 				for _, fd := range w.fds {
