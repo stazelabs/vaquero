@@ -37,8 +37,20 @@ func attachKey(instance, id string) string { return blobs.AttachmentKey(instance
 // thumbs/{instance}/{id}, lower case.
 func thumbKey(instance, attachmentID string) string { return blobs.ThumbKey(instance, attachmentID) }
 
-// thumbURL is the address of a's preview: /attachments/{id}/thumb.
-func thumbURL(id string) string { return "/attachments/" + id + "/thumb" }
+// thumbURL is the address of attachment id's preview: /thumbs/{id}.
+func thumbURL(id string) string { return "/thumbs/" + id }
+
+// thumbETag is a preview's validator: the attachment id and the preview
+// version, raised whenever thumbs makes previews differently so browsers
+// fetch the new ones.
+func thumbETag(id string) string { return `"` + id + `-t1"` }
+
+// makePreview and thumbTimeout are thumbs.Make and its cap (variables for
+// tests).
+var (
+	makePreview  = thumbs.Make
+	thumbTimeout = thumbs.Timeout
+)
 
 // attachmentURL is the canonical address of a: /attachments/{id}/{name},
 // the name escaped as one path segment.
@@ -73,13 +85,19 @@ func deleteBytes(r *http.Request, d Deps, key, id string) {
 }
 
 // makeThumb makes and stores the preview of attachment id from its bytes,
-// best effort: an image that can't be previewed stores nothing (the page
-// shows the original), and any other failure is only logged. It returns
-// the preview, or nil.
+// best effort, within thumbTimeout: an image that can't be previewed
+// stores nothing (the page shows the original), one that runs out of time
+// (waiting for a turn or decoding) is left for its first view, and any
+// other failure is only logged. It returns the preview, or nil.
 func makeThumb(ctx context.Context, d Deps, id string, src io.Reader) ([]byte, string) {
-	data, ctype, err := thumbs.Make(src)
+	mctx, cancel := context.WithTimeout(ctx, thumbTimeout)
+	defer cancel()
+	data, ctype, err := makePreview(mctx, src)
 	switch {
 	case errors.Is(err, thumbs.ErrUnsupported), errors.Is(err, thumbs.ErrTooLarge):
+		return nil, ""
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		d.Logger.InfoContext(ctx, "thumbnail left for later", "err", err, "attachment", id)
 		return nil, ""
 	case err != nil:
 		d.Logger.WarnContext(ctx, "make thumbnail", "err", err, "attachment", id)
@@ -318,13 +336,13 @@ func AttachmentServe(d Deps) http.HandlerFunc {
 	}
 }
 
-// AttachmentThumb serves /attachments/{id}/thumb, an image attachment's
-// preview: the stored one, or one made now from the original and kept
-// (after an import, or when the upload couldn't make it). Two first
-// requests at once may both make it; the bytes are the same. What can't be
-// previewed (not an image, WebP, over thumbs.MaxPixels, damaged) is a 302
-// to the original. The headers are the original's: the id as ETag with a
-// bodiless 304, private no-cache, nosniff and a sandbox CSP.
+// AttachmentThumb serves /thumbs/{id}, an image attachment's preview: the
+// stored one, or one made now from the original and kept (after an
+// import, or when the upload couldn't make it). Two first requests at once
+// may both make it; the bytes are the same. What can't be previewed (not
+// an image, WebP, over thumbs.MaxPixels, damaged, or out of time) is a 302
+// to the original. The headers are the original's: an ETag (thumbETag)
+// with a bodiless 304, private no-cache, nosniff and a sandbox CSP.
 func AttachmentThumb(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -345,7 +363,7 @@ func AttachmentThumb(d Deps) http.HandlerFunc {
 			w.WriteHeader(http.StatusFound)
 			return
 		}
-		etag := `"` + a.ID + `"`
+		etag := thumbETag(a.ID)
 		if etagMatches(r.Header.Get("If-None-Match"), etag) {
 			h.Set("ETag", etag)
 			h.Set("Cache-Control", "private, no-cache")
@@ -361,7 +379,8 @@ func AttachmentThumb(d Deps) http.HandlerFunc {
 			return
 		}
 		if data == nil {
-			thumbFallback(w, r, d, a)
+			h.Set("Location", attachmentURL(a))
+			w.WriteHeader(http.StatusFound)
 			return
 		}
 		h.Set("ETag", etag)
@@ -402,23 +421,6 @@ func thumbFromOriginal(r *http.Request, d Deps, a gen.Attachment) ([]byte, strin
 	defer rc.Close()
 	data, ctype := makeThumb(r.Context(), d, a.ID, rc)
 	return data, ctype, nil
-}
-
-// thumbFallback answers for a preview there is none of: a 302 to the
-// original, or the original itself when a is named "thumb" and its address
-// is this one.
-func thumbFallback(w http.ResponseWriter, r *http.Request, d Deps, a gen.Attachment) {
-	if attachmentURL(a) != thumbURL(a.ID) {
-		w.Header().Set("Location", attachmentURL(a))
-		w.WriteHeader(http.StatusFound)
-		return
-	}
-	switch err := serveBytes(w, r, d, a); {
-	case errors.Is(err, blobs.ErrNotFound):
-		NotFound(d)(w, r)
-	case err != nil:
-		serverError(w, r, d, err)
-	}
 }
 
 // serveBytes answers a request for a's bytes, the web and the API alike:

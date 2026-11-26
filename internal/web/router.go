@@ -59,8 +59,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 	r.Get("/events/stream", handlers.Stream(d))
 	// Attachment bytes: no project key in the URL, so references survive a
 	// key change. The bare id redirects to the canonical name.
+	r.Get("/thumbs/{id}", handlers.AttachmentThumb(d))
 	r.Get("/attachments/{id}", handlers.AttachmentServe(d))
-	r.Get("/attachments/{id}/thumb", handlers.AttachmentThumb(d))
 	r.Get("/attachments/{id}/*", handlers.AttachmentServe(d))
 	// Pages: each records the newest event sequence before it reads
 	// anything, for its live stream (handlers.PageSeq); so does a form POST

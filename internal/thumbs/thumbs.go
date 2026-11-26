@@ -3,18 +3,24 @@
 // GIF (a GIF's first frame). WebP and every other type are ErrUnsupported,
 // and the page shows the original instead.
 //
-// Memory is bounded before anything is decoded: image.DecodeConfig reads
-// only the header, and an image over MaxPixels is ErrTooLarge. At most
-// maxMaking images are decoded at once, so a burst of first requests for a
-// gallery can't hold many full-size images in memory together.
+// Work is bounded and cancellable. At most maxMaking previews are made at
+// once, and Make waits for a slot (or for its context) before it reads a
+// byte of the source. image.DecodeConfig then reads only the header: an
+// image over MaxPixels is ErrTooLarge, and a JPEG with more than MaxScans
+// scans (each one a full pass over the image) is ErrUnsupported, before
+// anything is decoded. The decode runs on its own goroutine that keeps the
+// slot until it finishes, so Make can give up when its context ends (the
+// callers cap it at Timeout) without letting more decodes run at once.
 //
 // A thumbnail fits within Max × Max, keeps the aspect ratio and is never
-// larger than the source. It is a PNG when any of its pixels is not fully
+// larger than the source. A JPEG's Exif orientation is applied, so the
+// preview is upright. It is a PNG when any of its pixels is not fully
 // opaque, else a JPEG at quality 85.
 package thumbs
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -22,6 +28,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"time"
 
 	// Registered for image.DecodeConfig and image.Decode.
 	_ "image/gif"
@@ -32,31 +39,58 @@ const (
 	Max = 192
 	// MaxPixels is the largest source image, in pixels, that is decoded.
 	MaxPixels = 40_000_000
+	// MaxScans is the most scans (SOS markers) a JPEG may have.
+	MaxScans = 100
+	// Timeout is how long a caller should let Make run.
+	Timeout = 10 * time.Second
 	// maxSource bounds the bytes read; attachments are at most 10 MB.
 	maxSource = 16 << 20
-	// maxMaking is how many images may be decoded at once.
+	// maxMaking is how many previews may be made at once.
 	maxMaking = 2
 )
 
 var (
-	// ErrUnsupported is a source that is not a PNG, JPEG or GIF.
+	// ErrUnsupported is a source that is not a PNG, JPEG or GIF, or a JPEG
+	// with more than MaxScans scans.
 	ErrUnsupported = errors.New("thumbs: unsupported image type")
 	// ErrTooLarge is a source over MaxPixels.
 	ErrTooLarge = errors.New("thumbs: image too large")
 )
 
+// making holds one token per preview being made.
 var making = make(chan struct{}, maxMaking)
+
+type result struct {
+	data  []byte
+	ctype string
+	err   error
+}
 
 // Make reads an image from r and returns its thumbnail and content type
 // ("image/png" or "image/jpeg"). It returns ErrUnsupported for a type it
-// can't decode, ErrTooLarge over MaxPixels, and a decode error for a
-// damaged image.
-func Make(r io.Reader) ([]byte, string, error) {
+// can't decode, ErrTooLarge over MaxPixels, a decode error for a damaged
+// image, and the context's error when ctx ends first (waiting for a slot,
+// reading or decoding).
+func Make(ctx context.Context, r io.Reader) ([]byte, string, error) {
+	select {
+	case making <- struct{}{}:
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			<-making
+		}
+	}()
 	src, err := io.ReadAll(io.LimitReader(r, maxSource))
 	if err != nil {
 		return nil, "", fmt.Errorf("thumbs: read: %w", err)
 	}
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(src))
 	switch {
 	case errors.Is(err, image.ErrFormat):
 		return nil, "", ErrUnsupported
@@ -67,13 +101,42 @@ func Make(r io.Reader) ([]byte, string, error) {
 	case int64(cfg.Width)*int64(cfg.Height) > MaxPixels:
 		return nil, "", ErrTooLarge
 	}
-	making <- struct{}{}
-	defer func() { <-making }()
+	orientation := 1
+	if format == "jpeg" {
+		var scans int
+		scans, orientation = scanJPEG(src)
+		if scans > MaxScans {
+			return nil, "", ErrUnsupported
+		}
+	}
+	done := make(chan result, 1)
+	handedOff = true
+	go func() {
+		defer func() { <-making }()
+		defer func() {
+			if p := recover(); p != nil {
+				done <- result{err: fmt.Errorf("thumbs: decode panicked: %v", p)}
+			}
+		}()
+		data, ctype, err := build(src, orientation)
+		done <- result{data, ctype, err}
+	}()
+	select {
+	case res := <-done:
+		return res.data, res.ctype, res.err
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
+}
+
+// build decodes src, scales it, turns it upright and encodes it.
+func build(src []byte, orientation int) ([]byte, string, error) {
 	img, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
 		return nil, "", fmt.Errorf("thumbs: %w", err)
 	}
-	out, opaque := scale(img)
+	scaled, opaque := scale(img)
+	out := orient(scaled, orientation)
 	var b bytes.Buffer
 	if opaque {
 		if err := jpeg.Encode(&b, out, &jpeg.Options{Quality: 85}); err != nil {
@@ -158,6 +221,21 @@ func pixels(img image.Image) func(x, y int) (r, g, b, a uint32) {
 			i := m.PixOffset(x, y)
 			s := m.Pix[i : i+4 : i+4]
 			return color.NRGBA{R: s[0], G: s[1], B: s[2], A: s[3]}.RGBA()
+		}
+	case *image.NRGBA64:
+		return func(x, y int) (uint32, uint32, uint32, uint32) {
+			i := m.PixOffset(x, y)
+			s := m.Pix[i : i+8 : i+8]
+			return color.NRGBA64{
+				R: uint16(s[0])<<8 | uint16(s[1]), G: uint16(s[2])<<8 | uint16(s[3]),
+				B: uint16(s[4])<<8 | uint16(s[5]), A: uint16(s[6])<<8 | uint16(s[7]),
+			}.RGBA()
+		}
+	case *image.CMYK:
+		return func(x, y int) (uint32, uint32, uint32, uint32) {
+			i := m.PixOffset(x, y)
+			s := m.Pix[i : i+4 : i+4]
+			return color.CMYK{C: s[0], M: s[1], Y: s[2], K: s[3]}.RGBA()
 		}
 	case *image.Gray:
 		return func(x, y int) (uint32, uint32, uint32, uint32) {

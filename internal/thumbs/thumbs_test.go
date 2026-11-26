@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stazelabs/vaquero/internal/thumbs"
 )
@@ -67,7 +68,7 @@ func TestMakeFitsAndKeepsAspect(t *testing.T) {
 		{"thin line keeps a pixel", encodePNG(t, opaque(2000, 3)), 192, 1},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			data, ctype, err := thumbs.Make(bytes.NewReader(c.data))
+			data, ctype, err := thumbs.Make(t.Context(), bytes.NewReader(c.data))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -93,7 +94,7 @@ func TestMakeAveragesTheArea(t *testing.T) {
 			}
 		}
 	}
-	data, _, err := thumbs.Make(bytes.NewReader(encodePNG(t, src)))
+	data, _, err := thumbs.Make(t.Context(), bytes.NewReader(encodePNG(t, src)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestMakePNGKeepsAlpha(t *testing.T) {
 			src.SetNRGBA(x, y, color.NRGBA{255, 0, 0, 0})
 		}
 	}
-	data, ctype, err := thumbs.Make(bytes.NewReader(encodePNG(t, src)))
+	data, ctype, err := thumbs.Make(t.Context(), bytes.NewReader(encodePNG(t, src)))
 	if err != nil || ctype != "image/png" {
 		t.Fatalf("%q %v", ctype, err)
 	}
@@ -138,7 +139,7 @@ func TestMakeJPEGForOpaque(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, src := range map[string][]byte{"png": encodePNG(t, opaque(500, 500)), "gif": g.Bytes()} {
-		data, ctype, err := thumbs.Make(bytes.NewReader(src))
+		data, ctype, err := thumbs.Make(t.Context(), bytes.NewReader(src))
 		if err != nil || ctype != "image/jpeg" {
 			t.Fatalf("%s: %q %v", name, ctype, err)
 		}
@@ -170,7 +171,7 @@ func TestMakeRefusesHugeAndBogus(t *testing.T) {
 	var before, after runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&before)
-	_, _, err := thumbs.Make(bytes.NewReader(huge))
+	_, _, err := thumbs.Make(t.Context(), bytes.NewReader(huge))
 	runtime.ReadMemStats(&after)
 	if !errors.Is(err, thumbs.ErrTooLarge) {
 		t.Fatalf("50 megapixels: %v", err)
@@ -192,7 +193,7 @@ func TestMakeRefusesHugeAndBogus(t *testing.T) {
 		"png header only": {pngHeader(100, 100), false},
 		"zero width":      {pngHeader(0, 100), false},
 	} {
-		data, ctype, err := thumbs.Make(bytes.NewReader(c.data))
+		data, ctype, err := thumbs.Make(t.Context(), bytes.NewReader(c.data))
 		if err == nil || data != nil || ctype != "" {
 			t.Errorf("%s: want an error, got %d bytes %q", name, len(data), ctype)
 			continue
@@ -200,5 +201,126 @@ func TestMakeRefusesHugeAndBogus(t *testing.T) {
 		if errors.Is(err, thumbs.ErrUnsupported) != c.unsupported {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// exifJPEG is a w x h JPEG, its left third red and the rest blue, with an
+// Exif APP1 segment holding app1 (after "Exif\0\0") right after SOI.
+func exifJPEG(t *testing.T, w, h int, tiff []byte) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			c := color.NRGBA{0, 0, 255, 255}
+			if x < w/3 {
+				c = color.NRGBA{255, 0, 0, 255}
+			}
+			img.SetNRGBA(x, y, c)
+		}
+	}
+	plain := encodeJPEG(t, img)
+	seg := append([]byte("Exif\x00\x00"), tiff...)
+	app1 := append([]byte{0xff, 0xe1}, binary.BigEndian.AppendUint16(nil, uint16(len(seg)+2))...)
+	out := append([]byte{}, plain[:2]...)
+	out = append(out, append(app1, seg...)...)
+	return append(out, plain[2:]...)
+}
+
+// orientationTIFF is a big-endian TIFF block whose first IFD holds only
+// the orientation tag set to v.
+func orientationTIFF(v uint16) []byte {
+	b := []byte("MM\x00\x2a\x00\x00\x00\x08\x00\x01\x01\x12\x00\x03\x00\x00\x00\x01")
+	b = binary.BigEndian.AppendUint16(b, v)
+	return append(b, 0, 0, 0, 0, 0, 0)
+}
+
+func isRed(c color.Color) bool {
+	r, _, b, _ := c.RGBA()
+	return r > 0xa000 && b < 0x6000
+}
+
+// A phone photo stored sideways with an Exif orientation comes out upright.
+func TestMakeAppliesExifOrientation(t *testing.T) {
+	for _, c := range []struct {
+		v            uint16
+		w, h         int
+		redX, redY   int // a pixel that must be red
+		blueX, blueY int // and one that must not be
+	}{
+		{1, 192, 64, 5, 32, 186, 32},
+		{6, 64, 192, 32, 5, 32, 186}, // a quarter clockwise: the left goes to the top
+		{8, 64, 192, 32, 186, 32, 5}, // a quarter anticlockwise: the left goes to the bottom
+		{3, 192, 64, 186, 32, 5, 32}, // half round: the left goes to the right
+		{2, 192, 64, 186, 32, 5, 32}, // mirrored
+		{5, 64, 192, 32, 5, 32, 186}, // across the diagonal: the left goes to the top
+		{7, 64, 192, 32, 186, 32, 5}, // across the other: the left goes to the bottom
+		{4, 192, 64, 5, 32, 186, 32}, // upside down: the left stays left
+	} {
+		data, _, err := thumbs.Make(t.Context(), bytes.NewReader(exifJPEG(t, 300, 100, orientationTIFF(c.v))))
+		if err != nil {
+			t.Fatalf("%d: %v", c.v, err)
+		}
+		img, _ := decode(t, data)
+		if b := img.Bounds(); b.Dx() != c.w || b.Dy() != c.h {
+			t.Fatalf("orientation %d: %dx%d, want %dx%d", c.v, b.Dx(), b.Dy(), c.w, c.h)
+		}
+		if !isRed(img.At(c.redX, c.redY)) || isRed(img.At(c.blueX, c.blueY)) {
+			t.Errorf("orientation %d: not upright", c.v)
+		}
+	}
+}
+
+// Malformed Exif is ignored: the preview is the image as stored.
+func TestMakeIgnoresMalformedExif(t *testing.T) {
+	good := orientationTIFF(6)
+	for name, tiff := range map[string][]byte{
+		"empty":         nil,
+		"short":         good[:5],
+		"bad order":     append([]byte("XX"), good[2:]...),
+		"not 42":        append(append([]byte{}, good[:3]...), append([]byte{0x2b}, good[4:]...)...),
+		"ifd past end":  append(append([]byte{}, good[:4]...), 0x7f, 0, 0, 0),
+		"count too big": append(append([]byte{}, good[:8]...), append([]byte{0xff, 0xff, 0x01, 0x00}, good[12:]...)...), // no orientation before the end
+		"cut entry":     good[:16],
+		"wrong type":    append(append(append([]byte{}, good[:12]...), 0x00, 0x04), good[14:]...),
+		"value too big": append(append(append([]byte{}, good[:18]...), 0x00, 0x09), good[20:]...),
+	} {
+		data, _, err := thumbs.Make(t.Context(), bytes.NewReader(exifJPEG(t, 300, 100, tiff)))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		img, _ := decode(t, data)
+		if b := img.Bounds(); b.Dx() != 192 || b.Dy() != 64 {
+			t.Errorf("%s: %dx%d", name, b.Dx(), b.Dy())
+		}
+	}
+}
+
+// A JPEG of many scans (each a full pass of decoding) is refused from its
+// markers alone, quickly.
+func TestMakeRefusesManyScans(t *testing.T) {
+	plain := encodeJPEG(t, opaque(64, 64))
+	sos := bytes.Index(plain, []byte{0xff, 0xda})
+	eoi := len(plain) - 2
+	if sos < 0 || !bytes.Equal(plain[eoi:], []byte{0xff, 0xd9}) {
+		t.Fatal("unexpected JPEG layout")
+	}
+	scan := plain[sos:eoi]
+	build := func(n int) []byte {
+		out := append([]byte{}, plain[:sos]...)
+		for range n {
+			out = append(out, scan...)
+		}
+		return append(out, 0xff, 0xd9)
+	}
+	start := time.Now()
+	if _, _, err := thumbs.Make(t.Context(), bytes.NewReader(build(thumbs.MaxScans+1))); !errors.Is(err, thumbs.ErrUnsupported) {
+		t.Fatalf("%d scans: %v", thumbs.MaxScans+1, err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("refusing took %v", d)
+	}
+	// At the limit it is still made (the extra scans repeat the first).
+	if _, _, err := thumbs.Make(t.Context(), bytes.NewReader(build(3))); err != nil {
+		t.Fatalf("3 scans: %v", err)
 	}
 }

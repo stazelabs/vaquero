@@ -2,21 +2,25 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -325,14 +329,14 @@ func TestThumbRouteMakesOnFirstRequestThen304(t *testing.T) {
 	if err := e.Deps.Blobs.Delete(bg, thumbKeyOf(u.ID)); err != nil {
 		t.Fatal(err)
 	}
-	thumb := "/attachments/" + u.ID + "/thumb"
+	thumb := "/thumbs/" + u.ID
 	r := c.Get(thumb)
 	if r.Status != 200 || r.Header.Get("Content-Type") != "image/jpeg" {
 		t.Fatalf("%d %q", r.Status, r.Header.Get("Content-Type"))
 	}
 	assertAttachmentHeaders(t, r)
 	etag := r.Header.Get("ETag")
-	if etag != `"`+u.ID+`"` || r.Header.Get("Cache-Control") != "private, no-cache" {
+	if etag != `"`+u.ID+`-t1"` || r.Header.Get("Cache-Control") != "private, no-cache" {
 		t.Fatalf("etag %q cache %q", etag, r.Header.Get("Cache-Control"))
 	}
 	cfg, format, err := image.DecodeConfig(strings.NewReader(r.Body))
@@ -358,7 +362,7 @@ func TestThumbRouteMakesOnFirstRequestThen304(t *testing.T) {
 		t.Fatalf("%d %v", res.StatusCode, res.Header)
 	}
 	// Another case of the id goes to the canonical address.
-	if r := c.Get("/attachments/" + strings.ToLower(u.ID) + "/thumb"); r.Status != 302 || r.Location != thumb {
+	if r := c.Get("/thumbs/" + strings.ToLower(u.ID)); r.Status != 302 || r.Location != thumb {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 	if r := c.Head(thumb); r.Status != 200 {
@@ -385,7 +389,7 @@ func TestThumbFallsBackToOriginal(t *testing.T) {
 		{"notes.txt", []byte("words\n")}, // not an image at all
 	} {
 		u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", f.name, "", f.data))
-		r := c.Get("/attachments/" + u.ID + "/thumb")
+		r := c.Get("/thumbs/" + u.ID)
 		if r.Status != http.StatusFound || r.Location != u.URL {
 			t.Errorf("%s: %d %q", f.name, r.Status, r.Location)
 		}
@@ -394,16 +398,22 @@ func TestThumbFallsBackToOriginal(t *testing.T) {
 			t.Errorf("%s: a thumbnail was stored", f.name)
 		}
 	}
-	// A file named "thumb" has the thumbnail's address: it is served as
-	// itself rather than redirecting to the same place.
-	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "thumb", "", []byte("plain words\n")))
-	if u.URL != "/attachments/"+u.ID+"/thumb" {
-		t.Fatalf("%q", u.URL)
+	// Both the preview and the original gone: the 302 leads to a 404.
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "lost.png", "", realPNG(t, 300, 300)))
+	for _, k := range []string{thumbKeyOf(u.ID), "attachments/" + webtest.Instance + "/" + strings.ToLower(u.ID)} {
+		if err := e.Deps.Blobs.Delete(bg, k); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if r := c.Get(u.URL); r.Status != 200 || r.Body != "plain words\n" || !strings.HasPrefix(r.Header.Get("Content-Disposition"), "attachment") {
-		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("Content-Disposition"))
+	r := c.Get("/thumbs/" + u.ID)
+	if r.Status != http.StatusFound || r.Location != u.URL {
+		t.Fatalf("both gone: %d %q", r.Status, r.Location)
 	}
-	if r := c.Get("/attachments/01JZZZZZZZZZZZZZZZZZZZZZZ9/thumb"); r.Status != http.StatusNotFound {
+	assertAttachmentHeaders(t, r)
+	if r := c.Follow(r); r.Status != http.StatusNotFound {
+		t.Fatalf("followed: %d", r.Status)
+	}
+	if r := c.Get("/thumbs/01JZZZZZZZZZZZZZZZZZZZZZZ9"); r.Status != http.StatusNotFound {
 		t.Fatalf("missing: %d", r.Status)
 	}
 }
@@ -420,7 +430,7 @@ func TestDeletingAttachmentDeletesThumb(t *testing.T) {
 	if keys := blobKeys(t, e); len(keys) != 0 {
 		t.Fatalf("left after the web delete: %v", keys)
 	}
-	if r := c.Get("/attachments/" + u.ID + "/thumb"); r.Status != http.StatusNotFound {
+	if r := c.Get("/thumbs/" + u.ID); r.Status != http.StatusNotFound {
 		t.Fatalf("thumb after delete: %d", r.Status)
 	}
 	// The API's delete too.
@@ -441,10 +451,49 @@ func TestTicketPageGallery(t *testing.T) {
 	doc := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "notes.txt", "", []byte("words\n")))
 	img := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "shot.png", "", realPNG(t, 300, 200)))
 	body := c.Get("/t/VAQ-1").Body
-	contains(t, body, `data-gallery`, `src="/attachments/`+img.ID+`/thumb"`, `width="96"`, `height="96"`, `loading="lazy"`,
+	contains(t, body, `data-gallery`, `src="/thumbs/`+img.ID+`"`, `width="96"`, `height="96"`, `loading="lazy"`,
 		`href="`+img.URL+`" target="_blank"`, `href="`+doc.URL+`"`)
 	if strings.Index(body, img.URL) > strings.Index(body, doc.URL) {
 		t.Error("the image should come before the other file")
 	}
-	lacks(t, body, `src="/attachments/`+doc.ID)
+	lacks(t, body, `src="/attachments/`+doc.ID, `src="/thumbs/`+doc.ID)
+}
+
+// An image named "thumb" keeps its own address: the original is served
+// there, not a preview.
+func TestImageNamedThumbKeepsItsURL(t *testing.T) {
+	_, c := attachEnv(t)
+	data := realPNG(t, 400, 400)
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "thumb", "", data))
+	if u.URL != "/attachments/"+u.ID+"/thumb" {
+		t.Fatalf("%q", u.URL)
+	}
+	r := c.Get(u.URL)
+	if r.Status != 200 || r.Body != string(data) || r.Header.Get("Content-Type") != "image/png" || r.Header.Get("ETag") != `"`+u.ID+`"` {
+		t.Fatalf("%d %q %q", r.Status, r.Header.Get("Content-Type"), r.Header.Get("ETag"))
+	}
+	if p := c.Get("/thumbs/" + u.ID); p.Status != 200 || p.Body == string(data) {
+		t.Fatalf("preview: %d", p.Status)
+	}
+}
+
+// Making a preview that runs out of time (here, stuck waiting for its
+// turn) never fails the upload, and the preview route falls back to the
+// original; the next view makes it.
+func TestThumbOutOfTimeFallsBack(t *testing.T) {
+	e, c := attachEnv(t)
+	var waited atomic.Int32
+	handlers.SetPreviewMaker(t, 30*time.Millisecond, func(ctx context.Context, _ io.Reader) ([]byte, string, error) {
+		waited.Add(1)
+		<-ctx.Done()
+		return nil, "", ctx.Err()
+	})
+	u := uploadOK(t, c.Upload("/t/VAQ-1/attachments", "slow.png", "", realPNG(t, 300, 300)))
+	r := c.Get("/thumbs/" + u.ID)
+	if r.Status != http.StatusFound || r.Location != u.URL || waited.Load() != 2 {
+		t.Fatalf("%d %q, made %d times", r.Status, r.Location, waited.Load())
+	}
+	if hasKey(t, e, thumbKeyOf(u.ID)) {
+		t.Fatal("a thumbnail was stored")
+	}
 }

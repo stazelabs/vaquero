@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"io"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -62,4 +63,12 @@ func OnBulkStep(t testing.TB, i int, action string, fn func(cancel context.Cance
 func CancelBulkAt(t testing.TB, i int) {
 	t.Helper()
 	OnBulkStep(t, i, "", func(cancel context.CancelFunc) { cancel() })
+}
+
+// SetPreviewMaker replaces thumbs.Make and its timeout for one test.
+func SetPreviewMaker(t testing.TB, timeout time.Duration, fn func(context.Context, io.Reader) ([]byte, string, error)) {
+	t.Helper()
+	savedFn, savedTimeout := makePreview, thumbTimeout
+	makePreview, thumbTimeout = fn, timeout
+	t.Cleanup(func() { makePreview, thumbTimeout = savedFn, savedTimeout })
 }

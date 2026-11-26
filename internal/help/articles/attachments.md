@@ -26,9 +26,9 @@ Only the person who attached a file, or the owner, can remove it.
 
 Images come first in the Attachments list, as a gallery of small previews with their names. Click a preview to open the full image in a new tab. Other files are listed below the gallery.
 
-Vaquero makes each preview itself, when the image is uploaded, so the page loads small files rather than every full-size image. A preview fits within 192 by 192 pixels and is never larger than the image. PNG, JPEG and GIF files (a GIF's first frame) get one. A WebP image, an image over 40 megapixels, or one that can't be read shows the original instead.
+Vaquero makes each preview itself, when the image is uploaded, so the page loads small files rather than every full-size image. A preview fits within 192 by 192 pixels and is never larger than the image. PNG, JPEG and GIF files (a GIF's first frame) get one, turned upright when a photo says it was taken sideways. A WebP image, an image over 40 megapixels, or one that can't be read shows the original instead.
 
-A preview lives at `/attachments/ID/thumb`. Previews are not part of an export: after an import, each is made again the first time it is shown. Removing a file removes its preview.
+A preview lives at `/thumbs/ID`. Previews are not part of an export: after an import, each is made again the first time it is shown. Removing a file removes its preview.
 
 ## How files are served
 
