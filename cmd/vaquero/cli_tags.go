@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/core"
 )
 
 func init() {
@@ -91,11 +92,22 @@ func cmdTag(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 			return c.finish(usageError{usage: usage})
 		}
 		return c.connected(ctx, nil, func() error {
+			// The message names the tag as it is spelled, not as typed.
+			name := pos[2]
+			var tags []api.Tag
+			if err := c.call(ctx, "GET", tagsPath(key), nil, &tags); err != nil {
+				return err
+			}
+			for _, t := range tags {
+				if core.SameTag(t.Name, strings.TrimSpace(name)) {
+					name = t.Name
+				}
+			}
 			if err := c.call(ctx, "DELETE", tagsPath(key, pos[2]), nil, nil); err != nil {
 				return err
 			}
 			if !c.jsonOut {
-				fmt.Fprintf(c.stdout, "Deleted tag %s from %s.\n", pos[2], strings.ToUpper(key))
+				fmt.Fprintf(c.stdout, "Deleted tag %s from %s.\n", name, strings.ToUpper(key))
 			}
 			return nil
 		})

@@ -36,7 +36,8 @@ func TestCLITags(t *testing.T) {
 	if out := mustCLI(t, "tag", "rename", "VAQ", "defect", "UI", "--merge"); strings.TrimSpace(out) != "ui (2 tickets)" {
 		t.Fatalf("%q", out)
 	}
-	if out := mustCLI(t, "tag", "delete", "VAQ", "ui"); strings.TrimSpace(out) != "Deleted tag ui from VAQ." {
+	// The tag's own spelling, whatever was typed.
+	if out := mustCLI(t, "tag", "delete", "vaq", "UI"); strings.TrimSpace(out) != "Deleted tag ui from VAQ." {
 		t.Fatalf("%q", out)
 	}
 
