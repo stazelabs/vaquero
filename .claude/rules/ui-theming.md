@@ -19,7 +19,7 @@ CLAUDE.md "Hard invariants" is the authority. Tokens live in internal/web/static
 ## Icons
 
 - Glyphs are Lucide (ISC), listed by purpose in `internal/web/icons/ui.json` (our name → Lucide name) and generated into `ui_gen.go` by `make icons` (part of `make gen`) from the pinned `lucide-static` package. Add a line to ui.json before using a new glyph; `TestEveryIconNameKnown` fails on an unknown name.
-- Draw them only with `Icon(name)` (16px), `IconLg(name)` (20px) or `IconClass(name, classes)`; never hand-write an `<svg>` in a template (`TestNoAdHocSVG`).
+- Draw them only with `Icon(name)` (16px), `IconLg(name)` (20px) or `IconClass(name, classes)`; never hand-write an `<svg>` in a template (`TestNoAdHocSVG`). The one exception is the brand mark, `logo.templ`: the cowboy hat from `static/logo.svg`, coloured with theme tokens; it isn't an icon.
 - A glyph sits beside the text it belongs to and draws in `currentColor`; tint it with a token class on a wrapper. A link or button with only a glyph carries `aria-label` (`TestIconOnlyButtonsLabelled`).
 - Shared meanings: `CategoryIcon`, `PriorityIcon` and `EventIcon` give a status category, priority or event kind its glyph; reuse them rather than choosing again. Empty pages use `emptyState(icon, text)`.
 - Below the `sm` breakpoint the top bar shows glyphs only, its labels kept as screen-reader text.
