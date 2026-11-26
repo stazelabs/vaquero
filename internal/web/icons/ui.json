@@ -17,6 +17,7 @@
     "cat-in-review": "eye",
     "cat-todo": "circle",
     "claim": "lock",
+    "repository": "git-branch",
     "close": "x",
     "comment": "message-square",
     "decision": "scale",

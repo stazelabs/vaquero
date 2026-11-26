@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"cmp"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -90,6 +91,30 @@ func projectDTO(p gen.Project, open int64, links []board.ProjectLink) api.Projec
 	return out
 }
 
+// repoDTO is p's repository as the API shows it: nil without a repo path.
+// A repo that can't be opened now is still shown, not available.
+func repoDTO(ctx context.Context, d Deps, p gen.Project) *api.ProjectRepo {
+	if p.RepoPath == "" {
+		return nil
+	}
+	out := &api.ProjectRepo{Path: p.RepoPath, MainBranch: p.MainBranch, Remote: p.Remote, FetchMinutes: p.FetchMinutes}
+	if d.Git == nil {
+		return out
+	}
+	repo, err := d.Git.Open(ctx, p.RepoPath, p.MainBranch, p.Remote)
+	if err != nil {
+		return out
+	}
+	out.Available = true
+	if u, err := repo.RemoteURL(ctx); err == nil {
+		out.RemoteURL = u
+	}
+	if at, ok := repo.LastFetch(); ok {
+		out.LastFetchAt = new(timefmt.Format(at))
+	}
+	return out
+}
+
 func projectLinkDTO(l board.ProjectLink) api.ProjectLink {
 	return api.ProjectLink{ID: l.ID, Kind: l.Kind, Direction: l.Direction, Key: l.Key, Name: l.Name}
 }
@@ -123,6 +148,7 @@ func APIProjects(d Deps) http.HandlerFunc {
 		for i, p := range rows {
 			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap,
 				IconKind: p.IconKind, IconGlyph: p.IconGlyph}, p.OpenCount, links[p.ID])
+			out[i].Repo = repoDTO(r.Context(), d, gen.Project{RepoPath: p.RepoPath, MainBranch: p.MainBranch, Remote: p.Remote, FetchMinutes: p.FetchMinutes})
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -158,7 +184,9 @@ func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 		apiFail(w, r, d, api.Internal(), err)
 		return
 	}
-	api.WriteJSON(w, status, projectDTO(p, open, links[p.ID]))
+	dto := projectDTO(p, open, links[p.ID])
+	dto.Repo = repoDTO(r.Context(), d, p)
+	api.WriteJSON(w, status, dto)
 }
 
 func summary(k board.Card, s gen.Status) api.TicketSummary {

@@ -184,7 +184,8 @@ func APIProjectCreate(d Deps) http.HandlerFunc {
 }
 
 // APIProjectUpdate is PATCH /api/v1/projects/{key} {name?, description?,
-// workflow?, tier_map?, icon?}: tier_map is an object (harness → tier →
+// workflow?, tier_map?, icon?, repo_path?, main_branch?, remote?,
+// fetch_minutes?} (the repo settings but fetch_minutes are the owner's): tier_map is an object (harness → tier →
 // model) that replaces the map, or null for the default; icon is {kind,
 // glyph?} (an image is uploaded with PUT .../icon).
 func APIProjectUpdate(d Deps) http.HandlerFunc {
@@ -196,6 +197,10 @@ func APIProjectUpdate(d Deps) http.HandlerFunc {
 		var in struct {
 			Name, Description *string
 			Workflow          *bool
+			RepoPath          *string `json:"repo_path"`
+			MainBranch        *string `json:"main_branch"`
+			Remote            *string
+			FetchMinutes      *int64          `json:"fetch_minutes"`
 			TierMap           json.RawMessage `json:"tier_map"`
 			Icon              *struct {
 				Kind  string  `json:"kind"`
@@ -206,7 +211,8 @@ func APIProjectUpdate(d Deps) http.HandlerFunc {
 			api.WriteFailure(w, f)
 			return
 		}
-		patch := core.ProjectPatch{Name: in.Name, Description: in.Description, Workflow: in.Workflow}
+		patch := core.ProjectPatch{Name: in.Name, Description: in.Description, Workflow: in.Workflow,
+			RepoPath: in.RepoPath, MainBranch: in.MainBranch, Remote: in.Remote, FetchMinutes: in.FetchMinutes}
 		if in.Icon != nil {
 			patch.IconKind, patch.IconGlyph = &in.Icon.Kind, in.Icon.Glyph
 		}

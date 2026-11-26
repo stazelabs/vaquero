@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/gitread"
 )
 
 // Core makes changes to the tracker.
@@ -30,6 +31,10 @@ type Core struct {
 	// BlobLocation is where that backend keeps the bytes (blobs.Location),
 	// recorded with BlobStore as blob_location.
 	BlobLocation string
+	// Git reads a project's repo; a repo path is checked through it. Nil
+	// refuses a repo path ("Git isn't installed, so repository features are
+	// off.").
+	Git *gitread.Repos
 }
 
 // New returns a Core writing through db.

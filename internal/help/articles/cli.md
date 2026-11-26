@@ -26,7 +26,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |
 | `vaquero project show KEY` | Show a project |
-| `vaquero project edit KEY [--name NAME] [--description TEXT] [--workflow on\|off]` | Change its name or description, or turn the [agent workflow](/help/agent-workflow) on or off |
+| `vaquero project edit KEY [--name NAME] [--description TEXT] [--workflow on\|off] [--repo PATH] [--main-branch NAME] [--remote NAME] [--fetch-minutes N]` | Change its name or description, turn the [agent workflow](/help/agent-workflow) on or off, or set its [repository](/help/repositories): `--repo` is an absolute path (empty clears it), `--remote` empty means origin, `--fetch-minutes` is 0 or 5 to 1440. Only the owner, not an agent, changes `--repo`, `--main-branch` and `--remote` |
 | `vaquero project key KEY NEWKEY` | Change its key (links that use the old key stop working) |
 | `vaquero project icon KEY --monogram\|--glyph NAME\|--image FILE\|--remove-image` | Set its [icon](/help/projects-and-tickets#project-icons): its monogram, a glyph from the list, or a PNG, JPEG or WebP image of up to 256 KB. `--remove-image` deletes the uploaded image; if the project was showing it, it shows its monogram instead |
 | `vaquero project link KEY depends-on\|relates OTHER` | Say the project depends on or relates to another; see [Project links](/help/projects-and-tickets#project-links). `vaquero project show` lists its links with their ids |

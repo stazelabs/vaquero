@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"slices"
+
 	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -59,6 +61,9 @@ type SettingsView struct {
 
 	// Workflow is the workflow form, set only when it was refused.
 	Workflow SubForm
+	// Repo is the repository section's data; its form is set only when
+	// it was refused.
+	Repo RepoView
 	// HasIconImage is whether the project has a stored icon image, offered
 	// again in the icon form.
 	HasIconImage bool
@@ -68,6 +73,38 @@ type SettingsView struct {
 	LinkTargets []Option
 
 	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag, NewLink SubForm
+}
+
+// RepoView is the repository section: whether git is missing, the
+// remotes of the repo as set, the remote's URL (credentials removed) and
+// the form as typed when refused.
+type RepoView struct {
+	GitMissing bool
+	Remotes    []string
+	RemoteURL  string
+	Form       SubForm
+}
+
+// remoteOptions are the remote select's choices: the default, the repo's
+// remotes, and the remote as set when the repo no longer has it.
+func remoteOptions(v RepoView, selected string) []Option {
+	opts := []Option{{Value: "", Label: "Default (origin, when the repo has it)"}}
+	for _, r := range v.Remotes {
+		opts = append(opts, Option{Value: r, Label: r})
+	}
+	if selected != "" && !slices.Contains(v.Remotes, selected) {
+		opts = append(opts, Option{Value: selected, Label: selected})
+	}
+	return opts
+}
+
+// repoAttrs adds disabled to a repository field's attributes when git is
+// missing.
+func repoAttrs(v RepoView, a templ.Attributes) templ.Attributes {
+	if v.GitMissing {
+		a["disabled"] = true
+	}
+	return a
 }
 
 // workflowOn is "on" when p uses the agent workflow, as its checkbox posts.
@@ -455,6 +492,7 @@ templ ProjectSettingsPage(v SettingsView) {
 		</section>
 		@iconSection(v)
 		@workflowSection(v)
+		@repoSection(v)
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>
 				@Icon("cat-in-progress")
@@ -574,6 +612,34 @@ templ workflowSection(v SettingsView) {
 				</form>
 			</div>
 		}
+	</section>
+}
+
+// repoSection is the project's repository: where it is, its main branch,
+// the remote and how often to fetch it.
+templ repoSection(v SettingsView) {
+	<section id="repository" class="mt-10">
+		<h2 class={ h2IconClass }>
+			@Icon("repository")
+			Repository
+		</h2>
+		<p class="mt-1 max-w-2xl text-sm text-muted">
+			Point the project at a git repository to reference its files from tickets. Only the owner changes the path, branch and remote.
+			@helpLink("repositories", "About repositories")
+		</p>
+		if v.Repo.GitMissing {
+			<p class="mt-3 max-w-2xl rounded-md border border-line bg-paper-alt px-3 py-2 text-sm text-ink">Git isn't installed, so repository features are off.</p>
+		}
+		<form method="post" action={ templ.SafeURL("/p/" + v.Project.Key + "/repo") } class="mt-3 max-w-2xl space-y-4">
+			@TextInput(InputProps{Name: "repo_path", ID: "f-repo-path", Label: "Repository path", Value: v.Repo.Form.Val("repo_path", v.Project.RepoPath), Placeholder: "/Users/you/code/project", Error: v.Repo.Form.Errors["repo_path"], Attrs: repoAttrs(v.Repo, templ.Attributes{"spellcheck": "false"})})
+			@TextInput(InputProps{Name: "main_branch", ID: "f-main-branch", Label: "Main branch", Value: v.Repo.Form.Val("main_branch", v.Project.MainBranch), Error: v.Repo.Form.Errors["main_branch"], Attrs: repoAttrs(v.Repo, templ.Attributes{"spellcheck": "false"})})
+			@Select(SelectProps{Name: "remote", Label: "Remote", Selected: v.Repo.Form.Val("remote", v.Project.Remote), Options: remoteOptions(v.Repo, v.Repo.Form.Val("remote", v.Project.Remote)), Error: v.Repo.Form.Errors["remote"], Disabled: v.Repo.GitMissing})
+			if v.Repo.RemoteURL != "" {
+				<p class="-mt-2 text-xs text-muted">Remote URL: <span class="break-all">{ v.Repo.RemoteURL }</span></p>
+			}
+			@TextInput(InputProps{Name: "fetch_minutes", ID: "f-fetch-minutes", Label: "Fetch every N minutes (0 = never)", Type: "number", Value: v.Repo.Form.Val("fetch_minutes", itoa(v.Project.FetchMinutes)), Error: v.Repo.Form.Errors["fetch_minutes"], Attrs: repoAttrs(v.Repo, templ.Attributes{"min": "0", "max": "1440", "step": "1"})})
+			<button type="submit" class={ btnSecondary } disabled?={ v.Repo.GitMissing }>Save repository</button>
+		</form>
 	</section>
 }
 

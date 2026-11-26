@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -185,6 +187,7 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	if p.Workflow == 1 {
 		v.TriageMissing = missingTriage(statuses)
 	}
+	v.Repo = repoView(ctx, d, p)
 	links, err := board.LoadProjectLinks(ctx, d.R)
 	if err != nil {
 		serverError(w, r, d, err)
@@ -205,6 +208,44 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 		fn(&v)
 	}
 	render(w, r, d, status, templates.ProjectSettingsPage(v))
+}
+
+// repoView is what the settings page's repository section shows: whether
+// git is missing, and the remotes and the remote's URL of the repo as set.
+func repoView(ctx context.Context, d Deps, p gen.Project) templates.RepoView {
+	v := templates.RepoView{GitMissing: d.Git == nil || !d.Git.Available()}
+	if v.GitMissing || p.RepoPath == "" {
+		return v
+	}
+	repo, err := d.Git.Open(ctx, p.RepoPath, p.MainBranch, p.Remote)
+	if err != nil {
+		return v
+	}
+	v.Remotes, _ = repo.Remotes(ctx)
+	v.RemoteURL, _ = repo.RemoteURL(ctx)
+	return v
+}
+
+// ProjectRepo saves the repository settings. Only the owner changes the
+// path, main branch and remote; core checks them against git.
+func ProjectRepo(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		vals := formValues(r, "repo_path", "main_branch", "remote", "fetch_minutes")
+		sf := templates.SubForm{Values: vals}
+		settingsForm(w, r, d, p, "Repository saved.", sf, func(v *templates.SettingsView, sf templates.SubForm) { v.Repo.Form = sf }, func() error {
+			minutes, err := strconv.ParseInt(strings.TrimSpace(vals["fetch_minutes"]), 10, 64)
+			if err != nil {
+				return &core.Invalid{Fields: map[string]string{"fetch_minutes": "Fetch every 5 to 1440 minutes, or 0 for never."}}
+			}
+			path, main, remote := vals["repo_path"], vals["main_branch"], vals["remote"]
+			_, err = d.Core.UpdateProject(r.Context(), d.Actor.ID, p.ID, core.ProjectPatch{RepoPath: &path, MainBranch: &main, Remote: &remote, FetchMinutes: &minutes})
+			return err
+		})
+	}
 }
 
 // ProjectSettings edits a project, its statuses and milestones.

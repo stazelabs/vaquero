@@ -100,6 +100,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Post("/icon/delete", handlers.ProjectIconRemove(d))
 			r.Post("/key", handlers.ProjectKeyChange(d))
 			r.With(fs).Post("/workflow", handlers.ProjectWorkflow(d))
+			r.With(fs).Post("/repo", handlers.ProjectRepo(d))
 			r.Post("/triage-statuses", handlers.TriageStatuses(d))
 			r.Post("/delete", handlers.ProjectDelete(d))
 			r.With(fs).Post("/links", handlers.ProjectLinkCreate(d))

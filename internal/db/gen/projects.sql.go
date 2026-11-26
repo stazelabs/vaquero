@@ -504,16 +504,21 @@ func (q *Queries) TakeTicketNumber(ctx context.Context, arg TakeTicketNumberPara
 }
 
 const updateProject = `-- name: UpdateProject :exec
-UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?, updated_at = ? WHERE id = ?
+UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?,
+       repo_path = ?, main_branch = ?, remote = ?, fetch_minutes = ?, updated_at = ? WHERE id = ?
 `
 
 type UpdateProjectParams struct {
-	Name        string
-	Description string
-	Workflow    int64
-	TierMap     string
-	UpdatedAt   string
-	ID          string
+	Name         string
+	Description  string
+	Workflow     int64
+	TierMap      string
+	RepoPath     string
+	MainBranch   string
+	Remote       string
+	FetchMinutes int64
+	UpdatedAt    string
+	ID           string
 }
 
 func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) error {
@@ -522,6 +527,10 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) er
 		arg.Description,
 		arg.Workflow,
 		arg.TierMap,
+		arg.RepoPath,
+		arg.MainBranch,
+		arg.Remote,
+		arg.FetchMinutes,
 		arg.UpdatedAt,
 		arg.ID,
 	)

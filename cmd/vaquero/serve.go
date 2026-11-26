@@ -20,6 +20,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/lockfile"
 	"github.com/stazelabs/vaquero/internal/sweep"
@@ -92,6 +93,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	c := core.New(w, time.Now)
 	c.BlobStore = cfg.BlobBackend
 	c.BlobLocation = blobs.Location(cfg)
+	c.Git = gitread.New()
 	// The instance id names blob keys; the backend lock keeps existing
 	// attachments from being stranded by a changed VQ_BLOB_STORE. Both come
 	// before anything else is written, so a refused boot changes nothing.
@@ -137,7 +139,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	}
 	shutdown := make(chan struct{})
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown, Touch: gen.New(w), MCPCalls: gen.New(w),
-		Blobs: store, Instance: instance,
+		Blobs: store, Instance: instance, Git: c.Git,
 		BackupDir:       filepath.Join(cfg.DataDir, "backups"),
 		RenewLocalToken: func(ctx context.Context) error { return ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir) }}
 	srv := &http.Server{

@@ -116,6 +116,7 @@ type Option struct{ Value, Label string }
 type SelectProps struct {
 	Name, Label, Selected, Error string
 	Options                      []Option
+	Disabled                     bool
 }
 
 func toastClass(k flash.Kind) string {

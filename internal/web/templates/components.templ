@@ -74,6 +74,7 @@ templ Select(p SelectProps) {
 		<select
 			id={ "f-" + p.Name }
 			name={ p.Name }
+			disabled?={ p.Disabled }
 			if p.Error != "" {
 				aria-invalid="true"
 				aria-describedby={ "f-" + p.Name + "-error" }

@@ -14,6 +14,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
 
@@ -40,6 +41,8 @@ type Deps struct {
 	// this database's instance id, which names the blob keys.
 	Blobs    blobs.Store
 	Instance string
+	// Git reads projects' repos; the same value as Core.Git.
+	Git *gitread.Repos
 
 	// Shutdown closes when the server starts shutting down, ending open
 	// live-update streams. StreamPoll is how often a stream checks for

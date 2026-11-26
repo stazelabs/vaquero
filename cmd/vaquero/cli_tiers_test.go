@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 )
 
 func TestCLITicketEditTier(t *testing.T) {
@@ -60,5 +61,36 @@ func TestCLIShowsReadiness(t *testing.T) {
 	}
 	if out := mustCLI(t, "ready", "VAQ"); !strings.Contains(out, "Nothing is ready.") {
 		t.Fatalf("%q", out)
+	}
+}
+
+func TestCLIProjectEditRepo(t *testing.T) {
+	cliEnv(t)
+	r := gittest.Repo(t)
+	r.WriteCommit("a.md", "a", "first")
+	r.Git("remote", "add", "origin", "https://user:secret@example.com/x.git")
+	var p api.Project
+	out := mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir, "--main-branch", "main", "--remote", "origin", "--fetch-minutes", "30", "--json")
+	if err := json.Unmarshal([]byte(out), &p); err != nil || p.Repo == nil || p.Repo.FetchMinutes != 30 || p.Repo.RemoteURL != "https://example.com/x.git" || !p.Repo.Available {
+		t.Fatalf("%v %+v %s", err, p.Repo, out)
+	}
+	if out := mustCLI(t, "project", "show", "VAQ"); !strings.Contains(out, "Repository: ") || !strings.Contains(out, "Remote: https://example.com/x.git") || strings.Contains(out, "secret") {
+		t.Fatalf("%q", out)
+	}
+	if code, _, errOut := cli(t, "project", "edit", "VAQ", "--agent", "builder", "--repo", ""); code != 1 || !strings.Contains(errOut, "Only the owner changes the repo settings.") {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	if code, _, errOut := cli(t, "project", "edit", "VAQ", "--agent", "builder", "--fetch-minutes", "60"); code != 0 {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	if code, _, errOut := cli(t, "project", "edit", "VAQ", "--fetch-minutes", "3"); code != 1 || !strings.Contains(errOut, "Fetch every 5 to 1440 minutes, or 0 for never.") {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	if code, _, errOut := cli(t, "project", "show", "VAQ", "--repo", "x"); code != 2 || !strings.Contains(errOut, "--repo is for project edit") {
+		t.Fatalf("%d %q", code, errOut)
+	}
+	mustCLI(t, "project", "edit", "VAQ", "--repo", "")
+	if out := mustCLI(t, "project", "show", "VAQ", "--json"); strings.Contains(out, `"repo"`) {
+		t.Fatalf("%s", out)
 	}
 }

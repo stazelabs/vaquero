@@ -71,11 +71,15 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
+	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] [--repo PATH] [--main-branch NAME] [--remote NAME] [--fetch-minutes N] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
 	workflow := c.fs.String("workflow", "", "on or off: the agent workflow")
+	repo := c.fs.String("repo", "", "the project's git repository: an absolute path, empty to clear (owner only)")
+	mainBranch := c.fs.String("main-branch", "", "the repository's main branch (owner only)")
+	remote := c.fs.String("remote", "", "the repository's remote, empty for origin (owner only)")
+	fetchMinutes := c.fs.Int64("fetch-minutes", 0, "fetch the repository every N minutes, 0 for never")
 	c.fs.Bool("monogram", false, "icon: the project's monogram")
 	glyph := c.fs.String("glyph", "", "icon: a glyph from the list")
 	image := c.fs.String("image", "", "icon: a PNG, JPEG or WebP image file")
@@ -97,11 +101,28 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			for _, l := range p.Links {
 				fmt.Fprintf(c.stdout, "%s %s  %s  %s\n", projectLinkWords(l), l.Key, l.Name, l.ID)
 			}
+			if r := p.Repo; r != nil {
+				fmt.Fprintf(c.stdout, "Repository: %s (main branch %s)\n", r.Path, r.MainBranch)
+				if r.RemoteURL != "" {
+					fmt.Fprintf(c.stdout, "Remote: %s\n", r.RemoteURL)
+				}
+				if r.FetchMinutes > 0 {
+					fmt.Fprintf(c.stdout, "Fetch every %d minutes\n", r.FetchMinutes)
+				}
+				if !r.Available {
+					fmt.Fprintln(c.stdout, "The repository can't be read now.")
+				}
+			}
 			fmt.Fprintln(c.stdout, p.Description)
 		})
 	}
 	if c.set("workflow") && (pos[0] != "edit" || *workflow != "on" && *workflow != "off") {
 		return c.finish(usageError{usage: usage, hint: "--workflow is on or off, for project edit"})
+	}
+	for _, f := range []string{"repo", "main-branch", "remote", "fetch-minutes"} {
+		if c.set(f) && pos[0] != "edit" {
+			return c.finish(usageError{usage: usage, hint: "--" + f + " is for project edit"})
+		}
 	}
 	icons := 0
 	for _, f := range []string{"monogram", "glyph", "image", "remove-image"} {
@@ -149,6 +170,14 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		}
 		if c.set("workflow") {
 			body["workflow"] = *workflow == "on"
+		}
+		for flag, key := range map[string]string{"repo": "repo_path", "main-branch": "main_branch", "remote": "remote"} {
+			if c.set(flag) {
+				body[key] = map[string]string{"repo": *repo, "main-branch": *mainBranch, "remote": *remote}[flag]
+			}
+		}
+		if c.set("fetch-minutes") {
+			body["fetch_minutes"] = *fetchMinutes
 		}
 		return c.connected(ctx, nil, func() error {
 			if c.set("description") {

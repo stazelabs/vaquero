@@ -19,7 +19,8 @@ FROM projects p
 ORDER BY p.archived_at IS NOT NULL, p.name;
 
 -- name: UpdateProject :exec
-UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?, updated_at = ? WHERE id = ?;
+UPDATE projects SET name = ?, description = ?, workflow = ?, tier_map = ?,
+       repo_path = ?, main_branch = ?, remote = ?, fetch_minutes = ?, updated_at = ? WHERE id = ?;
 
 -- name: SetProjectArchived :exec
 UPDATE projects SET archived_at = ?, updated_at = ? WHERE id = ?;

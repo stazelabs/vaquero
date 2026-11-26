@@ -25,6 +25,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/config"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
+	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/handlers"
 )
@@ -105,6 +106,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 	now := func() time.Time { return Start }
 	c := core.New(d.W, now)
 	c.BlobStore = "sqlite"
+	c.Git = gitread.New()
 	owner, err := c.EnsureOwner(context.Background())
 	if err != nil {
 		t.Fatalf("webtest: owner: %v", err)
@@ -119,6 +121,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		BackupDir:  filepath.Join(dir, "backups"),
 		Blobs:      blobs.NewSQLite(d.W, d.R, now),
 		Instance:   Instance,
+		Git:        c.Git,
 	}
 	e := &Env{DB: d, Deps: deps, t: t, shutdown: shutdown}
 	e.serve()

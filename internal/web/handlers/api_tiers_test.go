@@ -8,6 +8,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -273,4 +274,78 @@ func TestAPIEmptyTierMap(t *testing.T) {
 	if r := c.API("PATCH", "/api/v1/projects/VAQ", tok, map[string]any{"tier_map": map[string]any{}}); r.Status != 200 || !strings.Contains(r.Body, `"tier_map": {}`) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
+}
+
+// A project with no repo has no repo key; with one, the remote's URL comes
+// without its credentials.
+func TestProjectAnswerRepo(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	if body := c.API("GET", "/api/v1/projects/VAQ", tok, nil).Body; strings.Contains(body, `"repo"`) {
+		t.Fatalf("no repo: %s", body)
+	}
+	r := gittest.Repo(t)
+	r.WriteCommit("a.md", "a", "first")
+	r.Git("remote", "add", "origin", "https://user:secret@example.com/x.git")
+	res := c.API("PATCH", "/api/v1/projects/VAQ", tok, map[string]any{"repo_path": r.Dir, "fetch_minutes": 10})
+	var p api.Project
+	decode(t, res.Body, &p)
+	if res.Status != 200 || p.Repo == nil || p.Repo.RemoteURL != "https://example.com/x.git" || p.Repo.MainBranch != "main" || p.Repo.FetchMinutes != 10 || !p.Repo.Available {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+	if strings.Contains(res.Body, "secret") {
+		t.Fatal("credentials shown")
+	}
+	var ps []api.Project
+	decode(t, c.API("GET", "/api/v1/projects", tok, nil).Body, &ps)
+	if ps[0].Repo == nil || ps[0].Repo.Path == "" {
+		t.Fatalf("list: %+v", ps[0])
+	}
+	res = c.API("PATCH", "/api/v1/projects/VAQ", tok, map[string]any{"fetch_minutes": 2})
+	var e apiErrBody
+	decode(t, res.Body, &e)
+	if res.Status != 422 || e.Error.Fields["fetch_minutes"] != "Fetch every 5 to 1440 minutes, or 0 for never." {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+}
+
+func TestSettingsRepoRoundTrip(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	body := c.Get("/p/VAQ/settings").Body
+	contains(t, body, `action="/p/VAQ/repo"`, `name="repo_path"`, `name="main_branch"`, `name="remote"`, `name="fetch_minutes"`)
+	r := gittest.Repo(t)
+	r.WriteCommit("a.md", "a", "first")
+	r.Git("remote", "add", "origin", "https://user:secret@example.com/x.git")
+	res := c.Post("/p/VAQ/repo", url.Values{"repo_path": {r.Dir}, "main_branch": {"main"}, "remote": {"origin"}, "fetch_minutes": {"15"}})
+	if res.Status != 303 {
+		t.Fatalf("%d %s", res.Status, res.Body)
+	}
+	got, _ := e.Deps.R.GetProject(bg, p.ID)
+	if got.RepoPath == "" || got.Remote != "origin" || got.FetchMinutes != 15 {
+		t.Fatalf("%+v", got)
+	}
+	page := c.Get("/p/VAQ/settings").Body
+	contains(t, page, "https://example.com/x.git", `value="15"`)
+	if strings.Contains(page, "secret") {
+		t.Fatal("credentials shown")
+	}
+	res = c.Post("/p/VAQ/repo", url.Values{"repo_path": {r.Dir}, "main_branch": {"trunk"}, "remote": {"origin"}, "fetch_minutes": {"15"}})
+	if res.Status != 422 {
+		t.Fatalf("%d", res.Status)
+	}
+	contains(t, res.Body, "The repo has no branch trunk.", `value="trunk"`)
+	res = c.Post("/p/VAQ/repo", url.Values{"repo_path": {r.Dir}, "main_branch": {"main"}, "fetch_minutes": {"abc"}})
+	if res.Status != 422 {
+		t.Fatalf("%d", res.Status)
+	}
+	contains(t, res.Body, "Fetch every 5 to 1440 minutes, or 0 for never.")
+}
+
+func TestSettingsRepoWithoutGit(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	e.Deps.Git, e.Deps.Core.Git = nil, nil
+	e.Rebuild()
+	contains(t, e.Client().Get("/p/VAQ/settings").Body, "installed, so repository features are off.", "disabled")
 }

@@ -25,6 +25,24 @@ type Project struct {
 	// Links are the project's links to other projects (VAQ-119), both
 	// ends: what it depends on, what depends on it, what it relates to.
 	Links []ProjectLink `json:"links"`
+	// Repo is the project's repository, present only when a repo path is
+	// set (VAQ-136).
+	Repo *ProjectRepo `json:"repo,omitempty"`
+}
+
+// ProjectRepo is a project's repository settings. Remote is the setting
+// ("" means origin when the repo has it); RemoteURL is the remote's URL
+// with any credentials removed, "" when there is no remote. FetchMinutes is
+// 0 for never. LastFetchAt is when the repo was last fetched, when known.
+// Available is false when git is missing or the repo can't be opened now.
+type ProjectRepo struct {
+	Path         string  `json:"path"`
+	MainBranch   string  `json:"main_branch"`
+	Remote       string  `json:"remote"`
+	RemoteURL    string  `json:"remote_url"`
+	FetchMinutes int64   `json:"fetch_minutes"`
+	LastFetchAt  *string `json:"last_fetch_at,omitempty"`
+	Available    bool    `json:"available"`
 }
 
 // ProjectLink is one of a project's links as that project sees it. Kind
