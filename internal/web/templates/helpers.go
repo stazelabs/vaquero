@@ -250,3 +250,12 @@ func moveQuestion(v TicketView) string {
 	}
 	return q
 }
+
+// removeImageNote finishes the Remove image question: what the project
+// shows afterwards.
+func removeImageNote(kind string) string {
+	if kind == core.IconKindImage {
+		return " The project shows its monogram instead."
+	}
+	return " Uploading it again brings it back."
+}

@@ -71,7 +71,7 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
+	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
@@ -79,6 +79,7 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 	c.fs.Bool("monogram", false, "icon: the project's monogram")
 	glyph := c.fs.String("glyph", "", "icon: a glyph from the list")
 	image := c.fs.String("image", "", "icon: a PNG, JPEG or WebP image file")
+	c.fs.Bool("remove-image", false, "icon: remove the uploaded image (an icon showing it becomes the monogram)")
 	pos, err := c.parse(args, 2, 4)
 	if err != nil {
 		return c.finish(err)
@@ -103,13 +104,13 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		return c.finish(usageError{usage: usage, hint: "--workflow is on or off, for project edit"})
 	}
 	icons := 0
-	for _, f := range []string{"monogram", "glyph", "image"} {
+	for _, f := range []string{"monogram", "glyph", "image", "remove-image"} {
 		if c.set(f) {
 			icons++
 		}
 	}
 	if icons > 0 && pos[0] != "icon" || pos[0] == "icon" && icons != 1 {
-		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME and --image FILE"})
+		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME, --image FILE and --remove-image"})
 	}
 	switch pos[0] {
 	case "create":
@@ -203,6 +204,12 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 			switch {
 			case c.set("image"):
 				err = uploadIcon(ctx, c, path+"/icon", *image, &p)
+			case c.set("remove-image"):
+				if err = c.call(ctx, "DELETE", path+"/icon", nil, &p); err != nil {
+					return err
+				}
+				c.emit(p, func() { fmt.Fprintf(c.stdout, "%s icon: %s (no image stored)\n", p.Key, iconWords(p)) })
+				return nil
 			case c.set("glyph"):
 				err = c.call(ctx, "PATCH", path, map[string]any{"icon": map[string]string{"kind": "glyph", "glyph": *glyph}}, &p)
 			default:

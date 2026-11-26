@@ -197,3 +197,42 @@ func (c *Core) SetProjectIcon(ctx context.Context, by, projectID string, kind, g
 	})
 	return p, err
 }
+
+// RemoveProjectIconImage deletes a project's stored icon image (VAQ-146).
+// An image in use gives way to the monogram; a monogram or glyph in use
+// stays. It writes one project.updated event with changes.icon_image (the
+// removed image's etag to null), plus changes.icon when the icon in use
+// changed; with no image stored it writes nothing.
+func (c *Core) RemoveProjectIconImage(ctx context.Context, by, projectID string) (gen.Project, error) {
+	var p gen.Project
+	err := c.tx(ctx, func(q *gen.Queries) error {
+		var err error
+		if p, err = q.GetProject(ctx, projectID); err != nil {
+			return notFound(err, "get project")
+		}
+		etag, err := q.GetProjectIconEtag(ctx, p.ID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("get icon: %w", err)
+		}
+		if err := q.DeleteProjectIcon(ctx, p.ID); err != nil {
+			return fmt.Errorf("delete icon: %w", err)
+		}
+		now := timefmt.Format(c.Now())
+		changes := map[string]Change{"icon_image": {From: etag, To: nil}}
+		if p.IconKind == IconKindImage {
+			from := iconValue(IconKindImage, "")
+			from["etag"] = etag
+			changes["icon"] = Change{From: from, To: iconValue(IconKindMonogram, "")}
+			p.IconKind, p.IconGlyph = IconKindMonogram, ""
+		}
+		if err := q.SetProjectIconKind(ctx, gen.SetProjectIconKindParams{IconKind: p.IconKind, IconGlyph: p.IconGlyph, UpdatedAt: now, ID: p.ID}); err != nil {
+			return fmt.Errorf("set icon: %w", err)
+		}
+		p.UpdatedAt = now
+		return c.emit(ctx, q, by, EvProjectUpdated, p.ID, "", map[string]any{"changes": changes})
+	})
+	return p, err
+}

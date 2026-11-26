@@ -63,6 +63,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
 | `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map", "icon"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default; `icon` is `{"kind": "monogram"}`, `{"kind": "glyph", "glyph": "rocket"}` (a name from [the list](/help/projects-and-tickets#project-icons)), or `{"kind": "image"}` for the image already uploaded |
 | `PUT /api/v1/projects/{key}/icon` | A multipart form with a PNG, JPEG or WebP image in a part named `file`; it becomes the project's icon, and the answer is the project. Up to 256 KB: more is `413`, and another type (SVG included) is `422` |
+| `DELETE /api/v1/projects/{key}/icon` | Remove the uploaded icon image. If the project was showing it, it shows its monogram instead. The answer is the project; with no image stored nothing changes |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/links` | `{"kind", "project"}`: `depends on` (or `depends-on`) or `relates`, and the other project's key. Answers `201` with the link as this project sees it |
 | `DELETE /api/v1/projects/{key}/links/{id}` | Nothing; removes a link of the project's, from either end. Answers `204` |

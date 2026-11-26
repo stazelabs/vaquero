@@ -155,6 +155,40 @@ func APIProjectIconUpload(d Deps) http.HandlerFunc {
 	}
 }
 
+// ProjectIconRemove is POST /p/{key}/icon/delete, the settings page's
+// Remove image (VAQ-146): the stored image goes, and an icon showing it
+// falls back to the monogram.
+func ProjectIconRemove(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		settingsAction(w, r, d, p, "Image removed.", func() error {
+			_, err := d.Core.RemoveProjectIconImage(r.Context(), d.Actor.ID, p.ID)
+			return err
+		})
+	}
+}
+
+// APIProjectIconDelete is DELETE /api/v1/projects/{key}/icon: the stored
+// icon image is removed (an icon showing it falls back to the monogram).
+// With none stored nothing changes. It answers the project.
+func APIProjectIconDelete(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := apiProject(w, r, d)
+		if !ok {
+			return
+		}
+		np, err := d.Core.RemoveProjectIconImage(r.Context(), apiActor(r).ID, p.ID)
+		if err != nil {
+			apiCoreFail(w, r, d, p, err)
+			return
+		}
+		writeProject(w, r, d, np, http.StatusOK)
+	}
+}
+
 // ProjectIconChoices is GET /p/{key}/icon/choices: the projects page's
 // quick settings icon form alone, fetched when its part first opens.
 func ProjectIconChoices(d Deps) http.HandlerFunc {
