@@ -28,6 +28,7 @@ var tables = []string{
 	"settings", "actors", "api_tokens", "projects", "statuses", "milestones",
 	"tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "blobs", "events", "mcp_calls",
 	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals",
+	"actor_avatars", "event_tickets", "project_icons", "ticket_old_keys", "project_links", "ticket_refs",
 }
 
 func main() {

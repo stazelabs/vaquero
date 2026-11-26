@@ -379,3 +379,16 @@ func TestProjectStatsUsesMovedFromIndex(t *testing.T) {
 		t.Fatalf("plan:\n%s", all)
 	}
 }
+
+// events_tag (0011) served the old tag lookup; the history now reads
+// event_tickets, so 0013 drops it.
+func TestEventsTagIndexDropped(t *testing.T) {
+	d := dbtest.New(t).W
+	var n int
+	if err := d.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name='events_tag'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatal("events_tag still exists")
+	}
+}

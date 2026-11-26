@@ -28,6 +28,10 @@ WHERE json_type(e.payload, '$.ticket_ids') = 'array' AND j.type = 'text'
   AND j.value IS NOT e.ticket_id;
 -- backfill:end
 
+-- The history no longer looks inside payloads for tag events, so run N's
+-- partial index for that (0011) has no reader.
+DROP INDEX events_tag;
+
 -- A move is recorded on the project the ticket moved to; the project it
 -- left counts it as a change too (the projects page's last change,
 -- VAQ-147), found through this index.

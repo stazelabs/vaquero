@@ -8,7 +8,7 @@ Your profile holds the name and picture Vaquero shows for you. Open it from the 
 
 ## Your display name
 
-Type a name and choose Save profile. It can be up to 80 characters, with no line breaks. It can't be a name an agent has, in any case, so every name you see belongs to one actor. Leave it empty to show Owner again.
+Type a name and choose Save profile. It can be up to 80 characters, with no line breaks. Vaquero refuses a name another actor already has, in any case. An agent created later can still take your display name, so a name given to `--assignee` is matched as an actor's name first, then as a display name. Leave it empty to show Owner again.
 
 The name shows at once everywhere you appear: ticket history (earlier lines too), comments, the assignee field, board cards, and every API and command line answer. Your account itself is still called Owner, so when you set a ticket's assignee by name, from the API or with `vaquero ticket edit --assignee`, either Owner or your display name works.
 

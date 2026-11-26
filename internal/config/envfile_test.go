@@ -185,3 +185,12 @@ func TestEnvironmentOverridesFile(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 }
+
+func TestEnvFileS3EndpointRefusesUserinfo(t *testing.T) {
+	dir := t.TempDir()
+	writeEnv(t, dir, "VQ_BLOB_STORE=s3\nVQ_S3_ENDPOINT=user:hunter2pass@s3.example.com\nVQ_S3_BUCKET=b\nVQ_S3_ACCESS_KEY_ID=k\nVQ_S3_SECRET_ACCESS_KEY=s\n")
+	_, err := FromEnv(env(map[string]string{"VQ_DATA_DIR": dir}))
+	if err == nil || !strings.Contains(err.Error(), "can't hold a user name or password") || strings.Contains(err.Error(), "hunter2pass") {
+		t.Fatalf("%v", err)
+	}
+}

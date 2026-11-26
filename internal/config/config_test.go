@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -241,6 +242,20 @@ func TestLocalReadsOnlyWhatTheCLIUses(t *testing.T) {
 	for _, name := range []string{"VQ_LOG_LEVEL", "VQ_LOG_FORMAT", "VQ_S3_ENDPOINT"} {
 		if err == nil || !strings.Contains(err.Error(), name) {
 			t.Fatalf("FromEnv doesn't name %s: %v", name, err)
+		}
+	}
+}
+
+func TestS3EndpointRefusesUserinfo(t *testing.T) {
+	const secret = "hunter2pass"
+	base := map[string]string{"VQ_DATA_DIR": "/d", "VQ_BLOB_STORE": "s3", "VQ_S3_BUCKET": "b",
+		"VQ_S3_ACCESS_KEY_ID": "k", "VQ_S3_SECRET_ACCESS_KEY": "s"}
+	for _, ep := range []string{"user:" + secret + "@s3.example.com", "https://user:" + secret + "@s3.example.com/b", "@s3.example.com"} {
+		m := map[string]string{"VQ_S3_ENDPOINT": ep}
+		maps.Copy(m, base)
+		_, err := FromEnv(env(m))
+		if err == nil || !strings.Contains(err.Error(), "can't hold a user name or password") || strings.Contains(err.Error(), secret) {
+			t.Fatalf("%q: %v", ep, err)
 		}
 	}
 }

@@ -244,6 +244,9 @@ func readBlobs(c *Config, get func(string) string) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("VQ_BLOB_STORE=s3 needs VQ_S3_ENDPOINT, VQ_S3_BUCKET, VQ_S3_ACCESS_KEY_ID and VQ_S3_SECRET_ACCESS_KEY; missing: %s", strings.Join(missing, ", "))
 	}
+	if strings.Contains(c.S3Endpoint, "@") {
+		return errors.New("VQ_S3_ENDPOINT can't hold a user name or password; set VQ_S3_ACCESS_KEY_ID and VQ_S3_SECRET_ACCESS_KEY instead")
+	}
 	if ep := c.S3Endpoint; strings.ContainsAny(ep, "/'\"") || strings.ContainsFunc(ep, unicode.IsSpace) {
 		return fmt.Errorf("VQ_S3_ENDPOINT must be a host with an optional port, with no https:// and no /bucket path (got %q)", ep)
 	}
