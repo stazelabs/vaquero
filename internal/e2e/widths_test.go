@@ -155,6 +155,29 @@ func TestNarrowBoard(t *testing.T) {
 	}
 }
 
+// Two rails opened back to back below md, before the first one's toggle
+// event has run (VAQ-141): the rail opened last stays open.
+func TestNarrowRailsOpenedBackToBack(t *testing.T) {
+	env, f := widthFixture(t)
+	p := open(t, env, 375, 900)
+	p.goTo("/p/WEB/board")
+	backlog, cancelled := rail(f, "Backlog"), rail(f, "Cancelled")
+	p.toggled(cancelled, func() {
+		eval[bool](p, `(function () {
+			document.querySelector(`+js(backlog+" > summary")+`).click();
+			document.querySelector(`+js(cancelled+" > summary")+`).click();
+			return true;
+		})()`)
+	})
+	// One more task, for any toggle event queued by app.js's answer.
+	eval[bool](p, `(window.vqTicked = false, setTimeout(function () { window.vqTicked = true; }, 50), true)`)
+	p.until(`window.vqTicked`)
+	if !eval[bool](p, isOpen(cancelled)) || eval[bool](p, isOpen(backlog)) {
+		t.Fatalf("backlog open %v, cancelled open %v; want only the cancelled rail, opened last, open",
+			eval[bool](p, isOpen(backlog)), eval[bool](p, isOpen(cancelled)))
+	}
+}
+
 func TestWideBoard(t *testing.T) {
 	env, f := widthFixture(t)
 	p := open(t, env, 1280, 900)

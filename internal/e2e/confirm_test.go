@@ -165,3 +165,33 @@ func TestConfirmPostsAndRedirectsWithToast(t *testing.T) {
 		t.Fatalf("comment live %v, events %d → %d; want deleted with one event", f.commentLive(id), before, f.events())
 	}
 }
+
+// Cancel and then Delete within one turn of the event loop, before the
+// first close event has run (VAQ-141): that late close must not forget
+// the new question, so Delete in the reopened dialog posts.
+func TestConfirmCancelThenDeleteBackToBack(t *testing.T) {
+	env, f, id := confirmFixture(t)
+	p := open(t, env, 1280, 800)
+	p.goTo("/t/WEB-1")
+	p.recordSubmits()
+	before := f.events()
+	p.askDelete()
+	eval[bool](p, `(function () {
+		document.querySelector("[data-confirm-cancel]").click();
+		document.querySelector(`+js(deleteButton)+`).click();
+		return true;
+	})()`)
+	// Both close events and the reopen have run once a task has passed.
+	p.until(`window.vqCloses > window.vqClosesAtAsk`)
+	if !eval[bool](p, `document.getElementById("vq-confirm").open`) {
+		t.Fatal("the second Delete didn't reopen the dialog")
+	}
+	p.reloaded(func() { p.click("[data-confirm-ok]") },
+		`location.pathname === "/t/WEB-1" && !!document.getElementById("vq-toast") && document.getElementById("vq-toast").textContent.indexOf("Comment deleted.") >= 0`)
+	if n := p.srv.requests("POST /t/WEB-1/comments/" + id + "/delete"); n != 1 {
+		t.Fatalf("delete posted %d times, want 1", n)
+	}
+	if f.commentLive(id) || f.events() != before+1 {
+		t.Fatalf("comment live %v, events %d → %d; want deleted with one event", f.commentLive(id), before, f.events())
+	}
+}
