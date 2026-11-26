@@ -37,8 +37,8 @@ const MaxTrailing = 1 << 20
 // MaxDocument is the largest export.json Read takes, and so the largest
 // Write and Check let an export hold (VAQ-132): an archive this version
 // writes, it can import. Room for every real instance, and a bound on the
-// memory a crafted file can claim. A variable only so tests can lower it;
-// nothing else writes it.
+// memory a crafted file can claim. A variable only so tests can lower it:
+// set only in tests, never in a t.Parallel test; nothing else writes it.
 var MaxDocument int64 = 256 << 20
 
 // TooLarge is an export whose export.json would pass MaxDocument: Write

@@ -43,7 +43,7 @@ func (s *exportStart) Write(p []byte) (int, error) {
 // the owner only. It reads through the reader pool and the blob store, never
 // the writer. A failure once the archive has started aborts the connection,
 // so the client sees a broken download rather than a short archive. An
-// export.json past archive.MaxDocument (one import would refuse) is
+// export.json past archive.MaxDocument (one import would refuse) is a 422
 // export_too_large before any byte. HEAD makes the same checks and answers
 // the headers alone.
 func APIExport(d Deps) http.HandlerFunc {
@@ -81,7 +81,7 @@ func APIExport(d Deps) http.HandlerFunc {
 			panic(http.ErrAbortHandler)
 		}
 		if tl, ok := errors.AsType[*archive.TooLarge](err); ok {
-			api.WriteFailure(w, api.Fail(http.StatusInternalServerError, "export_too_large", tl.Error()))
+			api.WriteFailure(w, api.Fail(http.StatusUnprocessableEntity, "export_too_large", tl.Error()))
 			return
 		}
 		if fe, ok := errors.AsType[*archive.FileError](err); ok {

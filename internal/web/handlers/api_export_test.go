@@ -244,7 +244,7 @@ func TestAPIExportTooLarge(t *testing.T) {
 	r := e.Client().API("GET", "/api/v1/export", tok, nil)
 	var f api.Failure
 	decode(t, r.Body, &struct{ Error *api.Failure }{&f})
-	if r.Status != 500 || f.Code != "export_too_large" || !strings.Contains(f.Message, "vaquero import") ||
+	if r.Status != 422 || f.Code != "export_too_large" || !strings.Contains(f.Message, "vaquero import") ||
 		r.Header.Get("Content-Disposition") != "" || counted.gets.Load() != 0 {
 		t.Fatalf("GET: %d %v %q, %d reads", r.Status, r.Header, r.Body, counted.gets.Load())
 	}
@@ -255,7 +255,7 @@ func TestAPIExportTooLarge(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	if res.StatusCode != 500 || res.Header.Get("Content-Disposition") != "" {
+	if res.StatusCode != 422 || res.Header.Get("Content-Disposition") != "" {
 		t.Fatalf("HEAD: %d %v", res.StatusCode, res.Header)
 	}
 }
