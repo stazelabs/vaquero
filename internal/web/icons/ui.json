@@ -26,6 +26,7 @@
     "error": "circle-alert",
     "expand": "chevron-down",
     "external": "external-link",
+    "focus": "crosshair",
     "glyph-bell": "bell",
     "glyph-book": "book",
     "glyph-briefcase": "briefcase",
@@ -98,6 +99,7 @@
     "success": "circle-check",
     "tag": "tag",
     "terminal": "terminal",
-    "token": "key-round"
+    "token": "key-round",
+    "waiting": "clock"
   }
 }

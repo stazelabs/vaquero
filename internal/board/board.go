@@ -20,6 +20,7 @@ const DoneWindow = 7 * 24 * time.Hour
 
 // Card is one ticket on the board or in the list.
 type Card struct {
+	ID                     string // the ticket's id, for the Focus view's reasons
 	Key, Title, Assignee   string
 	AssigneeIsAgent, Ready bool
 	Priority, Version      int64
@@ -34,6 +35,9 @@ type Card struct {
 	// board's rule alone.
 	Tier      string
 	Readiness *readiness.Readiness
+	// StatusChangedAt is when the ticket last changed status, as stored;
+	// When the Focus view's day for a finished card ("today", "Mon").
+	StatusChangedAt, When string
 }
 
 // Column is one status and its cards, top to bottom.
@@ -160,6 +164,8 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 			}
 		}
 		c.Cards = append(c.Cards, Card{
+			ID:              r.ID,
+			StatusChangedAt: r.StatusChangedAt,
 			Key:             core.TicketKey{Project: p.Key, Number: r.Number}.String(),
 			Title:           r.Title,
 			Assignee:        r.AssigneeName,

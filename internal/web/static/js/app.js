@@ -390,8 +390,8 @@ document.addEventListener("toggle", function (ev) {
 }, true);
 
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
-// g b board, g l list, j/k next/previous card (enter on its focused link
-// opens it), ? shortcuts.
+// g f Focus, g b board, g l list, j/k next/previous card (enter on its
+// focused link opens it), ? shortcuts.
 // Ignored while typing in a field.
 (function () {
   var dialog = document.getElementById("vq-shortcuts");
@@ -446,8 +446,10 @@ document.addEventListener("toggle", function (ev) {
     var p = project();
     if (pendingG) {
       pendingG = false;
-      if (k === "b") {
+      if (k === "f") {
         window.location.href = p ? "/p/" + p : "/";
+      } else if (k === "b") {
+        window.location.href = p ? "/p/" + p + "/board" : "/";
       } else if (k === "l") {
         window.location.href = p ? "/p/" + p + "/list" : "/";
       }
@@ -506,6 +508,193 @@ document.addEventListener("toggle", function (ev) {
       link.focus({ preventScroll: true });
     }
   });
+})();
+
+// Filter menus (Priority, Milestone, Tags, Status): disclosures holding
+// links. One is open at a time; a click outside it or esc closes it (esc
+// puts focus back on its button). Opening the Tags menu focuses its search
+// box, which hides the tags that don't contain what is typed; Enter there
+// follows the first tag still shown.
+(function () {
+  function openMenus() {
+    return document.querySelectorAll("details[data-menu][open]");
+  }
+  function visibleItems(menu) {
+    return Array.prototype.filter.call(menu.querySelectorAll("[data-menu-item]"), function (li) {
+      return !li.hidden;
+    });
+  }
+  document.addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (!d.matches || !d.matches("details[data-menu]") || !d.open) {
+      return;
+    }
+    openMenus().forEach(function (o) {
+      if (o !== d) {
+        o.open = false;
+      }
+    });
+    var box = d.querySelector("[data-menu-search]");
+    if (box) {
+      box.focus({ preventScroll: true });
+    }
+  }, true);
+  document.addEventListener("click", function (ev) {
+    openMenus().forEach(function (d) {
+      if (!d.contains(ev.target)) {
+        d.open = false;
+      }
+    });
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape" || ev.defaultPrevented) {
+      return;
+    }
+    var open = openMenus();
+    if (!open.length) {
+      return;
+    }
+    ev.preventDefault();
+    open.forEach(function (d) {
+      d.open = false;
+      var s = d.querySelector("summary");
+      if (s) {
+        s.focus({ preventScroll: true });
+      }
+    });
+  });
+  document.addEventListener("input", function (ev) {
+    var box = ev.target;
+    if (!box.matches || !box.matches("[data-menu-search]")) {
+      return;
+    }
+    var menu = box.closest("details[data-menu]");
+    var q = box.value.trim().toLowerCase();
+    var shown = 0;
+    menu.querySelectorAll("[data-menu-item]").forEach(function (li) {
+      var hit = !q || li.getAttribute("data-menu-item").toLowerCase().indexOf(q) >= 0;
+      li.hidden = !hit;
+      if (hit) {
+        shown += 1;
+      }
+    });
+    var empty = menu.querySelector("[data-menu-empty]");
+    if (empty) {
+      empty.hidden = shown > 0;
+    }
+  });
+  document.addEventListener("keydown", function (ev) {
+    var box = ev.target;
+    if (ev.key !== "Enter" || !box.matches || !box.matches("[data-menu-search]")) {
+      return;
+    }
+    ev.preventDefault();
+    var first = visibleItems(box.closest("details[data-menu]"))[0];
+    var link = first && first.querySelector("a");
+    if (link) {
+      link.click();
+    }
+  });
+})();
+
+// Focus: a live refresh replaces #focus, and the disclosures that were
+// open ("N more ready", "M waiting", a group's "N more") stay open.
+(function () {
+  var keep = null;
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    var target = ev.detail && ev.detail.target;
+    if (!target || target.id !== "focus" || !ev.detail.shouldSwap) {
+      return;
+    }
+    keep = Array.prototype.map.call(target.querySelectorAll("details[data-keep][open]"), function (d) {
+      return d.dataset.keep;
+    });
+  });
+  document.body.addEventListener("htmx:afterSwap", function () {
+    var focus = document.getElementById("focus");
+    if (!focus || keep === null) {
+      return;
+    }
+    keep.forEach(function (name) {
+      var d = focus.querySelector('details[data-keep="' + name + '"]');
+      if (d) {
+        d.open = true;
+      }
+    });
+    keep = null;
+  });
+})();
+
+// The list: each status group is a disclosure, and which are open is
+// remembered per project in this browser (a click on a group's header
+// records it; a group the list is filtered to stays open). Done and
+// cancelled groups show 50 tickets and load 50 more at a time; a live
+// refresh of #list says how many each shows (shown=STATUS:N), so the
+// server renders as many again.
+(function () {
+  function list() {
+    return document.getElementById("list");
+  }
+  function storageKey(el) {
+    return "vq:list-groups:" + (el.dataset.listProject || "");
+  }
+  function load(el) {
+    try {
+      return JSON.parse(window.localStorage.getItem(storageKey(el)) || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function save(el, state) {
+    try {
+      window.localStorage.setItem(storageKey(el), JSON.stringify(state));
+    } catch (e) {
+      // Storage refused (a private window): the groups just aren't remembered.
+    }
+  }
+  function apply() {
+    var el = list();
+    if (!el) {
+      return;
+    }
+    var state = load(el);
+    el.querySelectorAll("details[data-list-group]").forEach(function (d) {
+      var id = d.dataset.listGroup;
+      if (!d.hasAttribute("data-force-open") && Object.prototype.hasOwnProperty.call(state, id)) {
+        d.open = !!state[id];
+      }
+    });
+  }
+  document.addEventListener("click", function (ev) {
+    var s = ev.target.closest ? ev.target.closest("details[data-list-group] > summary") : null;
+    var el = list();
+    if (!s || !el) {
+      return;
+    }
+    var d = s.parentElement;
+    var state = load(el);
+    state[d.dataset.listGroup] = !d.open; // the click is about to toggle it
+    save(el, state);
+  });
+  document.body.addEventListener("htmx:configRequest", function (ev) {
+    var elt = ev.detail && ev.detail.elt;
+    if (!elt || elt.id !== "list") {
+      return;
+    }
+    var shown = [];
+    elt.querySelectorAll("details[data-list-group][data-paged]").forEach(function (d) {
+      var n = d.querySelectorAll("[data-card]").length;
+      if (n > 0) {
+        shown.push(d.dataset.listGroup + ":" + n);
+      }
+    });
+    if (shown.length) {
+      ev.detail.parameters.shown = shown.join(",");
+    }
+  });
+  // Applied straight after the swap, before the new groups' toggle events.
+  document.body.addEventListener("htmx:afterSwap", apply);
+  apply();
 })();
 
 // Rails below md: an open rail's cards overlay the columns (see the rail

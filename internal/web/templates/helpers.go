@@ -131,6 +131,7 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 var shortcuts = [][2]string{
 	{"c", "New ticket"},
 	{"/", "Search"},
+	{"g f", "Focus"},
 	{"g b", "Board"},
 	{"g l", "List"},
 	{"j / k", "Focus the next or previous card"},

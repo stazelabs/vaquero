@@ -109,7 +109,7 @@ func (p *page) dropped(f *fixture, events int64, kind string, cols map[string][]
 func TestDragReorderWithinColumn(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	events := f.events()
 	p.markBoard()
 
@@ -123,7 +123,7 @@ func TestDragReorderWithinColumn(t *testing.T) {
 func TestDragToAnotherColumn(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	events := f.events()
 	p.markBoard()
 
@@ -142,7 +142,7 @@ func TestDragToAnotherColumn(t *testing.T) {
 func TestDragToTopOfColumn(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	events := f.events()
 	p.markBoard()
 
@@ -160,7 +160,7 @@ func TestDragToTopOfColumn(t *testing.T) {
 func TestDragToEmptyColumn(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	events := f.events()
 	p.markBoard()
 
@@ -193,7 +193,7 @@ func (p *page) watchBoardFetches() {
 		window.vqBoardFetches = 0;
 		document.body.addEventListener("htmx:beforeRequest", function (ev) {
 			var c = ev.detail.requestConfig;
-			if (c.verb === "get" && c.path.indexOf("/p/WEB/board") === 0) { window.vqBoardFetches++; }
+			if (c.verb === "get" && c.path.indexOf("/p/WEB/board/fragment") === 0) { window.vqBoardFetches++; }
 		});
 		return true;
 	})()`)
@@ -211,7 +211,7 @@ func TestDragRefusedReloadsWithToast(t *testing.T) {
 	}
 	f.reloadStatuses()
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	p.watchStream()
 
 	from := p.grab("WEB-1")
@@ -241,17 +241,17 @@ func TestDragRefusedReloadsWithToast(t *testing.T) {
 func TestDragFailedPutsCardBack(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	events := f.events()
 	// The move and the board fetch both fail, so the card's place can only
 	// be app.js's doing; the fetch is counted.
 	p.srv.failWhen(func(r *http.Request) bool {
 		return r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/move") ||
-			r.Method == http.MethodGet && r.URL.Path == "/p/WEB/board"
+			r.Method == http.MethodGet && r.URL.Path == "/p/WEB/board/fragment"
 	})
 	eval[bool](p, `(document.querySelector(`+js(card("WEB-1"))+`).vqMark = true)`)
 	p.watchBoardFetches()
-	fetches := p.srv.requests("GET /p/WEB/board")
+	fetches := p.srv.requests("GET /p/WEB/board/fragment")
 
 	from := p.grab("WEB-1")
 	to := p.rect(card("WEB-3"))
@@ -264,7 +264,7 @@ func TestDragFailedPutsCardBack(t *testing.T) {
 		t.Fatal("the card was redrawn, not put back")
 	}
 	p.until(`window.vqBoardFetches > 0`)
-	if p.srv.requests("GET /p/WEB/board") <= fetches {
+	if p.srv.requests("GET /p/WEB/board/fragment") <= fetches {
 		t.Fatal("the board wasn't fetched again")
 	}
 	if n := f.events(); n != events {
@@ -277,7 +277,7 @@ func TestDragFailedPutsCardBack(t *testing.T) {
 func TestDragHoldsLiveRefreshUntilDrop(t *testing.T) {
 	env, f := dragFixture(t)
 	p := open(t, env, 1600, 1000)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	p.watchStream()
 	p.watchBoardFetches()
 	p.markBoard()

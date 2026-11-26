@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -16,60 +17,83 @@ import (
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
 
-// chipsFor builds the filter chips for a page at base: Mine, Agents, each
-// tag on the page, each priority and, with categories (the list view), each
-// status category. A chip that is on links to the filter without it.
-func chipsFor(base string, f board.Filter, tags []string, categories bool) []templates.Chip {
-	chip := func(label, key, value string, on bool) templates.Chip {
-		next := f.With(key, value)
-		if on {
-			next = f.With(key, "")
-		}
-		return templates.Chip{Label: label, Href: templates.FilterHref(base, next), On: on}
+// filterBar builds the filter row for a page at base: the project's tags
+// and open milestones for the menus, and the assignee filter's name.
+func filterBar(r *http.Request, d Deps, p gen.Project, base string, f board.Filter, categories bool) (templates.FilterBar, error) {
+	b := templates.FilterBar{Base: base, Filter: f, Categories: categories}
+	tagRows, err := d.R.ListProjectTicketTags(r.Context(), p.ID)
+	if err != nil {
+		return b, err
 	}
-	out := []templates.Chip{chip("Mine", "mine", "1", f.Mine), chip("Agents", "agents", "1", f.Agents)}
-	for _, t := range tags {
-		out = append(out, chip(t, "tag", t, core.SameTag(f.Tag, t)))
-	}
-	for p := int64(1); p <= 4; p++ {
-		out = append(out, chip(templates.PriorityLabel(p), "priority", strconv.FormatInt(p, 10), f.Priority == p))
-	}
-	if categories {
-		for _, c := range core.Categories {
-			out = append(out, chip(templates.CategoryLabel(c), "category", c, f.Category == c))
+	for _, t := range tagRows {
+		if !slices.Contains(b.Tags, t.Name) {
+			b.Tags = append(b.Tags, t.Name)
 		}
 	}
-	return out
+	slices.Sort(b.Tags)
+	ms, err := d.R.ListMilestones(r.Context(), p.ID)
+	if err != nil {
+		return b, err
+	}
+	for _, m := range ms {
+		if !m.ClosedAt.Valid || m.ID == f.Milestone {
+			b.Milestones = append(b.Milestones, templates.MenuOption{Value: m.ID, Label: m.Name})
+		}
+	}
+	if f.Assignee != "" {
+		if a, err := d.R.GetActor(r.Context(), f.Assignee); err == nil {
+			b.AssigneeName = a.Name
+		}
+	}
+	return b, nil
 }
 
-// tagsOn lists the distinct tags on a set of columns, sorted, keeping the
-// active tag even when nothing carries it (in any case or normalisation).
-func tagsOn(cols [][]board.Column, active string) []string {
-	var out []string
-	for _, group := range cols {
-		for _, c := range group {
-			for _, k := range c.Cards {
-				for _, t := range k.Tags {
-					if !slices.Contains(out, t) {
-						out = append(out, t)
-					}
-				}
-			}
+// ProjectFocus is the project's landing page: Next, In flight and Just
+// finished. It takes the board's filters, so an old board address
+// (/p/{key}?tag=ui) opens Focus filtered the same way.
+func ProjectFocus(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
 		}
+		f := board.ParseFilter(r.URL.Query())
+		fo, err := board.LoadFocus(r.Context(), d.R, p, d.Actor, f, d.Now())
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		bar, err := filterBar(r, d, p, projectPath(p, ""), fo.Filter, false)
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.FocusPage(templates.FocusView{Focus: fo, Bar: bar}))
 	}
-	if active != "" && !slices.ContainsFunc(out, func(t string) bool { return core.SameTag(t, active) }) {
-		out = append(out, active)
+}
+
+// FocusFragment is the Focus view's lanes, for live refreshes.
+func FocusFragment(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		fo, err := board.LoadFocus(r.Context(), d.R, p, d.Actor, board.ParseFilter(r.URL.Query()), d.Now())
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.FocusSection(fo))
 	}
-	slices.Sort(out)
-	return out
 }
 
 func loadBoard(r *http.Request, d Deps, p gen.Project, f board.Filter) (board.Board, error) {
 	return board.Load(r.Context(), d.R, p, d.Actor, f, d.Now())
 }
 
-// ProjectShow is the project's board.
-func ProjectShow(d Deps) http.HandlerFunc {
+// ProjectBoard is the project's board.
+func ProjectBoard(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projectFromURL(w, r, d)
 		if !ok {
@@ -81,9 +105,12 @@ func ProjectShow(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		base := projectPath(p, "")
-		v := templates.BoardView{Board: b, Chips: chipsFor(base, b.Filter, tagsOn([][]board.Column{b.Active, b.Rails}, f.Tag), false), Clear: base}
-		render(w, r, d, http.StatusOK, templates.BoardPage(v))
+		bar, err := filterBar(r, d, p, projectPath(p, "/board"), b.Filter, false)
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.BoardPage(templates.BoardView{Board: b, Bar: bar}))
 	}
 }
 
@@ -107,22 +134,90 @@ func boardFragment(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project
 	render(w, r, d, http.StatusOK, templates.BoardSection(b))
 }
 
-// ProjectListView lists every status with every matching ticket.
+// ListPageSize is how many tickets a done or cancelled group shows at a time.
+const ListPageSize = 50
+
+// listPaged says whether a status category's list group is paged.
+func listPaged(category string) bool { return category == "done" || category == "cancelled" }
+
+// listShown reads how many rows the browser shows of each paged group
+// (shown=STATUS:N, comma-separated or repeated), so a live refresh renders
+// as many. Malformed entries are ignored.
+func listShown(q url.Values) map[string]int {
+	out := map[string]int{}
+	for _, v := range q["shown"] {
+		for part := range strings.SplitSeq(v, ",") {
+			id, n, ok := strings.Cut(part, ":")
+			if !ok {
+				continue
+			}
+			if k, err := strconv.Atoi(n); err == nil && k > 0 {
+				out[id] = k
+			}
+		}
+	}
+	return out
+}
+
+// ProjectListView lists every status with every matching ticket. Done and
+// cancelled groups show ListPageSize at a time (more when the page says it
+// shows more: shown=STATUS:N); ?group=STATUS&offset=N answers the rows of
+// that group's next page alone, with its "Show 50 more" row.
 func ProjectListView(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projectFromURL(w, r, d)
 		if !ok {
 			return
 		}
-		f := board.ParseFilter(r.URL.Query())
+		q := r.URL.Query()
+		f := board.ParseFilter(q)
 		cols, err := board.LoadList(r.Context(), d.R, p, d.Actor, f)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
 		}
-		base := projectPath(p, "/list")
-		v := templates.ListView{Project: p, Filter: f, Columns: cols, Chips: chipsFor(base, f, tagsOn([][]board.Column{cols}, f.Tag), true), Clear: base}
-		render(w, r, d, http.StatusOK, templates.ListPage(v))
+		if id := q.Get("group"); id != "" {
+			for _, c := range cols {
+				if c.Status.ID != id || !listPaged(c.Status.Category) {
+					continue
+				}
+				offset, err := strconv.Atoi(q.Get("offset"))
+				if err != nil || offset < 0 || offset > len(c.Cards) {
+					offset = 0
+				}
+				end := min(offset+ListPageSize, len(c.Cards))
+				g := templates.ListGroup{Column: c, Shown: c.Cards[offset:end], Paged: true}
+				if end < len(c.Cards) {
+					g.Next = end
+				}
+				render(w, r, d, http.StatusOK, templates.ListRows(p, f, g))
+				return
+			}
+		}
+		shown := listShown(q)
+		groups := make([]templates.ListGroup, 0, len(cols))
+		for _, c := range cols {
+			g := templates.ListGroup{Column: c, Shown: c.Cards, Open: true}
+			if listPaged(c.Status.Category) {
+				g.Paged = true
+				g.Forced = f.Category != ""
+				g.Open = g.Forced
+				n := ListPageSize
+				if want := shown[c.Status.ID]; want > n {
+					n = (want + ListPageSize - 1) / ListPageSize * ListPageSize
+				}
+				if n < len(c.Cards) {
+					g.Shown, g.Next = c.Cards[:n], n
+				}
+			}
+			groups = append(groups, g)
+		}
+		bar, err := filterBar(r, d, p, projectPath(p, "/list"), f, true)
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.ListPage(templates.ListView{Project: p, Filter: f, Groups: groups, Bar: bar}))
 	}
 }
 
@@ -177,17 +272,17 @@ func TicketMove(d Deps) http.HandlerFunc {
 		var inv *core.Invalid
 		switch {
 		case errors.As(err, &inv):
-			fail(inv.Error(), projectPath(p, ""))
+			fail(inv.Error(), projectPath(p, "/board"))
 			return
 		case errors.Is(err, core.ErrNotFound):
-			fail("That ticket no longer exists.", projectPath(p, ""))
+			fail("That ticket no longer exists.", projectPath(p, "/board"))
 			return
 		case err != nil:
 			serverError(w, r, d, err)
 			return
 		}
 		if !hx {
-			http.Redirect(w, r, projectPath(p, ""), http.StatusSeeOther)
+			http.Redirect(w, r, projectPath(p, "/board"), http.StatusSeeOther)
 			return
 		}
 		q, _ := url.ParseQuery(r.PostFormValue("filter"))

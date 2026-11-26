@@ -85,8 +85,12 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Get("/projects/new", handlers.ProjectNew(d))
 		r.With(fs).Post("/projects", handlers.ProjectCreate(d))
 		r.Route("/p/{key}", func(r chi.Router) {
-			r.Get("/", handlers.ProjectShow(d))
-			r.Get("/board", handlers.BoardFragment(d))
+			// Focus is the landing page; it takes the board's filters, so an
+			// old board address opens it filtered the same way.
+			r.Get("/", handlers.ProjectFocus(d))
+			r.Get("/focus/fragment", handlers.FocusFragment(d))
+			r.Get("/board", handlers.ProjectBoard(d))
+			r.Get("/board/fragment", handlers.BoardFragment(d))
 			r.Get("/list", handlers.ProjectListView(d))
 			r.With(fs).Post("/", handlers.ProjectUpdate(d))
 			r.Get("/settings", handlers.ProjectSettings(d))

@@ -72,7 +72,7 @@ func TestShortcutGoBoardAndList(t *testing.T) {
 	// From a ticket, g b and g l reach its project's board and list.
 	p.goTo("/t/WEB-1")
 	p.reloaded(func() { p.key("g"); p.key("l") }, `location.pathname === "/p/WEB/list"`)
-	p.reloaded(func() { p.key("g"); p.key("b") }, `location.pathname === "/p/WEB"`)
+	p.reloaded(func() { p.key("g"); p.key("b") }, `location.pathname === "/p/WEB/board"`)
 
 	// Outside a project they reach the projects list.
 	p.goTo("/activity")
@@ -82,7 +82,7 @@ func TestShortcutGoBoardAndList(t *testing.T) {
 }
 
 func TestShortcutJKMoveFocusAndEnterOpens(t *testing.T) {
-	for _, view := range []string{"/p/WEB", "/p/WEB/list"} {
+	for _, view := range []string{"/p/WEB", "/p/WEB/board", "/p/WEB/list"} {
 		t.Run(view, func(t *testing.T) {
 			env, _ := shortcutsFixture(t)
 			p := open(t, env, 1280, 800)
@@ -160,7 +160,7 @@ func TestShortcutEscapeClosesRailWhenNarrow(t *testing.T) {
 	env, f := shortcutsFixture(t)
 	f.ticket("Someday", "Backlog")
 	p := open(t, env, 375, 800)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	backlog := fmt.Sprintf(`details[data-rail="%s"]`, f.status["Backlog"].ID)
 	p.openDetails(backlog)
 	p.toggled(backlog, func() { p.key(escape) })

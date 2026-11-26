@@ -52,3 +52,24 @@ ORDER BY m.closed_at IS NOT NULL, m.due_on IS NULL, m.due_on, m.name;
 -- name: CountOpenWithoutMilestone :one
 SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
 WHERE t.project_id = ? AND t.milestone_id IS NULL AND s.category NOT IN ('done', 'cancelled');
+
+-- name: ListOpenBlockers :many
+-- For the Focus view's waiting reasons: each of a project's tickets with
+-- an open blocker (from any project), and that blocker's key.
+SELECT l.to_id AS ticket_id, bp.key AS blocker_project, bt.number AS blocker_number
+FROM ticket_links l
+JOIN tickets t ON t.id = l.to_id
+JOIN tickets bt ON bt.id = l.from_id
+JOIN statuses bs ON bs.id = bt.status_id
+JOIN projects bp ON bp.id = bt.project_id
+WHERE t.project_id = ? AND l.kind = 'blocks' AND bs.category NOT IN ('done', 'cancelled')
+ORDER BY l.to_id, bp.key, bt.number;
+
+-- name: ListParentsWithOpenSubTickets :many
+-- For the Focus view's waiting reasons: a project's tickets with an open
+-- sub-ticket (sub-tickets share their parent's project).
+SELECT DISTINCT CAST(ct.parent_id AS TEXT) AS parent_id
+FROM tickets ct
+JOIN statuses cs ON cs.id = ct.status_id
+WHERE ct.project_id = ? AND ct.parent_id IS NOT NULL AND cs.category NOT IN ('done', 'cancelled')
+ORDER BY 1;

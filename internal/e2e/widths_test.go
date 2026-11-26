@@ -95,10 +95,10 @@ func TestNarrowBoard(t *testing.T) {
 		t.Run(fmt.Sprint(w), func(t *testing.T) {
 			env, f := widthFixture(t)
 			p := open(t, env, w, 900)
-			p.goTo("/p/WEB")
+			p.goTo("/p/WEB/board")
 			milestonesDisclosure(t, p)
 
-			p.goTo("/p/WEB")
+			p.goTo("/p/WEB/board")
 			backlog, cancelled := rail(f, "Backlog"), rail(f, "Cancelled")
 			p.openDetails(backlog)
 			if w >= 768 {
@@ -154,7 +154,7 @@ func TestNarrowBoard(t *testing.T) {
 func TestWideBoard(t *testing.T) {
 	env, f := widthFixture(t)
 	p := open(t, env, 1280, 900)
-	p.goTo("/p/WEB")
+	p.goTo("/p/WEB/board")
 	if !eval[bool](p, visible(sidePanel)) || eval[bool](p, visible(disclosure)) {
 		t.Fatal("want the side milestone panel, not the disclosure")
 	}
@@ -193,7 +193,7 @@ func TestThemeLightAndDark(t *testing.T) {
 	for _, scheme := range []string{"light", "dark"} {
 		p := open(t, env, 1280, 900)
 		p.scheme(scheme)
-		p.goTo("/p/WEB")
+		p.goTo("/p/WEB/board")
 		// Each token is resolved on a probe element through the CSSOM
 		// (allowed by the CSP, unlike a style attribute).
 		c := eval[colours](p, `(function () {
@@ -250,7 +250,7 @@ func TestPhoneWidthNoSidewaysScroll(t *testing.T) {
 	}{
 		{empty, []string{"/"}},
 		{env, []string{
-			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
+			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/board", "/p/WEB/board?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
 			"/t/WEB-3", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/activity",
 			"/help", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
 		}},

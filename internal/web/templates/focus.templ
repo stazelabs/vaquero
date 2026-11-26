@@ -1,0 +1,133 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/board"
+
+// FocusView is the Focus page.
+type FocusView struct {
+	Focus board.Focus
+	Bar   FilterBar
+}
+
+// FocusPage is a project's landing page: Next, In flight and Just finished.
+templ FocusPage(v FocusView) {
+	@Shell(v.Focus.Project.Name) {
+		@projectHeader(v.Focus.Project, "focus", v.Focus.Filter)
+		<div class="flex flex-wrap items-start justify-between gap-4">
+			@filterBar(v.Bar)
+			<div class="mt-4">
+				@helpLink("the-board", "About Focus")
+			</div>
+		</div>
+		@FocusSection(v.Focus)
+	}
+}
+
+// FocusSection is the Focus view's live part. The lanes stack below md in
+// the order Next, In flight, Just finished, and sit side by side from md.
+// The "more" and "waiting" disclosures carry data-keep, so app.js keeps
+// them open across a live refresh.
+templ FocusSection(fo board.Focus) {
+	<div
+		id="focus"
+		hx-get={ FilterHref("/p/"+fo.Project.Key+"/focus/fragment", fo.Filter) }
+		hx-trigger="vq:change"
+		hx-swap="outerHTML"
+		data-live
+		class="mt-6 grid gap-4 md:grid-cols-3"
+	>
+		<section data-lane="next" aria-labelledby="lane-next" class={ laneClass }>
+			<h2 id="lane-next" class={ laneHeading }>
+				@Icon("ready")
+				Next
+			</h2>
+			if len(fo.Next) == 0 {
+				<p class="px-1 text-sm text-muted">{ nothingReady(fo) }</p>
+			} else {
+				@focusCards(fo.Next)
+			}
+			if fo.NextMore > 0 {
+				<details data-keep="next-more" class="mt-2">
+					<summary class={ moreClass }>{ itoa(int64(fo.NextMore)) } more ready</summary>
+					<div class="mt-2">
+						@focusCards(fo.NextRest)
+					</div>
+				</details>
+			}
+			if len(fo.Waiting) > 0 {
+				<details data-keep="waiting" class="mt-3 border-t border-line pt-2">
+					<summary class={ moreClass + " inline-flex items-center gap-1" }>
+						@IconClass("waiting", "h-3.5 w-3.5 shrink-0")
+						{ itoa(int64(len(fo.Waiting))) } waiting
+					</summary>
+					<ul class="mt-2 space-y-1">
+						for _, w := range fo.Waiting {
+							<li data-card={ w.Key } class="rounded-md px-1 py-1 text-sm focus-within:ring-2 focus-within:ring-accent">
+								<a href={ templ.SafeURL("/t/" + w.Key) } class="block hover:text-accent">
+									<span class="font-mono text-[10px] text-muted">{ w.Key }</span>
+									<span class="block leading-snug text-ink">{ w.Title }</span>
+									<span class="block text-xs text-muted">{ w.Reason }</span>
+								</a>
+							</li>
+						}
+					</ul>
+				</details>
+			}
+		</section>
+		<section data-lane="flight" aria-labelledby="lane-flight" class={ laneClass }>
+			<h2 id="lane-flight" class={ laneHeading }>
+				@Icon("cat-in-progress")
+				In flight
+			</h2>
+			if flightEmpty(fo) {
+				<p class="px-1 text-sm text-muted">Nothing in flight.</p>
+			}
+			for _, g := range fo.InFlight {
+				if len(g.Cards) > 0 {
+					<h3 class="mb-1 mt-3 flex items-center gap-1.5 px-1 text-xs text-muted first-of-type:mt-0">
+						<span class={ categoryTint(g.Status.Category) }>
+							@IconClass(CategoryIcon(g.Status.Category), "h-3.5 w-3.5 shrink-0")
+						</span>
+						{ flightHeader(g) } · { itoa(int64(len(g.Cards) + g.More)) }
+					</h3>
+					@focusCards(g.Cards)
+					if g.More > 0 {
+						<details data-keep={ "flight-" + g.Status.ID } class="mt-2">
+							<summary class={ moreClass }>{ itoa(int64(g.More)) } more</summary>
+							<div class="mt-2">
+								@focusCards(g.Rest)
+							</div>
+						</details>
+					}
+				}
+			}
+		</section>
+		<section data-lane="finished" aria-labelledby="lane-finished" class={ laneClass }>
+			<h2 id="lane-finished" class={ laneHeading }>
+				@Icon("cat-done")
+				Just finished
+			</h2>
+			if len(fo.Finished) == 0 {
+				<p class="px-1 text-sm text-muted">Nothing finished this week.</p>
+			} else {
+				@focusCards(fo.Finished)
+			}
+			if fo.FinishedMore > 0 {
+				<details data-keep="finished-more" class="mt-2">
+					<summary class={ moreClass }>{ itoa(int64(fo.FinishedMore)) } more this week</summary>
+					<div class="mt-2">
+						@focusCards(fo.FinishedRest)
+					</div>
+				</details>
+			}
+			<a href={ templ.SafeURL(FilterHref("/p/"+fo.Project.Key+"/list", fo.Filter.With("category", "done"))) } class="mt-3 block px-1 text-xs text-muted hover:text-accent">Older: in List</a>
+		</section>
+	</div>
+}
+
+templ focusCards(cs []board.Card) {
+	<ol class="space-y-2">
+		for _, k := range cs {
+			@cardItem(k, focusCardClass(k.Ready))
+		}
+	</ol>
+}

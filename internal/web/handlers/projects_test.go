@@ -62,7 +62,8 @@ func TestCreateProjectFlow(t *testing.T) {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 	page := c.Follow(r)
-	contains(t, page.Body, "Project created.", "Vaquero", "Backlog", "Todo", "In progress", "In review", "Done", "Cancelled")
+	contains(t, page.Body, "Project created.", "Vaquero", `id="focus"`, "Nothing ready.")
+	contains(t, c.Get("/p/VAQ/board").Body, "Backlog", "Todo", "In progress", "In review", "Done", "Cancelled")
 	home := c.Get("/")
 	contains(t, home.Body, "VAQ", "Vaquero", `href="/p/VAQ"`)
 }
@@ -224,7 +225,7 @@ func TestProjectPageListsTicketsByStatus(t *testing.T) {
 	if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, p.ID, core.TicketInput{Title: "Fix the gate", Priority: 2, Tags: []string{"ui"}}); err != nil {
 		t.Fatal(err)
 	}
-	r := e.Client().Get("/p/VAQ")
+	r := e.Client().Get("/p/VAQ/board")
 	contains(t, r.Body, "VAQ-1", "Fix the gate", "High", "ui", `href="/t/VAQ-1"`, `href="/p/VAQ/new"`, "No tickets.")
 }
 

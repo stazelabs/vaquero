@@ -122,9 +122,10 @@ func TestPagesSubscribeToStream(t *testing.T) {
 	project(t, e)
 	c := e.Client()
 	for path, target := range map[string]string{
-		"/p/VAQ":      `hx-get="/p/VAQ/board"`,
-		"/p/VAQ/list": `hx-select="#list"`,
-		"/activity":   `hx-select="#feed"`,
+		"/p/VAQ":       `hx-get="/p/VAQ/focus/fragment"`,
+		"/p/VAQ/board": `hx-get="/p/VAQ/board/fragment"`,
+		"/p/VAQ/list":  `hx-select="#list"`,
+		"/activity":    `hx-select="#feed"`,
 	} {
 		page := c.Get(path).Body
 		// app.js owns the one stream per tab and triggers vq:change on
@@ -138,7 +139,7 @@ func TestPagesSubscribeToStream(t *testing.T) {
 func TestRailsCarryStableIDs(t *testing.T) {
 	e := webtest.New(t)
 	project(t, e)
-	page := e.Client().Get("/p/VAQ").Body
+	page := e.Client().Get("/p/VAQ/board").Body
 	if n := strings.Count(page, "data-rail="); n != 2 {
 		t.Fatalf("%d rails tagged", n)
 	}

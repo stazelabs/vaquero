@@ -68,6 +68,7 @@ func TestContextualHelpLinks(t *testing.T) {
 	c := e.Client()
 	for page, slug := range map[string]string{
 		"/p/VAQ":          "the-board",
+		"/p/VAQ/board":    "the-board",
 		"/p/VAQ/settings": "projects-and-tickets",
 		"/admin/tokens":   "api-tokens",
 		"/search":         "search",

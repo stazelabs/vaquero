@@ -14,48 +14,42 @@ type Chip struct {
 // BoardView is the board page.
 type BoardView struct {
 	Board board.Board
-	Chips []Chip
-	Clear string // the unfiltered board's address
+	Bar   FilterBar
 }
 
 // ListView is the list page.
 type ListView struct {
 	Project gen.Project
 	Filter  board.Filter
-	Columns []board.Column
-	Chips   []Chip
-	Clear   string
+	Groups  []ListGroup
+	Bar     FilterBar
 }
 
-// projectHeader is the key, name and the board/list/settings/new links.
-templ projectHeader(p gen.Project, view string) {
+// ListGroup is one status in the list: a disclosure, open unless it is
+// paged (done and cancelled), which shows Shown and offers the next page
+// from Next (0 when nothing is left). Forced is a group the list is
+// filtered to: always open, whatever the browser remembers.
+type ListGroup struct {
+	Column       board.Column
+	Shown        []board.Card
+	Paged        bool
+	Next         int
+	Open, Forced bool
+}
+
+// projectHeader is the key, name and the Focus/Board/List/Settings/New
+// links; the view tabs keep the filter.
+templ projectHeader(p gen.Project, view string, f board.Filter) {
 	<span hidden data-project={ p.Key }></span>
 	<div class="flex flex-wrap items-center justify-between gap-4">
-		<div>
+		<div class="min-w-0">
 			<p class="font-mono text-sm text-muted">{ p.Key }</p>
 			<h1 class={ h1Class }>{ p.Name }</h1>
 		</div>
-		<nav aria-label="Project" class="flex items-center gap-4">
-			<a
-				href={ templ.SafeURL("/p/" + p.Key) }
-				class={ navIconLink }
-				if view == "board" {
-					aria-current="page"
-				}
-			>
-				@Icon("board")
-				Board
-			</a>
-			<a
-				href={ templ.SafeURL("/p/" + p.Key + "/list") }
-				class={ navIconLink }
-				if view == "list" {
-					aria-current="page"
-				}
-			>
-				@Icon("list")
-				List
-			</a>
+		<nav aria-label="Project" class="flex flex-wrap items-center gap-x-4 gap-y-2">
+			@viewTab(FilterHref("/p/"+p.Key, f.With("category", "")), "focus", "Focus", view == "focus")
+			@viewTab(FilterHref("/p/"+p.Key+"/board", f.With("category", "")), "board", "Board", view == "board")
+			@viewTab(FilterHref("/p/"+p.Key+"/list", f), "list", "List", view == "list")
 			<a href={ templ.SafeURL("/p/" + p.Key + "/settings") } class={ navIconLink }>
 				@Icon("settings")
 				Settings
@@ -73,29 +67,25 @@ templ projectHeader(p gen.Project, view string) {
 	}
 }
 
-templ chips(cs []Chip, clear string, active bool) {
-	<div class="mt-4 flex flex-wrap items-center gap-2" role="group" aria-label="Filters">
-		for _, c := range cs {
-			<a
-				href={ templ.SafeURL(c.Href) }
-				if c.On {
-					aria-current="true"
-				}
-				class={ chipClass(c.On) }
-			>{ c.Label }</a>
+templ viewTab(href, icon, label string, current bool) {
+	<a
+		href={ templ.SafeURL(href) }
+		class={ navIconLink }
+		if current {
+			aria-current="page"
 		}
-		if active {
-			<a href={ templ.SafeURL(clear) } class="text-xs text-muted hover:text-accent">Clear filters</a>
-		}
-	</div>
+	>
+		@Icon(icon)
+		{ label }
+	</a>
 }
 
 // BoardPage is a project's board.
 templ BoardPage(v BoardView) {
 	@Shell(v.Board.Project.Name) {
-		@projectHeader(v.Board.Project, "board")
+		@projectHeader(v.Board.Project, "board", v.Board.Filter)
 		<div class="flex flex-wrap items-start justify-between gap-4">
-			@chips(v.Chips, v.Clear, v.Board.Filter.Active())
+			@filterBar(v.Bar)
 			<div class="mt-4">
 				@helpLink("the-board", "About the board")
 			</div>
@@ -110,7 +100,7 @@ templ BoardSection(b board.Board) {
 	<div
 		id="board"
 		data-filter={ b.Filter.Query().Encode() }
-		hx-get={ FilterHref("/p/"+b.Project.Key+"/board", b.Filter) }
+		hx-get={ FilterHref("/p/"+b.Project.Key+"/board/fragment", b.Filter) }
 		hx-trigger="vq:change"
 		hx-swap="outerHTML"
 		data-live
@@ -201,7 +191,14 @@ templ cards(b board.Board, c board.Column) {
 }
 
 templ card(k board.Card) {
-	<li data-card={ k.Key } data-ready?={ k.Ready } class={ cardClass(k.Ready) }>
+	@cardItem(k, cardClass(k.Ready))
+}
+
+// cardItem is a card's markup, shared by the board and Focus (which
+// passes a class without the drag cursor). A finished card in Focus shows
+// its day.
+templ cardItem(k board.Card, class string) {
+	<li data-card={ k.Key } data-ready?={ k.Ready } class={ class }>
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="block">
 			<span class="font-mono text-[10px] text-muted">{ k.Key }</span>
 			<span class="mt-0.5 block text-sm leading-snug text-ink">{ k.Title }</span>
@@ -223,6 +220,9 @@ templ card(k board.Card) {
 				}
 				for _, t := range k.Tags {
 					<span class="rounded-full bg-accent/10 px-1.5 text-[10px] text-ink/80">{ t }</span>
+				}
+				if k.When != "" {
+					<span class="text-[10px] text-muted">{ k.When }</span>
 				}
 				if k.ClaimedBy != "" {
 					@claimChip(k, "ml-auto inline-flex items-center gap-0.5 rounded-full border border-accent px-1.5 text-[10px] text-accent", "h-3 w-3 shrink-0")
@@ -309,41 +309,72 @@ templ milestoneLinks(b board.Board) {
 	</a>
 }
 
-// ListPage is every status of a project with every matching ticket.
+// ListPage is every status of a project with every matching ticket,
+// each status a disclosure (app.js remembers which are open, per project).
+// Done and cancelled statuses start closed and show 50 at a time.
 templ ListPage(v ListView) {
 	@Shell(v.Project.Name) {
-		@projectHeader(v.Project, "list")
-		@chips(v.Chips, v.Clear, v.Filter.Active())
+		@projectHeader(v.Project, "list", v.Filter)
+		@filterBar(v.Bar)
 		<div
 			id="list"
+			data-list-project={ v.Project.Key }
 			hx-get={ FilterHref("/p/"+v.Project.Key+"/list", v.Filter) }
 			hx-trigger="vq:change"
 			data-live
 			hx-select="#list"
 			hx-swap="outerHTML"
-			class="mt-8 space-y-8"
+			hx-disinherit="*"
+			class="mt-8 space-y-6"
 		>
-			if listEmpty(v.Columns) {
+			if listEmpty(v.Groups) {
 				@emptyState("no-results", "No tickets match.")
 			}
-			for _, c := range v.Columns {
-				if len(c.Cards) > 0 {
-					<section>
-						<h2 class={ h2IconClass }>
-							<span class={ categoryTint(c.Status.Category) }>
-								@Icon(CategoryIcon(c.Status.Category))
+			for _, g := range v.Groups {
+				if len(g.Column.Cards) > 0 {
+					<details
+						data-list-group={ g.Column.Status.ID }
+						data-paged?={ g.Paged }
+						data-force-open?={ g.Forced }
+						open?={ g.Open }
+						class="group/list"
+					>
+						<summary class={ h2IconClass + " cursor-pointer list-none hover:text-accent [&::-webkit-details-marker]:hidden" }>
+							<span class={ categoryTint(g.Column.Status.Category) }>
+								@Icon(CategoryIcon(g.Column.Status.Category))
 							</span>
-							{ c.Status.Name } <span class="font-normal">· { itoa(int64(len(c.Cards))) }</span>
-						</h2>
+							{ g.Column.Status.Name } <span class="font-normal">· { itoa(int64(len(g.Column.Cards))) }</span>
+							<span class="transition-transform group-open/list:rotate-180">
+								@Icon("expand")
+							</span>
+						</summary>
 						<ul class="mt-2 divide-y divide-line rounded-md border border-line">
-							for _, k := range c.Cards {
-								@listRow(k)
-							}
+							@ListRows(v.Project, v.Filter, g)
 						</ul>
-					</section>
+					</details>
 				}
 			}
 		</div>
+	}
+}
+
+// ListRows is a list group's rows and, when more are left, its "Show 50
+// more" row: the list page renders it, and so does the next page's
+// request (?group=STATUS&offset=N), which replaces that row.
+templ ListRows(p gen.Project, f board.Filter, g ListGroup) {
+	for _, k := range g.Shown {
+		@listRow(k)
+	}
+	if g.Next > 0 {
+		<li data-list-more class="px-3 py-2 text-center">
+			<button
+				type="button"
+				hx-get={ listPageHref(p, f, g) }
+				hx-target="closest li"
+				hx-swap="outerHTML"
+				class="text-sm text-muted hover:text-accent"
+			>Show 50 more</button>
+		</li>
 	}
 }
 
