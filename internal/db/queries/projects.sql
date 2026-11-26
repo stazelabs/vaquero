@@ -9,10 +9,12 @@ SELECT * FROM projects WHERE id = ?;
 SELECT * FROM projects WHERE key = ?;
 
 -- name: ListProjects :many
--- Active projects first, by name; then archived ones.
+-- Active projects first, by name; then archived ones. has_image: the
+-- project has a stored icon image, in use or not.
 SELECT p.*,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
-         WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count
+         WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count,
+       CAST(EXISTS (SELECT 1 FROM project_icons i WHERE i.project_id = p.id) AS BOOLEAN) AS has_image
 FROM projects p
 ORDER BY p.archived_at IS NOT NULL, p.name;
 
@@ -59,12 +61,10 @@ DELETE FROM statuses WHERE project_id = ?;
 -- name: DeleteProjectRow :exec
 DELETE FROM projects WHERE id = ?;
 
--- The projects page's stats, one query per stat across every project
--- (board.LoadProjectStats).
-
 -- name: ListProjectStats :many
--- Per project: tickets in review, open tickets, and the newest event's time
--- ('' when it has none).
+-- For the projects page (board.LoadProjectStats, which reads each stat in
+-- one query across every project): per project, tickets in review, open
+-- tickets, and the newest event's time ('' when it has none).
 SELECT p.id AS project_id,
        CAST(coalesce(sum(s.category = 'in_review'), 0) AS INTEGER) AS in_review,
        CAST(coalesce(sum(s.category NOT IN ('done', 'cancelled')), 0) AS INTEGER) AS open_count,

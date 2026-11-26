@@ -462,7 +462,8 @@ func TestQuickSettingsSavesAndReturns(t *testing.T) {
 	e := webtest.New(t)
 	p := project(t, e)
 	c := e.Client()
-	contains(t, c.Get("/").Body, `action="/p/VAQ?return=/"`, `action="/p/VAQ/icon?return=/"`)
+	contains(t, c.Get("/").Body, `action="/p/VAQ?return=/"`)
+	contains(t, c.Get("/p/VAQ/icon/choices").Body, `action="/p/VAQ/icon?return=/"`)
 	r := c.Post("/p/VAQ?return=/", url.Values{"name": {"Vaquero tracker"}, "description": {"Herds the chaos."}})
 	if r.Status != 303 || r.Location != "/" {
 		t.Fatalf("%d %q", r.Status, r.Location)
@@ -496,4 +497,42 @@ func TestQuickSettingsSavesAndReturns(t *testing.T) {
 			t.Fatalf("return %q: %d %q", ret, r.Status, r.Location)
 		}
 	}
+}
+
+// Final review: the quick settings icon grid (about 40 glyphs a project)
+// loads when its part opens, from /p/{key}/icon/choices; a refused name
+// re-renders it inline in the open panel. A stored image the project has
+// switched away from is offered again.
+func TestQuickSettingsIconLoadsOnDemand(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	home := c.Get("/").Body
+	contains(t, home, `data-quick-icon`, `hx-get="/p/VAQ/icon/choices"`, `hx-trigger="toggle once"`)
+	lacks(t, home, `value="glyph:rocket"`)
+	r := c.Get("/p/VAQ/icon/choices")
+	if r.Status != 200 || strings.Contains(r.Body, "<html") {
+		t.Fatalf("%d %.80q", r.Status, r.Body)
+	}
+	contains(t, r.Body, `action="/p/VAQ/icon?return=/"`, `value="glyph:rocket"`, `value="monogram"`, `id="q-icon-VAQ"`)
+	lacks(t, r.Body, `value="image"`)
+	if r := c.Get("/p/vaq/icon/choices"); r.Status != 301 {
+		t.Fatalf("lower case: %d", r.Status)
+	}
+
+	// An uploaded image, then back to the monogram: the image is offered.
+	if _, err := e.Deps.Core.SetProjectIcon(bg, e.Deps.Actor.ID, p.ID, "image", "", &core.IconImage{Data: pngBytes}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.SetProjectIcon(bg, e.Deps.Actor.ID, p.ID, "monogram", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	contains(t, c.Get("/p/VAQ/icon/choices").Body, `value="image"`)
+
+	// A refused name shows the grid inline in the open panel.
+	r = c.Post("/p/VAQ?return=/", url.Values{"name": {""}})
+	if r.Status != 422 {
+		t.Fatal(r.Status)
+	}
+	contains(t, r.Body, `value="glyph:rocket"`, `value="image"`)
 }

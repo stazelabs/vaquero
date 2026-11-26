@@ -137,3 +137,40 @@ func TestE2EIconInHeaderAndBreadcrumb(t *testing.T) {
 		}
 	}
 }
+
+// Final review: the quick settings icon grid loads when its part opens,
+// and choosing a glyph from it saves and returns to the projects page.
+func TestE2EQuickIconLoadsOnDemand(t *testing.T) {
+	for _, w := range []int64{375, 1280} {
+		t.Run(fmt.Sprint(w), func(t *testing.T) {
+			env, _ := projectsFixture(t)
+			p := open(t, env, w, 900)
+			p.goTo("/")
+			panel := `details[data-quick-settings="PRJ"]`
+			icon := panel + ` details[data-quick-icon]`
+			rocket := icon + ` label[title="rocket"]`
+			if eval[bool](p, `!!document.querySelector(`+js(rocket)+`)`) {
+				t.Fatal("the grid is in the page before it is opened")
+			}
+			p.openDetails(panel)
+			p.openDetails(icon)
+			p.until(`!!document.querySelector(` + js(rocket) + `)`)
+			noSideScroll(t, p, w)
+			if r := p.rect(icon + ` form`); r.Right > float64(w) || r.Left < 0 {
+				t.Fatalf("the icon form runs %.0f..%.0f px at %d px", r.Left, r.Right, w)
+			}
+			// Closing and opening again doesn't fetch it twice.
+			n := eval[int](p, `document.querySelectorAll(`+js(rocket)+`).length`)
+			p.toggled(icon, func() { p.click(icon + " > summary") })
+			p.openDetails(icon)
+			if again := eval[int](p, `document.querySelectorAll(`+js(rocket)+`).length`); again != n || n != 1 {
+				t.Fatalf("%d rockets, then %d", n, again)
+			}
+			p.click(rocket)
+			p.reloaded(func() { p.click(icon + ` button[type="submit"]`) }, `location.pathname === "/" && !!document.querySelector('[data-project-card="PRJ"] [data-glyph="rocket"]')`)
+			if toast := eval[string](p, `(document.getElementById("vq-toast")||{}).textContent || ""`); !strings.Contains(toast, "Icon saved.") {
+				t.Fatalf("toast %q", toast)
+			}
+		})
+	}
+}

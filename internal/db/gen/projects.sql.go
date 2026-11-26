@@ -283,7 +283,6 @@ func (q *Queries) ListOpenMilestoneProgress(ctx context.Context) ([]ListOpenMile
 }
 
 const listProjectStats = `-- name: ListProjectStats :many
-
 SELECT p.id AS project_id,
        CAST(coalesce(sum(s.category = 'in_review'), 0) AS INTEGER) AS in_review,
        CAST(coalesce(sum(s.category NOT IN ('done', 'cancelled')), 0) AS INTEGER) AS open_count,
@@ -301,10 +300,9 @@ type ListProjectStatsRow struct {
 	LastChange string
 }
 
-// The projects page's stats, one query per stat across every project
-// (board.LoadProjectStats).
-// Per project: tickets in review, open tickets, and the newest event's time
-// (” when it has none).
+// For the projects page (board.LoadProjectStats, which reads each stat in
+// one query across every project): per project, tickets in review, open
+// tickets, and the newest event's time (” when it has none).
 func (q *Queries) ListProjectStats(ctx context.Context) ([]ListProjectStatsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listProjectStats)
 	if err != nil {
@@ -336,7 +334,8 @@ func (q *Queries) ListProjectStats(ctx context.Context) ([]ListProjectStatsRow, 
 const listProjects = `-- name: ListProjects :many
 SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map, p.icon_kind, p.icon_glyph,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
-         WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count
+         WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count,
+       CAST(EXISTS (SELECT 1 FROM project_icons i WHERE i.project_id = p.id) AS BOOLEAN) AS has_image
 FROM projects p
 ORDER BY p.archived_at IS NOT NULL, p.name
 `
@@ -355,9 +354,11 @@ type ListProjectsRow struct {
 	IconKind    string
 	IconGlyph   string
 	OpenCount   int64
+	HasImage    bool
 }
 
-// Active projects first, by name; then archived ones.
+// Active projects first, by name; then archived ones. has_image: the
+// project has a stored icon image, in use or not.
 func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listProjects)
 	if err != nil {
@@ -381,6 +382,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
 			&i.IconKind,
 			&i.IconGlyph,
 			&i.OpenCount,
+			&i.HasImage,
 		); err != nil {
 			return nil, err
 		}

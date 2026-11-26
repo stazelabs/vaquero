@@ -94,6 +94,23 @@ func TestProjectStats(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// BBB's one tiered todo with an approved plan passes readiness.
+	approved, err := e.c.CreateTicket(ctx, e.owner.ID, b.ID, core.TicketInput{Title: "Approved", Body: "Do it.", Tier: "standard"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.c.SavePlan(ctx, e.owner.ID, approved.ID, "1. Do it.", 0); err != nil {
+		t.Fatal(err)
+	}
+	d, err := e.c.AskDecision(ctx, e.owner.ID, core.DecisionInput{
+		ProjectID: b.ID, TicketIDs: []string{approved.ID}, Kind: core.DecisionApproval, Subject: "plan", Question: "Approve the plan?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.c.AnswerDecision(ctx, e.owner.ID, d.ID, core.Answer{Option: core.ApproveLabel}); err != nil {
+		t.Fatal(err)
+	}
 	got, err := board.LoadProjectStats(ctx, e.d.RQ)
 	if err != nil {
 		t.Fatal(err)
@@ -111,15 +128,15 @@ func TestProjectStats(t *testing.T) {
 	if !sa.LastChange.Equal(t0.Add(time.Hour)) {
 		t.Errorf("AAA last change %v", sa.LastChange)
 	}
-	// BBB has the workflow on: its one board-ready ticket has no tier and
-	// no approval, so nothing is ready.
-	if sb := got[b.ID]; sb.Ready != 0 || sb.InReview != 1 || sb.Open != 3 || sb.Milestone != nil {
+	// BBB has the workflow on: of its two board-ready tickets, the one with
+	// no tier and no approval isn't ready, the approved one is.
+	if sb := got[b.ID]; sb.Ready != 1 || sb.InReview != 1 || sb.Open != 4 || sb.Milestone != nil {
 		t.Errorf("BBB: %+v", sb)
 	}
 	// The ready counts are the board's, project by project.
 	for _, p := range []gen.Project{e.p, a, b} {
 		p, _ := e.d.RQ.GetProject(ctx, p.ID)
-		cols, err := board.LoadList(ctx, e.d.RQ, p, e.owner, board.Filter{Priority: -1})
+		cols, _, err := board.LoadList(ctx, e.d.RQ, p, e.owner, board.Filter{Priority: -1})
 		if err != nil {
 			t.Fatal(err)
 		}

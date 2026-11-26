@@ -14,6 +14,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/flash"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
+	"github.com/stazelabs/vaquero/internal/web/templates"
 )
 
 // projectIconURL is the address of a project's uploaded icon image.
@@ -154,6 +155,25 @@ func APIProjectIconUpload(d Deps) http.HandlerFunc {
 	}
 }
 
+// ProjectIconChoices is GET /p/{key}/icon/choices: the projects page's
+// quick settings icon form alone, fetched when its part first opens.
+func ProjectIconChoices(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		hasImage := true
+		if _, err := d.R.GetProjectIconEtag(r.Context(), p.ID); errors.Is(err, sql.ErrNoRows) {
+			hasImage = false
+		} else if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.QuickIconChoices(templates.IconOf(p), hasImage))
+	}
+}
+
 // ProjectIconServe is GET /p/{key}/icon: the project's stored image, with
 // its etag (private, no-cache: a browser revalidates on every use and gets
 // a 304 while it is unchanged), nosniff and a sandbox CSP, like an
@@ -178,10 +198,13 @@ func ProjectIconServe(d Deps) http.HandlerFunc {
 }
 
 // serveIcon answers icon's bytes, or a 304 when the browser has them.
+// Stored data that doesn't decode is logged and answered 404, like a
+// missing image: the page shows a broken image, not an error.
 func serveIcon(w http.ResponseWriter, r *http.Request, d Deps, icon gen.ProjectIcon) {
 	b, err := base64.StdEncoding.DecodeString(icon.Data)
 	if err != nil {
-		serverError(w, r, d, err)
+		d.Logger.WarnContext(r.Context(), "undecodable project icon", "project", icon.ProjectID, "err", err)
+		http.NotFound(w, r)
 		return
 	}
 	h := w.Header()

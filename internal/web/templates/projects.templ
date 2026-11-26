@@ -293,7 +293,9 @@ templ projectLastChange(ago, class string) {
 // quickSettings is a project's "⋯" panel: its name and description, and
 // its icon, each posting to the settings handlers with ?return=/ so they
 // come back here. The summary sits in the item's top right corner; the
-// panel opens in place below the item's content.
+// panel opens in place below the item's content. The icon form (about 40
+// glyphs) loads from /p/{key}/icon/choices the first time its part opens,
+// except in a panel shown open after a refusal, which has it inline.
 templ quickSettings(c ProjectCard, f QuickEdit, open bool) {
 	<details data-quick-settings={ c.Row.Key } class="group w-full" open?={ open }>
 		<summary class="absolute right-2 top-2 flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted hover:bg-paper hover:text-ink group-open:bg-paper group-open:text-ink [&::-webkit-details-marker]:hidden" aria-label={ "Quick settings for " + c.Row.Name } title="Quick settings">
@@ -308,28 +310,51 @@ templ quickSettings(c ProjectCard, f QuickEdit, open bool) {
 					<a href={ templ.SafeURL("/p/" + c.Row.Key + "/settings") } class={ btnLink }>All settings →</a>
 				</div>
 			</form>
-			@quickIcon(c.Row)
+			<details
+				data-quick-icon
+				class="group/icon"
+				open?={ open }
+				if !open {
+					hx-get={ "/p/" + c.Row.Key + "/icon/choices" }
+					hx-trigger="toggle once"
+					hx-target="find [data-quick-icon-choices]"
+				}
+			>
+				<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-ink hover:text-accent [&::-webkit-details-marker]:hidden">
+					@ProjectIcon(IconOfRow(c.Row), "sm")
+					Icon
+					@IconClass("expand", "h-4 w-4 shrink-0 text-muted transition-transform group-open/icon:rotate-180")
+				</summary>
+				<div data-quick-icon-choices class="mt-2">
+					if open {
+						@QuickIconChoices(IconOfRow(c.Row), c.Row.HasImage)
+					} else {
+						<p class="text-sm text-muted">Loading the icons…</p>
+					}
+				</div>
+			</details>
 		</div>
 	</details>
 }
 
-// quickIcon is the quick settings icon form: the monogram, a glyph, the
-// image when it is the icon now, or a new image (a chosen file wins).
-templ quickIcon(p gen.ListProjectsRow) {
+// QuickIconChoices is the quick settings icon form, also served alone by
+// /p/{key}/icon/choices: the monogram, a glyph, the stored image when
+// there is one (hasImage), or a new image (a chosen file wins).
+templ QuickIconChoices(p ProjectIconView, hasImage bool) {
 	<form method="post" action={ templ.SafeURL("/p/" + p.Key + "/icon?return=/") } enctype="multipart/form-data" class="space-y-3">
 		<fieldset>
-			<legend class={ labelClass }>Icon</legend>
-			<div class="mt-1 grid grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))] gap-1.5">
-				@iconChoice("monogram", "Monogram "+core.Monogram(p.Name, p.Key), p.IconKind == core.IconKindMonogram) {
+			<legend class="sr-only">Icon</legend>
+			<div class="grid grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))] gap-1.5">
+				@iconChoice("monogram", "Monogram "+core.Monogram(p.Name, p.Key), p.Kind == core.IconKindMonogram) {
 					@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: core.IconKindMonogram}, "md")
 				}
-				if p.IconKind == core.IconKindImage {
-					@iconChoice("image", "Uploaded image", true) {
+				if hasImage {
+					@iconChoice("image", "Uploaded image", p.Kind == core.IconKindImage) {
 						@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Kind: core.IconKindImage}, "md")
 					}
 				}
 				for _, g := range core.ProjectGlyphs {
-					@iconChoice("glyph:"+g, g, p.IconKind == core.IconKindGlyph && p.IconGlyph == g) {
+					@iconChoice("glyph:"+g, g, p.Kind == core.IconKindGlyph && p.Glyph == g) {
 						@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Kind: core.IconKindGlyph, Glyph: g}, "md")
 					}
 				}

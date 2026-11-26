@@ -95,6 +95,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.With(fs).Post("/", handlers.ProjectUpdate(d))
 			r.Get("/settings", handlers.ProjectSettings(d))
 			r.Get("/icon", handlers.ProjectIconServe(d))
+			r.Get("/icon/choices", handlers.ProjectIconChoices(d))
 			r.Post("/icon", handlers.ProjectIconSave(d))
 			r.Post("/key", handlers.ProjectKeyChange(d))
 			r.With(fs).Post("/workflow", handlers.ProjectWorkflow(d))

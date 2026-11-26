@@ -54,6 +54,17 @@ func TestProjectIconServedWithETag(t *testing.T) {
 	}
 }
 
+// Stored data that isn't base64 is a 404, like a missing image, not a 500.
+func TestProjectIconUndecodableIs404(t *testing.T) {
+	e, c := iconWorld(t)
+	if _, err := e.DB.W.ExecContext(bg, `UPDATE project_icons SET data = '%%% not base64'`); err != nil {
+		t.Fatal(err)
+	}
+	if r := c.Get("/p/VAQ/icon"); r.Status != http.StatusNotFound {
+		t.Fatalf("%d", r.Status)
+	}
+}
+
 func TestProjectIconNoneIs404(t *testing.T) {
 	e := webtest.New(t)
 	project(t, e)
