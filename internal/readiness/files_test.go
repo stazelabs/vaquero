@@ -218,9 +218,12 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	expect(t, got, readiness.FilesUnchecked)
 	files(t, got, "docs/a.md unchecked")
 
-	t.Setenv("PATH", t.TempDir())
-	w.files = readiness.NewFiles(gitread.New())
-	expect(t, w.check(tk), readiness.FilesUnchecked)
+	// In a subtest, so PATH comes back for the repos made below.
+	t.Run("no git", func(t *testing.T) {
+		t.Setenv("PATH", t.TempDir())
+		w.files = readiness.NewFiles(gitread.New())
+		expect(t, w.check(tk), readiness.FilesUnchecked)
+	})
 
 	w.files = keep
 	// Ruling M3: a pin holds only against the repo and main branch it was
