@@ -403,14 +403,16 @@ func MilestoneUpdate(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		sf := templates.SubForm{ID: chi.URLParam(r, "id"), Values: formValues(r, "name", "due_on")}
+		sf := templates.SubForm{ID: chi.URLParam(r, "id"), Values: formValues(r, "name", "due_on", "description")}
 		settingsForm(w, r, d, p, "Milestone saved.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.EditMilestone = f }, func() error {
 			m, err := ownedMilestone(r, d, p)
 			if err != nil {
 				return err
 			}
 			in := milestoneInput(r)
-			in.Description = m.Description // the settings form doesn't edit it
+			if _, sent := r.PostForm["description"]; !sent {
+				in.Description = m.Description // a form from before the field keeps it
+			}
 			return d.Core.UpdateMilestone(r.Context(), d.Actor.ID, m.ID, in)
 		})
 	}
