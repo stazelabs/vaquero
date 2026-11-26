@@ -1,0 +1,13 @@
+ID,Team,Title,Description,Status,Estimate,Priority,Project ID,Project,Creator,Assignee,Labels,Cycle Number,Cycle Name,Cycle Start,Cycle End,Created,Updated,Started,Triaged,Completed,Canceled,Archived,Due Date,Parent issue,Initiatives,Project Milestone ID,Project Milestone,SLA Status
+ENG-3,Engineering,Retry the nightly sync,"The sync gives up after one timeout.
+
+- retry three times
+- then alert",In Progress,,High,,,Sam Example,,"Bug, Backend",,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,2026-03-03T09:00:00.000Z,,,,,,,,,,
+ENG-1,Engineering,Set up the build,,Done,,Medium,,,Sam Example,,Infra,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,2026-03-01T09:00:00.000Z,,2026-03-02T09:00:00.000Z,,,,,,,,
+ENG-2,Engineering,Sort the settings page,Group the toggles by area.,Todo,,Low,,,Sam Example,,,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,,,,,,,,,,,
+ENG-5,Engineering,'=SUM(A1:A3) shows as text,A cell that starts with = is shown as a formula.,Backlog,,No priority,,,Sam Example,,"Bug, Frontend",,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,,,,,,,,,,,
+ENG-7,Engineering,Check the release notes,,In Review,,Urgent,,,Sam Example,,Docs,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,2026-03-04T09:00:00.000Z,,,,,,,,,,
+ENG-8,Engineering,Look at the crash report,Reported from the field.,Triage,,High,,,Sam Example,,Bug,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,,2026-03-05T09:00:00.000Z,,,,,,,,,
+ENG-9,Engineering,Old login page,Replaced by the new flow.,Canceled,,Low,,,Sam Example,,Frontend,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,,,,2026-03-06T09:00:00.000Z,,,,,,,
+ENG-10,Engineering,Same as ENG-3,,Duplicate,,Medium,,,Sam Example,,Backend,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,,,,2026-03-06T09:00:00.000Z,,,,,,,
+ENG-12,Engineering,Try the new parser,Behind a flag.,QA,,Medium,,,Sam Example,,Backend,,,,,2026-03-01T09:00:00.000Z,2026-03-02T09:00:00.000Z,2026-03-07T09:00:00.000Z,,,,,,,,,,

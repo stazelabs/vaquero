@@ -1,7 +1,7 @@
 ---
 title: Your data and backups
 section: getting-started
-summary: Where Vaquero keeps its data, what each file is for, how to export and import it, how to restore a backup, how to move attachments to other storage, and how to compact the database.
+summary: Where Vaquero keeps its data, what each file is for, how to export and import it, how to import issues from Linear, how to restore a backup, how to move attachments to other storage, and how to compact the database.
 order: 3
 ---
 ## The data directory
@@ -82,6 +82,26 @@ An export from a newer Vaquero is refused; upgrade Vaquero and import again. An 
 Attachment files go where `VQ_BLOB_STORE` says, in the shell you run `vaquero import` from (see [Attachments](/help/attachments#where-the-bytes-are-kept)), and the message names that storage. Before it reads the file, import writes and deletes a small test object there, so wrong credentials or a read-only bucket stop it at once, with nothing changed. The server must start with the same setting. If Vaquero runs under `brew services`, its environment is the service's, not your shell's: if the two differ, the server refuses to start, names both, and changes nothing. Set them to the same storage and start it again.
 
 Tokens are not part of an export. Import removes the `token` file, so the next start makes a new token for the imported owner, and the command line on this machine picks it up. Any other token for the old instance, such as one saved in a profile for another machine or an agent, stops working: make a new one with `vaquero token create`.
+
+## Importing from Linear
+
+`vaquero import linear FILE.csv` makes tickets from Linear's issue export, the CSV file Linear emails a link to (Linear's documentation: [Exporting data](https://linear.app/docs/exporting-data)). Unlike `vaquero import`, it runs against the server like any other command, so the server can keep running and other projects stay as they are:
+
+    vaquero import linear issues.csv
+    vaquero import linear issues.csv --project OPS
+
+Each issue keeps its team key and number: ENG-123 becomes ticket ENG-123, so branch names and commit references that name it still resolve. Each team in the file becomes a project with the team's key and name. With `--project KEY`, a file with one team goes into that project instead, keeping the numbers. The project is new, or one with no tickets; a project with tickets, or an archived one, is refused. Numbering goes on after the highest imported number, and the numbers the file skips are never given.
+
+What is imported, from the columns Linear documents:
+
+- `ID`: the key and number. `Title` and `Description`: the ticket's title and description.
+- `Status`: a status the project already has by that name, whatever its case; Linear's `Canceled` is the project's cancelled status. Any other name becomes a new status: `Triage` in backlog, `Duplicate` in cancelled, and the rest in the category the issues' `Started`, `Completed` and `Canceled` dates show (none of them is todo).
+- `Priority`: No priority, Urgent, High, Medium and Low are the same priorities here.
+- `Labels`: each label becomes a tag.
+
+Comments, relations and attachments aren't in the CSV, so they aren't imported, and the summary says so. Neither are the other documented columns, such as the assignee, cycle, project, estimate and dates; the summary lists the ones the file had, and any column Linear doesn't document as unknown. Tickets are dated the day of the import.
+
+The whole file is checked before anything is written: a missing column the import needs (`ID`, `Team`, `Title`, `Description`, `Status`, `Priority` or `Labels`) is refused, naming each one, and so is a row with no ID, title or status, an unknown priority, a repeated ID or a label over 40 characters, naming its line. Tickets are then made one at a time, each with its own entry in the history. If the server refuses one part way, the import stops there and says which ticket it stopped at; the tickets before it stay, so fix that row and import the rest into a new project, or delete the project in its settings and import again.
 
 ## Restoring a snapshot
 

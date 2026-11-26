@@ -20,6 +20,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero backup compact` | Shrink the database to what it holds (deleted attachments leave space behind), saving it as a snapshot first; all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#compacting-the-database) |
 | `vaquero export FILE\|-` | Write all your data to a `.tar.gz`, or with `-` to standard output; the owner only. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `vaquero import FILE` | Restore an export into an empty instance, all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#importing-an-export) |
+| `vaquero import linear FILE.csv [--project KEY]` | Make tickets from Linear's issue export, keeping team keys and issue numbers, into a new or empty project. See [Importing from Linear](/help/data-and-backups#importing-from-linear) |
 | `vaquero logs [-n 100] [-f] [--path]` | The last lines of the server's log (100 unless `-n`); `-f` keeps printing new lines, across the log's move to `.1` at 10 MB, until Ctrl-C; `--path` prints only where the log is. Reads `vaquero.log` in the data directory, or the service's log under `brew services`; needs no server. See [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero projects` | List projects with their open ticket counts |

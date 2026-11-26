@@ -30,7 +30,8 @@ server:
   logs         print the server's log (-n 100, -f to follow, --path)
   backup       list the database snapshots, or restore one
   export       write everything to a .tar.gz (vaquero export FILE)
-  import       restore an export into an empty instance (vaquero import FILE)
+  import       restore an export into an empty instance (vaquero import FILE),
+               or Linear's issue CSV into projects (vaquero import linear FILE.csv)
 
 tickets:
   projects     list projects
