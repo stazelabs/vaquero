@@ -146,6 +146,41 @@ type (
 		Revision int64  `json:"revision,omitempty" jsonschema:"The revision you read; the save is refused if the plan changed since. Leave it out only to write a ticket's first plan."`
 	}
 
+	askDecisionArgs struct {
+		Project        string           `json:"project" jsonschema:"The project's key, such as VAQ."`
+		Kind           string           `json:"kind" jsonschema:"question (for the owner), approval (of a plan, a merge or a release) or ruling (a call you made, recorded with its answer)."`
+		Question       string           `json:"question" jsonschema:"What is to be decided, in a sentence or two."`
+		Tickets        []string         `json:"tickets,omitempty" jsonschema:"The tickets it concerns, by key, all in the project. A plan approval names at least one; leave it out for a project-level decision."`
+		Subject        string           `json:"subject,omitempty" jsonschema:"For an approval: plan, merge or release."`
+		Options        []decisionOption `json:"options,omitempty" jsonschema:"The answers offered, each a label and its trade-off. An approval without options offers Approve and Request changes."`
+		Recommendation string           `json:"recommendation,omitempty" jsonschema:"The option you recommend, and why."`
+		Why            string           `json:"why,omitempty" jsonschema:"Why the decision matters."`
+		Run            string           `json:"run,omitempty" jsonschema:"The run it was made in."`
+		Answer         string           `json:"answer,omitempty" jsonschema:"For a ruling only: the option you chose, by label, or your answer in words."`
+		Note           string           `json:"note,omitempty" jsonschema:"For a ruling only: a one-line reason."`
+	}
+
+	decisionOption struct {
+		Label    string `json:"label" jsonschema:"The option's label."`
+		Tradeoff string `json:"tradeoff,omitempty" jsonschema:"What choosing it costs."`
+	}
+
+	answerDecisionArgs struct {
+		ID     string `json:"id" jsonschema:"The decision's id."`
+		Option string `json:"option,omitempty" jsonschema:"The owner's choice, by the option's label."`
+		Text   string `json:"text,omitempty" jsonschema:"The owner's answer in words, when it is none of the options."`
+		Note   string `json:"note,omitempty" jsonschema:"A note on the answer."`
+		Words  string `json:"words,omitempty" jsonschema:"The owner's own words, quoted from your conversation. An agent must send them: it relays the owner's answer, never its own."`
+	}
+
+	listDecisionsArgs struct {
+		Project string `json:"project,omitempty" jsonschema:"Only this project's decisions, by key."`
+		State   string `json:"state,omitempty" jsonschema:"open, answered or withdrawn."`
+		Kind    string `json:"kind,omitempty" jsonschema:"question, ruling or approval."`
+		Ticket  string `json:"ticket,omitempty" jsonschema:"Only decisions about this ticket, by key."`
+		Limit   int64  `json:"limit,omitempty" jsonschema:"At most this many, up to 500. Leave it out for 100."`
+	}
+
 	releaseArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
@@ -154,8 +189,9 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat", "link_tickets", "list_projects",
-	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "save_plan", "search", "update_ticket",
+	"add_comment", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
+	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket",
+	"save_plan", "search", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -212,6 +248,17 @@ func addTools(s *mcp.Server, c *caller) {
 				return get(ticketPath(in.Key, "/plan/revisions/"+strconv.FormatInt(in.Revision, 10)), nil)
 			}
 			return get(ticketPath(in.Key, "/plan"), nil)
+		})
+	add(s, c, "list_decisions", "List decisions", true,
+		"Questions, rulings and approvals, newest first, each with its options, state, answer (direct from the owner or relayed), and for an approved plan the approvals it pinned.",
+		func(in listDecisionsArgs) request {
+			q := url.Values{}
+			set(q, "project", in.Project)
+			set(q, "state", in.State)
+			set(q, "kind", in.Kind)
+			set(q, "ticket", in.Ticket)
+			num(q, "limit", in.Limit)
+			return get("/decisions", q)
 		})
 	add(s, c, "ready_tickets", "List ready tickets", true,
 		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first.",
@@ -310,6 +357,46 @@ func addTools(s *mcp.Server, c *caller) {
 				b["revision"] = in.Revision
 			}
 			return request{method: http.MethodPut, path: ticketPath(in.Key, "/plan"), body: b}
+		})
+	add(s, c, "ask_decision", "Ask for a decision", false,
+		"Park a question for the owner, ask for an approval, or record a ruling you made (kind ruling, with answer and note), open to the owner's overruling. Never answer your own question: relay the owner's answer with answer_decision.",
+		func(in askDecisionArgs) request {
+			b := map[string]any{"project": in.Project, "kind": in.Kind, "question": in.Question}
+			for k, v := range map[string]string{"subject": in.Subject, "recommendation": in.Recommendation, "why": in.Why, "run": in.Run} {
+				if v != "" {
+					b[k] = v
+				}
+			}
+			if in.Tickets != nil {
+				b["tickets"] = in.Tickets
+			}
+			if in.Options != nil {
+				b["options"] = in.Options
+			}
+			if in.Answer != "" || in.Note != "" {
+				a := map[string]string{"text": in.Answer}
+				for _, o := range in.Options {
+					if strings.EqualFold(strings.TrimSpace(o.Label), strings.TrimSpace(in.Answer)) {
+						a = map[string]string{"option": o.Label}
+					}
+				}
+				if in.Note != "" {
+					a["note"] = in.Note
+				}
+				b["answer"] = a
+			}
+			return post("/decisions", b)
+		})
+	add(s, c, "answer_decision", "Relay the owner's answer", false,
+		"Record the answer the owner gave you in conversation to an open question or approval, or the owner's overruling of a ruling, quoting the owner's words. Only the owner decides; the answer is stored as relayed by you.",
+		func(in answerDecisionArgs) request {
+			b := map[string]string{}
+			for k, v := range map[string]string{"option": in.Option, "text": in.Text, "note": in.Note, "words": in.Words} {
+				if v != "" {
+					b[k] = v
+				}
+			}
+			return post("/decisions/"+url.PathEscape(in.ID)+"/answer", b)
 		})
 	add(s, c, "link_tickets", "Link two tickets", false,
 		"Record that one ticket blocks, relates to or duplicates another. A blocking loop is refused.",

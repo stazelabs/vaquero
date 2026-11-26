@@ -44,6 +44,9 @@ Each change an agent makes records where it came from, as the client reports it:
 | `add_comment` | `key`, `body` |
 | `get_plan` | A ticket's [plan](/help/agent-workflow#plans): `key`, optionally `revision` for an earlier one |
 | `save_plan` | Write or revise a plan: `key`, `body` (the whole text) and `revision`, the one you read (leave it out only for a ticket's first plan); a stale revision is refused |
+| `ask_decision` | Park a [decision](/help/agent-workflow#decisions): `project`, `kind` (`question`, `approval` or `ruling`), `question`, and optionally `tickets`, `subject` (an approval's `plan`, `merge` or `release`), `options` (each a `label` and `tradeoff`), `recommendation`, `why` and `run`. A ruling is your own call, recorded answered: give `answer` (an option's label, or words) and `note` |
+| `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted; an agent never answers as itself, and without `words` the answer is refused |
+| `list_decisions` | Decisions, newest first: optionally `project`, `state`, `kind`, `ticket` and `limit` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |

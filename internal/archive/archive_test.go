@@ -348,11 +348,6 @@ func TestExportEveryColumn(t *testing.T) {
 	// Every table is exported or deliberately left out, so a new
 	// migration's table can't be forgotten.
 	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence"}
-	// The agent workflow's decision tables (0009) are exported once core
-	// writes them (decisions, decision_tickets and approvals, with the
-	// decision operations). Until then they are always empty. Remove each
-	// from here when it joins Tables.
-	left = append(left, "decisions", "decision_tickets", "approvals")
 	// The search indexes: each FTS5 virtual table and its shadow tables.
 	vt, err := d.R.QueryContext(bg, "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'")
 	if err != nil {

@@ -26,7 +26,9 @@
 // provenance, a JSON object as text) is exported like any TEXT column; an
 // export from before it loads with {}. plans and plan_revisions (0009)
 // are exported whole, every revision's text included; an export from
-// before them has neither key and loads with no plans.
+// before them has neither key and loads with no plans. decisions,
+// decision_tickets and approvals (0009) are exported whole too, the owner's
+// relayed words included; an export from before them loads with none.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
 // entries, whatever the backend), the FTS tables, goose's table, and every
@@ -69,7 +71,7 @@ const (
 var Tables = []string{
 	"settings", "actors", "projects", "statuses", "milestones", "tags",
 	"tickets", "ticket_tags", "comments", "ticket_links", "attachments",
-	"plans", "plan_revisions", "events",
+	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "events",
 }
 
 // Header is export.json's first fields.

@@ -1,7 +1,7 @@
 ---
 title: Agent workflow
 section: api-and-agents
-summary: The project setting that has agents work tickets with tiers and a map from each tier to a model.
+summary: The project setting for agent work: execution tiers and the tier map, plans, and the decisions the owner answers.
 order: 5
 ---
 The agent workflow is a project setting for teams where agents do much of the building. It is off in a new project, and a project with it off works as it always has. Turn it on in the project's settings, under Workflow, or with `vaquero project edit KEY --workflow on`.
@@ -40,3 +40,15 @@ A plan says how a ticket, or an epic and its sub-tickets, will be done. It lives
 The ticket's page shows the current plan, with its revision, who wrote it and when; "Show changes" lists the lines changed since the revision before. Read and write plans with `vaquero plan show` and `vaquero plan save` (see [the command line](/help/cli)), the API's `/plan` routes (see [the API](/help/api#reading)) or the `get_plan` and `save_plan` tools.
 
 A save sends the whole text and the revision it was based on, as ticket edits send their version. If someone saved in between, the save is refused with the plan as it is now, so no revision is lost: read it, merge, and save again. A ticket's history and the activity page record each new revision by number, never the text.
+
+## Decisions
+
+A decision is a question parked for the owner, a ruling an agent made, or an approval. Agents ask them as they work, with the options and their trade-offs, a recommendation, and why it matters; the owner answers in conversation with the agent, or with `vaquero decision answer` (see [the command line](/help/cli)). The API's [decisions](/help/api#decisions) and the `ask_decision`, `answer_decision` and `list_decisions` tools do the same.
+
+- **Questions** wait for the owner. Only the owner answers one; an agent never answers a question, its own or another's.
+- **Rulings** are calls an agent made and recorded as its own, already answered. The owner can overrule one; the history keeps the answer it replaced.
+- **Approvals** are of a plan, a merge or a release. Merges and releases always need one. An approval with no options offers Approve and Request changes.
+
+When the owner answers in conversation, the agent records the answer as relayed, quoting the owner's words; an answer given without an agent, in the command line or the API, is direct. Both count the same, and each decision shows which it was. Until Vaquero has sign-in, every agent on this machine uses your token, so this rests on trust.
+
+Approving a plan, with Approve (or, without such an option, the first one), records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, and the plan revision approved: the ticket's own plan, or for a sub-ticket without one, its epic's. One approval can cover several tickets. Any other answer records no approval.

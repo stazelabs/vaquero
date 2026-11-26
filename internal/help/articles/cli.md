@@ -55,6 +55,12 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero claim TICKET [--lease 30m]` | Claim a ticket for 1 minute to 2 hours (default 15 minutes); see [Agents and claims](/help/agents-and-claims) |
 | `vaquero heartbeat TICKET [--lease 30m]` | Extend your claim from now |
 | `vaquero release TICKET` | Give up your claim; the status and assignee stay |
+| `vaquero decisions [KEY] [--state open\|answered\|withdrawn] [--kind question\|ruling\|approval] [--ticket T] [--limit N]` | [Decisions](/help/agent-workflow#decisions), newest first; every project unless KEY |
+| `vaquero decision show ID` | A decision: the question, its options, and the answer with who gave it, directly or relayed |
+| `vaquero decision ask KEY QUESTION [--ticket T]... [--option "LABEL: TRADE-OFF"]... [--approval plan\|merge\|release] [--recommend TEXT] [--why TEXT] [--run R]` | Ask a question, or with `--approval` ask for an approval; prints its id. Each `--option` is a label, then optionally a colon and its trade-off |
+| `vaquero decision rule KEY QUESTION ANSWER [same flags] [--note TEXT]` | Record a ruling you made, answered with ANSWER (an option's label, or words) |
+| `vaquero decision answer ID [OPTION] [--text TEXT] [--note TEXT] [--words TEXT]` | Answer as the owner: an option by label, or `--text`. With `--agent`, the answer is relayed by that agent and needs `--words`, the owner's answer quoted. On a ruling, it overrules |
+| `vaquero decision withdraw ID` | Withdraw an open question or approval |
 | `vaquero mcp [--agent NAME] [--model ID]` | An MCP server on standard input and output, for agent clients that launch one; `--model` (or `VAQUERO_MODEL`) names the model the session runs, recorded with each change; see [MCP](/help/mcp) |
 | `vaquero token create NAME` / `list` / `revoke PREFIX` | API tokens; a new token is printed once |
 | `vaquero profile add NAME URL TOKEN` / `list` / `use NAME` / `remove NAME` | Servers to talk to; `-` as the token reads it from standard input, keeping it out of your shell history |

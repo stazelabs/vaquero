@@ -2,8 +2,9 @@
 // can hold, through internal/core: projects, statuses, a milestone, tickets
 // with sub-tickets, tags (one renamed), a description edit, a reorder,
 // comments (one edited, one deleted), links, an agent with a claim, tokens
-// (one revoked), two attachments, a plan with two revisions and an MCP log
-// row. The upgrade fixture (scripts/fixture) and the export tests use it.
+// (one revoked), two attachments, a plan with two revisions, decisions (a
+// ruling, and a group plan approval answered by relay, with its approvals)
+// and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
 package coreseed
 
 import (
@@ -157,6 +158,24 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if _, err := c.SavePlan(ctx, agent.ID, parent.ID, "1. Cut the release branch.\n2. Write the notes.", 1); err != nil {
+		return err
+	}
+	// A ruling, and a plan approval for the epic and its child, relayed.
+	if _, err := c.RecordRuling(ctx, agent.ID, core.DecisionInput{
+		ProjectID: vaq.ID, TicketIDs: []string{child.ID}, RunID: "run-1", Kind: core.DecisionRuling,
+		Question: "Which tier is the install guide?", Options: []core.Option{{Label: "light", Tradeoff: "Cheaper"}, {Label: "standard"}},
+		Recommendation: "light", Why: "It is docs work.",
+	}, core.Answer{Option: "light", Note: "Docs only."}); err != nil {
+		return err
+	}
+	approval, err := c.AskDecision(ctx, agent.ID, core.DecisionInput{
+		ProjectID: vaq.ID, TicketIDs: []string{parent.ID, child.ID}, Kind: core.DecisionApproval, Subject: "plan",
+		Question: "Approve the release plan?",
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := c.AnswerDecision(ctx, by, approval.ID, core.Answer{Option: core.ApproveLabel, Note: "Go.", RelayedBy: agent.ID, Words: "Looks good, go."}); err != nil {
 		return err
 	}
 	// Archived last: an archived project takes no new tickets or links.

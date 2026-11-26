@@ -19,7 +19,7 @@ type apiTicket = api.Ticket
 var cliCommands = map[string]func(ctx context.Context, stdout, stderr io.Writer, args []string) int{
 	"projects": cmdProjects, "project": cmdProject,
 	"tickets": cmdTickets, "ticket": cmdTicket,
-	"comment": cmdComment, "plan": cmdPlan, "link": cmdLink, "unlink": cmdUnlink, "docs": cmdDocs,
+	"comment": cmdComment, "plan": cmdPlan, "decisions": cmdDecisions, "decision": cmdDecision, "link": cmdLink, "unlink": cmdUnlink, "docs": cmdDocs,
 	"search": cmdSearch, "activity": cmdActivity,
 	"token": cmdToken, "profile": cmdProfile,
 }

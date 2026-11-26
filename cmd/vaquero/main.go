@@ -51,6 +51,8 @@ agents:
   claim        claim a ticket, with a lease (--lease 30m)
   heartbeat    extend your claim's lease
   release      give up your claim
+  decisions    list questions, rulings and approvals
+  decision     show, ask, rule on, answer or withdraw a decision
   mcp          an MCP server on standard input and output, for agent clients
 
 setup:

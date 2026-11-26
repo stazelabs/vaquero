@@ -106,6 +106,20 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 | `POST /api/v1/tickets/{ticket}/heartbeat` | `{"lease_minutes"}`, optional: extends your claim from now |
 | `POST /api/v1/tickets/{ticket}/release` | Nothing; gives up your claim, keeping the status and assignee |
 
+## Decisions
+
+A [decision](/help/agent-workflow#decisions) is a question for the owner, a ruling an agent made, or an approval of a plan, a merge or a release. Only the owner answers one. A request acting as an agent (your token with `Vaquero-Agent`) that answers is relaying the owner's answer, given in conversation: it must quote the owner in `words`, or it is `422` on `words`. Without the header, the owner answers directly, and `words` is refused.
+
+| Request | Body or query |
+|---|---|
+| `POST /api/v1/decisions` | `{"project", "kind", "question", "tickets", "subject", "options", "recommendation", "why", "run", "answer"}`: `kind` is `question`, `approval` (with `subject` `plan`, `merge` or `release`) or `ruling`. `tickets` are keys in the project (a plan approval names at least one; leave them out for a project-level decision). `options` are `{"label", "tradeoff"}`, up to 10; an approval with none offers `Approve` and `Request changes`. A ruling is recorded already answered by you: send `answer` as `{"option"}` or `{"text"}`, with an optional `"note"`; other kinds take no `answer`. Answers `201` with the decision |
+| `GET /api/v1/decisions` | Newest first: `project=KEY`, `state` (`open`, `answered` or `withdrawn`), `kind`, `ticket=KEY`, `limit=N` (default 100, at most 500); an unknown one is `422` |
+| `GET /api/v1/decisions/{id}` | One decision |
+| `POST /api/v1/decisions/{id}/answer` | `{"option"}` (a label, any case) or `{"text"}`, with optional `"note"` and, when relaying, `"words"`. Answers an open question or approval; on a ruling it overrules the answer, which the decision's history keeps. An answered question or approval, or a withdrawn decision, is `422` |
+| `POST /api/v1/decisions/{id}/withdraw` | Nothing; withdraws an open question or approval. Only who asked, or the owner |
+
+A decision has `id`, `project`, `tickets`, `kind`, `subject` (approvals), `question`, `options`, `recommendation`, `why`, `run`, `state`, `asked_by` and `asked_at`, and once answered `answer`, `note`, `answered_by` and `answered_at`. `answered` is `direct` or `relayed` when the owner answered, with `relayed_by` (the agent) and `words` (the owner's, quoted) for a relayed one; a ruling an agent made has none until the owner overrules it. An approval of a plan answered with its approving option (the one labelled `Approve`, else the first) records, for each ticket, an entry in `approvals`: `ticket`, `requirement_hash` (a SHA-256 of the ticket's title and description as approved), `plan_revision` (the ticket's plan, else its parent's, else `0`) and `at`. Any other answer records none. The events (`decision.asked`, `decision.ruled`, `decision.answered`, `decision.withdrawn`) carry `decision_id`, `kind`, `subject`, `ticket_ids`, and the question and answer cut to 200 characters; never the owner's quoted words.
+
 ## Bulk changes
 
 `POST /api/v1/tickets/bulk` works many tickets in one request, so an agent booking a batch makes one call instead of one per action:

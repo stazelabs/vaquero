@@ -41,6 +41,11 @@ import (
 //     changed, tickets how many.
 //   - plan.created, plan.revised: PlanPayload, the plan's revision only;
 //     the text stays in plans and plan_revisions, never in an event.
+//   - decision.asked, decision.ruled, decision.answered,
+//     decision.withdrawn: DecisionPayload. The event's ticket is the
+//     decision's one ticket; a decision naming several (a group approval)
+//     or none is a project event, ticket_ids naming them. A group answer is
+//     one event, however many approval rows it writes.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -80,6 +85,10 @@ const (
 	EvTagDeleted        = "tag.deleted"
 	EvPlanCreated       = "plan.created"
 	EvPlanRevised       = "plan.revised"
+	EvDecisionAsked     = "decision.asked"
+	EvDecisionRuled     = "decision.ruled"
+	EvDecisionAnswered  = "decision.answered"
+	EvDecisionWithdrawn = "decision.withdrawn"
 )
 
 // PlanPayload is a plan.created or plan.revised event's payload.
@@ -141,6 +150,7 @@ func EventKinds() []string {
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
 		EvPlanCreated, EvPlanRevised,
+		EvDecisionAsked, EvDecisionRuled, EvDecisionAnswered, EvDecisionWithdrawn,
 	}
 }
 

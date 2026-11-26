@@ -141,6 +141,50 @@ type Plan struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
+// Decision is a question for the owner, a ruling an agent (or the owner)
+// made, or an approval of a plan, a merge or a release. Tickets are keys;
+// people are names. Answered is "direct" when the owner answered without an
+// agent, "relayed" when RelayedBy recorded the owner's answer, quoting
+// Words. Approvals are the pins a plan approval recorded, one per ticket.
+type Decision struct {
+	ID             string             `json:"id"`
+	Project        string             `json:"project"`
+	Tickets        []string           `json:"tickets"`
+	Run            string             `json:"run,omitempty"`
+	Kind           string             `json:"kind"`
+	Subject        string             `json:"subject,omitempty"`
+	Question       string             `json:"question"`
+	Options        []DecisionOption   `json:"options"`
+	Recommendation string             `json:"recommendation,omitempty"`
+	Why            string             `json:"why,omitempty"`
+	State          string             `json:"state"`
+	Answer         string             `json:"answer,omitempty"`
+	Note           string             `json:"note,omitempty"`
+	AnsweredBy     string             `json:"answered_by,omitempty"`
+	AnsweredAt     string             `json:"answered_at,omitempty"`
+	Answered       string             `json:"answered,omitempty"`
+	RelayedBy      string             `json:"relayed_by,omitempty"`
+	Words          string             `json:"words,omitempty"`
+	AskedBy        string             `json:"asked_by"`
+	AskedAt        string             `json:"asked_at"`
+	Approvals      []DecisionApproval `json:"approvals,omitempty"`
+}
+
+// DecisionOption is one answer a decision offers, and what it costs.
+type DecisionOption struct {
+	Label    string `json:"label"`
+	Tradeoff string `json:"tradeoff,omitempty"`
+}
+
+// DecisionApproval is one ticket's approval: its requirement's hash and the
+// plan revision approved (0: none), as they stood when approved.
+type DecisionApproval struct {
+	Ticket          string `json:"ticket"`
+	RequirementHash string `json:"requirement_hash"`
+	PlanRevision    int64  `json:"plan_revision"`
+	At              string `json:"at"`
+}
+
 // Attachment is a file on a ticket. URL is the address of its bytes on the
 // server, as a ticket body or comment refers to it.
 type Attachment struct {

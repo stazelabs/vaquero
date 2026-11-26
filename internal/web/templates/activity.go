@@ -242,6 +242,8 @@ func EventSentence(e EventView) string {
 			return fmt.Sprintf("revised the plan for %s (revision %d)", e.TicketKey, int64(n))
 		}
 		return "revised the plan for " + e.TicketKey
+	case core.EvDecisionAsked, core.EvDecisionRuled, core.EvDecisionAnswered, core.EvDecisionWithdrawn:
+		return decisionSentence(e)
 	case core.EvTagRenamed:
 		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagMerged:
@@ -250,6 +252,57 @@ func EventSentence(e EventView) string {
 		return fmt.Sprintf("deleted tag %s from %s (%s)", s("name"), e.ProjectKey, tagTickets(e.Payload))
 	}
 	return "made a change"
+}
+
+// decisionSentence words a decision.* event: what was asked, ruled,
+// answered (approved, overruled, relayed) or withdrawn, and about what.
+func decisionSentence(e EventView) string {
+	s := func(k string) string { v, _ := e.Payload[k].(string); return v }
+	scope := func(prep string) string {
+		ids, _ := e.Payload["ticket_ids"].([]any)
+		switch {
+		case e.TicketKey != "":
+			return prep + " " + e.TicketKey
+		case len(ids) > 1:
+			return prep + " " + countLabel(int64(len(ids)), "ticket", "tickets") + " in " + e.ProjectKey
+		}
+		return "in " + e.ProjectKey
+	}
+	noun := map[string]string{"plan": "the plan", "merge": "a merge", "release": "a release"}[s("subject")]
+	if noun == "" {
+		noun = "a change"
+	}
+	answer := ""
+	if a := s("answer"); a != "" {
+		answer = ": " + a
+	}
+	if e.Payload["relayed"] == true {
+		answer += " (relayed by " + s("relayed_by") + ")"
+	}
+	kind := s("kind")
+	switch e.Kind {
+	case core.EvDecisionAsked:
+		if kind == core.DecisionApproval {
+			return "asked to approve " + noun + " " + scope("for")
+		}
+		return "asked a question " + scope("about")
+	case core.EvDecisionRuled:
+		return "made a ruling " + scope("on") + answer
+	case core.EvDecisionAnswered:
+		switch {
+		case kind == core.DecisionApproval && e.Payload["approved"] == true:
+			return "approved " + noun + " " + scope("for") + strings.TrimPrefix(answer, ": "+s("answer"))
+		case kind == core.DecisionApproval:
+			return "answered the request to approve " + noun + " " + scope("for") + answer
+		case kind == core.DecisionRuling:
+			return "overruled a ruling " + scope("on") + answer
+		}
+		return "answered a question " + scope("about") + answer
+	}
+	if kind == core.DecisionApproval {
+		return "withdrew the request to approve " + noun + " " + scope("for")
+	}
+	return "withdrew a question " + scope("about")
 }
 
 // tagTickets is a tag event's ticket count: "1 ticket", "3 tickets".
@@ -324,7 +377,7 @@ var eventIcons = map[string]string{
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
 	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token", "tag": "tag",
-	"plan": "plan",
+	"plan": "plan", "decision": "decision",
 }
 
 // EventIcon is the glyph an activity line starts with.
