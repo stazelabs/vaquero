@@ -78,7 +78,8 @@ func logPath(dataDir string) (string, error) {
 
 // brewPrefix is Homebrew's prefix: read from this binary's path when
 // Homebrew installed it ({prefix}/Cellar/vaquero/… or {prefix}/opt/vaquero/…,
-// symlinks followed), else `brew --prefix`, bounded like every probe.
+// symlinks followed, and only a prefix with a Cellar or var directory),
+// else `brew --prefix`, bounded like every probe.
 func brewPrefix() (string, error) {
 	if exe, err := executable(); err == nil {
 		paths := []string{exe}
@@ -87,7 +88,7 @@ func brewPrefix() (string, error) {
 		}
 		for _, p := range paths {
 			for _, mark := range []string{"/Cellar/vaquero/", "/opt/vaquero/"} {
-				if i := strings.Index(p, mark); i > 0 {
+				if i := strings.Index(p, mark); i > 0 && homebrewPrefix(p[:i]) {
 					return p[:i], nil
 				}
 			}
@@ -256,4 +257,15 @@ func openLog(path string) (*os.File, error) {
 		return nil, nil
 	}
 	return f, err
+}
+
+// homebrewPrefix reports whether dir looks like Homebrew's prefix: it has
+// a Cellar or a var directory.
+func homebrewPrefix(dir string) bool {
+	for _, sub := range []string{"Cellar", "var"} {
+		if st, err := os.Stat(filepath.Join(dir, sub)); err == nil && st.IsDir() {
+			return true
+		}
+	}
+	return false
 }

@@ -98,3 +98,29 @@ func TestBackgroundLogRotatesTheServiceLog(t *testing.T) {
 		t.Fatalf(".1: %v %v", st, err)
 	}
 }
+
+// `vaquero serve 2>file` opens the file without O_APPEND, at offset 0: from
+// the start, standard error writes through the log's own descriptor, so a
+// crash trace lands after the log's lines instead of over them.
+func TestBackgroundLogWithoutAppend(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "serve.log")
+	stderr, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	w := backgroundLog(stderr)
+	if w == nil {
+		t.Fatal("not recognised")
+	}
+	defer w.Close()
+	if _, err := w.Write([]byte("first line\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stderr.Write([]byte("a crash trace\n")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "first line\na crash trace\n" {
+		t.Fatalf("the log holds %q", b)
+	}
+}

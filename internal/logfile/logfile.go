@@ -43,12 +43,18 @@ type Writer struct {
 	fds  []int // descriptors pointed at each new file (Redirect)
 }
 
-// Redirect makes each rotation also point fds (a server's standard output
-// and error, which the Go runtime writes a crash trace to) at the new file,
-// so nothing is written to the old one after it moved.
+// Redirect points fds (a server's standard output and error, which the Go
+// runtime writes a crash trace to) at the log's own descriptor now, and at
+// the new file after each rotation, so nothing is written to the old one
+// after it moved. Pointing them now matters for a file opened without
+// O_APPEND (`vaquero serve 2>file`): its descriptor's offset stays at the
+// start, and a crash trace written through it would overwrite the log.
 func (w *Writer) Redirect(fds ...int) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	for _, fd := range fds {
+		_ = dup(int(w.f.Fd()), fd) //nolint:gosec // descriptors fit int
+	}
 	w.fds = append(w.fds, fds...)
 }
 

@@ -146,12 +146,16 @@ func TestLogsUnderBrewServices(t *testing.T) {
 		}
 	}
 
-	// Not a Homebrew binary: ask brew.
-	useExecutable(t, filepath.Join(t.TempDir(), "vaquero"))
-	m := &fakeManager{ok: map[string]string{"brew --prefix": prefix + "\n"}}
+	// Not a Homebrew binary, or a path that only looks like one (no Cellar
+	// or var beside it): ask brew.
+	loaded := launchctlPrint("sh.brew.vaquero")
+	m := &fakeManager{ok: map[string]string{"brew --prefix": prefix + "\n", loaded: "loaded\n"}}
 	useManager(t, m)
-	if code, out, e := runCLI(t, "logs", "--path"); code != 0 || out != want+"\n" {
-		t.Errorf("brew --prefix: %d %q %q", code, out, e)
+	for _, p := range []string{filepath.Join(t.TempDir(), "vaquero"), filepath.Join(t.TempDir(), "opt", "vaquero", "bin", "vaquero")} {
+		useExecutable(t, p)
+		if code, out, e := runCLI(t, "logs", "--path"); code != 0 || out != want+"\n" {
+			t.Errorf("%s, brew --prefix: %d %q %q", p, code, out, e)
+		}
 	}
 	writeLog(t, want, 5)
 	if code, out, e := runCLI(t, "logs", "-n", "1"); code != 0 || out != "line 5\n" {
@@ -159,7 +163,7 @@ func TestLogsUnderBrewServices(t *testing.T) {
 	}
 
 	// And brew can't be asked.
-	useManager(t, &fakeManager{})
+	useManager(t, &fakeManager{ok: map[string]string{loaded: "loaded\n"}})
 	if code, _, e := runCLI(t, "logs"); code != 1 || !strings.Contains(e, "Homebrew's prefix") {
 		t.Errorf("no prefix: %d %q", code, e)
 	}
