@@ -422,25 +422,69 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
+	// Each pins its sub-tickets then (ruling L-R8).
 	for id, want := range map[string]struct {
-		hash string
-		rev  int64
+		hash, pins string
+		rev        int64
 	}{
-		f.T1.ID:  {sum("First\n"), 2},
-		child.ID: {sum("Café\nCafé menu."), 0},
-		f.T2.ID:  {sum("Second\n"), 0},
+		f.T1.ID:  {sum("First\n"), `{"children":["` + child.ID + `"]}`, 2},
+		child.ID: {sum("Café\nCafé menu."), `{"children":[]}`, 0},
+		f.T2.ID:  {sum("Second\n"), `{"children":[]}`, 0},
 	} {
 		var hash, pins, at string
 		var rev int64
 		if err := d.R.QueryRow(`SELECT requirement_hash, plan_revision, pins, at FROM approvals WHERE decision_id = ? AND ticket_id = ?`, q.ID, id).Scan(&hash, &rev, &pins, &at); err != nil {
 			t.Fatal(err)
 		}
-		if hash != want.hash || rev != want.rev || pins != "[]" || at == "" {
-			t.Errorf("%s: %s %d %s, want %s %d", id, hash, rev, pins, want.hash, want.rev)
+		if hash != want.hash || rev != want.rev || pins != want.pins || at == "" {
+			t.Errorf("%s: %s %d %s, want %s %d %s", id, hash, rev, pins, want.hash, want.rev, want.pins)
 		}
 	}
 	if got := core.RequirementHash("Café", "Café menu."); got != sum("Café\nCafé menu.") {
 		t.Fatal(got)
+	}
+}
+
+// Ruling L-R7: an approval approves what was asked. A plan revised, or a
+// requirement edited, between the ask and the answer refuses an Approve;
+// Request changes is still taken.
+func TestApproveRefusedWhenChangedSinceAsked(t *testing.T) {
+	c, d, f := newFixture(t)
+	a := builder(t, c, f)
+	if _, err := c.SavePlan(bg, a.ID, f.T1.ID, "One.", 0); err != nil {
+		t.Fatal(err)
+	}
+	var hash string
+	var rev int64
+	q, _ := c.AskDecision(bg, a.ID, planApproval(f, f.T2.ID, f.T1.ID))
+	if err := d.R.QueryRow(`SELECT requirement_hash, plan_revision FROM decision_tickets WHERE decision_id = ? AND ticket_id = ?`, q.ID, f.T1.ID).Scan(&hash, &rev); err != nil ||
+		hash != core.RequirementHash("First", "") || rev != 1 {
+		t.Fatalf("asked pins %s %d %v", hash, rev, err)
+	}
+	if _, err := c.SavePlan(bg, a.ID, f.T1.ID, "One. Two.", 1); err != nil {
+		t.Fatal(err)
+	}
+	snap := snapshot(t, d)
+	_, err := c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"})
+	fieldErr(t, err, "answer", "The plan or requirement for VAQ-1 changed since this was asked; ask again.")
+	if !maps.Equal(snapshot(t, d), snap) {
+		t.Fatal("a refused answer changed rows")
+	}
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Request changes"}); err != nil {
+		t.Fatal(err)
+	}
+
+	q2, _ := c.AskDecision(bg, a.ID, planApproval(f, f.T2.ID))
+	body := "Now with a description."
+	if _, err := c.PatchTicket(bg, f.Owner.ID, f.T2.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.AnswerDecision(bg, f.Owner.ID, q2.ID, core.Answer{Option: "Approve"})
+	fieldErr(t, err, "answer", "The plan or requirement for VAQ-2 changed since this was asked; ask again.")
+	// Asked again, it approves.
+	q3, _ := c.AskDecision(bg, a.ID, planApproval(f, f.T2.ID))
+	if _, err := c.AnswerDecision(bg, f.Owner.ID, q3.ID, core.Answer{Option: "Approve"}); err != nil {
+		t.Fatal(err)
 	}
 }
 

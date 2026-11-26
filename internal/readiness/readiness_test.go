@@ -116,8 +116,6 @@ func expect(t *testing.T, got readiness.Readiness, reasons ...string) {
 	}
 }
 
-//go:fix inline
-
 func TestReadyWithApprovedPlanAndTier(t *testing.T) {
 	w := newWorld(t)
 	tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "standard"})
@@ -251,8 +249,8 @@ func TestChildOwnApprovalStillLeansOnEpic(t *testing.T) {
 	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
 	child := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
 	w.plan(epic, "1. Rails.", 0)
-	w.approve(child) // its own approval, the epic not yet approved
-	expect(t, w.check(child), readiness.PlanNotApproved)
+	w.approve(child)                                         // its own approval, the epic not yet approved
+	expect(t, w.check(child), readiness.EpicPlanNotApproved) // ruling L-R6
 	w.approve(epic)
 	expect(t, w.check(child))
 	w.edit(child, core.TicketPatch{Body: new("Rails, folded.")})
@@ -305,4 +303,48 @@ func TestCheckAllEmpty(t *testing.T) {
 	if err != nil || len(all) != 0 {
 		t.Fatalf("%v %v", all, err)
 	}
+}
+
+// Ruling L-R8: an epic's approval covers only the sub-tickets it had when
+// it was approved.
+func TestEpicApprovalCoversOnlyItsChildrenThen(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	present := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	moved := w.ticket(core.TicketInput{Title: "Rails", Tier: "light"})
+	w.plan(epic, "1. Columns.", 0)
+	w.approve(epic)
+	expect(t, w.check(present)) // present at approval: still covered
+
+	later := w.ticket(core.TicketInput{Title: "Filters", ParentID: epic.ID, Tier: "light"})
+	expect(t, w.check(later), readiness.PlanNotApproved)
+	w.edit(moved, core.TicketPatch{ParentID: new(epic.ID)})
+	expect(t, w.check(moved), readiness.PlanNotApproved)
+
+	// Approving the epic again takes them in.
+	w.approve(epic)
+	expect(t, w.check(later))
+	expect(t, w.check(moved))
+}
+
+// Ruling L-R6: a sub-ticket whose own approval is current but whose epic's
+// approval doesn't cover it is told it's the epic's plan.
+func TestEpicPlanNotApproved(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	w.plan(epic, "1. Columns.", 0)
+
+	// The epic has no approval.
+	own := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.approve(own)
+	expect(t, w.check(own), readiness.EpicPlanNotApproved)
+
+	// The epic's approval came before the sub-ticket was moved under it.
+	w.approve(epic)
+	expect(t, w.check(own))
+	moved := w.ticket(core.TicketInput{Title: "Rails", Tier: "light"})
+	w.approve(moved)
+	expect(t, w.check(moved)) // no parent: its own approval is enough
+	w.edit(moved, core.TicketPatch{ParentID: new(epic.ID)})
+	expect(t, w.check(moved), readiness.EpicPlanNotApproved)
 }

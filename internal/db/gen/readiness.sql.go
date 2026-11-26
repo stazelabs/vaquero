@@ -15,7 +15,8 @@ const listPlanApprovalAnswers = `-- name: ListPlanApprovalAnswers :many
 SELECT dt.ticket_id, d.id AS decision_id,
        CAST(a.id IS NOT NULL AS BOOLEAN) AS approved,
        CAST(coalesce(a.requirement_hash, '') AS TEXT) AS requirement_hash,
-       CAST(coalesce(a.plan_revision, 0) AS INTEGER) AS plan_revision
+       CAST(coalesce(a.plan_revision, 0) AS INTEGER) AS plan_revision,
+       CAST(coalesce(a.pins, '[]') AS TEXT) AS pins
 FROM decision_tickets dt
 JOIN decisions d ON d.id = dt.decision_id
 LEFT JOIN approvals a ON a.decision_id = d.id AND a.ticket_id = dt.ticket_id
@@ -30,6 +31,7 @@ type ListPlanApprovalAnswersRow struct {
 	Approved        bool
 	RequirementHash string
 	PlanRevision    int64
+	Pins            string
 }
 
 // Every answered plan approval naming one of the given tickets, latest
@@ -60,6 +62,7 @@ func (q *Queries) ListPlanApprovalAnswers(ctx context.Context, ids []string) ([]
 			&i.Approved,
 			&i.RequirementHash,
 			&i.PlanRevision,
+			&i.Pins,
 		); err != nil {
 			return nil, err
 		}

@@ -21,9 +21,15 @@
 //   - no plan of its own but an approval: its own requirement must match,
 //     and it leans on its parent's own current approval too (the epic's
 //     requirement and plan revision must match), so editing the epic makes
-//     it not ready. Without a parent its own approval, pinning plan
-//     revision 0, is enough: a small ticket is approved without a plan;
-//   - neither: its parent's own current approval alone.
+//     it not ready; without one, "Epic's plan not approved.". Without a
+//     parent its own approval, pinning plan revision 0, is enough: a small
+//     ticket is approved without a plan;
+//   - neither: its parent's own current approval alone ("Plan not
+//     approved." without one).
+//
+// An epic's approval covers only the sub-tickets it had when approved (its
+// pins' children, ruling L-R8): a sub-ticket made or moved under it later
+// leans on no approval until the epic, or the sub-ticket, is approved.
 //
 // The board's conditions (unassigned, unclaimed, no open blocker or
 // sub-ticket) are not reasons here: the board query decides them, and the
@@ -32,6 +38,7 @@ package readiness
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -44,6 +51,7 @@ const (
 	NotATodo               = "Not a todo."
 	NoTier                 = "No tier."
 	PlanNotApproved        = "Plan not approved."
+	EpicPlanNotApproved    = "Epic's plan not approved."
 	RequirementChanged     = "Requirement changed since approval."
 	PlanChanged            = "Plan changed since approval."
 	EpicRequirementChanged = "Epic's requirement changed since approval."
@@ -51,7 +59,7 @@ const (
 )
 
 // Reasons is every reason, in the order an answer lists them.
-var Reasons = []string{NotATodo, NoTier, PlanNotApproved, RequirementChanged, PlanChanged, EpicRequirementChanged, EpicPlanChanged}
+var Reasons = []string{NotATodo, NoTier, PlanNotApproved, EpicPlanNotApproved, RequirementChanged, PlanChanged, EpicRequirementChanged, EpicPlanChanged}
 
 // Readiness is one ticket's answer. Reasons is never nil, and Ready is
 // true exactly when it is empty.
@@ -158,14 +166,14 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 	switch {
 	case ownPlan || answered || !hasParent:
 		// Its own approval counts.
-		s.current(t, own, answered, found, RequirementChanged, PlanChanged)
+		s.current(t, own, answered, found, PlanNotApproved, RequirementChanged, PlanChanged)
 		if !ownPlan && answered && hasParent {
-			// No plan of its own: it leans on the epic's plan too.
-			s.current(parent, s.latest[parent.ID], s.hasAnswer(parent.ID), found, EpicRequirementChanged, EpicPlanChanged)
+			// No plan of its own: it leans on the epic's approval too.
+			s.epic(t, parent, found, EpicPlanNotApproved)
 		}
 	default:
 		// No plan and no approval of its own: the epic's alone.
-		s.current(parent, s.latest[parent.ID], s.hasAnswer(parent.ID), found, EpicRequirementChanged, EpicPlanChanged)
+		s.epic(t, parent, found, PlanNotApproved)
 	}
 	out := Readiness{Reasons: []string{}}
 	for _, r := range Reasons {
@@ -177,14 +185,35 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 	return out
 }
 
-func (s state) hasAnswer(id string) bool { _, ok := s.latest[id]; return ok }
+// epic marks in found why parent's latest answer is not a current
+// approval that covers child: notApproved when it isn't an approval or
+// child wasn't one of its sub-tickets then (ruling L-R8), else the epic's
+// changed requirement or plan.
+func (s state) epic(child, parent gen.ListReadinessTicketsRow, found map[string]bool, notApproved string) {
+	a, answered := s.latest[parent.ID]
+	if !answered || !a.Approved || !covers(a.Pins, child.ID) {
+		found[notApproved] = true
+		return
+	}
+	s.current(parent, a, true, found, notApproved, EpicRequirementChanged, EpicPlanChanged)
+}
+
+// covers reports whether an approval's pins name id among its children.
+// Pins that don't parse, or name no children, cover none.
+func covers(pins, id string) bool {
+	var p core.ApprovalPins
+	if err := json.Unmarshal([]byte(pins), &p); err != nil {
+		return false
+	}
+	return slices.Contains(p.Children, id)
+}
 
 // current marks in found why t's latest answer a is not a current approval
-// of it: not approved, or its requirement or plan changed since (named by
-// reqChanged and planChanged).
-func (s state) current(t gen.ListReadinessTicketsRow, a gen.ListPlanApprovalAnswersRow, answered bool, found map[string]bool, reqChanged, planChanged string) {
+// of it: notApproved when it isn't one, else its requirement or plan
+// changed since (named by reqChanged and planChanged).
+func (s state) current(t gen.ListReadinessTicketsRow, a gen.ListPlanApprovalAnswersRow, answered bool, found map[string]bool, notApproved, reqChanged, planChanged string) {
 	if !answered || !a.Approved {
-		found[PlanNotApproved] = true
+		found[notApproved] = true
 		return
 	}
 	if a.RequirementHash != core.RequirementHash(t.Title, t.Body) {

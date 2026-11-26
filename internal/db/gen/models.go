@@ -91,8 +91,10 @@ type Decision struct {
 }
 
 type DecisionTicket struct {
-	DecisionID string
-	TicketID   string
+	DecisionID      string
+	TicketID        string
+	RequirementHash string
+	PlanRevision    int64
 }
 
 type Event struct {

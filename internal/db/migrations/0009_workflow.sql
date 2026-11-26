@@ -18,8 +18,8 @@ ALTER TABLE tickets ADD COLUMN model TEXT NOT NULL DEFAULT '' CHECK (length(mode
 -- out. Events from before 0009 have {}.
 ALTER TABLE events ADD COLUMN meta TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(meta));
 
--- A ticket's (or an epic's) plan: the current text and its revision;
--- every earlier text stays in plan_revisions.
+-- A ticket's (or an epic's) plan: the current text and its revision.
+-- plan_revisions keeps every revision, the current one included.
 CREATE TABLE plans (
     id         TEXT PRIMARY KEY,
     ticket_id  TEXT NOT NULL UNIQUE REFERENCES tickets (id),
@@ -67,9 +67,14 @@ CREATE TABLE decisions (
 );
 CREATE INDEX decisions_project ON decisions (project_id, state);
 
+-- requirement_hash and plan_revision are what a plan approval asked about
+-- for each ticket, pinned when asked: an Approve is refused if either has
+-- changed since. Other decisions leave them '' and 0.
 CREATE TABLE decision_tickets (
-    decision_id TEXT NOT NULL REFERENCES decisions (id),
-    ticket_id   TEXT NOT NULL REFERENCES tickets (id),
+    decision_id      TEXT NOT NULL REFERENCES decisions (id),
+    ticket_id        TEXT NOT NULL REFERENCES tickets (id),
+    requirement_hash TEXT NOT NULL DEFAULT '',
+    plan_revision    INTEGER NOT NULL DEFAULT 0 CHECK (plan_revision >= 0),
     PRIMARY KEY (decision_id, ticket_id)
 );
 CREATE INDEX decision_tickets_ticket ON decision_tickets (ticket_id);
@@ -77,7 +82,8 @@ CREATE INDEX decision_tickets_ticket ON decision_tickets (ticket_id);
 -- An approval of a ticket's requirement and plan, as they stood when the
 -- owner approved: requirement_hash is hex(sha256(NFC(title) + "\n" +
 -- NFC(description))), plan_revision the plan approved (0: no plan), pins
--- a JSON list (repo pins arrive in part 2).
+-- a JSON value: {"children": [ticket ids]}, the sub-tickets it had when
+-- approved, the only ones its approval covers (repo pins arrive in part 2).
 CREATE TABLE approvals (
     id               TEXT PRIMARY KEY,
     ticket_id        TEXT NOT NULL REFERENCES tickets (id),

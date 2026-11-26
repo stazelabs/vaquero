@@ -20,7 +20,8 @@ SELECT ticket_id, revision FROM plans WHERE ticket_id IN (sqlc.slice('ids'));
 SELECT dt.ticket_id, d.id AS decision_id,
        CAST(a.id IS NOT NULL AS BOOLEAN) AS approved,
        CAST(coalesce(a.requirement_hash, '') AS TEXT) AS requirement_hash,
-       CAST(coalesce(a.plan_revision, 0) AS INTEGER) AS plan_revision
+       CAST(coalesce(a.plan_revision, 0) AS INTEGER) AS plan_revision,
+       CAST(coalesce(a.pins, '[]') AS TEXT) AS pins
 FROM decision_tickets dt
 JOIN decisions d ON d.id = dt.decision_id
 LEFT JOIN approvals a ON a.decision_id = d.id AND a.ticket_id = dt.ticket_id

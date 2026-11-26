@@ -39,16 +39,23 @@ func (q *Queries) AddApproval(ctx context.Context, arg AddApprovalParams) error 
 }
 
 const addDecisionTicket = `-- name: AddDecisionTicket :exec
-INSERT INTO decision_tickets (decision_id, ticket_id) VALUES (?, ?)
+INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision) VALUES (?, ?, ?, ?)
 `
 
 type AddDecisionTicketParams struct {
-	DecisionID string
-	TicketID   string
+	DecisionID      string
+	TicketID        string
+	RequirementHash string
+	PlanRevision    int64
 }
 
 func (q *Queries) AddDecisionTicket(ctx context.Context, arg AddDecisionTicketParams) error {
-	_, err := q.db.ExecContext(ctx, addDecisionTicket, arg.DecisionID, arg.TicketID)
+	_, err := q.db.ExecContext(ctx, addDecisionTicket,
+		arg.DecisionID,
+		arg.TicketID,
+		arg.RequirementHash,
+		arg.PlanRevision,
+	)
 	return err
 }
 
@@ -302,6 +309,57 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string)
 	for rows.Next() {
 		var i ListDecisionTicketKeysRow
 		if err := rows.Scan(&i.ProjectKey, &i.Number); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDecisionTicketPins = `-- name: ListDecisionTicketPins :many
+SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, t.title, t.body, p.key AS project_key, t.number
+FROM decision_tickets dt
+JOIN tickets t ON t.id = dt.ticket_id
+JOIN projects p ON p.id = t.project_id
+WHERE dt.decision_id = ?
+ORDER BY t.number
+`
+
+type ListDecisionTicketPinsRow struct {
+	TicketID        string
+	RequirementHash string
+	PlanRevision    int64
+	Title           string
+	Body            string
+	ProjectKey      string
+	Number          int64
+}
+
+// What a plan approval asked about for each of its tickets, by number.
+func (q *Queries) ListDecisionTicketPins(ctx context.Context, decisionID string) ([]ListDecisionTicketPinsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDecisionTicketPins, decisionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDecisionTicketPinsRow{}
+	for rows.Next() {
+		var i ListDecisionTicketPinsRow
+		if err := rows.Scan(
+			&i.TicketID,
+			&i.RequirementHash,
+			&i.PlanRevision,
+			&i.Title,
+			&i.Body,
+			&i.ProjectKey,
+			&i.Number,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -7,7 +7,16 @@ INSERT INTO decisions (id, project_id, run_id, kind, subject, question, options,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: AddDecisionTicket :exec
-INSERT INTO decision_tickets (decision_id, ticket_id) VALUES (?, ?);
+INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision) VALUES (?, ?, ?, ?);
+
+-- name: ListDecisionTicketPins :many
+-- What a plan approval asked about for each of its tickets, by number.
+SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, t.title, t.body, p.key AS project_key, t.number
+FROM decision_tickets dt
+JOIN tickets t ON t.id = dt.ticket_id
+JOIN projects p ON p.id = t.project_id
+WHERE dt.decision_id = ?
+ORDER BY t.number;
 
 -- name: GetDecision :one
 SELECT * FROM decisions WHERE id = ?;
