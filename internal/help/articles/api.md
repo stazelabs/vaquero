@@ -51,7 +51,7 @@ Every change records where it came from, as the caller reports it, in the event'
 
 An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
-A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets).
+A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets). In a project with the [agent workflow](/help/agent-workflow) on, it also has `tier`, and a todo ticket's has `readiness`, `{"ready", "reasons"}`; a ticket's own answer has `readiness` whatever its status. `ready` then needs both the board's rule and `readiness` (see [Readiness](/help/agent-workflow#readiness)).
 
 ## Writing
 
@@ -101,7 +101,7 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 
 | Request | Body or query |
 |---|---|
-| `GET /api/v1/ready` | Ready tickets, urgent first, then high, medium, low and no priority, each in board order: `project=KEY` for one project, `limit=N` (default 50) |
+| `GET /api/v1/ready` | Ready tickets, urgent first, then high, medium, low and no priority, each in board order: `project=KEY` for one project, `limit=N` (default 50). In a project with the agent workflow on, only tickets that pass [readiness](/help/agent-workflow#readiness) |
 | `POST /api/v1/tickets/{ticket}/claim` | `{"lease_minutes"}`, optional: 1 to 120, default 15. Assigns the ticket to you and moves a backlog or todo ticket to the first in-progress status; claiming your own claim again renews it |
 | `POST /api/v1/tickets/{ticket}/heartbeat` | `{"lease_minutes"}`, optional: extends your claim from now |
 | `POST /api/v1/tickets/{ticket}/release` | Nothing; gives up your claim, keeping the status and assignee |

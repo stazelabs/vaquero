@@ -230,6 +230,13 @@ func printTicket(w io.Writer, t apiTicket) {
 	case t.Model != "":
 		fmt.Fprintf(w, "Model: %s\n", t.Model)
 	}
+	if r := t.Readiness; r != nil { // the agent workflow is on
+		if r.Ready {
+			fmt.Fprintln(w, "Readiness: ready")
+		} else {
+			fmt.Fprintf(w, "Readiness: not ready. %s\n", strings.Join(r.Reasons, " "))
+		}
+	}
 	if t.Parent != "" {
 		fmt.Fprintf(w, "Parent: %s\n", t.Parent)
 	}

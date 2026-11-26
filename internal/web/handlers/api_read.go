@@ -17,6 +17,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/search"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/units"
@@ -136,7 +137,15 @@ func summary(k board.Card, s gen.Status) api.TicketSummary {
 	}
 	return api.TicketSummary{Key: k.Key, Title: k.Title, Status: s.Name, Category: s.Category,
 		Priority: k.Priority, Assignee: k.Assignee, Tags: tags, Ready: k.Ready, Version: k.Version,
-		ClaimedBy: k.ClaimedBy, ClaimExpiresAt: k.ClaimExpiresAt}
+		ClaimedBy: k.ClaimedBy, ClaimExpiresAt: k.ClaimExpiresAt, Tier: k.Tier, Readiness: apiReadiness(k.Readiness)}
+}
+
+// apiReadiness is a readiness answer, nil for none (the workflow off).
+func apiReadiness(r *readiness.Readiness) *api.Readiness {
+	if r == nil {
+		return nil
+	}
+	return &api.Readiness{Ready: r.Ready, Reasons: r.Reasons}
 }
 
 // APITickets is GET /api/v1/projects/{key}/tickets: the board's filters,
@@ -267,6 +276,23 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		return out, err
 	}
 	slices.SortFunc(subs, func(a, b gen.ListBoardTicketsRow) int { return cmp.Compare(a.Number, b.Number) })
+	// With the workflow on, the ticket (always) and its todo sub-tickets
+	// carry the readiness gate, in one batch, and ready needs it.
+	var gate map[string]readiness.Readiness
+	if p.Workflow == 1 {
+		ids := []string{t.ID}
+		for _, s := range subs {
+			if s.StatusCategory == "todo" {
+				ids = append(ids, s.ID)
+			}
+		}
+		if gate, err = readiness.CheckAll(ctx, d.R, ids); err != nil {
+			return out, err
+		}
+		rd := gate[t.ID]
+		out.Readiness = apiReadiness(&rd)
+		out.Ready = out.Ready && rd.Ready
+	}
 	subTags := map[string][]string{}
 	if len(subs) > 0 {
 		ids := make([]string, len(subs))
@@ -286,9 +312,17 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		if names == nil {
 			names = []string{}
 		}
-		out.SubTickets = append(out.SubTickets, api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
+		sum := api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
 			Category: s.StatusCategory, Priority: s.Priority, Assignee: s.AssigneeName, Tags: names, Ready: s.Ready, Version: s.Version,
-			ClaimedBy: s.ClaimantName, ClaimExpiresAt: s.ClaimExpiresAt})
+			ClaimedBy: s.ClaimantName, ClaimExpiresAt: s.ClaimExpiresAt}
+		if p.Workflow == 1 {
+			sum.Tier = s.Tier
+			if rd, ok := gate[s.ID]; ok {
+				sum.Readiness = apiReadiness(&rd)
+				sum.Ready = sum.Ready && rd.Ready
+			}
+		}
+		out.SubTickets = append(out.SubTickets, sum)
 	}
 	from, err := d.R.ListLinksFrom(ctx, t.ID)
 	if err != nil {

@@ -218,6 +218,9 @@ templ card(k board.Card) {
 						{ PriorityLabel(k.Priority) }
 					</span>
 				}
+				if k.Tier != "" {
+					<span data-tier={ k.Tier } class="rounded-full border border-line px-1.5 text-[10px] text-muted">{ TierLabel(k.Tier) }</span>
+				}
 				for _, t := range k.Tags {
 					<span class="rounded-full bg-accent/10 px-1.5 text-[10px] text-ink/80">{ t }</span>
 				}
@@ -359,6 +362,9 @@ templ listRow(k board.Card) {
 				@IconClass(PriorityIcon(k.Priority), "h-3.5 w-3.5 shrink-0")
 				{ PriorityLabel(k.Priority) }
 			</span>
+		}
+		if k.Tier != "" {
+			<span data-tier={ k.Tier } class="rounded-full border border-line px-2 text-xs text-muted">{ TierLabel(k.Tier) }</span>
 		}
 		for _, t := range k.Tags {
 			<span class="rounded-full bg-accent/10 px-2 text-xs text-ink/80">{ t }</span>

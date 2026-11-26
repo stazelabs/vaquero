@@ -3,7 +3,7 @@
 -- optional (NULL means any). ready: a todo ticket, unassigned and unclaimed, with no open
 -- blocker and no open sub-ticket. ticket_id and parent_id narrow it to one
 -- ticket or one ticket's sub-tickets, for the API's ticket answer.
-SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version,
+SELECT t.id, t.number, t.title, t.priority, t.status_id, t.position, t.status_changed_at, t.version, t.tier,
        s.name AS status_name, s.category AS status_category,
        coalesce(a.name, '') AS assignee_name, coalesce(a.kind, '') AS assignee_kind,
        coalesce(ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,

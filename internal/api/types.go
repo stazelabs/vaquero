@@ -49,6 +49,22 @@ type TicketSummary struct {
 	// ClaimedBy and ClaimExpiresAt are set while a claim is held.
 	ClaimedBy      string `json:"claimed_by,omitempty"`
 	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
+	// Tier is the execution tier, absent when unset. On a summary it is
+	// given only when the project's agent workflow is on; a full Ticket
+	// gives it always (Ticket.Tier).
+	Tier string `json:"tier,omitempty"`
+	// Readiness is the agent workflow's gate, given only when the
+	// project's workflow is on: on every full ticket, and on the summary
+	// of a todo ticket. Ready above is then the board's rule and this one.
+	Readiness *Readiness `json:"readiness,omitempty"`
+}
+
+// Readiness says whether a ticket passes the agent workflow's gate: a
+// todo, with a tier, and a current plan approval. Reasons lists what
+// fails, in a fixed order; it is empty when Ready.
+type Readiness struct {
+	Ready   bool     `json:"ready"`
+	Reasons []string `json:"reasons"`
 }
 
 type Ticket struct {
@@ -57,7 +73,8 @@ type Ticket struct {
 	Parent    string `json:"parent,omitempty"`
 	Milestone string `json:"milestone,omitempty"`
 	// Tier is the execution tier (design, light, standard or heavy) and
-	// Model an exact model for it; both absent when unset.
+	// Model an exact model for it; both absent when unset. Tier here
+	// shadows TicketSummary.Tier, so a full ticket gives it always.
 	Tier        string          `json:"tier,omitempty"`
 	Model       string          `json:"model,omitempty"`
 	SubTickets  []TicketSummary `json:"sub_tickets"`

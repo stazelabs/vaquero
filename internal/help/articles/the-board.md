@@ -10,7 +10,7 @@ The board shows a project's tickets by status. Todo, in progress and in review s
 
 ## Ready tickets
 
-A card marked **Ready**, with an accent edge, is a ticket someone could start now: it is in a todo status, nobody is assigned, no open ticket blocks it, and it has no open sub-tickets.
+A card marked **Ready**, with an accent edge, is a ticket someone could start now: it is in a todo status, nobody is assigned, no open ticket blocks it, and it has no open sub-tickets. With the [agent workflow](/help/agent-workflow#readiness) on, it also needs a tier and a current plan approval, and each card shows its tier.
 
 ## Filters
 

@@ -1,7 +1,7 @@
 ---
 title: Agent workflow
 section: api-and-agents
-summary: The project setting for agent work: execution tiers and the tier map, plans, and the decisions the owner answers.
+summary: The project setting for agent work: execution tiers and the tier map, plans, the decisions the owner answers, and when a ticket is ready.
 order: 5
 ---
 The agent workflow is a project setting for teams where agents do much of the building. It is off in a new project, and a project with it off works as it always has. Turn it on in the project's settings, under Workflow, or with `vaquero project edit KEY --workflow on`.
@@ -19,7 +19,7 @@ Tickets carry an execution tier when the agent workflow is on; the [tier map](#t
 - **standard** is ordinary work;
 - **heavy** is large or tricky.
 
-With the workflow on, set it on the ticket's edit form, and see it on the ticket's page. In any project, the command line (`vaquero ticket edit TICKET --tier standard`), the API (`"tier"` on a ticket) and the `create_ticket` and `update_ticket` tools set it too. A ticket may also name an exact model (`--model`, `"model"`), which overrides the tier map for that ticket.
+With the workflow on, set it on the ticket's edit form, and see it on the ticket's page and its card on the board. In any project, the command line (`vaquero ticket edit TICKET --tier standard`), the API (`"tier"` on a ticket) and the `create_ticket` and `update_ticket` tools set it too. A ticket may also name an exact model (`--model`, `"model"`), which overrides the tier map for that ticket.
 
 ## The tier map
 
@@ -54,3 +54,28 @@ When the owner answers in conversation, the agent records the answer as relayed,
 Approving a plan, with Approve, records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, and the revision of the ticket's own plan (none, for a sub-ticket without one: it relies on its epic's own approval). One approval can cover several tickets. Any other answer records no approval.
 
 An answered approval is final. To take one back, ask for a new plan approval and answer it Request changes: the latest answered plan approval of a ticket is the one that counts. Editing the ticket's requirement or plan also leaves the approval behind.
+
+## Readiness
+
+With the workflow on, a ticket is ready to build only when it is clear enough and approved. On top of the board's rule (a todo, unassigned and unclaimed, nothing open blocking it, no open sub-tickets; see [the ready queue](/help/agents-and-claims#the-ready-queue)), it needs:
+
+- a tier, any of them: a design ticket can be ready, for planning work;
+- a current plan approval: the requirement and the plan as approved are still the ticket's.
+
+Which approval counts:
+
+- **A ticket with its own plan** needs its own approval of that plan. Its epic's plan doesn't cover it, and editing the epic leaves it alone.
+- **A sub-ticket without a plan** relies on its epic's approval. Editing the epic's title, description or plan makes every such sub-ticket not ready until the epic is approved again. One approved together with its epic needs its own title and description unchanged too.
+- **A ticket with no plan and no epic** can be approved as it is, for a small change.
+
+The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that fails this. Every ticket in the API answer, and the summary of a todo ticket in a list, then carries `readiness`: `ready`, and the `reasons` it is not, in this order:
+
+- Not a todo.
+- No tier.
+- Plan not approved.
+- Requirement changed since approval.
+- Plan changed since approval.
+- Epic's requirement changed since approval.
+- Epic's plan changed since approval.
+
+With the workflow off, tickets carry no `readiness`, and ready means what the board's rule says.

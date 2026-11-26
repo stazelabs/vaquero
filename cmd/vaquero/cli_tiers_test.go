@@ -44,3 +44,21 @@ func TestCLIProjectEditWorkflow(t *testing.T) {
 		t.Fatalf("%d %q", code, errOut)
 	}
 }
+
+func TestCLIShowsReadiness(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Plain")
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); strings.Contains(out, "Readiness") {
+		t.Fatalf("workflow off: %q", out)
+	}
+	if out := mustCLI(t, "ready", "VAQ"); strings.Contains(out, "TIER") || !strings.Contains(out, "VAQ-1") {
+		t.Fatalf("workflow off: %q", out)
+	}
+	mustCLI(t, "project", "edit", "VAQ", "--workflow", "on")
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. No tier. Plan not approved.") {
+		t.Fatalf("%q", out)
+	}
+	if out := mustCLI(t, "ready", "VAQ"); !strings.Contains(out, "Nothing is ready.") {
+		t.Fatalf("%q", out)
+	}
+}

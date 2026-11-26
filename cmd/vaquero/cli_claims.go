@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -43,9 +44,19 @@ func cmdReady(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 				fmt.Fprintln(c.stdout, "Nothing is ready.")
 				return
 			}
+			// A tier column only when there are tiers: with the agent
+			// workflow off, summaries carry none.
+			tiers := slices.ContainsFunc(ts, func(t api.TicketSummary) bool { return t.Tier != "" })
 			rows := [][]string{{"KEY", "PRIORITY", "TITLE", "TAGS"}}
+			if tiers {
+				rows[0] = append(rows[0], "TIER")
+			}
 			for _, t := range ts {
-				rows = append(rows, []string{t.Key, priorityWords[t.Priority], t.Title, strings.Join(t.Tags, ",")})
+				row := []string{t.Key, priorityWords[t.Priority], t.Title, strings.Join(t.Tags, ",")}
+				if tiers {
+					row = append(row, t.Tier)
+				}
+				rows = append(rows, row)
 			}
 			c.table(rows)
 		})
