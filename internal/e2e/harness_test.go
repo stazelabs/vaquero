@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"runtime"
@@ -107,6 +108,7 @@ type page struct {
 	t   *testing.T
 	ctx context.Context
 	env *webtest.Env
+	srv *recorder
 
 	mu       sync.Mutex
 	problems []string // uncaught exceptions and CSP refusals
@@ -120,7 +122,7 @@ func open(t *testing.T, env *webtest.Env, width, height int64) *page {
 	}
 	tctx, cancelTimeout := context.WithTimeout(browserCtx, 90*time.Second)
 	ctx, cancel := chromedp.NewContext(tctx, chromedp.WithNewBrowserContext())
-	p := &page{t: t, ctx: ctx, env: env}
+	p := &page{t: t, ctx: ctx, env: env, srv: record(env)}
 	t.Cleanup(func() {
 		cancel()
 		cancelTimeout()
@@ -283,6 +285,22 @@ func (p *page) typeInto(sel, text string) {
 	p.key(text)
 }
 
+// rect is an element's box in viewport pixels.
+type rect struct{ Left, Top, Right, Bottom, Width, Height float64 }
+
+func (r rect) cx() float64 { return r.Left + r.Width/2 }
+
+func (p *page) rect(sel string) rect {
+	p.t.Helper()
+	b := eval[rect](p, fmt.Sprintf(`(function () {
+		var el = document.querySelector(%s);
+		if (!el) { return null; }
+		var r = el.getBoundingClientRect();
+		return {Left: r.left, Top: r.top, Right: r.right, Bottom: r.bottom, Width: r.width, Height: r.height};
+	})()`, js(sel)))
+	return b
+}
+
 // js quotes s as a JavaScript string.
 func js(s string) string {
 	b, _ := json.Marshal(s)
@@ -294,6 +312,33 @@ var (
 	escape = kb.Escape
 	enter  = kb.Enter
 )
+
+// recorder wraps env's handler: it counts requests by method and path.
+type recorder struct {
+	next  http.Handler
+	mu    sync.Mutex
+	count map[string]int
+}
+
+func record(env *webtest.Env) *recorder {
+	r := &recorder{next: env.Server.Config.Handler, count: map[string]int{}}
+	env.Server.Config.Handler = r
+	return r
+}
+
+func (r *recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.mu.Lock()
+	r.count[req.Method+" "+req.URL.Path]++
+	r.mu.Unlock()
+	r.next.ServeHTTP(w, req)
+}
+
+// requests is how many method+path requests arrived ("POST /t/WEB-1/move").
+func (r *recorder) requests(methodPath string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.count[methodPath]
+}
 
 // fixture is a project arranged through core, the way the pages make
 // changes.
@@ -351,9 +396,24 @@ func (f *fixture) ticket(title, status string, mod ...func(*core.TicketInput)) g
 	return tk
 }
 
+// events is the number of events recorded.
+func (f *fixture) events() int64 {
+	f.t.Helper()
+	n, err := f.env.DB.RQ.CountEvents(context.Background())
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return n
+}
+
 // focus focuses the element sel matches.
 func focus(sel string) chromedp.Action[chromedp.Void] {
 	return chromedp.Focus(chromedp.CSS(sel), chromedp.NodeVisible)
+}
+
+// clickAt clicks the left button at x, y in the viewport.
+func clickAt(x, y float64) chromedp.Action[chromedp.Void] {
+	return chromedp.MouseClickXY(x, y)
 }
 
 // toggled runs action and waits for the details element sel matches to
