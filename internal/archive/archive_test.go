@@ -347,7 +347,9 @@ func TestExportEveryColumn(t *testing.T) {
 
 	// Every table is exported or deliberately left out, so a new
 	// migration's table can't be forgotten.
-	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence"}
+	// event_tickets is derived from the events and rebuilt on import;
+	// actor_avatars is exported from the profile task on (VAQ-149).
+	left := []string{"api_tokens", "mcp_calls", "blobs", "goose_db_version", "sqlite_sequence", "event_tickets", "actor_avatars"}
 	// The search indexes: each FTS5 virtual table and its shadow tables.
 	vt, err := d.R.QueryContext(bg, "SELECT name FROM sqlite_schema WHERE type = 'table' AND sql LIKE 'CREATE VIRTUAL TABLE%'")
 	if err != nil {

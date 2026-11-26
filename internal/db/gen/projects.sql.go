@@ -64,6 +64,20 @@ func (q *Queries) DeleteProjectComments(ctx context.Context, projectID string) e
 	return err
 }
 
+const deleteProjectEventTickets = `-- name: DeleteProjectEventTickets :exec
+DELETE FROM event_tickets
+WHERE event_tickets.seq IN (
+    SELECT e.seq FROM events e
+    WHERE e.project_id = ?1
+       OR e.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = ?1))
+`
+
+// The lookup rows of the events DeleteProjectEvents removes (ruling PR-2).
+func (q *Queries) DeleteProjectEventTickets(ctx context.Context, pid sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteProjectEventTickets, pid)
+	return err
+}
+
 const deleteProjectEvents = `-- name: DeleteProjectEvents :exec
 DELETE FROM events
 WHERE events.project_id = ?1

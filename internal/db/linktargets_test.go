@@ -186,12 +186,12 @@ func ticketEventsQuery(t *testing.T) string {
 	return strings.ReplaceAll(strings.TrimSpace(q), "sqlc.arg(ticket_id)", "?1")
 }
 
-var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|g|v|events)\b`)
+var scansEvents = regexp.MustCompile(`\bSCAN (e|o|l|x|events|event_tickets)\b`)
 
-// Review Focus 2: a ticket's history is four index lookups (its own
-// events, link events aimed at it, its projects' tag events, its
-// ancestors' moves that took it along), never a scan of events, on a new
-// database and on every released one migrated.
+// Review Focus 2, ruling P-R1: a ticket's history is three index lookups
+// (its own events, link events aimed at it, and the events whose
+// ticket_ids list it, through event_tickets), never a scan of events and
+// no JSON lookup, on a new database and on every released one migrated.
 func TestTicketHistoryUsesIndexes(t *testing.T) {
 	dbs := map[string]*sql.DB{"new": dbtest.New(t).W}
 	files, _ := filepath.Glob(filepath.Join(fixtureDir, "*.sqlite"))
@@ -209,6 +209,9 @@ func TestTicketHistoryUsesIndexes(t *testing.T) {
 		dbs[filepath.Base(f)] = d
 	}
 	q := ticketEventsQuery(t)
+	if strings.Contains(q, "json_each") || strings.Contains(q, "RECURSIVE") {
+		t.Errorf("the history query still looks inside payloads:\n%s", q)
+	}
 	for name, d := range dbs {
 		rows, err := d.Query("EXPLAIN QUERY PLAN "+q, "01M8A0K2WGG8CDMJYX5VMYTT70")
 		if err != nil {
@@ -229,14 +232,73 @@ func TestTicketHistoryUsesIndexes(t *testing.T) {
 		if scansEvents.MatchString(all) {
 			t.Errorf("%s: the history query scans events:\n%s", name, all)
 		}
-		if !strings.Contains(all, "SEARCH v USING INDEX events_ticket") {
-			t.Errorf("%s: the ancestors' moves aren't found through events_ticket:\n%s", name, all)
-		}
-		for _, idx := range []string{"events_ticket", "events_link_to", "events_tag"} {
+		for _, idx := range []string{"events_ticket", "events_link_to", "SEARCH x USING PRIMARY KEY"} {
 			if !strings.Contains(all, idx) {
 				t.Errorf("%s: the plan doesn't use %s:\n%s", name, idx, all)
 			}
 		}
+	}
+}
+
+// Migration 0013 fills event_tickets from every event whose ticket_ids is
+// a list: the v0.1.5 fixture's tag rename names one ticket.
+func TestEventTicketsBackfill(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vaquero.db")
+	copyFixture(t, filepath.Join(fixtureDir, "v0.1.5.sqlite"), path)
+	d, err := appdb.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := appdb.Migrate(d); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{}
+	rows, err := d.Query(`SELECT e.seq || ' ' || j.value FROM events e, json_each(e.payload, '$.ticket_ids') j
+		WHERE e.kind = 'tag.renamed'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var r string
+		rows.Scan(&r)
+		want[r] = true
+	}
+	rows.Close()
+	if len(want) == 0 {
+		t.Fatal("the v0.1.5 fixture has no tag rename naming a ticket")
+	}
+	got := map[string]bool{}
+	rows, err = d.Query(`SELECT seq || ' ' || ticket_id FROM event_tickets`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var r string
+		rows.Scan(&r)
+		got[r] = true
+	}
+	rows.Close()
+	for r := range want {
+		if !got[r] {
+			t.Errorf("no event_tickets row %s", r)
+		}
+	}
+	// Run again (as an import does), it adds nothing.
+	tx, err := d.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := appdb.BackfillEventTickets(t.Context(), tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	d.QueryRow(`SELECT count(*) FROM event_tickets`).Scan(&n)
+	if n != len(got) {
+		t.Fatalf("%d rows after a second run, want %d", n, len(got))
 	}
 }
 
@@ -272,3 +334,4 @@ func TestTicketArrivalsUsesIndex(t *testing.T) {
 		t.Fatalf("plan:\n%s", all)
 	}
 }
+

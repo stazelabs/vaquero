@@ -21,29 +21,48 @@ const linkTargetsMigration = "migrations/0008_link_targets.sql"
 // after loading an export from a release before that. Its statements are
 // read from the migration, so both always do the same.
 func BackfillLinkTargets(ctx context.Context, tx *sql.Tx) error {
-	stmts, err := linkTargetsBackfill()
+	return runBackfill(ctx, tx, linkTargetsMigration, "link targets")
+}
+
+// eventTicketsMigration holds the event_tickets backfill between its
+// markers.
+const eventTicketsMigration = "migrations/0013_history_profile.sql"
+
+// BackfillEventTickets gives every event whose payload.ticket_ids is a list
+// its event_tickets rows, the lookup a ticket's history reads (ruling
+// P-R1), adding only those missing. Migration 0013 ran it on every
+// database it upgraded; an import runs it after loading, since the table
+// isn't exported. Its statement is read from the migration, so both always
+// do the same.
+func BackfillEventTickets(ctx context.Context, tx *sql.Tx) error {
+	return runBackfill(ctx, tx, eventTicketsMigration, "event tickets")
+}
+
+// runBackfill runs a migration's backfill statements through tx.
+func runBackfill(ctx context.Context, tx *sql.Tx, migration, what string) error {
+	stmts, err := backfillOf(migration)
 	if err != nil {
 		return err
 	}
 	for _, s := range stmts {
 		if _, err := tx.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("backfill link targets: %w", err)
+			return fmt.Errorf("backfill %s: %w", what, err)
 		}
 	}
 	return nil
 }
 
-// linkTargetsBackfill is the backfill's statements, as migration 0008 has
-// them.
-func linkTargetsBackfill() ([]string, error) {
-	raw, err := migrationsFS.ReadFile(linkTargetsMigration)
+// backfillOf is a migration's backfill statements, as it has them between
+// its "-- backfill:begin" and "-- backfill:end" lines.
+func backfillOf(migration string) ([]string, error) {
+	raw, err := migrationsFS.ReadFile(migration)
 	if err != nil {
 		return nil, err
 	}
 	_, rest, ok := strings.Cut(string(raw), "-- backfill:begin\n")
 	body, _, ok2 := strings.Cut(rest, "-- backfill:end\n")
 	if !ok || !ok2 {
-		return nil, fmt.Errorf("%s has no backfill markers", linkTargetsMigration)
+		return nil, fmt.Errorf("%s has no backfill markers", migration)
 	}
 	var out []string
 	for s := range strings.SplitSeq(body, ";\n") {

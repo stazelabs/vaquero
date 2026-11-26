@@ -64,6 +64,14 @@ UPDATE events SET project_id = (SELECT t.project_id FROM tickets t WHERE t.id = 
 WHERE events.project_id = sqlc.arg(pid)
   AND events.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id <> sqlc.arg(pid));
 
+-- name: DeleteProjectEventTickets :exec
+-- The lookup rows of the events DeleteProjectEvents removes (ruling PR-2).
+DELETE FROM event_tickets
+WHERE event_tickets.seq IN (
+    SELECT e.seq FROM events e
+    WHERE e.project_id = sqlc.arg(pid)
+       OR e.ticket_id IN (SELECT t.id FROM tickets t WHERE t.project_id = sqlc.arg(pid)));
+
 -- name: DeleteProjectEvents :exec
 DELETE FROM events
 WHERE events.project_id = sqlc.arg(pid)

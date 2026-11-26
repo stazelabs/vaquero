@@ -164,6 +164,11 @@ func TestTagChangesInTicketHistory(t *testing.T) {
 
 	// A tag event from before ticket_ids were recorded names no ticket, so
 	// it shows on no ticket's history (and breaks nothing).
+	// Such an event never had event_tickets rows either (the lookup is
+	// built from ticket_ids).
+	if _, err := e.Deps.Core.DB.Exec(`DELETE FROM event_tickets WHERE seq IN (SELECT seq FROM events WHERE kind = 'tag.renamed')`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := e.Deps.Core.DB.Exec(`UPDATE events SET payload = json_remove(payload, '$.ticket_ids') WHERE kind = 'tag.renamed'`); err != nil {
 		t.Fatal(err)
 	}

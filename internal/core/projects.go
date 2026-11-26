@@ -421,6 +421,9 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"moved tickets' events", func(ctx context.Context, id string) error {
 				return q.RehomeMovedTicketEvents(ctx, nullString(id))
 			}},
+			{"events' tickets", func(ctx context.Context, id string) error {
+				return q.DeleteProjectEventTickets(ctx, nullString(id))
+			}},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))
 			}},

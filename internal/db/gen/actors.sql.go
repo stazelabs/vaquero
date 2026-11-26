@@ -10,7 +10,7 @@ import (
 )
 
 const createActor = `-- name: CreateActor :one
-INSERT INTO actors (id, kind, name, created_at) VALUES (?, ?, ?, ?) RETURNING id, kind, name, created_at
+INSERT INTO actors (id, kind, name, created_at) VALUES (?, ?, ?, ?) RETURNING id, kind, name, created_at, display_name
 `
 
 type CreateActorParams struct {
@@ -33,12 +33,13 @@ func (q *Queries) CreateActor(ctx context.Context, arg CreateActorParams) (Actor
 		&i.Kind,
 		&i.Name,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getActor = `-- name: GetActor :one
-SELECT id, kind, name, created_at FROM actors WHERE id = ?
+SELECT id, kind, name, created_at, display_name FROM actors WHERE id = ?
 `
 
 func (q *Queries) GetActor(ctx context.Context, id string) (Actor, error) {
@@ -49,12 +50,13 @@ func (q *Queries) GetActor(ctx context.Context, id string) (Actor, error) {
 		&i.Kind,
 		&i.Name,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getActorByKindName = `-- name: GetActorByKindName :one
-SELECT id, kind, name, created_at FROM actors WHERE kind = ? AND name = ?
+SELECT id, kind, name, created_at, display_name FROM actors WHERE kind = ? AND name = ?
 `
 
 type GetActorByKindNameParams struct {
@@ -70,12 +72,13 @@ func (q *Queries) GetActorByKindName(ctx context.Context, arg GetActorByKindName
 		&i.Kind,
 		&i.Name,
 		&i.CreatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const listActors = `-- name: ListActors :many
-SELECT id, kind, name, created_at FROM actors ORDER BY kind, name
+SELECT id, kind, name, created_at, display_name FROM actors ORDER BY kind, name
 `
 
 func (q *Queries) ListActors(ctx context.Context) ([]Actor, error) {
@@ -92,6 +95,7 @@ func (q *Queries) ListActors(ctx context.Context) ([]Actor, error) {
 			&i.Kind,
 			&i.Name,
 			&i.CreatedAt,
+			&i.DisplayName,
 		); err != nil {
 			return nil, err
 		}

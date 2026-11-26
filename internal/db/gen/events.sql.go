@@ -10,6 +10,20 @@ import (
 	"database/sql"
 )
 
+const addEventTickets = `-- name: AddEventTickets :exec
+INSERT OR IGNORE INTO event_tickets (seq, ticket_id)
+SELECT e.seq, j.value FROM events e, json_each(e.payload, '$.ticket_ids') j
+WHERE e.seq = ?1 AND json_type(e.payload, '$.ticket_ids') = 'array' AND j.type = 'text'
+  AND j.value IS NOT e.ticket_id
+`
+
+// An event's event_tickets rows: every id in its payload.ticket_ids other
+// than its own ticket, as migration 0013's backfill writes them.
+func (q *Queries) AddEventTickets(ctx context.Context, seq int64) error {
+	_, err := q.db.ExecContext(ctx, addEventTickets, seq)
+	return err
+}
+
 const appendEvent = `-- name: AppendEvent :one
 INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload, meta)
 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq
@@ -287,12 +301,6 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 }
 
 const listTicketEvents = `-- name: ListTicketEvents :many
-WITH RECURSIVE up(id, depth) AS (
-    SELECT ut.parent_id, 1 FROM tickets ut WHERE ut.id = ?1 AND ut.parent_id IS NOT NULL
-    UNION ALL
-    SELECT ut.parent_id, up.depth + 1 FROM tickets ut JOIN up ON ut.id = up.id
-    WHERE ut.parent_id IS NOT NULL AND up.depth < 1000
-)
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,
        coalesce(tp.key, '') AS ticket_project_key
@@ -302,16 +310,7 @@ FROM (
     SELECT l.seq FROM events l
     WHERE l.kind IN ('link.created', 'link.deleted') AND json_extract(l.payload, '$.to_id') = ?1
     UNION ALL
-    SELECT g.seq FROM events g
-    WHERE g.kind IN ('tag.renamed', 'tag.merged', 'tag.deleted')
-      AND g.project_id IN (SELECT tc.project_id FROM tickets tc WHERE tc.id = ?1
-                           UNION SELECT ok.project_id FROM ticket_old_keys ok WHERE ok.ticket_id = ?1)
-      AND EXISTS (SELECT 1 FROM json_each(g.payload, '$.ticket_ids') j WHERE j.value = ?1)
-    UNION ALL
-    SELECT v.seq FROM events v
-    WHERE v.kind = 'ticket.moved'
-      AND v.ticket_id IN (SELECT up.id FROM up)
-      AND EXISTS (SELECT 1 FROM json_each(v.payload, '$.ticket_ids') j WHERE j.value = ?1)
+    SELECT x.seq FROM event_tickets x WHERE x.ticket_id = ?1
 ) m
 JOIN events e ON e.seq = m.seq
 JOIN actors a ON a.id = e.actor_id
@@ -339,14 +338,13 @@ type ListTicketEventsRow struct {
 
 // A ticket's history: its own events, link events that name it as the
 // "to" side by id (a link is one event, recorded on the "from" ticket),
-// its project's tag events whose payload.ticket_ids lists it (a tag
-// change is one project event), its old projects' too (a ticket moved
-// from them keeps their tag history), and the moves of its ancestors that
-// took it along (payload.ticket_ids: a move is one event, on the ticket
-// moved). Four indexed lookups (events_ticket, events_link_to, events_tag,
-// events_ticket again), never a scan of events; a link never names its
-// own ticket, a tag event names no ticket, and a move's ticket_ids never
-// name the ticket it is on, so no event comes twice.
+// and the events whose payload.ticket_ids lists it, through event_tickets
+// (ruling P-R1): a group decision, a tag rename, merge or delete in any
+// project it was in, a move that carried it along, whatever its parents
+// are now. Three indexed lookups (events_ticket, events_link_to,
+// event_tickets' key), never a scan of events; a link never names its own
+// ticket, and event_tickets never holds an event's own ticket, so no event
+// comes twice.
 func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString) ([]ListTicketEventsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTicketEvents, ticketID)
 	if err != nil {

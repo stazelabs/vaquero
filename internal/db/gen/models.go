@@ -9,10 +9,19 @@ import (
 )
 
 type Actor struct {
-	ID        string
-	Kind      string
-	Name      string
-	CreatedAt string
+	ID          string
+	Kind        string
+	Name        string
+	CreatedAt   string
+	DisplayName string
+}
+
+type ActorAvatar struct {
+	ActorID     string
+	ContentType string
+	Data        string
+	Etag        string
+	UpdatedAt   string
 }
 
 type ApiToken struct {
@@ -109,6 +118,11 @@ type Event struct {
 	TicketID  sql.NullString
 	Payload   string
 	Meta      string
+}
+
+type EventTicket struct {
+	Seq      int64
+	TicketID string
 }
 
 type McpCall struct {

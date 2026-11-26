@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -137,6 +138,8 @@ type Change struct {
 
 // emit appends one event inside the caller's transaction. Empty ids are
 // stored as NULL; a nil payload is {}. The Origin on ctx is stored as meta.
+// A payload with ticket_ids also gets its event_tickets rows, the lookup a
+// ticket's history reads (ruling P-R1): derived data, not a second event.
 func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectID, ticketID string, payload any) error {
 	body := []byte("{}")
 	if payload != nil {
@@ -145,7 +148,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 			return fmt.Errorf("event payload: %w", err)
 		}
 	}
-	_, err := q.AppendEvent(ctx, gen.AppendEventParams{
+	seq, err := q.AppendEvent(ctx, gen.AppendEventParams{
 		At:        timefmt.Format(c.Now()),
 		ActorID:   actorID,
 		Kind:      kind,
@@ -156,6 +159,11 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 	})
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)
+	}
+	if bytes.Contains(body, []byte(`"ticket_ids"`)) {
+		if err := q.AddEventTickets(ctx, seq); err != nil {
+			return fmt.Errorf("event tickets: %w", err)
+		}
 	}
 	return nil
 }
