@@ -27,6 +27,13 @@ type TicketRef struct {
 	Done                   bool
 }
 
+// RefRow is one reference on the ticket page. Href is the file view for a
+// repo path and the URL itself for External.
+type RefRow struct {
+	ID, Kind, Title, Anchor, Href string
+	External                      bool
+}
+
 // LinkGroup is one direction and kind of link: "Blocks", "Blocked by".
 type LinkGroup struct {
 	Label string
@@ -72,6 +79,7 @@ type TicketView struct {
 	Tags                      []string
 	Subs                      []TicketRef
 	Links                     []LinkGroup
+	References                []RefRow // the section shows only when there are some
 	Comments                  []CommentRow
 	Attachments               []AttachmentRow
 	Plan                      *PlanView // nil when the ticket has no plan
@@ -233,6 +241,34 @@ templ TicketPage(v TicketView) {
 						@linkForm(v)
 					}
 				</section>
+				if len(v.References) > 0 {
+					<section id="references">
+						<h2 class={ h2IconClass }>
+							@Icon("article")
+							References
+						</h2>
+						<ul class="mt-2 space-y-1">
+							for _, r := range v.References {
+								<li class="flex items-start gap-3 text-sm">
+									<span class="min-w-0 break-words">
+										<span class="text-xs text-muted">{ r.Kind }</span>
+										if r.External {
+											<a href={ templ.SafeURL(r.Href) } target="_blank" rel="noopener noreferrer" class="break-all hover:text-accent">{ r.Title }</a>
+										} else {
+											<a href={ templ.SafeURL(r.Href) } class="break-all hover:text-accent">{ r.Title }</a>
+										}
+										if r.Anchor != "" {
+											<span class="font-mono text-xs text-muted">#{ r.Anchor }</span>
+										}
+									</span>
+									<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/refs/" + r.ID + "/delete") } data-confirm="Remove this reference?">
+										<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove reference " + r.Title }>Remove</button>
+									</form>
+								</li>
+							}
+						</ul>
+					</section>
+				}
 				<section id="attachments" hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#attachments" hx-swap="outerHTML" data-live>
 					<h2 class={ h2IconClass }>
 						@Icon("attachment")

@@ -34,6 +34,13 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if err != nil {
 		return err
 	}
+	// A repo path in a reference needs the project's repository, which core
+	// sets only after reading a real one; the seed records a path directly
+	// (it is never read), as it writes the MCP log outside core.
+	if err := q.UpdateProject(ctx, gen.UpdateProjectParams{Name: vaq.Name, Description: vaq.Description, Workflow: vaq.Workflow, TierMap: vaq.TierMap,
+		RepoPath: "/seed/repo", MainBranch: "main", Remote: "", FetchMinutes: 0, UpdatedAt: vaq.UpdatedAt, ID: vaq.ID}); err != nil {
+		return err
+	}
 	old, err := c.CreateProject(ctx, by, core.ProjectInput{Key: "OLD", Name: "Old project"})
 	if err != nil {
 		return err
@@ -115,6 +122,14 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	}
 	// A project link (VAQ-119).
 	if _, err := c.AddProjectLink(ctx, by, vaq.ID, "depends on", "OLD"); err != nil {
+		return err
+	}
+	// References (VAQ-136): a repo path with an anchor and a label, and a
+	// URL.
+	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "spec", Target: "docs/release.md", Anchor: "checklist", Label: "Release checklist"}); err != nil {
+		return err
+	}
+	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "design", Target: "https://example.com/designs/board"}); err != nil {
 		return err
 	}
 	// This release's event payloads: a description edit (body_before and

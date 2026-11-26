@@ -127,3 +127,19 @@ func TestDeleteConfirmation(t *testing.T) {
 		t.Fatal("refused delete changed rows")
 	}
 }
+
+func TestDeleteProjectRemovesRefs(t *testing.T) {
+	c, d, f := newFixture(t)
+	if _, err := c.AddRef(bg, f.Owner.ID, f.T1.ID, core.RefInput{Kind: "spec", Target: "https://example.com/x"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.AddRef(bg, f.Owner.ID, f.O1.ID, core.RefInput{Kind: "spec", Target: "https://example.com/y"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DeleteProject(bg, f.Owner.ID, f.Project.ID, "VAQ"); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, d, `SELECT count(*) FROM ticket_refs`); n != 1 {
+		t.Fatalf("refs left: %d, want OTH's one", n)
+	}
+}

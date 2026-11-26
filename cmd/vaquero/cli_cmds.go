@@ -22,7 +22,7 @@ type apiTicket = api.Ticket
 var cliCommands = map[string]func(ctx context.Context, stdout, stderr io.Writer, args []string) int{
 	"projects": cmdProjects, "project": cmdProject,
 	"tickets": cmdTickets, "ticket": cmdTicket,
-	"comment": cmdComment, "plan": cmdPlan, "decisions": cmdDecisions, "decision": cmdDecision, "link": cmdLink, "unlink": cmdUnlink, "docs": cmdDocs,
+	"comment": cmdComment, "plan": cmdPlan, "decisions": cmdDecisions, "decision": cmdDecision, "ref": cmdRef, "link": cmdLink, "unlink": cmdUnlink, "docs": cmdDocs,
 	"search": cmdSearch, "activity": cmdActivity,
 	"token": cmdToken, "profile": cmdProfile,
 }
@@ -443,6 +443,12 @@ func printTicket(w io.Writer, t apiTicket) {
 		fmt.Fprintln(w, "\nLinks:")
 		for _, l := range t.Links {
 			fmt.Fprintf(w, "  %s %s  %s\n", linkWords(l), l.Key, l.Title)
+		}
+	}
+	if len(t.References) > 0 {
+		fmt.Fprintln(w, "\nReferences:")
+		for _, r := range t.References {
+			fmt.Fprintf(w, "  %s\n", refWords(r))
 		}
 	}
 	if len(t.Comments) > 0 {

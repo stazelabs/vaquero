@@ -44,7 +44,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT] [--due DATE]` | Change only what is given; `--due ""` clears the date, and `-` as the description reads it from standard input |
 | `vaquero milestone close KEY NAME` / `reopen KEY NAME` | Close a milestone when it ships, or open it again |
 | `vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]` | List tickets; done and cancelled are left out unless `--status` or `--all` |
-| `vaquero ticket show TICKET` | A ticket with its sub-tickets, links and comments |
+| `vaquero ticket show TICKET` | A ticket with its sub-tickets, links, references and comments |
 | `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME] [--tier T] [--model M]` | Create a ticket; prints its key. `--tier` is `design`, `light`, `standard` or `heavy` (see [tiers](/help/agent-workflow#execution-tiers)), and `--model` an exact model for it |
 | `vaquero ticket edit TICKET [--title TEXT] [same flags] [--add-tag T]... [--remove-tag T]... [--version N]` | Change only the fields given; `--tier ""` and `--model ""` clear them |
 | `vaquero ticket move TICKET STATUS` | Move a ticket to a status |
@@ -53,6 +53,8 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero plan show TICKET [--revision N]` | A ticket's [plan](/help/agent-workflow#plans): its revision, who wrote it and when, then its text; `--revision` shows an earlier one |
 | `vaquero plan save TICKET FILE\|- [--revision N]` | Write the plan from a file, or `-` for standard input. A ticket's first plan needs no `--revision`; after that, pass the revision you read. If someone saved since, nothing is written, the plan as it is now is printed and the exit code is 3 |
 | `vaquero link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |
+| `vaquero ref add TICKET KIND TARGET [--anchor A] [--label L]` | Add a [reference](/help/repositories#references): `KIND` is `requirement`, `design`, `plan`, `spec` or `other`, `TARGET` a repo path or an http or https URL |
+| `vaquero ref remove TICKET ID` | Remove one of a ticket's references; `ticket show` lists them with their ids |
 | `vaquero unlink TICKET OTHER` | Remove the links between two tickets |
 | `vaquero attach TICKET FILE... [--name NAME]` | Attach files (up to 10 MB each) and print a Markdown reference for each, to paste into a description or comment; `-` reads standard input and needs `--name`. See [Attachments](/help/attachments) |
 | `vaquero attachments TICKET` | A ticket's files: id, name, size, who attached it and when |

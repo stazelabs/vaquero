@@ -48,6 +48,8 @@ Each change an agent makes records where it came from, as the client reports it:
 | `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted. The answer is recorded as relayed by the agent `vaquero mcp --agent NAME` (or `Vaquero-Agent`) names; without an agent, or without `words`, it is refused. An agent never answers as itself |
 | `list_decisions` | Decisions, newest first: optionally `project`, `state`, `kind`, `ticket` and `limit` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
+| `add_reference` | Point a ticket at a document ([references](/help/repositories#references)): `key`, `kind` (`requirement`, `design`, `plan`, `spec` or `other`), `target` (a repo path or an http or https URL), optionally `anchor` and `label`; answers with the reference and its `id` |
+| `remove_reference` | `key`, `id`; answers `{"ok": true}` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
 | `release_ticket` | Give up your claim: `key` |

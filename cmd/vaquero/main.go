@@ -42,6 +42,7 @@ tickets:
   plan         show or save a ticket's plan
   link         link two tickets (blocks, relates, duplicates)
   unlink       remove the links between two tickets
+  ref          add or remove a ticket's references
   attach       attach files to a ticket
   attachments  list a ticket's files
   detach       remove an attachment

@@ -232,6 +232,10 @@ func EventSentence(e EventView) string {
 			b.WriteString(p.Text)
 		}
 		return b.String()
+	case core.EvRefAdded:
+		return "added the " + s("kind") + " reference " + refTarget(e) + " to " + e.TicketKey
+	case core.EvRefRemoved:
+		return "removed the " + s("kind") + " reference " + refTarget(e) + " from " + e.TicketKey
 	case core.EvActorCreated:
 		return "joined"
 	case core.EvTokenCreated:
@@ -438,11 +442,20 @@ func eventHref(e EventView) string {
 	return ""
 }
 
+// refTarget is a reference event's target with its anchor.
+func refTarget(e EventView) string {
+	t, _ := e.Payload["target"].(string)
+	if a, _ := e.Payload["anchor"].(string); a != "" {
+		t += "#" + a
+	}
+	return t
+}
+
 // eventIcons are the glyphs for event kinds that don't follow their prefix.
 var eventIcons = map[string]string{
 	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved", core.EvTicketMoved: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
-	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+	core.EvLinkDeleted: "delete", core.EvRefRemoved: "delete", core.EvActorCreated: "person",
 	core.EvProjectLinked: "link", core.EvProjectUnlinked: "delete",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
 	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
@@ -452,7 +465,7 @@ var eventIcons = map[string]string{
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
 	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token", "tag": "tag",
-	"plan": "plan", "decision": "decision",
+	"plan": "plan", "decision": "decision", "ref": "link",
 }
 
 // EventIcon is the glyph an activity line starts with.

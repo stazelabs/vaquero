@@ -188,3 +188,19 @@ func TestProjectLinkWording(t *testing.T) {
 		t.Fatal("icon")
 	}
 }
+
+// VAQ-136: a reference event names its kind, target and anchor.
+func TestRefEventWording(t *testing.T) {
+	p := map[string]any{"kind": "design", "target": "docs/d.md", "anchor": "top"}
+	for _, tc := range []struct{ kind, want string }{
+		{core.EvRefAdded, "added the design reference docs/d.md#top to VAQ-1"},
+		{core.EvRefRemoved, "removed the design reference docs/d.md#top from VAQ-1"},
+	} {
+		if got := EventSentence(EventView{Kind: tc.kind, TicketKey: "VAQ-1", Payload: p}); got != tc.want {
+			t.Errorf("%s: %q, want %q", tc.kind, got, tc.want)
+		}
+	}
+	if got := EventSentence(EventView{Kind: core.EvRefAdded, TicketKey: "VAQ-1", Payload: map[string]any{"kind": "other", "target": "https://example.com/"}}); got != "added the other reference https://example.com/ to VAQ-1" {
+		t.Errorf("no anchor: %q", got)
+	}
+}

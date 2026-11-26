@@ -405,6 +405,7 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"comments", q.DeleteProjectComments},
 			{"attachments", q.DeleteProjectAttachments},
 			{"links", q.DeleteProjectLinks},
+			{"references", q.DeleteProjectRefs},
 			{"icon", q.DeleteProjectIcon},
 			{"plan revisions", q.DeleteProjectPlanRevisions},
 			{"plans", q.DeleteProjectPlans},

@@ -130,6 +130,19 @@ type (
 		To   string `json:"to" jsonschema:"The other ticket's key."`
 	}
 
+	addRefArgs struct {
+		Key    string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Kind   string `json:"kind" jsonschema:"requirement, design, plan, spec or other."`
+		Target string `json:"target" jsonschema:"A repo path in the ticket's project's repository, such as docs/design.md (the project needs a repository set), or an http or https URL."`
+		Anchor string `json:"anchor,omitempty" jsonschema:"A heading anchor in the target, such as acceptance-criteria: lower-case letters, digits and hyphens."`
+		Label  string `json:"label,omitempty" jsonschema:"A name to show instead of the target, up to 120 characters."`
+	}
+
+	removeRefArgs struct {
+		Key string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		ID  string `json:"id" jsonschema:"The reference's id, from the ticket's references."`
+	}
+
 	leaseArgs struct {
 		Key          string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		LeaseMinutes int64  `json:"lease_minutes,omitempty" jsonschema:"How long to hold it, 1 to 120 minutes. Leave it out for 15."`
@@ -190,9 +203,9 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
+	"add_comment", "add_reference", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
 	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket",
-	"save_plan", "search", "update_ticket",
+	"remove_reference", "save_plan", "search", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -211,6 +224,8 @@ func get(path string, q url.Values) request {
 func post(path string, body any) request {
 	return request{method: http.MethodPost, path: path, body: body}
 }
+
+func del(path string) request { return request{method: http.MethodDelete, path: path} }
 
 // viewed is rq asking for view (?view=), when one is given.
 func viewed(rq request, view string) request {
@@ -407,6 +422,17 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in linkArgs) request {
 			return post(ticketPath(in.Key, "/links"), map[string]string{"kind": in.Kind, "to": in.To})
 		})
+	add(s, c, "add_reference", "Add a reference to a ticket", false,
+		"Point a ticket at the document that governs it: a repo path (in the project's repository; it needn't be on main yet) or an http or https URL, as a requirement, design, plan, spec or other. Answers with the reference and its id.",
+		func(in addRefArgs) request {
+			b := map[string]string{"kind": in.Kind, "target": in.Target}
+			set1(b, "anchor", in.Anchor)
+			set1(b, "label", in.Label)
+			return post(ticketPath(in.Key, "/refs"), b)
+		})
+	add(s, c, "remove_reference", "Remove a reference from a ticket", false,
+		"Remove one of a ticket's references, by its id. Answers {\"ok\": true}.",
+		func(in removeRefArgs) request { return del(ticketPath(in.Key, "/refs/"+url.PathEscape(in.ID))) })
 	add(s, c, "claim_ticket", "Claim a ticket", false,
 		"Claim a ticket to work on it: it is assigned to you and moved to in progress, and no one else can claim it until your lease ends. Claiming your own claim renews it.",
 		func(in leaseArgs) request {
@@ -445,6 +471,13 @@ func (f fieldArgs) body() map[string]any {
 func set(q url.Values, k, v string) {
 	if v != "" {
 		q.Set(k, v)
+	}
+}
+
+// set1 sets k in a JSON body when v is given.
+func set1(b map[string]string, k, v string) {
+	if v != "" {
+		b[k] = v
 	}
 }
 
@@ -490,6 +523,10 @@ func add[In any](s *mcp.Server, c *caller, name, title string, readOnly bool, de
 			if f != nil {
 				noteCode(ctx, f.Code)
 				return nil, nil, f
+			}
+			// A delete answers with no body: say it went through.
+			if len(bytes.TrimSpace(body)) == 0 {
+				body = []byte(`{"ok": true}`)
 			}
 			if !json.Valid(body) {
 				c.logger.ErrorContext(ctx, "mcp tool answer not json", "tool", name)

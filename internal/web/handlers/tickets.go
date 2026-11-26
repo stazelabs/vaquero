@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -378,6 +379,13 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	if v.Links, err = linkGroups(ctx, d, t.ID); err != nil {
 		return v, err
 	}
+	refs, err := d.R.ListTicketRefs(ctx, t.ID)
+	if err != nil {
+		return v, err
+	}
+	for _, x := range refs {
+		v.References = append(v.References, refRow(p, x))
+	}
 	comments, err := d.R.ListComments(ctx, t.ID)
 	if err != nil {
 		return v, err
@@ -677,6 +685,50 @@ func LinkDelete(d Deps) http.HandlerFunc {
 			return
 		}
 		redirectWithFlash(w, r, flash.Success, "Link removed.", to)
+	}
+}
+
+// refRow is a reference as the ticket page lists it: a repo path links to
+// the file view of the ticket's project, a URL to itself. Both draw the
+// label, else the target.
+func refRow(p gen.Project, x gen.TicketRef) templates.RefRow {
+	row := templates.RefRow{ID: x.ID, Kind: x.Kind, Title: x.Label, Anchor: x.Anchor}
+	if row.Title == "" {
+		row.Title = x.Target
+	}
+	if u, err := url.Parse(x.Target); err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+		row.External, row.Href = true, x.Target
+		if x.Anchor != "" {
+			row.Href += "#" + x.Anchor
+		}
+		return row
+	}
+	row.Href = (&url.URL{Path: "/p/" + p.Key + "/files/" + x.Target, Fragment: x.Anchor}).String()
+	return row
+}
+
+// RefDelete is POST /t/{ticket}/refs/{id}/delete.
+func RefDelete(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, p, ok := ticketFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		to := "/t/" + ticketKey(p, t.Number)
+		x, err := d.R.GetTicketRef(r.Context(), chi.URLParam(r, "id"))
+		if err != nil || x.TicketID != t.ID {
+			redirectWithFlash(w, r, flash.Error, "That reference no longer exists.", to)
+			return
+		}
+		if err := d.Core.RemoveRef(r.Context(), d.Actor.ID, x.ID); err != nil {
+			if errors.Is(err, core.ErrNotFound) {
+				redirectWithFlash(w, r, flash.Error, "That reference no longer exists.", to)
+				return
+			}
+			serverError(w, r, d, err)
+			return
+		}
+		redirectWithFlash(w, r, flash.Success, "Reference removed.", to)
 	}
 }
 

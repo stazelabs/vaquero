@@ -103,7 +103,17 @@ const (
 	EvDecisionAnswered  = "decision.answered"
 	EvDecisionWithdrawn = "decision.withdrawn"
 	EvTicketMoved       = "ticket.moved"
+	EvRefAdded          = "ref.added"
+	EvRefRemoved        = "ref.removed"
 )
+
+// RefPayload is a ref.added or ref.removed event's payload.
+type RefPayload struct {
+	RefID  string `json:"ref_id"`
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+	Anchor string `json:"anchor,omitempty"`
+}
 
 // PlanPayload is a plan.created or plan.revised event's payload.
 type PlanPayload struct {
@@ -164,7 +174,7 @@ func EventKinds() []string {
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
-		EvPlanCreated, EvPlanRevised, EvTicketMoved,
+		EvPlanCreated, EvPlanRevised, EvTicketMoved, EvRefAdded, EvRefRemoved,
 		EvDecisionAsked, EvDecisionRuled, EvDecisionAnswered, EvDecisionWithdrawn,
 	}
 }

@@ -135,6 +135,9 @@ type Ticket struct {
 	Links       []Link          `json:"links"`
 	Comments    []Comment       `json:"comments"`
 	Attachments []Attachment    `json:"attachments"`
+	// References are the ticket's typed references (VAQ-136); absent when
+	// it has none.
+	References []Ref `json:"references,omitempty"`
 	// FormerKeys are the keys the ticket had before it moved to another
 	// project, each still leading to it; absent when it never moved.
 	FormerKeys []string `json:"former_keys,omitempty"`
@@ -189,6 +192,18 @@ type Link struct {
 	Key       string `json:"key"`
 	Title     string `json:"title"`
 	Warning   string `json:"warning,omitempty"` // on a new link's answer, as on Ticket
+}
+
+// Ref is a ticket's reference to a repo file or a URL. Target is a repo
+// path (in the ticket's project's repository) or an http(s) URL; Anchor
+// and Label are given only when set.
+type Ref struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"` // requirement, design, plan, spec, other
+	Target  string `json:"target"`
+	Anchor  string `json:"anchor,omitempty"`
+	Label   string `json:"label,omitempty"`
+	Warning string `json:"warning,omitempty"` // on a new reference's answer, as on Ticket
 }
 
 type Comment struct {

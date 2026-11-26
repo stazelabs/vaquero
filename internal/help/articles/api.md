@@ -41,7 +41,7 @@ Every change records where it came from, as the caller reports it, in the event'
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tags` | The tags its tickets carry, by name, each with its `ticket_count` (this project's tickets only) |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
-| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
+| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments`, `attachments` and `references` (the ticket's [references](/help/repositories#references), left out when it has none) |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
 | `GET /api/v1/tickets/{ticket}/plan` | The ticket's [plan](/help/agent-workflow#plans): `ticket`, `revision`, `body`, `updated_by` and `updated_at`; `404` when it has none |
 | `GET /api/v1/tickets/{ticket}/plan/revisions/{n}` | Revision `n` of the plan, the current one included, in the same shape: `updated_by` and `updated_at` are who wrote that revision and when |
@@ -88,6 +88,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `DELETE /api/v1/comments/{id}` | Nothing; your own comments only |
 | `POST /api/v1/tickets/{ticket}/attachments` | A multipart form with the file in a part named `file`; answers `201` with the attachment. Up to 10 MB: more is `413` |
 | `DELETE /api/v1/attachments/{id}` | Nothing; the person who attached it, or the owner |
+| `POST /api/v1/tickets/{ticket}/refs` | `{"kind", "target", "anchor"?, "label"?}`: a [reference](/help/repositories#references). `kind` is `requirement`, `design`, `plan`, `spec` or `other`; `target` is a repo path (the project needs a repository) or an http or https URL. Answers `201` with `{"id", "kind", "target", "anchor"?, "label"?}` |
+| `DELETE /api/v1/tickets/{ticket}/refs/{id}` | Nothing; removes one of the ticket's references. Answers `204` |
 | `POST /api/v1/tickets/{ticket}/links` | `{"kind", "to"}`: `blocks`, `relates` or `duplicates`, and the other ticket's key |
 | `DELETE /api/v1/links/{id}` | Nothing |
 | `GET /api/v1/tokens` | Every token, without its secret |

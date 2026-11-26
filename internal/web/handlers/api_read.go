@@ -404,6 +404,13 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	for _, l := range to {
 		out.Links = append(out.Links, api.Link{ID: l.ID, Kind: l.Kind, Direction: "in", Key: core.TicketKey{Project: l.OtherKey, Number: l.OtherNumber}.String(), Title: l.OtherTitle})
 	}
+	refs, err := d.R.ListTicketRefs(ctx, t.ID)
+	if err != nil {
+		return out, err
+	}
+	for _, x := range refs {
+		out.References = append(out.References, refDTO(x))
+	}
 	comments, err := d.R.ListComments(ctx, t.ID)
 	if err != nil {
 		return out, err
