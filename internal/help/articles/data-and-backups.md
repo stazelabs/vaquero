@@ -24,7 +24,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
 | `vaquero.log` | The output of a server the command line started in the background; at 10 MB it moves to `vaquero.log.1`, replacing the one before. `vaquero logs` prints its end. Under `brew services` the log is elsewhere; see [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `move.pending` | Present only while a move of attachments to other storage is unfinished; see [Moving attachments](#moving-attachments-to-other-storage) |
-| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import or a compaction |
+| `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import, a compaction or a move of attachments to other storage |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.
 
@@ -36,9 +36,10 @@ Vaquero takes a snapshot of the whole database, into `backups/`, before anything
 - starting a newer Vaquero that changes the database's layout (an upgrade);
 - restoring another snapshot;
 - importing an export;
-- compacting the database.
+- compacting the database;
+- moving attachments to other storage.
 
-If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore stops. The newest seven snapshots of each of those kinds are kept, so a run of project deletes never pushes out the snapshot taken before an upgrade; the kind is in the file name (`vaquero-predelete-…`). Beyond those seven, the newest snapshot taken before an upgrade from each older database layout is kept too, so the last copy of a layout is never removed. Snapshots from older releases have plain names and are never removed. `vaquero backup list` shows them all.
+If the snapshot can't be written (for example, the disk is full), nothing happens: the project stays, the upgraded server doesn't start and says why, or the restore, import, compaction or move stops. The newest seven snapshots of each of those kinds are kept, so a run of project deletes never pushes out the snapshot taken before an upgrade; the kind is in the file name (`vaquero-predelete-…`). Beyond those seven, the newest snapshot taken before an upgrade from each older database layout is kept too, so the last copy of a layout is never removed. Snapshots from older releases have plain names and are never removed. `vaquero backup list` shows them all.
 
 A Vaquero older than 0.1.2 doesn't list snapshots whose names carry a kind. To restore one with it, copy the file over `vaquero.db` by hand while no server is running.
 
@@ -106,9 +107,9 @@ Where attachment files are kept is set by `VQ_BLOB_STORE` and the settings besid
 
 `--to` names the new storage: `sqlite` (into the database), `dir` or `s3`. Its directory or bucket comes from `VQ_BLOB_DIR` or the `VQ_S3_` settings, as for the server. If `VQ_BLOB_STORE` is set to something else, the move stops and says so, since the server must be started with the same storage afterwards. The files are read from where the database says they are now; from a bucket, with the `VQ_S3_ACCESS_KEY_ID` and `VQ_S3_SECRET_ACCESS_KEY` in your shell.
 
-Each file is copied, then read back and compared with the original by size and checksum. Only when every file is in place and checked does Vaquero switch to the new storage. Before copying into a directory or the database, it checks that the copies fit there. Previews of images aren't copied; they're made again the first time they're shown. A move to the storage already in use is refused: "Attachments are already stored there."
+Each file is copied, then read back and compared with the original by size and checksum. Only when every file is in place and checked does Vaquero save the database as a snapshot (`vaquero-premove-…`) and then switch to the new storage; if the snapshot can't be saved, nothing switches. Restoring that snapshot undoes the switch, as long as the old copies are still there (with `sqlite` storage they are in the snapshot itself). Before copying into a directory or the database, it checks that the copies fit there. Previews of images aren't copied; they're made again the first time they're shown. A move to the storage already in use is refused: "Attachments are already stored there."
 
-The old copies stay where they were unless you add `--delete-old`, which deletes them, previews included, once the switch is made. After a move out of the database, `vaquero backup compact` gives their space back.
+The old copies stay where they were unless you add `--delete-old`, which deletes them, previews included, once the snapshot is saved and the switch is made. After a move out of the database, `vaquero backup compact` gives their space back.
 
 If a move stops part way (a file missing from the old storage, a copy that doesn't match, a full disk, Ctrl-C), the old storage is still the one in use and the server starts on it as before; `--delete-old` deletes nothing. The move records its progress in `move.pending` in the data directory: run the same command again and it resumes, skipping the files already copied and checked. A move to somewhere else instead first deletes what the stopped one copied, from a directory or the database; copies left in a bucket are named for you to remove by hand. Until then, the server notes in its log that a move is unfinished.
 

@@ -323,7 +323,7 @@ func TestPruneKeepsEachKindOnItsOwn(t *testing.T) {
 func TestSnapshotNextNamesTheKind(t *testing.T) {
 	d := dbtest.New(t)
 	dir := t.TempDir()
-	for _, k := range []appdb.Kind{appdb.KindPreMigrate, appdb.KindPreDelete, appdb.KindPreRestore, appdb.KindPreImport, appdb.KindPreCompact} {
+	for _, k := range []appdb.Kind{appdb.KindPreMigrate, appdb.KindPreDelete, appdb.KindPreRestore, appdb.KindPreImport, appdb.KindPreCompact, appdb.KindPreMove} {
 		info, err := appdb.SnapshotNext(context.Background(), d.R, dir, k, snapAt)
 		if err != nil {
 			t.Fatal(err)
@@ -332,6 +332,18 @@ func TestSnapshotNextNamesTheKind(t *testing.T) {
 		if !strings.HasPrefix(info.Name, want) || info.Kind != k {
 			t.Errorf("%s: %+v", k, info)
 		}
+	}
+	// Every kind lists (and so restores) by its name.
+	listed, err := appdb.ListBackups(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[appdb.Kind]bool{}
+	for _, b := range listed {
+		kinds[b.Kind] = true
+	}
+	if len(kinds) != 6 || !kinds[appdb.KindPreMove] {
+		t.Errorf("listed kinds %v", kinds)
 	}
 	// Same second, same kind: the next free second.
 	a, _ := appdb.SnapshotNext(context.Background(), d.R, dir, appdb.KindPreDelete, snapAt)

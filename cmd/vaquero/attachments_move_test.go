@@ -697,3 +697,81 @@ func TestMoveDeleteFailureAfterTheSwitch(t *testing.T) {
 		t.Fatalf("dir holds %v", got)
 	}
 }
+
+// premoves lists the premove snapshots in dataDir's backups.
+func premoves(t *testing.T, dataDir string) []string {
+	t.Helper()
+	got, _ := filepath.Glob(filepath.Join(dataDir, "backups", "vaquero-premove-*.sqlite"))
+	return got
+}
+
+// N-R9: a move saves a premove snapshot after the copies are checked and
+// before the switch; the snapshot records the old storage, and backup list
+// shows it.
+func TestMoveSnapshotsBeforeTheSwitch(t *testing.T) {
+	dataDir, _ := movedFrom(t, "sqlite")
+	code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	if code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	snaps := premoves(t, dataDir)
+	if len(snaps) != 1 || !strings.Contains(out, filepath.Base(snaps[0])) {
+		t.Fatalf("snapshots %v, out %q", snaps, out)
+	}
+	db, err := appdb.OpenReader(snaps[0], 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var store string
+	var blobsIn int
+	db.QueryRow(`SELECT value FROM settings WHERE key = 'blob_store'`).Scan(&store)
+	db.QueryRow(`SELECT count(*) FROM blobs WHERE key LIKE 'attachments/%'`).Scan(&blobsIn)
+	db.Close()
+	if store != "sqlite" || blobsIn != 2 {
+		t.Fatalf("the snapshot records %q with %d files", store, blobsIn)
+	}
+	if code, out, _ := runCLI(t, "backup", "list"); code != 0 || !strings.Contains(out, filepath.Base(snaps[0])) {
+		t.Fatalf("backup list: %d %q", code, out)
+	}
+	// Restoring it undoes the move, bytes included (they were in the
+	// database), and serve boots on sqlite again.
+	if code, _, e := runCLI(t, "backup", "restore", filepath.Base(snaps[0])); code != 0 {
+		t.Fatalf("restore: %q", e)
+	}
+	if s := readSetting(t, dataDir, "blob_store"); s != "sqlite" {
+		t.Fatalf("restored blob_store %q", s)
+	}
+	if err := bootOnce(t, dataDir, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// N-R9: a move whose snapshot fails switches nothing and, with
+// --delete-old, deletes nothing.
+func TestMoveSnapshotFailureSwitchesNothing(t *testing.T) {
+	dataDir, want := movedFrom(t, "sqlite")
+	before := settingsDump(t, dataDir)
+	saved := moveSnapshot
+	moveSnapshot = func(context.Context, *sql.DB, string, appdb.Kind, time.Time) (appdb.BackupInfo, error) {
+		return appdb.BackupInfo{}, errors.New("disk full")
+	}
+	t.Cleanup(func() { moveSnapshot = saved })
+	code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	if code != 1 || !strings.Contains(e, "couldn't save a snapshot first") || !strings.Contains(e, "disk full") ||
+		!strings.Contains(e, "Attachments are still stored in sqlite") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if after := settingsDump(t, dataDir); after != before {
+		t.Fatalf("settings changed:\n%s\n%s", before, after)
+	}
+	if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "sqlite", "")); !maps.Equal(got, want) {
+		t.Fatal("old copies deleted")
+	}
+	if err := bootOnce(t, dataDir, nil); err != nil {
+		t.Fatalf("the old storage must still boot: %v", err)
+	}
+	moveSnapshot = saved
+	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "2 copied by an earlier run") {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+}

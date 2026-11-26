@@ -29,12 +29,13 @@ const (
 	KindPreRestore Kind = "prerestore"
 	KindPreImport  Kind = "preimport"
 	KindPreCompact Kind = "precompact"
+	KindPreMove    Kind = "premove"
 )
 
 // BackupNamePattern is the exact shape of a snapshot's file name. Every name
 // that arrives from a request is checked against it before any path is built,
 // so nothing can reach outside the backup directory.
-var BackupNamePattern = regexp.MustCompile(`^vaquero-(?:(premigrate|predelete|prerestore|preimport|precompact)-)?(\d{8}-\d{6})\.sqlite$`)
+var BackupNamePattern = regexp.MustCompile(`^vaquero-(?:(premigrate|predelete|prerestore|preimport|precompact|premove)-)?(\d{8}-\d{6})\.sqlite$`)
 
 // MinBackupMargin is the least free space that must remain on the volume
 // after a snapshot (see RequiredFree).
@@ -153,7 +154,7 @@ func snapshot(ctx context.Context, src *sql.DB, dir string, kind Kind, now time.
 const tempPrefix = ".tmp-"
 
 // tempPattern matches a temporary snapshot name.
-var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-(?:(?:premigrate|predelete|prerestore|preimport|precompact)-)?\d{8}-\d{6}\.sqlite$`)
+var tempPattern = regexp.MustCompile(`^\.tmp-vaquero-(?:(?:premigrate|predelete|prerestore|preimport|precompact|premove)-)?\d{8}-\d{6}\.sqlite$`)
 
 // removeStaleTemps deletes temporary snapshots a crash left behind. A file
 // younger than StaleTempAge is left alone.

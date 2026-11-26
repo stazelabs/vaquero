@@ -73,10 +73,14 @@ type moveResult struct {
 	DeletedOld bool   `json:"deleted_old"` // the old copies are gone
 	Finished   bool   `json:"finished"`    // only an interrupted run's last steps were left
 	From       string `json:"from"`
+	Snapshot   string `json:"snapshot,omitempty"` // the premove snapshot, in backups/
 }
 
 // moveFreeBytes is the free-space reading, replaceable by a test.
 var moveFreeBytes = appdb.FreeBytes
+
+// moveSnapshot saves the premove snapshot, replaceable by a test.
+var moveSnapshot = appdb.SnapshotNext
 
 // cmdAttachmentsMove is vaquero attachments move: every attachment's bytes
 // copied to other storage, with the server stopped.
@@ -85,7 +89,8 @@ var moveFreeBytes = appdb.FreeBytes
 // blob_location), put into the target under the same key, then read back
 // and compared with the original by size and SHA-256. Only once every copy
 // is in place and checked are blob_store and blob_location switched, in
-// one transaction; until then the old storage is the one in use, and an
+// one transaction, after a premove snapshot of the database (no snapshot,
+// no switch); until then the old storage is the one in use, and an
 // interruption at any step leaves it so. --delete-old deletes the old
 // copies, previews included, after the switch. Previews (thumbs/) are not
 // copied: the server makes them again on demand.
@@ -146,6 +151,9 @@ func printMove(w io.Writer, cfg config.Config, res moveResult) {
 		}
 	} else if !res.Finished {
 		fmt.Fprintf(w, " The old copies are still in %s; nothing uses them now.", res.From)
+	}
+	if res.Snapshot != "" {
+		fmt.Fprintf(w, " The database before the move is saved as %s.", res.Snapshot)
 	}
 	fmt.Fprintf(w, "\nStart vaquero with %s; it refuses any other storage now.\n", startWith(cfg))
 }
@@ -325,6 +333,15 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 			return res, notMoved{fmt.Errorf("the copy of attachment %s on %s isn't in %s at its size", a.id, a.ticket, to.Backend), from}
 		}
 	}
+	// The database as it was, before the switch and any delete (N-R9):
+	// with sqlite storage it holds the old bytes too.
+	dir := filepath.Join(cfg.DataDir, "backups")
+	snap, err := moveSnapshot(ctx, r, dir, appdb.KindPreMove, localNow())
+	if err != nil {
+		return res, notMoved{fmt.Errorf("couldn't save a snapshot first, so nothing switched: %w", err), from}
+	}
+	_, _ = appdb.PruneBackups(dir, appdb.BackupKeep)
+	res.Snapshot = snap.Name
 	if err := switchStorage(ctx, w, to); err != nil {
 		return res, notMoved{err, from}
 	}
