@@ -38,7 +38,7 @@ templ Shell(title string) {
 				<header class="border-t-4 border-accent border-b border-b-line">
 					<div class="mx-auto flex h-14 w-full max-w-7xl min-w-0 items-center px-4">
 						<a href="/" class="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink hover:text-accent">
-							<img src={ static.URL("logo.svg") } alt="" width="28" height="28" class="h-7 w-7"/>
+							@logo("h-7 w-7 shrink-0")
 							<span class="max-sm:sr-only">Vaquero</span>
 						</a>
 						<nav aria-label="Main" class="ml-4 flex items-center gap-3 sm:ml-8 sm:gap-5">

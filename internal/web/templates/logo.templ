@@ -1,0 +1,15 @@
+package templates
+
+// logo is the cowboy hat, Vaquero's brand mark, drawn inline so its
+// colours are theme tokens and follow light and dark. It is the same
+// drawing as static/logo.svg, which keeps fixed colours for the favicon.
+// The mark is not an icon, so it isn't a Lucide glyph; icon.templ and this
+// file are the only templates that draw an <svg>. The band darkens the
+// crown in both themes: ink over it in light, paper in dark.
+templ logo(class string) {
+	<svg data-logo xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true" focusable="false" class={ class }>
+		<path class="fill-accent" d="M19 40C17 30 18.5 20 24.5 16.5c2.6-1.5 5 .8 7.5 2.6 2.5-1.8 4.9-4.1 7.5-2.6C45.5 20 47 30 45 40Z"></path>
+		<path class="fill-ink/45 dark:fill-paper/50" d="M18.6 35.2h26.8l-.4 4.8H19Z"></path>
+		<path class="fill-accent" d="M3 36.5c2.5 5 9 9.5 29 9.5s26.5-4.5 29-9.5c-3.2 2-7.5 3.6-13.5 3.5H16.5C10.5 40.1 6.2 38.5 3 36.5Z"></path>
+	</svg>
+}

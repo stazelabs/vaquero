@@ -64,7 +64,9 @@ func TestIconMarkup(t *testing.T) {
 func TestNoAdHocSVG(t *testing.T) {
 	files, _ := filepath.Glob("*.templ")
 	for _, f := range files {
-		if f == "icon.templ" {
+		// icon.templ draws the Lucide glyphs; logo.templ is the brand mark,
+		// not an icon.
+		if f == "icon.templ" || f == "logo.templ" {
 			continue
 		}
 		b, _ := os.ReadFile(f)
