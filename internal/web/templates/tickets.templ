@@ -160,13 +160,13 @@ templ TicketPage(v TicketView) {
 			<span><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }</span>
 		</p>
 		<div class="flex flex-wrap items-start justify-between gap-4">
-			<h1 class={ h1Class }>{ v.Ticket.Title }</h1>
+			<h1 class={ h1Class + " min-w-0 wrap-anywhere" }>{ v.Ticket.Title }</h1>
 			<a href={ templ.SafeURL("/t/" + v.Key + "/edit") } class={ btnSecondary + " gap-1.5" }>
 				@Icon("edit")
 				Edit ticket
 			</a>
 		</div>
-		<div class="mt-6 grid gap-8 lg:grid-cols-3">
+		<div class="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-3">
 			<div class="space-y-10 lg:col-span-2">
 				<section>
 					<h2 class={ h2IconClass + " mb-2" }>
@@ -514,7 +514,7 @@ templ EventLine(e EventView) {
 			@Icon(EventIcon(e.Kind))
 		</span>
 		<span class="font-medium text-ink">{ e.Actor }</span>
-		<span>
+		<span class="min-w-0 wrap-anywhere">
 			@sentenceParts(EventParts(e))
 		</span>
 		<span class="text-xs text-muted">· { e.Ago }</span>

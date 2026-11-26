@@ -36,6 +36,10 @@ func widthFixture(t *testing.T) (*webtest.Env, *fixture) {
 	f.ticket("Someday maybe", "Backlog")                                                                                                               // WEB-4
 	f.ticket("Another idea", "Backlog")                                                                                                                // WEB-5
 	f.ticket("Dropped", "Cancelled")                                                                                                                   // WEB-6
+	// A title with a word too long for a phone, the way a code path or a
+	// URL is: it wraps rather than widening the page (VAQ-140).
+	f.ticket("Check internal/e2e/widths_test.go::TestPhoneWidthNoSidewaysScroll_at_every_phone_width", "") // WEB-7
+	f.ticket("Someday_rename_internal/web/handlers/api_search_test.go_without_any_spaces", "Backlog")     // WEB-8
 	return env, f
 }
 
@@ -238,12 +242,18 @@ func TestThemeLightAndDark(t *testing.T) {
 	}
 }
 
-// At 375 px no page is wider than the screen (VAQ-128). The board's
-// columns scroll sideways inside their own box; the page itself never
-// does.
+// At 320 and 375 px no page is wider than the screen (VAQ-128,
+// VAQ-140). The board's columns scroll sideways inside their own box; the
+// page itself never does.
 func TestPhoneWidthNoSidewaysScroll(t *testing.T) {
 	env, _ := widthFixture(t)
 	empty := webtest.New(t) // the projects page with no projects
+	for _, w := range []int64{320, 375} {
+		t.Run(fmt.Sprint(w), func(t *testing.T) { phoneWidth(t, env, empty, w) })
+	}
+}
+
+func phoneWidth(t *testing.T, env, empty *webtest.Env, width int64) {
 	for _, c := range []struct {
 		env   *webtest.Env
 		paths []string
@@ -251,16 +261,25 @@ func TestPhoneWidthNoSidewaysScroll(t *testing.T) {
 		{empty, []string{"/"}},
 		{env, []string{
 			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/board", "/p/WEB/board?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
-			"/t/WEB-3", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/activity",
+			"/t/WEB-3", "/t/WEB-7", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/search?q=check", "/activity",
 			"/help", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
 		}},
 	} {
-		p := open(t, c.env, 375, 800)
+		p := open(t, c.env, width, 800)
 		for _, path := range c.paths {
 			p.goTo(path)
-			if w := eval[int](p, `document.documentElement.scrollWidth`); w > 375 {
-				t.Errorf("%s is %d px wide at 375 px", path, w)
+			if w := eval[int64](p, `document.documentElement.scrollWidth`); w > width {
+				t.Errorf("%s is %d px wide at %d px", path, w, width)
 			}
+		}
+	}
+	// An open rail's cards overlay the columns, and fit too.
+	p := open(t, env, width, 800)
+	p.goTo("/p/WEB/board")
+	for _, d := range []string{"details[data-rail]:first-of-type", "details[data-milestones]"} {
+		p.openDetails(d)
+		if w := eval[int64](p, `document.documentElement.scrollWidth`); w > width {
+			t.Errorf("the board with %s open is %d px wide at %d px", d, w, width)
 		}
 	}
 }
