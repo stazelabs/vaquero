@@ -270,9 +270,21 @@ func commits(out []byte) ([]Commit, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gitread: commit time %q", f[i+4])
 		}
-		list = append(list, Commit{Hash: strings.TrimPrefix(f[i], "\n"), Short: f[i+1], Subject: f[i+2], Author: f[i+3], At: time.Unix(at, 0).UTC()})
+		list = append(list, Commit{Hash: strings.TrimPrefix(f[i], "\n"), Short: f[i+1], Subject: oneLine(f[i+2]), Author: oneLine(f[i+3]), At: time.Unix(at, 0).UTC()})
 	}
 	return list, nil
+}
+
+// oneLine is s without C0 or C1 control characters (tabs and DEL too):
+// commit subjects and author names are untrusted, and a terminal would
+// act on an escape sequence in them. Invalid UTF-8 becomes U+FFFD.
+func oneLine(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // log runs git log with logFormat, at most n commits (1 to 1000).
@@ -507,7 +519,9 @@ func (g *Repo) RemoteTag(ctx context.Context, tag string) (on bool, known bool, 
 // returned can be passed back to the other reads.
 func (g *Repo) Branches(ctx context.Context, limit int) ([]string, error) {
 	limit = min(max(limit, 1), 1000)
-	out, err := g.git(ctx, "for-each-ref", "--sort=refname", "--format=%(refname)", "refs/heads/")
+	// Twice the limit, allowing for names ValidRev drops, and never every
+	// ref of a repo with thousands of branches.
+	out, err := g.git(ctx, "for-each-ref", "--sort=refname", "--count="+strconv.Itoa(2*limit), "--format=%(refname)", "refs/heads/")
 	if err != nil {
 		return nil, err
 	}

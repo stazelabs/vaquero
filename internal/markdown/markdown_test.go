@@ -100,3 +100,40 @@ func TestMarkdownImagesOnlyForAttachments(t *testing.T) {
 		}
 	}
 }
+
+// RenderDoc gives a repo document's headings ids, prefixed doc-, so a
+// reference's anchor lands; nothing else gets an id or a new attribute.
+func TestRenderDocHeadingIDs(t *testing.T) {
+	src := "# The spec\n\n## Acceptance criteria\n\n## Acceptance criteria\n\n### Ünïcode & <stuff>!\n\n## x {#vq-confirm}\n\n" +
+		"<h2 id=\"vq-confirm\" onclick=\"alert(1)\">raw</h2>\n\n[a](#acceptance-criteria)\n"
+	got := string(markdown.RenderDoc(src))
+	for _, want := range []string{
+		`<h1 id="doc-the-spec">The spec</h1>`,
+		`<h2 id="doc-acceptance-criteria">Acceptance criteria</h2>`,
+		`<h2 id="doc-acceptance-criteria-1">Acceptance criteria</h2>`,
+		`&lt;h2 id=&#34;vq-confirm&#34;`, // raw HTML stays text
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("lacks %q:\n%s", want, got)
+		}
+	}
+	ids := regexp.MustCompile(`\sid="([^"]*)"`).FindAllStringSubmatch(got, -1)
+	if len(ids) != 5 {
+		t.Errorf("ids %v:\n%s", ids, got)
+	}
+	for _, m := range ids {
+		if !regexp.MustCompile(`^doc-[a-z0-9-]+$`).MatchString(m[1]) {
+			t.Errorf("id %q", m[1])
+		}
+	}
+	if handlerAttr.MatchString(got) || strings.Contains(got, `id="vq-confirm"`) {
+		t.Errorf("hostile attributes:\n%s", got)
+	}
+}
+
+// Render, for tickets and comments, gives headings no ids.
+func TestRenderHeadingsHaveNoIDs(t *testing.T) {
+	if got := string(markdown.Render("## Acceptance criteria\n")); got != "<h2>Acceptance criteria</h2>\n" {
+		t.Fatalf("%q", got)
+	}
+}

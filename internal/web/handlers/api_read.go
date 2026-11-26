@@ -31,7 +31,9 @@ const maxAPIList = 500
 
 // apiFail logs a 500's cause and writes f.
 func apiFail(w http.ResponseWriter, r *http.Request, d Deps, f *api.Failure, cause error) {
-	if f.Status >= 500 && cause != nil {
+	// A client that went away (a closed tab, a dropped connection) isn't
+	// an error worth logging.
+	if f.Status >= 500 && cause != nil && r.Context().Err() == nil {
 		d.Logger.ErrorContext(r.Context(), "api error", "err", cause, "path", middleware.RedactPath(r.URL.Path),
 			"request_id", middleware.GetRequestID(r.Context()))
 	}

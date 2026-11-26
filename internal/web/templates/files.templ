@@ -138,6 +138,7 @@ templ CommitsSection(v CommitsView) {
 		<section id="commits" hx-get={ v.URL } hx-trigger="load" hx-swap="outerHTML">
 			@commitsHeading()
 			<p class="mt-2 text-sm text-muted">Reading commits…</p>
+			<noscript><p class="mt-1 text-sm text-muted">{ "Commits need JavaScript here; run vaquero commits " + v.Key + "." }</p></noscript>
 		</section>
 	} else {
 		<section id="commits">

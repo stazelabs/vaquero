@@ -704,7 +704,11 @@ func refRow(p gen.Project, x gen.TicketRef) templates.RefRow {
 		}
 		return row
 	}
-	row.Href = (&url.URL{Path: "/p/" + p.Key + "/files/" + x.Target, Fragment: x.Anchor}).String()
+	// The file view gives a document's headings doc- ids (markdown.RenderDoc).
+	row.Href = (&url.URL{Path: "/p/" + p.Key + "/files/" + x.Target}).String()
+	if x.Anchor != "" {
+		row.Href += "#doc-" + x.Anchor
+	}
 	return row
 }
 

@@ -11,6 +11,13 @@
 // /attachments/) render as <img>. Any other image becomes a link to its URL
 // labelled with its alt text, since the page CSP loads images only from
 // 'self' and a remote image would show broken.
+//
+// RenderDoc is the same for a repository document shown in the file view,
+// plus an id on every heading: "doc-" and the heading's text in lower-case
+// letters, digits and hyphens (docIDs), so a reference's anchor lands and
+// no id can collide with the page's own. Raw HTML is text and goldmark's
+// attribute syntax is off, so docIDs is the only source of ids; the doc
+// policy also allows an id only on h1 to h6 and only in that form.
 package markdown
 
 import (
@@ -18,12 +25,15 @@ import (
 	"html/template"
 	"net/url"
 	"path"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/util"
 )
@@ -43,6 +53,23 @@ var (
 	}()
 )
 
+var (
+	docMD = goldmark.New(
+		goldmark.WithExtensions(extension.GFM),
+		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+		goldmark.WithRendererOptions(renderer.WithNodeRenderers(util.Prioritized(rawAsText{}, 100), util.Prioritized(images{}, 100))),
+	)
+	docID     = regexp.MustCompile(`^doc-[a-z0-9-]+$`)
+	docPolicy = func() *bluemonday.Policy {
+		p := bluemonday.UGCPolicy()
+		p.RequireNoFollowOnLinks(true)
+		p.AllowAttrs("type").Matching(bluemonday.SpaceSeparatedTokens).OnElements("input")
+		p.AllowAttrs("checked", "disabled").OnElements("input")
+		p.AllowAttrs("id").Matching(docID).OnElements("h1", "h2", "h3", "h4", "h5", "h6")
+		return p
+	}()
+)
+
 // Render turns src into safe HTML. Blank input renders as "".
 func Render(src string) template.HTML {
 	if strings.TrimSpace(src) == "" {
@@ -54,6 +81,53 @@ func Render(src string) template.HTML {
 	}
 	return template.HTML(policy.SanitizeBytes(b.Bytes())) //nolint:gosec // sanitized above
 }
+
+// RenderDoc turns a repository document into safe HTML with heading ids
+// (doc-acceptance-criteria). Blank input renders as "".
+func RenderDoc(src string) template.HTML {
+	if strings.TrimSpace(src) == "" {
+		return ""
+	}
+	var b bytes.Buffer
+	ctx := parser.NewContext(parser.WithIDs(&docIDs{seen: map[string]bool{}}))
+	if err := docMD.Convert([]byte(src), &b, parser.WithContext(ctx)); err != nil {
+		return template.HTML(template.HTMLEscapeString(src))
+	}
+	return template.HTML(docPolicy.SanitizeBytes(b.Bytes())) //nolint:gosec // sanitized above
+}
+
+// docIDs makes heading ids for RenderDoc: "doc-" and the text's lower-case
+// ASCII letters and digits, every other run of characters one hyphen, the
+// second of a name "-1" and so on.
+type docIDs struct{ seen map[string]bool }
+
+func (g *docIDs) Generate(value []byte, _ ast.NodeKind) []byte {
+	var b strings.Builder
+	hyphen := false
+	for _, r := range strings.ToLower(string(value)) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			if hyphen && b.Len() > 0 {
+				b.WriteByte('-')
+			}
+			hyphen = false
+			b.WriteRune(r)
+			continue
+		}
+		hyphen = true
+	}
+	base := "doc-" + b.String()
+	if b.Len() == 0 {
+		base = "doc-heading"
+	}
+	id := base
+	for i := 1; g.seen[id]; i++ {
+		id = base + "-" + strconv.Itoa(i)
+	}
+	g.seen[id] = true
+	return []byte(id)
+}
+
+func (g *docIDs) Put(value []byte) { g.seen[string(value)] = true }
 
 // rawAsText renders raw HTML, inline or as a block, as visible escaped text.
 type rawAsText struct{}

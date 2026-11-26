@@ -43,7 +43,7 @@ func TestFileViewRendersMarkdownSafely(t *testing.T) {
 	if r.Status != 200 {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
-	contains(t, r.Body, "<h1>Title</h1>", "&lt;script&gt;alert(1)&lt;/script&gt;", "docs/evil.md", "prose-vq")
+	contains(t, r.Body, `<h1 id="doc-title">Title</h1>`, "&lt;script&gt;alert(1)&lt;/script&gt;", "docs/evil.md", "prose-vq")
 	lacks(t, r.Body, "<script>alert", `href="javascript:`)
 
 	// Anything else is escaped text in a <pre>.
@@ -301,4 +301,38 @@ func TestMCPReadFile(t *testing.T) {
 	if res, text := mcpCall(t, cs, "read_file", map[string]any{"project": "VAQ", "path": "../x"}); !res.IsError || !strings.Contains(text, "isn't a path") {
 		t.Errorf("bad path: %v %s", res.IsError, text)
 	}
+}
+
+// I1: a reference's anchor lands on the heading in the file view.
+func TestReferenceAnchorLands(t *testing.T) {
+	e, c, _, repo := gitWorld(t)
+	repo.WriteCommit("docs/board.md", "# Board\n\n## Acceptance criteria\n\nIt works.\n", "spec")
+	t1, _, _ := e.Deps.Core.ResolveTicket(bg, e.Deps.R, core.TicketKey{Project: "VAQ", Number: 1})
+	if _, err := e.Deps.Core.AddRef(bg, e.Deps.Actor.ID, t1.ID, core.RefInput{Kind: "spec", Target: "docs/board.md", Anchor: "acceptance-criteria"}); err != nil {
+		t.Fatal(err)
+	}
+	contains(t, c.Get("/t/VAQ-1").Body, `href="/p/VAQ/files/docs/board.md#doc-acceptance-criteria"`)
+	contains(t, c.Get("/p/VAQ/files/docs/board.md").Body, `<h2 id="doc-acceptance-criteria">Acceptance criteria</h2>`)
+}
+
+// M3: a main branch that's gone since the settings were saved is a 409,
+// not a 500, on the API, the fragment and the file view.
+func TestRepoDriftIsAConflict(t *testing.T) {
+	_, c, tok, repo := gitWorld(t)
+	repo.Git("branch", "-m", "main", "trunk")
+	for _, path := range []string{"/api/v1/tickets/VAQ-1/commits", "/api/v1/projects/VAQ/files/README.md", "/api/v1/projects/VAQ/repo/status"} {
+		if r := c.API("GET", path, tok, nil); r.Status != 409 || !strings.Contains(r.Body, `"repo_unreadable"`) {
+			t.Errorf("%s: %d %s", path, r.Status, r.Body)
+		}
+	}
+	contains(t, c.Get("/t/VAQ-1/commits").Body, "Can&#39;t read the repository at")
+	if r := c.Get("/p/VAQ/files/README.md"); r.Status != 409 {
+		t.Errorf("file view: %d", r.Status)
+	}
+}
+
+// M6: without JavaScript the Commits section says how else to read them.
+func TestCommitsNoscript(t *testing.T) {
+	_, c, _, _ := gitWorld(t)
+	contains(t, c.Get("/t/VAQ-1").Body, "<noscript>", "Commits need JavaScript here; run vaquero commits VAQ-1.")
 }

@@ -3,6 +3,7 @@ package gitread_test
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/gitread"
@@ -36,5 +37,48 @@ func TestShowNoRevision(t *testing.T) {
 	}
 	if _, err := g.Show(t.Context(), "main", "b.md"); !errors.Is(err, gitread.ErrNoFile) || errors.Is(err, gitread.ErrNoRev) {
 		t.Fatalf("%v", err)
+	}
+}
+
+// Commit subjects and author names are untrusted one-line text: C0 and C1
+// control characters never leave gitread (M5: no terminal escapes).
+func TestCommitTextHasNoControlCharacters(t *testing.T) {
+	r := gittest.Repo(t)
+	r.WriteCommit("a", "1", "one")
+	r.Git("commit", "-q", "--allow-empty", "-m", "Copy \x1b]52;c;aGk=\x07this\ttab (VAQ-1)", "--author=Ev\u009bil\x1b[2J <e@example.com>")
+	r.Git("commit", "-q", "--allow-empty", "-m", "Raw \x9b byte (VAQ-1)")
+	_, g := open(t, r)
+	cs, err := g.Mentions(t.Context(), "VAQ-1", 10)
+	if err != nil || len(cs) != 2 {
+		t.Fatalf("%+v %v", cs, err)
+	}
+	if cs[1].Subject != "Copy ]52;c;aGk=thistab (VAQ-1)" || cs[1].Author != "Evil[2J" {
+		t.Fatalf("%q %q", cs[1].Subject, cs[1].Author)
+	}
+	for _, c := range cs {
+		for _, s := range []string{c.Subject, c.Author} {
+			for _, r := range s {
+				if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+					t.Fatalf("control %U in %q", r, s)
+				}
+			}
+		}
+	}
+}
+
+// Branches reads no more refs than it needs (M2).
+func TestBranchesReadsOnlyWhatItNeeds(t *testing.T) {
+	r := gittest.Repo(t)
+	r.WriteCommit("a", "1", "one")
+	for _, b := range []string{"b1", "b2", "b3", "b4", "b5"} {
+		r.Git("branch", b)
+	}
+	rs, g := open(t, r)
+	rec := gittest.Record(rs)
+	if got, err := g.Branches(t.Context(), 2); err != nil || !slices.Equal(got, []string{"b1", "b2"}) {
+		t.Fatalf("%v %v", got, err)
+	}
+	if calls := rec.Calls(); len(calls) != 1 || !slices.ContainsFunc(calls[0], func(a string) bool { return strings.HasPrefix(a, "--count=") }) {
+		t.Fatalf("%v", calls)
 	}
 }

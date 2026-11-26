@@ -35,6 +35,9 @@ func FileView(d Deps) http.HandlerFunc {
 		v.Main = repo.Main
 		file, f, err := readFile(r.Context(), repo, name, at)
 		if err != nil {
+			f = repoTrouble(r.Context(), d, p, err)
+		}
+		if err != nil && f == nil {
 			serverError(w, r, d, err)
 			return
 		}
@@ -46,7 +49,7 @@ func FileView(d Deps) http.HandlerFunc {
 		v.Size, v.TooLarge, v.Binary, v.Markdown = units.SizeWords(file.Size), file.TooLarge, file.Binary, file.Markdown
 		if file.Text != nil {
 			if file.Markdown {
-				v.Body = markdown.Render(*file.Text)
+				v.Body = markdown.RenderDoc(*file.Text)
 			} else {
 				v.Text = *file.Text
 			}
@@ -80,7 +83,15 @@ func TicketCommits(d Deps) http.HandlerFunc {
 			return
 		}
 		v, err := loadCommits(r.Context(), d, t, p)
-		if err != nil {
+		switch {
+		case err == nil:
+		case r.Context().Err() != nil:
+			return // the tab closed; nothing to answer or log
+		default:
+			if f := repoTrouble(r.Context(), d, p, err); f != nil {
+				v.Problem = f.Message
+				break
+			}
 			d.Logger.ErrorContext(r.Context(), "ticket commits", "err", err)
 			v.Problem = "Can't read the commits now."
 		}

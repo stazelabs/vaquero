@@ -55,6 +55,32 @@ func openRepo(ctx context.Context, d Deps, p gen.Project) (*gitread.Repo, *api.F
 	return repo, nil
 }
 
+// repoTrouble is a git failure that means the repository isn't as its
+// settings say, or can't be read in time: the main branch gone since it
+// was set, a timeout, more output than gitread reads. It is the same 409
+// as openRepo's, logged at warn (not when the client has gone); any other
+// error is nil, for a 500.
+func repoTrouble(ctx context.Context, d Deps, p gen.Project, err error) *api.Failure {
+	var ge *gitread.Error
+	if !errors.Is(err, gitread.ErrNoRev) && !errors.Is(err, gitread.ErrOutputLimit) && !errors.Is(err, context.DeadlineExceeded) &&
+		!(errors.As(err, &ge) && ge.Code == -1) {
+		return nil
+	}
+	if ctx.Err() == nil {
+		d.Logger.WarnContext(ctx, "read repo", "project", p.Key, "err", err)
+	}
+	return api.Fail(http.StatusConflict, "repo_unreadable", "Can't read the repository at "+p.RepoPath+".")
+}
+
+// gitFail answers an error from a git read: repoTrouble's 409, else a 500.
+func gitFail(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, err error) {
+	if f := repoTrouble(r.Context(), d, p, err); f != nil {
+		api.WriteFailure(w, f)
+		return
+	}
+	apiFail(w, r, d, api.Internal(), err)
+}
+
 // filePath is the {path} wildcard of a files route, unescaped when the URL
 // kept an escaped form (chi routes on RawPath then).
 func filePath(r *http.Request) string {
@@ -98,7 +124,7 @@ func readFile(ctx context.Context, repo *gitread.Repo, name, at string) (api.Fil
 	}
 	f, err := repo.Show(ctx, rev, name)
 	switch {
-	case errors.Is(err, gitread.ErrNoRev):
+	case errors.Is(err, gitread.ErrNoRev) && at != "":
 		return api.File{}, api.NotFound("No revision " + rev + " in the repository."), nil
 	case errors.Is(err, gitread.ErrNoFile):
 		return api.File{}, api.NotFound("No file " + name + " " + where + "."), nil
@@ -137,6 +163,10 @@ func ticketCommits(ctx context.Context, d Deps, repo *gitread.Repo, t gen.Ticket
 	out := api.TicketCommits{Commits: []api.Commit{}, Diffstat: api.Diffstat{Files: []string{}}}
 	keys, err := ticketKeys(ctx, d, t, p)
 	if err != nil {
+		return out, err
+	}
+	// The main branch may be gone since the settings were saved: ErrNoRev.
+	if _, err := repo.Head(ctx); err != nil {
 		return out, err
 	}
 	var all []gitread.Commit
@@ -181,6 +211,10 @@ func ticketCommits(ctx context.Context, d Deps, repo *gitread.Repo, t gen.Ticket
 // maxStatusBranches branches (by name) and lists at most maxUnpushed.
 func repoStatus(ctx context.Context, repo *gitread.Repo) (api.RepoStatus, error) {
 	out := api.RepoStatus{UnpushedBranches: []api.BranchStatus{}}
+	// The main branch may be gone since the settings were saved: ErrNoRev.
+	if _, err := repo.Head(ctx); err != nil {
+		return out, err
+	}
 	var err error
 	if out.Main.Ahead, out.Main.Behind, out.Main.Tracked, err = repo.Compare(ctx, repo.Main, ""); err != nil {
 		return out, err
@@ -231,7 +265,7 @@ func APIFile(d Deps) http.HandlerFunc {
 		}
 		file, f, err := readFile(r.Context(), repo, name, at)
 		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
+			gitFail(w, r, d, p, err)
 			return
 		}
 		if f != nil {
@@ -256,7 +290,7 @@ func APITicketCommits(d Deps) http.HandlerFunc {
 		}
 		out, err := ticketCommits(r.Context(), d, repo, t, p)
 		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
+			gitFail(w, r, d, p, err)
 			return
 		}
 		api.WriteJSON(w, http.StatusOK, out)
@@ -277,7 +311,7 @@ func APIRepoStatus(d Deps) http.HandlerFunc {
 		}
 		out, err := repoStatus(r.Context(), repo)
 		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
+			gitFail(w, r, d, p, err)
 			return
 		}
 		api.WriteJSON(w, http.StatusOK, out)
