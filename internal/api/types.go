@@ -17,6 +17,18 @@ type Project struct {
 	// default.
 	Workflow bool                         `json:"workflow"`
 	TierMap  map[string]map[string]string `json:"tier_map"`
+	// Icon is how the project is drawn: its monogram, a glyph, or an
+	// uploaded image served at URL.
+	Icon *ProjectIcon `json:"icon,omitempty"`
+}
+
+// ProjectIcon is a project's icon. Kind is monogram, glyph or image; Glyph
+// names the glyph (kind glyph only) and URL is the image's address (kind
+// image only).
+type ProjectIcon struct {
+	Kind  string `json:"kind"`
+	Glyph string `json:"glyph,omitempty"`
+	URL   string `json:"url,omitempty"`
 }
 
 type Status struct {

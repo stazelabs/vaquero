@@ -1,6 +1,10 @@
 package templates
 
-import "github.com/stazelabs/vaquero/internal/db/gen"
+import (
+	"github.com/stazelabs/vaquero/internal/board"
+	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/db/gen"
+)
 
 // ProjectForm is the new-project and edit-project form's values and errors.
 type ProjectForm struct {
@@ -55,6 +59,9 @@ type SettingsView struct {
 
 	// Workflow is the workflow form, set only when it was refused.
 	Workflow SubForm
+	// HasIconImage is whether the project has a stored icon image, offered
+	// again in the icon form.
+	HasIconImage bool
 
 	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag SubForm
 }
@@ -75,34 +82,88 @@ func (f SubForm) row(id string) SubForm {
 	return SubForm{}
 }
 
-// ProjectListPage is the front page: every project, archived ones last.
-templ ProjectListPage(rows []gen.ListProjectsRow) {
+// The projects page's views.
+const (
+	ViewCards = "cards"
+	ViewList  = "list"
+)
+
+// ProjectsView is the projects page: the active projects with their stats,
+// shown as View (ViewCards or ViewList), then the archived ones. Edit is a
+// refused quick settings form, shown open on its project.
+type ProjectsView struct {
+	View     string
+	Projects []ProjectCard
+	Archived []gen.ListProjectsRow
+	Edit     QuickEdit
+}
+
+// ProjectCard is one active project with its stats; LastChange is its
+// newest event's time in words ("" when it has none).
+type ProjectCard struct {
+	Row        gen.ListProjectsRow
+	Stats      board.ProjectStats
+	LastChange string
+}
+
+// QuickEdit is a quick settings form as typed, when it was refused.
+type QuickEdit struct {
+	Key, Name, Description string
+	Errors                 map[string]string
+}
+
+// quickForm is c's quick settings form: what was typed when it was
+// refused, else the project's own values.
+func (v ProjectsView) quickForm(c ProjectCard) QuickEdit {
+	if v.Edit.Key == c.Row.Key {
+		return v.Edit
+	}
+	return QuickEdit{Key: c.Row.Key, Name: c.Row.Name, Description: c.Row.Description}
+}
+
+// ProjectListPage is the front page: every active project as a card or a
+// row with its stats and quick settings, then the archived ones.
+templ ProjectListPage(v ProjectsView) {
 	@Shell("Projects") {
-		<div class="flex items-center justify-between gap-4">
+		<div class="flex flex-wrap items-center justify-between gap-4">
 			<h1 class={ h1Class }>Projects</h1>
-			<a href="/projects/new" class={ btnPrimary + " gap-1.5" }>
-				@Icon("plus")
-				New project
-			</a>
+			<div class="flex flex-wrap items-center gap-3">
+				if len(v.Projects) > 0 {
+					<nav aria-label="View" class="inline-flex rounded-md border border-line p-0.5">
+						@projectsViewTab("/?view=cards", "cards", "Cards", v.View != ViewList)
+						@projectsViewTab("/?view=list", "list", "List", v.View == ViewList)
+					</nav>
+				}
+				<a href="/projects/new" class={ btnPrimary + " gap-1.5" }>
+					@Icon("plus")
+					New project
+				</a>
+			</div>
 		</div>
-		if len(rows) == 0 {
+		if len(v.Projects) == 0 && len(v.Archived) == 0 {
 			@emptyState("new-project", "No projects yet. Create one to start tracking tickets.")
 		}
-		<ul class="mt-6 divide-y divide-line">
-			for _, p := range rows {
-				if !p.ArchivedAt.Valid {
-					@projectItem(p)
-				}
+		if len(v.Projects) > 0 {
+			if v.View == ViewList {
+				<ul data-projects-view="list" class="mt-6 divide-y divide-line border-y border-line">
+					for _, c := range v.Projects {
+						@projectRow(c, v.quickForm(c), v.Edit.Key == c.Row.Key)
+					}
+				</ul>
+			} else {
+				<ul data-projects-view="cards" class="mt-6 grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
+					for _, c := range v.Projects {
+						@projectCard(c, v.quickForm(c), v.Edit.Key == c.Row.Key)
+					}
+				</ul>
 			}
-		</ul>
-		if hasArchived(rows) {
+		}
+		if len(v.Archived) > 0 {
 			<details class="mt-8">
 				<summary class="cursor-pointer text-sm text-muted">Archived</summary>
 				<ul class="mt-2 divide-y divide-line">
-					for _, p := range rows {
-						if p.ArchivedAt.Valid {
-							@projectItem(p)
-						}
+					for _, p := range v.Archived {
+						@projectItem(p)
 					}
 				</ul>
 			</details>
@@ -110,11 +171,208 @@ templ ProjectListPage(rows []gen.ListProjectsRow) {
 	}
 }
 
+// projectsViewTab is one side of the cards and list switch.
+templ projectsViewTab(href, icon, label string, current bool) {
+	<a
+		href={ templ.SafeURL(href) }
+		if current {
+			aria-current="page"
+			class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium bg-accent/15 text-ink"
+		} else {
+			class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-sm font-medium text-muted hover:text-ink"
+		}
+	>
+		@Icon(icon)
+		{ label }
+	</a>
+}
+
+// projectCard is one project as a card: icon, name and key, the
+// description's first two lines, the counts, the open milestone and the
+// last change, with quick settings behind "⋯". The description keeps two
+// lines' room, so closed cards in a row line up; an open card grows alone.
+templ projectCard(c ProjectCard, f QuickEdit, open bool) {
+	<li data-project-card={ c.Row.Key } class="relative flex min-w-0 flex-col rounded-lg border border-line bg-paper-alt p-4">
+		<div class="flex min-w-0 items-center gap-3 pr-8">
+			@ProjectIcon(IconOfRow(c.Row), "md")
+			<div class="min-w-0">
+				<a href={ templ.SafeURL("/p/" + c.Row.Key) } class="block truncate font-medium text-ink hover:text-accent">{ c.Row.Name }</a>
+				<p class="font-mono text-xs text-muted">{ c.Row.Key }</p>
+			</div>
+		</div>
+		@projectDescription(c.Row.Description, "mt-3 line-clamp-2 min-h-10")
+		<div class="pt-4">
+			@projectCounts(c.Stats)
+			<div class="mt-3">
+				@projectMilestone(c.Stats.Milestone, true)
+			</div>
+			@projectLastChange(c.LastChange, "mt-2")
+		</div>
+		@quickSettings(c, f, open)
+	</li>
+}
+
+// projectRow is one project as a list row: the card's content on one
+// line where it fits, the description cut at one line.
+templ projectRow(c ProjectCard, f QuickEdit, open bool) {
+	<li data-project-row={ c.Row.Key } class="relative flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 py-3 pr-10">
+		<div class="flex min-w-0 items-center gap-3 sm:w-64">
+			@ProjectIcon(IconOfRow(c.Row), "sm")
+			<a href={ templ.SafeURL("/p/" + c.Row.Key) } class="shrink-0 font-mono text-sm font-semibold text-accent hover:underline">{ c.Row.Key }</a>
+			<a href={ templ.SafeURL("/p/" + c.Row.Key) } class="truncate text-ink hover:text-accent">{ c.Row.Name }</a>
+		</div>
+		@projectDescription(c.Row.Description, "line-clamp-1 basis-full md:basis-0 md:flex-1")
+		@projectCounts(c.Stats)
+		<div class="w-full sm:w-auto">
+			@projectMilestone(c.Stats.Milestone, false)
+		</div>
+		@projectLastChange(c.LastChange, "")
+		@quickSettings(c, f, open)
+	</li>
+}
+
+templ projectDescription(text, class string) {
+	if text != "" {
+		<p data-description class={ "min-w-0 text-sm text-ink/80 " + class }>{ text }</p>
+	} else {
+		<p data-description class={ "min-w-0 text-sm text-muted " + class }>No description.</p>
+	}
+}
+
+// projectCounts is a project's ready, in review and open counts.
+templ projectCounts(s board.ProjectStats) {
+	<p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink/80">
+		<span class="inline-flex items-center gap-1.5" title="Ready to start">
+			@IconClass("ready", "h-4 w-4 shrink-0 text-accent")
+			{ countLabel(int64(s.Ready), "ready", "ready") }
+		</span>
+		<span class="inline-flex items-center gap-1.5">
+			@IconClass("cat-in-review", "h-4 w-4 shrink-0 text-muted")
+			{ countLabel(int64(s.InReview), "in review", "in review") }
+		</span>
+		<span class="inline-flex items-center gap-1.5">
+			@IconClass("cat-todo", "h-4 w-4 shrink-0 text-muted")
+			{ countLabel(int64(s.Open), "open", "open") }
+		</span>
+	</p>
+}
+
+// projectMilestone is the open milestone's name and progress, with its bar
+// when bar is set, or "No open milestone".
+templ projectMilestone(m *board.MilestoneProgress, bar bool) {
+	if m == nil {
+		<p class="inline-flex items-center gap-1.5 text-sm text-muted">
+			@Icon("milestone")
+			No open milestone
+		</p>
+	} else {
+		<div class="min-w-0 text-sm">
+			<p class="flex min-w-0 items-center gap-1.5">
+				<span class="shrink-0 text-muted">
+					@Icon("milestone")
+				</span>
+				<span class="truncate text-ink">{ m.Name }</span>
+				<span class="shrink-0 text-muted">{ itoa(m.Done) } of { itoa(m.Total) } done</span>
+			</p>
+			if bar {
+				<progress value={ itoa(m.Done) } max={ itoa(maxOne(m.Total)) } class="progress-vq mt-1.5 block h-1.5 w-full">{ itoa(m.Done) } of { itoa(m.Total) }</progress>
+			}
+		</div>
+	}
+}
+
+templ projectLastChange(ago, class string) {
+	if ago != "" {
+		<p class={ "inline-flex items-center gap-1.5 text-xs text-muted " + class } title="Last change">
+			@Icon("history")
+			{ ago }
+		</p>
+	}
+}
+
+// quickSettings is a project's "⋯" panel: its name and description, and
+// its icon, each posting to the settings handlers with ?return=/ so they
+// come back here. The summary sits in the item's top right corner; the
+// panel opens in place below the item's content. The icon form (about 40
+// glyphs) loads from /p/{key}/icon/choices the first time its part opens,
+// except in a panel shown open after a refusal, which has it inline.
+templ quickSettings(c ProjectCard, f QuickEdit, open bool) {
+	<details data-quick-settings={ c.Row.Key } class="group w-full" open?={ open }>
+		<summary class="absolute right-2 top-2 flex size-8 cursor-pointer list-none items-center justify-center rounded-md text-muted hover:bg-paper hover:text-ink group-open:bg-paper group-open:text-ink [&::-webkit-details-marker]:hidden" aria-label={ "Quick settings for " + c.Row.Name } title="Quick settings">
+			@Icon("more")
+		</summary>
+		<div class="mt-3 space-y-5 border-t border-line pt-3">
+			<form method="post" action={ templ.SafeURL("/p/" + c.Row.Key + "?return=/") } class="space-y-3">
+				@TextInput(InputProps{Name: "name", ID: "q-name-" + c.Row.Key, Label: "Name", Value: f.Name, Required: true, Error: f.Errors["name"]})
+				@TextArea(InputProps{Name: "description", ID: "q-desc-" + c.Row.Key, Label: "Description", Value: f.Description, Rows: 3, Error: f.Errors["description"]})
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<button type="submit" class={ btnPrimary }>Save project</button>
+					<a href={ templ.SafeURL("/p/" + c.Row.Key + "/settings") } class={ btnLink }>All settings →</a>
+				</div>
+			</form>
+			<details
+				data-quick-icon
+				class="group/icon"
+				open?={ open }
+				if !open {
+					hx-get={ "/p/" + c.Row.Key + "/icon/choices" }
+					hx-trigger="toggle once"
+					hx-target="find [data-quick-icon-choices]"
+				}
+			>
+				<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-ink hover:text-accent [&::-webkit-details-marker]:hidden">
+					@ProjectIcon(IconOfRow(c.Row), "sm")
+					Icon
+					@IconClass("expand", "h-4 w-4 shrink-0 text-muted transition-transform group-open/icon:rotate-180")
+				</summary>
+				<div data-quick-icon-choices class="mt-2">
+					if open {
+						@QuickIconChoices(IconOfRow(c.Row), c.Row.HasImage)
+					} else {
+						<p class="text-sm text-muted">Loading the icons…</p>
+					}
+				</div>
+			</details>
+		</div>
+	</details>
+}
+
+// QuickIconChoices is the quick settings icon form, also served alone by
+// /p/{key}/icon/choices: the monogram, a glyph, the stored image when
+// there is one (hasImage), or a new image (a chosen file wins).
+templ QuickIconChoices(p ProjectIconView, hasImage bool) {
+	<form method="post" action={ templ.SafeURL("/p/" + p.Key + "/icon?return=/") } enctype="multipart/form-data" class="space-y-3">
+		<fieldset>
+			<legend class="sr-only">Icon</legend>
+			<div class="grid grid-cols-[repeat(auto-fill,minmax(2.5rem,1fr))] gap-1.5">
+				@iconChoice("monogram", "Monogram "+core.Monogram(p.Name, p.Key), p.Kind == core.IconKindMonogram) {
+					@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: core.IconKindMonogram}, "md")
+				}
+				if hasImage {
+					@iconChoice("image", "Uploaded image", p.Kind == core.IconKindImage) {
+						@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Kind: core.IconKindImage}, "md")
+					}
+				}
+				for _, g := range core.ProjectGlyphs {
+					@iconChoice("glyph:"+g, g, p.Kind == core.IconKindGlyph && p.Glyph == g) {
+						@ProjectIcon(ProjectIconView{ID: p.ID, Key: p.Key, Kind: core.IconKindGlyph, Glyph: g}, "md")
+					}
+				}
+			</div>
+		</fieldset>
+		<div>
+			<label for={ "q-icon-" + p.Key } class="block text-sm text-ink">Upload image</label>
+			<input id={ "q-icon-" + p.Key } type="file" name="file" accept="image/png,image/jpeg,image/webp" class="mt-1 block w-full min-w-0 text-sm text-ink file:mr-3 file:rounded-md file:border file:border-line file:bg-paper file:px-3 file:py-1.5 file:text-sm file:text-ink"/>
+			<p class="mt-1 text-xs text-muted">PNG, JPEG or WebP, up to 256 KB.</p>
+		</div>
+		<button type="submit" class={ btnSecondary }>Save icon</button>
+	</form>
+}
+
+// projectItem is an archived project's row.
 templ projectItem(p gen.ListProjectsRow) {
 	<li class="flex items-center gap-4 py-3">
-		<span class="text-muted">
-			@Icon("project")
-		</span>
+		@ProjectIcon(IconOfRow(p), "sm")
 		<a href={ templ.SafeURL("/p/" + p.Key) } class="font-mono text-sm font-semibold text-accent hover:underline">{ p.Key }</a>
 		<a href={ templ.SafeURL("/p/" + p.Key) } class="flex-1 text-ink hover:text-accent">{ p.Name }</a>
 		<span class="text-sm text-muted">{ countLabel(p.OpenCount, "open ticket", "open tickets") }</span>
@@ -141,7 +399,10 @@ templ ProjectNewPage(f ProjectForm) {
 // ProjectSettingsPage edits a project, its statuses and milestones.
 templ ProjectSettingsPage(v SettingsView) {
 	@Shell(v.Project.Name + " settings") {
-		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a></p>
+		<p class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(v.Project), "sm")
+			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a>
+		</p>
 		@titleWithHelp("Settings", "projects-and-tickets", "About projects")
 		<section class="mt-8">
 			<h2 class={ h2Class }>Project</h2>
@@ -161,6 +422,7 @@ templ ProjectSettingsPage(v SettingsView) {
 				<button type="submit" class={ btnSecondary }>Change key</button>
 			</form>
 		</section>
+		@iconSection(v)
 		@workflowSection(v)
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>

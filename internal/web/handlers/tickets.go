@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/markdown"
@@ -373,6 +374,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 		v.Attachments = append(v.Attachments, templates.AttachmentRow{
 			ID: a.ID, Name: a.Name, URL: attachmentURL(gen.Attachment{ID: a.ID, Name: a.Name}), Size: units.SizeWords(a.Size),
 			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
+			Image: api.IsInlineType(a.ContentType), Thumb: thumbURL(a.ID),
 		})
 	}
 	if v.Plan, err = planView(r, d, t.ID, now); err != nil {

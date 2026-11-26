@@ -1,9 +1,11 @@
 package templates
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/board"
+	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
@@ -16,9 +18,13 @@ func chipClass(on bool) string {
 }
 
 // cardClass gives ready cards the accent edge, and a ring while the card's
-// link has focus (j and k move it).
-func cardClass(ready bool) string {
-	base := "cursor-grab rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
+// link has focus (j and k move it); drag adds the grab cursor of a card
+// that can be dragged (the board's, not Focus's).
+func cardClass(ready, drag bool) string {
+	base := "rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
+	if drag {
+		base = "cursor-grab " + base
+	}
 	if ready {
 		return base + " border-l-4 border-l-accent"
 	}
@@ -65,7 +71,7 @@ func milestoneHref(b board.Board, id string) string {
 	if b.Filter.Milestone == id {
 		id = ""
 	}
-	return FilterHref("/p/"+b.Project.Key, b.Filter.With("milestone", id))
+	return FilterHref("/p/"+b.Project.Key+"/board", b.Filter.With("milestone", id))
 }
 
 func maxOne(n int64) int64 { return max(n, 1) }
@@ -84,9 +90,9 @@ func milestoneFilterName(b board.Board) string {
 	return ""
 }
 
-func listEmpty(cols []board.Column) bool {
-	for _, c := range cols {
-		if len(c.Cards) > 0 {
+func listEmpty(groups []ListGroup) bool {
+	for _, g := range groups {
+		if len(g.Column.Cards) > 0 {
 			return false
 		}
 	}
@@ -133,4 +139,12 @@ func ClaimNote(claimantID, claimant, expires, viewerID string, now time.Time, en
 		return ""
 	}
 	return "Claimed by " + claimant + " " + claimUntil(expires) + end
+}
+
+// listPageHref is the address of a list group's next page.
+func listPageHref(p gen.Project, f board.Filter, g ListGroup) string {
+	q := f.Query()
+	q.Set("group", g.Column.Status.ID)
+	q.Set("offset", strconv.Itoa(g.Next))
+	return "/p/" + p.Key + "/list?" + q.Encode()
 }

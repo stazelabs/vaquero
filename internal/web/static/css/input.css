@@ -16,6 +16,25 @@
   --color-accent: oklch(0.55 0.13 45);      /* saddle rust: links, primary buttons */
   --color-danger: oklch(0.52 0.19 27);
   --color-warn: oklch(0.62 0.13 75);
+  /* Project monogram tiles: 8 pairs, background and its lettering, picked
+     by core.TileColor. Every pair has at least 6:1 contrast in light and
+     7.5:1 in dark. Used only by templates.ProjectIcon. */
+  --color-tile-0: oklch(0.90 0.045 40);
+  --color-tile-0-ink: oklch(0.42 0.085 40); /* rust */
+  --color-tile-1: oklch(0.90 0.045 75);
+  --color-tile-1-ink: oklch(0.42 0.085 75); /* amber */
+  --color-tile-2: oklch(0.90 0.045 115);
+  --color-tile-2-ink: oklch(0.42 0.085 115); /* olive */
+  --color-tile-3: oklch(0.90 0.045 150);
+  --color-tile-3-ink: oklch(0.42 0.085 150); /* green */
+  --color-tile-4: oklch(0.90 0.045 190);
+  --color-tile-4-ink: oklch(0.42 0.085 190); /* teal */
+  --color-tile-5: oklch(0.90 0.045 245);
+  --color-tile-5-ink: oklch(0.42 0.085 245); /* blue */
+  --color-tile-6: oklch(0.90 0.045 290);
+  --color-tile-6-ink: oklch(0.42 0.085 290); /* violet */
+  --color-tile-7: oklch(0.90 0.045 350);
+  --color-tile-7-ink: oklch(0.42 0.085 350); /* rose */
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -30,6 +49,22 @@
     --color-accent: oklch(0.72 0.12 50);
     --color-danger: oklch(0.68 0.17 27);
     --color-warn: oklch(0.78 0.12 80);
+    --color-tile-0: oklch(0.38 0.06 40);
+    --color-tile-0-ink: oklch(0.92 0.035 40);
+    --color-tile-1: oklch(0.38 0.06 75);
+    --color-tile-1-ink: oklch(0.92 0.035 75);
+    --color-tile-2: oklch(0.38 0.06 115);
+    --color-tile-2-ink: oklch(0.92 0.035 115);
+    --color-tile-3: oklch(0.38 0.06 150);
+    --color-tile-3-ink: oklch(0.92 0.035 150);
+    --color-tile-4: oklch(0.38 0.06 190);
+    --color-tile-4-ink: oklch(0.92 0.035 190);
+    --color-tile-5: oklch(0.38 0.06 245);
+    --color-tile-5-ink: oklch(0.92 0.035 245);
+    --color-tile-6: oklch(0.38 0.06 290);
+    --color-tile-6-ink: oklch(0.92 0.035 290);
+    --color-tile-7: oklch(0.38 0.06 350);
+    --color-tile-7-ink: oklch(0.92 0.035 350);
   }
 }
 

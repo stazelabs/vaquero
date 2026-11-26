@@ -9,13 +9,16 @@ import (
 
 // SearchHit is one ticket matching a search.
 type SearchHit struct {
-	ProjectKey     string
-	Number         int64
-	Title          string
-	StatusName     string
-	StatusCategory string
-	Snippet        string // \x02 and \x03 mark the hits (content can't hold control characters); "" for none
-	Total          int64  // how many tickets matched in all, the same on every row
+	// The ticket's project: its key, and its id, name and icon for the
+	// icon drawn beside the key.
+	ProjectID, ProjectName, IconKind, IconGlyph string
+	ProjectKey                                  string
+	Number                                      int64
+	Title                                       string
+	StatusName                                  string
+	StatusCategory                              string
+	Snippet                                     string // \x02 and \x03 mark the hits (content can't hold control characters); "" for none
+	Total                                       int64  // how many tickets matched in all, the same on every row
 }
 
 // Where a term was found, as weights. A ticket's score is, for each term,
@@ -81,7 +84,7 @@ func searchSQL(n int) string {
 	// matches, else the best matching live comment, else the description's
 	// opening (a title hit never repeats the title).
 	fmt.Fprintf(&b, `
-SELECT top.project_key, top.number, top.title, top.status_name, top.status_category,
+SELECT top.project_id, top.project_name, top.icon_kind, top.icon_glyph, top.project_key, top.number, top.title, top.status_name, top.status_category,
        CAST(coalesce(
            (SELECT snippet(tickets_fts, 1, char(2), char(3), '…', 12) FROM tickets_fts
             WHERE tickets_fts MATCH ? AND tickets_fts.rowid = top.rowid),
@@ -93,7 +96,7 @@ SELECT top.project_key, top.number, top.title, top.status_name, top.status_categ
        ) AS TEXT) AS snippet,
        top.total
 FROM (
-    SELECT t.rowid, t.id, t.body, p.key AS project_key, t.number, t.title, s.name AS status_name,
+    SELECT t.rowid, t.id, t.body, p.id AS project_id, p.name AS project_name, p.icon_kind, p.icon_glyph, p.key AS project_key, t.number, t.title, s.name AS status_name,
            s.category AS status_category, x.score, t.updated_at, count(*) OVER () AS total
     FROM scored x
     JOIN tickets t ON t.id = x.ticket_id
@@ -130,7 +133,7 @@ func SearchTickets(ctx context.Context, db *sql.DB, terms []string, limit int64)
 	var out []SearchHit
 	for rows.Next() {
 		var h SearchHit
-		if err := rows.Scan(&h.ProjectKey, &h.Number, &h.Title, &h.StatusName, &h.StatusCategory, &h.Snippet, &h.Total); err != nil {
+		if err := rows.Scan(&h.ProjectID, &h.ProjectName, &h.IconKind, &h.IconGlyph, &h.ProjectKey, &h.Number, &h.Title, &h.StatusName, &h.StatusCategory, &h.Snippet, &h.Total); err != nil {
 			return nil, fmt.Errorf("search: %w", err)
 		}
 		out = append(out, h)

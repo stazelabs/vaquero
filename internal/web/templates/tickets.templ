@@ -41,10 +41,12 @@ type CommentRow struct {
 	Edited               bool
 }
 
-// AttachmentRow is one file on the ticket page.
+// AttachmentRow is one file on the ticket page. An Image shows in the
+// gallery as its preview, Thumb.
 type AttachmentRow struct {
 	ID, Name, URL, Size, By, Ago string
-	CanDelete                    bool
+	Thumb                        string
+	Image, CanDelete             bool
 }
 
 // PlanView is a ticket's plan on its page: the current revision rendered,
@@ -81,7 +83,10 @@ type TicketView struct {
 // TicketFormPage is the form for a new ticket or an edit.
 templ TicketFormPage(f TicketForm) {
 	@Shell(formTitle(f)) {
-		<p class="font-mono text-sm text-muted"><a href={ templ.SafeURL("/p/" + f.Project.Key) } class="hover:text-accent">{ f.Project.Key }</a></p>
+		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(f.Project), "sm")
+			<a href={ templ.SafeURL("/p/" + f.Project.Key) } class="hover:text-accent">{ f.Project.Key }</a>
+		</p>
 		<h1 class={ h1Class }>{ formTitle(f) }</h1>
 		if msg := f.Errors["project"]; msg != "" {
 			<p class="mt-4 text-sm text-danger" role="alert">{ msg }</p>
@@ -147,8 +152,9 @@ templ TicketFormPage(f TicketForm) {
 templ TicketPage(v TicketView) {
 	@Shell(v.Key + " " + v.Ticket.Title) {
 		<span hidden data-project={ v.Project.Key }></span>
-		<p class="font-mono text-sm text-muted">
-			<a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }
+		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
+			@ProjectIcon(IconOf(v.Project), "sm")
+			<span><a href={ templ.SafeURL("/p/" + v.Project.Key) } class="hover:text-accent">{ v.Project.Key }</a> / { v.Key }</span>
 		</p>
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<h1 class={ h1Class }>{ v.Ticket.Title }</h1>
@@ -232,8 +238,39 @@ templ TicketPage(v TicketView) {
 					if len(v.Attachments) == 0 {
 						<p class="mt-2 text-sm text-muted">No attachments.</p>
 					}
+					if hasImages(v.Attachments) {
+						<ul data-gallery class="mt-2 flex flex-wrap gap-3">
+							for _, a := range v.Attachments {
+								if a.Image {
+									<li class="w-24 min-w-0">
+										<a
+											href={ templ.SafeURL(a.URL) }
+											target="_blank"
+											rel="noopener"
+											class="block size-24 overflow-hidden rounded-md bg-paper-alt ring-1 ring-line hover:ring-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+											title={ a.Name + " · " + a.Size + " · " + a.By + " · " + a.Ago }
+										>
+											<img src={ a.Thumb } alt={ a.Name } width="96" height="96" loading="lazy" class="size-24 object-cover"/>
+										</a>
+										<p class="mt-1 truncate text-xs text-ink" title={ a.Name }>{ a.Name }</p>
+										<div class="flex items-center gap-2 text-xs text-muted">
+											<span>{ a.Size }</span>
+											if a.CanDelete {
+												<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") }>
+													<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
+												</form>
+											}
+										</div>
+									</li>
+								}
+							}
+						</ul>
+					}
 					<ul class="mt-2 space-y-1">
 						for _, a := range v.Attachments {
+							if a.Image {
+								continue
+							}
 							<li class="flex flex-wrap items-center gap-x-3 text-sm">
 								<a href={ templ.SafeURL(a.URL) } class="break-all text-accent hover:underline">{ a.Name }</a>
 								<span class="text-xs text-muted">{ a.Size } · { a.By } · { a.Ago }</span>

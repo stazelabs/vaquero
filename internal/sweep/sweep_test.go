@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/sweep"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
@@ -146,7 +148,7 @@ func TestSweepDeletesOldOrphans(t *testing.T) {
 	if strings.Join(left, " ") != "attachments/inst/fresh attachments/inst/ref attachments/other/old" {
 		t.Fatalf("left %v", left)
 	}
-	if len(store.prefixes) != 1 || store.prefixes[0] != "attachments/inst/" {
+	if strings.Join(store.prefixes, " ") != "attachments/inst/ thumbs/inst/" {
 		t.Fatalf("listed %v", store.prefixes)
 	}
 	// A sweeper without a store skips the pass.
@@ -182,11 +184,11 @@ func TestSweepOrphanPassSurvivesFailuresAndRunsHourly(t *testing.T) {
 	}
 	store.failKey = ""
 	now = now.Add(59 * time.Minute)
-	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 1 || left() != "attachments/inst/a" {
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 || left() != "attachments/inst/a" {
 		t.Fatalf("ran again within the hour: %v %v %q", err, store.prefixes, left())
 	}
 	now = now.Add(time.Minute)
-	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 || left() != "" {
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 4 || left() != "" {
 		t.Fatalf("hourly pass: %v %v %q", err, store.prefixes, left())
 	}
 }
@@ -202,7 +204,71 @@ func TestSweepFailedListRetriesNextTick(t *testing.T) {
 		t.Fatal("a failed listing should be reported")
 	}
 	store.failList = false
-	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 2 {
+	if _, err := s.Tick(bg); err != nil || len(store.prefixes) != 3 {
 		t.Fatalf("not retried: %v %v", err, store.prefixes)
+	}
+}
+
+// Review Focus 2: a thumbnail whose attachment exists is kept however old
+// it is; one whose attachment is gone is deleted once it is older than
+// OrphanAge; another instance's thumbnails are never touched.
+func TestSweepKeepsLiveThumbsAndDeletesOrphans(t *testing.T) {
+	d := dbtest.New(t)
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	c := core.New(d.W, clock)
+	owner, _ := c.EnsureOwner(bg)
+	p, _ := c.CreateProject(bg, owner.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero"})
+	tk, _ := c.CreateTicket(bg, owner.ID, p.ID, core.TicketInput{Title: "x"})
+	store := &listSpy{Store: blobs.NewSQLite(d.W, d.R, clock)}
+	put := func(key string, age time.Duration) {
+		t.Helper()
+		was := now
+		now = now.Add(-age)
+		defer func() { now = was }()
+		if err := store.Put(bg, key, strings.NewReader("abc"), 3, "image/png"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live, err := c.AddAttachment(bg, owner.ID, core.AttachmentInput{TicketID: tk.ID, Name: "live.png", ContentType: "image/png", Size: 3, BlobKey: blobs.AttachmentKey("inst", idgen.New())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(live.BlobKey, 2*time.Hour)
+	gone, fresh := idgen.New(), idgen.New()
+	put(blobs.ThumbKey("inst", live.ID), 3*time.Hour)
+	put(blobs.ThumbKey("inst", gone), 2*time.Hour)
+	put(blobs.ThumbKey("inst", fresh), 10*time.Minute)
+	put(blobs.ThumbKey("other", gone), 2*time.Hour)
+	for _, k := range []string{blobs.ThumbKey("inst", live.ID), blobs.ThumbKey("inst", gone)} {
+		if err := blobs.ValidKey(k); err != nil || !strings.HasPrefix(k, "thumbs/inst/0") || k != strings.ToLower(k) {
+			t.Fatalf("%q: %v", k, err)
+		}
+	}
+	s := &sweep.Sweeper{Core: c, DB: d.W, Logger: slog.New(slog.DiscardHandler), Now: clock, Blobs: store, Instance: "inst"}
+	if _, err := s.Tick(bg); err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	_ = store.Store.List(bg, "", func(k string, _ time.Time) error { left = append(left, k); return nil })
+	wantKeys := []string{live.BlobKey, blobs.ThumbKey("inst", fresh), blobs.ThumbKey("inst", live.ID), blobs.ThumbKey("other", gone)}
+	slices.Sort(wantKeys)
+	slices.Sort(left)
+	if got, want := strings.Join(left, " "), strings.Join(wantKeys, " "); got != want {
+		t.Fatalf("left %v\nwant %v", got, want)
+	}
+
+	// The attachment goes: its thumbnail goes with the next pass.
+	if _, err := c.DeleteAttachment(bg, owner.ID, live.ID); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(sweep.OrphanAge)
+	if _, err := s.Tick(bg); err != nil {
+		t.Fatal(err)
+	}
+	left = nil
+	_ = store.Store.List(bg, "thumbs/inst/", func(k string, _ time.Time) error { left = append(left, k); return nil })
+	if len(left) != 0 {
+		t.Fatalf("after delete: %v", left)
 	}
 }

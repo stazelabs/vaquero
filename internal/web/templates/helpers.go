@@ -131,6 +131,7 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 var shortcuts = [][2]string{
 	{"c", "New ticket"},
 	{"/", "Search"},
+	{"g f", "Focus"},
 	{"g b", "Board"},
 	{"g l", "List"},
 	{"j / k", "Focus the next or previous card"},
@@ -228,4 +229,14 @@ func attachAttrs(ticketKey string) templ.Attributes {
 		"data-attach-url": "/t/" + ticketKey + "/attachments",
 		"data-max-bytes":  strconv.Itoa(core.MaxAttachment),
 	}
+}
+
+// hasImages reports whether any attachment shows in the gallery.
+func hasImages(as []AttachmentRow) bool {
+	for _, a := range as {
+		if a.Image {
+			return true
+		}
+	}
+	return false
 }

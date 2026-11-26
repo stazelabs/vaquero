@@ -75,6 +75,16 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 // "file" named filename, and decodes a 2xx answer into out. The file is
 // buffered, so a refusal for its size comes back as the server's *Error.
 func (c *Client) Upload(ctx context.Context, path, filename string, r io.Reader, out any) error {
+	return c.upload(ctx, http.MethodPost, path, filename, r, out)
+}
+
+// UploadPut is Upload with PUT, for a file that replaces one (a project's
+// icon).
+func (c *Client) UploadPut(ctx context.Context, path, filename string, r io.Reader, out any) error {
+	return c.upload(ctx, http.MethodPut, path, filename, r, out)
+}
+
+func (c *Client) upload(ctx context.Context, method, path, filename string, r io.Reader, out any) error {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	h := textproto.MIMEHeader{}
@@ -90,7 +100,7 @@ func (c *Client) Upload(ctx context.Context, path, filename string, r io.Reader,
 	if err := mw.Close(); err != nil {
 		return err
 	}
-	return c.send(ctx, http.MethodPost, path, &buf, mw.FormDataContentType(), out)
+	return c.send(ctx, method, path, &buf, mw.FormDataContentType(), out)
 }
 
 // Download GETs path and copies a 2xx answer's body to w, with no overall

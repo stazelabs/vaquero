@@ -15,7 +15,7 @@ Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form
 
 ## htmx fragments and the live stream
 
-- A page part htmx swaps has an id and its own render path: the board's `BoardSection` (`GET /p/{key}/board`), or the page itself with `hx-select` (`#list`, `#feed`).
+- A page part htmx swaps has an id and its own render path: the board's `BoardSection` (`GET /p/{key}/board/fragment`) and Focus's `FocusSection` (`GET /p/{key}/focus/fragment`), or the page itself with `hx-select` (`#list`, `#feed`). A part with `hx-select` whose children make their own requests needs `hx-disinherit="*"`, or they inherit its select.
 - An htmx request that fails because the page is stale answers `HX-Refresh: true` with an error toast queued (`refreshWith`), so the reload re-reads everything and shows the message.
 - A page part that should follow changes carries `data-live` and `hx-trigger="vq:change"`; app.js keeps one stream per tab and triggers `vq:change` on every such part. Don't add another EventSource or htmx's SSE extension: each holds one of the browser's six connections to the host. The stream only announces that something changed; parts re-read through the normal handlers.
 - A long-lived handler must clear its read and write deadlines (`http.NewResponseController`) and end on `d.Shutdown`.

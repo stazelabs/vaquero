@@ -89,15 +89,6 @@ func mergeQuestion(key string, t TagRow, into string) string {
 	return "Merge " + t.Name + " into " + into + "? Its " + countLabel(t.Tickets, "ticket", "tickets") + " in " + key + " will be tagged " + into + " instead."
 }
 
-func hasArchived(rows []gen.ListProjectsRow) bool {
-	for _, p := range rows {
-		if p.ArchivedAt.Valid {
-			return true
-		}
-	}
-	return false
-}
-
 // closeOrReopen is the path suffix of a milestone's close or reopen action.
 func closeOrReopen(m gen.Milestone) string {
 	if m.ClosedAt.Valid {

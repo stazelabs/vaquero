@@ -76,7 +76,7 @@ func TestWorkflowOffUnchanged(t *testing.T) {
 		"ticket-6.json":  "/api/v1/tickets/VAQ-6",
 		"tickets.json":   "/api/v1/projects/VAQ/tickets",
 		"todo.json":      "/api/v1/projects/VAQ/tickets?category=todo",
-		"board.html":     "/p/VAQ/board",
+		"board.html":     "/p/VAQ/board/fragment",
 	} {
 		var body string
 		if strings.HasPrefix(path, "/api/") {

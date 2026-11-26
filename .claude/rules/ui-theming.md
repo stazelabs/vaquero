@@ -11,7 +11,7 @@ CLAUDE.md "Hard invariants" is the authority. Tokens live in internal/web/static
 
 ## Colors
 
-- Use only the tokens `ink`, `paper`, `paper-alt`, `line`, `muted`, `accent`, `danger`, `warn`, with opacity modifiers: `text-ink/70`, `bg-accent/15`.
+- Use only the tokens `ink`, `paper`, `paper-alt`, `line`, `muted`, `accent`, `danger`, `warn`, with opacity modifiers: `text-ink/70`, `bg-accent/15`. The monogram tile pairs `tile-0` … `tile-7` (with `tile-N-ink` for the lettering) are for `ProjectIcon` only.
 - `warn` and `danger` mean something and never decorate.
 - Never `bg-white`, `text-black`, or raw hues (`red-500`, `#fff`, `oklch(...)`) in templates; `TestNoRawColoursInTemplates` holds it. Dark mode comes free because every token is redefined for dark in input.css.
 - System fonts only (`font-sans`, `font-mono`); nothing is downloaded.

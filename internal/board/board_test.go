@@ -2,6 +2,7 @@ package board_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,7 +117,7 @@ func TestDoneWindowHidesOld(t *testing.T) {
 	if got := titles(done); len(got) != 1 || got[0] != "new" || done.Older != 1 {
 		t.Fatalf("%v older=%d", got, done.Older)
 	}
-	list, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, any_())
+	list, _, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, any_())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +213,7 @@ func TestUnknownTagFilterShowsNothing(t *testing.T) {
 	if n, r := count(b.Active), count(b.Rails); n != 0 || r != 0 {
 		t.Fatalf("board: %d active, %d on rails", n, r)
 	}
-	list, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
+	list, _, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,5 +242,28 @@ func TestBoardColumnsFollowStatusOrder(t *testing.T) {
 	}
 	if rails := names(b.Rails); len(rails) != 3 || rails[0] != "Backlog" || rails[1] != "Needs decision" || rails[2] != "Cancelled" {
 		t.Fatalf("rails %v", rails)
+	}
+}
+
+// The board, Focus and list give every tag on the project's tickets once,
+// sorted, whatever the filter, read with the cards' own tags.
+func TestViewsGiveProjectTags(t *testing.T) {
+	e := newEnv(t)
+	e.ticket(t, core.TicketInput{Title: "a", Tags: []string{"ui", "api"}})
+	e.ticket(t, core.TicketInput{Title: "b", Tags: []string{"ui"}})
+	e.ticket(t, core.TicketInput{Title: "c", Tags: []string{"docs"}})
+	f := any_()
+	f.Tag = "docs"
+	want := "api docs ui"
+	if b := e.load(t, f); strings.Join(b.Tags, " ") != want {
+		t.Errorf("board %v", b.Tags)
+	}
+	fo, err := board.LoadFocus(ctx, e.d.RQ, e.p, e.owner, f, e.now)
+	if err != nil || strings.Join(fo.Tags, " ") != want {
+		t.Errorf("focus %v %v", fo.Tags, err)
+	}
+	_, tags, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
+	if err != nil || strings.Join(tags, " ") != want {
+		t.Errorf("list %v %v", tags, err)
 	}
 }

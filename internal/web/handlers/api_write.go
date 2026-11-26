@@ -184,8 +184,9 @@ func APIProjectCreate(d Deps) http.HandlerFunc {
 }
 
 // APIProjectUpdate is PATCH /api/v1/projects/{key} {name?, description?,
-// workflow?, tier_map?}: tier_map is an object (harness → tier → model)
-// that replaces the map, or null for the default.
+// workflow?, tier_map?, icon?}: tier_map is an object (harness → tier →
+// model) that replaces the map, or null for the default; icon is {kind,
+// glyph?} (an image is uploaded with PUT .../icon).
 func APIProjectUpdate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := apiProject(w, r, d)
@@ -196,12 +197,19 @@ func APIProjectUpdate(d Deps) http.HandlerFunc {
 			Name, Description *string
 			Workflow          *bool
 			TierMap           json.RawMessage `json:"tier_map"`
+			Icon              *struct {
+				Kind  string  `json:"kind"`
+				Glyph *string `json:"glyph"`
+			} `json:"icon"`
 		}
 		if f := api.Decode(r, &in); f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
 		patch := core.ProjectPatch{Name: in.Name, Description: in.Description, Workflow: in.Workflow}
+		if in.Icon != nil {
+			patch.IconKind, patch.IconGlyph = &in.Icon.Kind, in.Icon.Glyph
+		}
 		switch raw := strings.TrimSpace(string(in.TierMap)); {
 		case raw == "":
 		case raw == "null":

@@ -104,7 +104,7 @@ The aim is to make the everyday questions answerable at a glance, without scroll
 **Behaviour.**
 - The lanes are live (`data-live`, `vq:change`), like the board.
 - Card markup is shared with the board.
-- Empty lanes say what they mean: "Nothing ready. Triage the backlog, or check Needs decision." "Nothing in flight." "Nothing finished this week."
+- Empty lanes say what they mean: "Nothing ready. Triage the backlog or check Needs decision." "Nothing in flight." "Nothing finished this week."
 - On a phone (below md) the lanes stack vertically in this order: Next, In flight, Just finished.
 
 ### Filters: Tags menu (all three views)

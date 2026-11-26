@@ -83,7 +83,19 @@ func apiTicket(w http.ResponseWriter, r *http.Request, d Deps) (gen.Ticket, gen.
 
 func projectDTO(p gen.Project, open int64) api.Project {
 	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open,
-		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap)}
+		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap), Icon: projectIconDTO(p)}
+}
+
+// projectIconDTO is p's icon as the API shows it.
+func projectIconDTO(p gen.Project) *api.ProjectIcon {
+	ic := &api.ProjectIcon{Kind: p.IconKind}
+	switch p.IconKind {
+	case core.IconKindGlyph:
+		ic.Glyph = p.IconGlyph
+	case core.IconKindImage:
+		ic.URL = projectIconURL(p.Key)
+	}
+	return ic
 }
 
 // APIProjects is GET /api/v1/projects.
@@ -96,7 +108,8 @@ func APIProjects(d Deps) http.HandlerFunc {
 		}
 		out := make([]api.Project, len(rows))
 		for i, p := range rows {
-			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap}, p.OpenCount)
+			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap,
+				IconKind: p.IconKind, IconGlyph: p.IconGlyph}, p.OpenCount)
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -176,7 +189,7 @@ func APITickets(d Deps) http.HandlerFunc {
 		if n.fail(w, r) {
 			return
 		}
-		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
+		cols, _, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

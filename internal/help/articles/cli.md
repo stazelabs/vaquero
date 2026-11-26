@@ -27,6 +27,7 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero project show KEY` | Show a project |
 | `vaquero project edit KEY [--name NAME] [--description TEXT] [--workflow on\|off]` | Change its name or description, or turn the [agent workflow](/help/agent-workflow) on or off |
 | `vaquero project key KEY NEWKEY` | Change its key (links that use the old key stop working) |
+| `vaquero project icon KEY --monogram\|--glyph NAME\|--image FILE` | Set its [icon](/help/projects-and-tickets#project-icons): its monogram, a glyph from the list, or a PNG, JPEG or WebP image of up to 256 KB |
 | `vaquero statuses KEY` | A project's statuses in board order, with each one's category and ticket count |
 | `vaquero status add KEY NAME --category C [--before S \| --after S]` | Add a status; without `--before` or `--after` it goes after the last status of its category. Categories are `backlog`, `todo`, `in progress`, `in review`, `done` and `cancelled` |
 | `vaquero status rename KEY NAME NEW` | Rename a status |

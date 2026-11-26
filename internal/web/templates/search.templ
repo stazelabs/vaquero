@@ -57,7 +57,8 @@ templ SearchPage(q string, helpHits []help.Hit, res search.Result) {
 		<ul class="mt-6 space-y-3">
 			for _, h := range res.Hits {
 				<li data-card={ h.Key } class={ panelClass + " p-3" }>
-					<a href={ templ.SafeURL("/t/" + h.Key) } class="flex items-baseline gap-2 hover:text-accent">
+					<a href={ templ.SafeURL("/t/" + h.Key) } class="flex items-center gap-2 hover:text-accent">
+						@ProjectIcon(IconOfHit(h), "sm")
 						<span class="font-mono text-xs text-muted">{ h.Key }</span>
 						<span class="font-medium text-ink">{ h.Title }</span>
 						<span class="ml-auto text-xs text-muted">{ h.Status }</span>

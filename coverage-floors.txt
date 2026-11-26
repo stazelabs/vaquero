@@ -29,3 +29,4 @@ internal/sweep 80
 internal/mcpserver 80
 internal/archive 75
 internal/readiness 85
+internal/thumbs 85

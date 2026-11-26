@@ -185,3 +185,23 @@ func ago(n int, unit string) string {
 	}
 	return strconv.Itoa(n) + " " + unit + " ago"
 }
+
+// DayLabel words the UTC day of at relative to now's, for a list of recent
+// work: "today" (also for an instant after now), "yesterday", the weekday
+// ("Mon") within the last 6 days, else the date ("Nov 18, 2026").
+func DayLabel(at, now time.Time) string {
+	day := func(t time.Time) time.Time {
+		y, m, d := t.UTC().Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	switch back := int(day(now).Sub(day(at)).Hours() / 24); {
+	case back <= 0:
+		return "today"
+	case back == 1:
+		return "yesterday"
+	case back < 7:
+		return at.UTC().Weekday().String()[:3]
+	default:
+		return DayOf(at)
+	}
+}

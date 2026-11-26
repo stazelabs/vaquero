@@ -29,6 +29,9 @@
 // before them has neither key and loads with no plans. decisions,
 // decision_tickets and approvals (0009) are exported whole too, the owner's
 // relayed words included; an export from before them loads with none.
+// project_icons (0010) is exported whole, each image as the base64 text it
+// is stored as (icons never live in the blob store, so they add no entry);
+// an export from before it loads with every project on its monogram.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/
 // entries, whatever the backend), the FTS tables, goose's table, and every
@@ -71,7 +74,7 @@ const (
 var Tables = []string{
 	"settings", "actors", "projects", "statuses", "milestones", "tags",
 	"tickets", "ticket_tags", "comments", "ticket_links", "attachments",
-	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "events",
+	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "project_icons", "events",
 }
 
 // Header is export.json's first fields.

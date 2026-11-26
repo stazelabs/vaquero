@@ -62,7 +62,8 @@ func TestCreateProjectFlow(t *testing.T) {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 	page := c.Follow(r)
-	contains(t, page.Body, "Project created.", "Vaquero", "Backlog", "Todo", "In progress", "In review", "Done", "Cancelled")
+	contains(t, page.Body, "Project created.", "Vaquero", `id="focus"`, "Nothing ready.")
+	contains(t, c.Get("/p/VAQ/board").Body, "Backlog", "Todo", "In progress", "In review", "Done", "Cancelled")
 	home := c.Get("/")
 	contains(t, home.Body, "VAQ", "Vaquero", `href="/p/VAQ"`)
 }
@@ -224,7 +225,7 @@ func TestProjectPageListsTicketsByStatus(t *testing.T) {
 	if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, p.ID, core.TicketInput{Title: "Fix the gate", Priority: 2, Tags: []string{"ui"}}); err != nil {
 		t.Fatal(err)
 	}
-	r := e.Client().Get("/p/VAQ")
+	r := e.Client().Get("/p/VAQ/board")
 	contains(t, r.Body, "VAQ-1", "Fix the gate", "High", "ui", `href="/t/VAQ-1"`, `href="/p/VAQ/new"`, "No tickets.")
 }
 
@@ -378,4 +379,160 @@ func TestMilestoneSettingsEditDescription(t *testing.T) {
 	if got, _ := e.Deps.R.GetMilestone(bg, m.ID); got.Name != "Launch 1" || got.Description != "Board and list." {
 		t.Fatalf("%+v", got)
 	}
+}
+
+// VAQ-102: the projects page shows each project as a card, with its
+// description, counts, open milestone and last change.
+func TestProjectsPageCardsShowStats(t *testing.T) {
+	e := webtest.New(t)
+	p, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero", Description: "Herds the chaos."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+		t.Fatal(err)
+	}
+	ss := statuses(t, e, p)
+	byCat := map[string]string{}
+	for _, s := range ss {
+		if byCat[s.Category] == "" {
+			byCat[s.Category] = s.ID
+		}
+	}
+	m, err := e.Deps.Core.CreateMilestone(bg, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Beta launch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []core.TicketInput{
+		{Title: "Ready one", MilestoneID: m.ID},
+		{Title: "Under review", StatusID: byCat["in_review"]},
+		{Title: "Shipped", StatusID: byCat["done"], MilestoneID: m.ID},
+	} {
+		if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, p.ID, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := e.Client().Get("/")
+	if r.Status != 200 {
+		t.Fatal(r.Status)
+	}
+	card := regexp.MustCompile(`(?s)<li[^>]*data-project-card="VAQ".*?</li>`).FindString(r.Body)
+	if card == "" {
+		t.Fatalf("no VAQ card:\n%s", r.Body)
+	}
+	contains(t, r.Body, `data-projects-view="cards"`)
+	contains(t, card, "Vaquero", "Herds the chaos.", "data-monogram", "1 ready", "1 in review", "2 open", "Beta launch", "1 of 2 done", "Just now", `href="/p/VAQ/settings"`, "All settings")
+	other := regexp.MustCompile(`(?s)<li[^>]*data-project-card="OTH".*?</li>`).FindString(r.Body)
+	contains(t, other, "No open milestone", "0 ready")
+}
+
+// VAQ-102: ?view=list switches to the list and the cookie remembers it;
+// ?view=cards switches back, and an unknown view changes nothing.
+func TestProjectsViewCookieRemembersList(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	c := e.Client()
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="cards"`) {
+		t.Fatal("cards is not the default")
+	}
+	r := c.Get("/?view=list")
+	if !strings.Contains(r.Body, `data-projects-view="list"`) || !strings.Contains(r.Body, `data-project-row="VAQ"`) {
+		t.Fatal("?view=list shows no list")
+	}
+	if ck := r.Header.Get("Set-Cookie"); !strings.Contains(ck, "vq_projects_view=list") || !strings.Contains(ck, "HttpOnly") || !strings.Contains(ck, "SameSite=Lax") {
+		t.Fatalf("cookie %q", ck)
+	}
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="list"`) {
+		t.Fatal("the list is not remembered")
+	}
+	if r := c.Get("/?view=bogus"); !strings.Contains(r.Body, `data-projects-view="list"`) || r.Header.Get("Set-Cookie") != "" {
+		t.Fatal("an unknown view changed the view")
+	}
+	c.Get("/?view=cards")
+	if r := c.Get("/"); !strings.Contains(r.Body, `data-projects-view="cards"`) {
+		t.Fatal("cards is not remembered")
+	}
+}
+
+// VAQ-102: quick settings post to the settings handlers with ?return=/ and
+// come back to the projects page with a toast; a refused name re-renders
+// the projects page with its panel open and the message. Only "/" is
+// honoured as a return address.
+func TestQuickSettingsSavesAndReturns(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	contains(t, c.Get("/").Body, `action="/p/VAQ?return=/"`)
+	contains(t, c.Get("/p/VAQ/icon/choices").Body, `action="/p/VAQ/icon?return=/"`)
+	r := c.Post("/p/VAQ?return=/", url.Values{"name": {"Vaquero tracker"}, "description": {"Herds the chaos."}})
+	if r.Status != 303 || r.Location != "/" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Project saved.", "Vaquero tracker", "Herds the chaos.")
+	got, _ := e.Deps.R.GetProject(bg, p.ID)
+	if got.Name != "Vaquero tracker" || got.Description != "Herds the chaos." {
+		t.Fatalf("%+v", got)
+	}
+
+	r = c.Post("/p/VAQ?return=/", url.Values{"name": {"  "}, "description": {"Typed"}})
+	if r.Status != 422 {
+		t.Fatal(r.Status)
+	}
+	panel := regexp.MustCompile(`(?s)<details[^>]*data-quick-settings="VAQ"[^>]*>`).FindString(r.Body)
+	if !strings.Contains(panel, " open") {
+		t.Fatalf("the refused panel is not open: %q", panel)
+	}
+	contains(t, r.Body, "Enter a name.", ">Typed</textarea>", `data-projects-view="cards"`)
+
+	r = c.Multipart("POST", "/p/VAQ/icon?return=/", "", url.Values{"icon": {"glyph:rocket"}}, "", "", nil)
+	if r.Status != 303 || r.Location != "/" {
+		t.Fatalf("icon: %d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Icon saved.", `data-glyph="rocket"`)
+
+	// Any other return address goes to settings as before.
+	for _, ret := range []string{"//evil.example", "https://evil.example/", "/p/OTH"} {
+		r = c.Post("/p/VAQ?return="+url.QueryEscape(ret), url.Values{"name": {"Vaquero"}, "description": {""}})
+		if r.Status != 303 || r.Location != "/p/VAQ/settings" {
+			t.Fatalf("return %q: %d %q", ret, r.Status, r.Location)
+		}
+	}
+}
+
+// Final review: the quick settings icon grid (about 40 glyphs a project)
+// loads when its part opens, from /p/{key}/icon/choices; a refused name
+// re-renders it inline in the open panel. A stored image the project has
+// switched away from is offered again.
+func TestQuickSettingsIconLoadsOnDemand(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	home := c.Get("/").Body
+	contains(t, home, `data-quick-icon`, `hx-get="/p/VAQ/icon/choices"`, `hx-trigger="toggle once"`)
+	lacks(t, home, `value="glyph:rocket"`)
+	r := c.Get("/p/VAQ/icon/choices")
+	if r.Status != 200 || strings.Contains(r.Body, "<html") {
+		t.Fatalf("%d %.80q", r.Status, r.Body)
+	}
+	contains(t, r.Body, `action="/p/VAQ/icon?return=/"`, `value="glyph:rocket"`, `value="monogram"`, `id="q-icon-VAQ"`)
+	lacks(t, r.Body, `value="image"`)
+	if r := c.Get("/p/vaq/icon/choices"); r.Status != 301 {
+		t.Fatalf("lower case: %d", r.Status)
+	}
+
+	// An uploaded image, then back to the monogram: the image is offered.
+	if _, err := e.Deps.Core.SetProjectIcon(bg, e.Deps.Actor.ID, p.ID, "image", "", &core.IconImage{Data: pngBytes}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.SetProjectIcon(bg, e.Deps.Actor.ID, p.ID, "monogram", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	contains(t, c.Get("/p/VAQ/icon/choices").Body, `value="image"`)
+
+	// A refused name shows the grid inline in the open panel.
+	r = c.Post("/p/VAQ?return=/", url.Values{"name": {""}})
+	if r.Status != 422 {
+		t.Fatal(r.Status)
+	}
+	contains(t, r.Body, `value="glyph:rocket"`, `value="image"`)
 }

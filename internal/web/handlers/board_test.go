@@ -24,7 +24,7 @@ func statusID(t *testing.T, e *webtest.Env, name string) string {
 func TestBoardShowsActiveColumnsAndRails(t *testing.T) {
 	e := webtest.New(t)
 	project(t, e)
-	page := e.Client().Get("/p/VAQ").Body
+	page := e.Client().Get("/p/VAQ/board").Body
 	contains(t, page, `id="board"`, "<details", "Backlog", "Cancelled", "Todo", "In progress", "In review", "Done",
 		`href="/p/VAQ/list"`, `href="/p/VAQ/settings"`, `href="/p/VAQ/new"`)
 	if n := strings.Count(page, "data-board-column"); n != 6 {
@@ -37,7 +37,7 @@ func TestReadyCardMarked(t *testing.T) {
 	p := project(t, e)
 	ticket(t, e, p, core.TicketInput{Title: "ready"})
 	ticket(t, e, p, core.TicketInput{Title: "taken", AssigneeID: e.Deps.Actor.ID})
-	page := e.Client().Get("/p/VAQ").Body
+	page := e.Client().Get("/p/VAQ/board").Body
 	if n := strings.Count(page, "data-ready"); n != 1 {
 		t.Fatalf("%d ready cards", n)
 	}
@@ -50,16 +50,16 @@ func TestFilterChipsInURL(t *testing.T) {
 	ticket(t, e, p, core.TicketInput{Title: "tagged", Tags: []string{"ui"}})
 	ticket(t, e, p, core.TicketInput{Title: "plain"})
 	c := e.Client()
-	all := c.Get("/p/VAQ").Body
-	contains(t, all, `href="/p/VAQ?tag=ui"`, `href="/p/VAQ?mine=1"`, `href="/p/VAQ?agents=1"`, `href="/p/VAQ?priority=1"`)
-	page := c.Get("/p/VAQ?tag=ui").Body
+	all := c.Get("/p/VAQ/board").Body
+	contains(t, all, `href="/p/VAQ/board?tag=ui"`, `href="/p/VAQ/board?mine=1"`, `href="/p/VAQ/board?agents=1"`, `href="/p/VAQ/board?priority=1"`)
+	page := c.Get("/p/VAQ/board?tag=ui").Body
 	contains(t, page, `data-card="VAQ-1"`, `aria-current="true"`, "Clear filters")
 	lacks(t, page, `data-card="VAQ-2"`)
 	// The fragment keeps the filter for live refreshes and drops.
 	contains(t, page, `data-filter="tag=ui"`)
 	// Odd filter input renders, empty.
 	for _, q := range []string{"priority=9", "tag=no-such-tag", "milestone=garbage", "tag=" + strings.Repeat("x", 500)} {
-		if r := c.Get("/p/VAQ?" + q); r.Status != 200 {
+		if r := c.Get("/p/VAQ/board?" + q); r.Status != 200 {
 			t.Errorf("%s: %d", q, r.Status)
 		}
 	}
@@ -77,9 +77,9 @@ func TestMilestonePanel(t *testing.T) {
 	ticket(t, e, p, core.TicketInput{Title: "b", MilestoneID: m.ID, StatusID: done})
 	ticket(t, e, p, core.TicketInput{Title: "c", MilestoneID: m.ID})
 	ticket(t, e, p, core.TicketInput{Title: "loose"})
-	page := e.Client().Get("/p/VAQ").Body
-	contains(t, page, "Beta", "Dec 15, 2026", "2 of 3 done", `<progress`, `href="/p/VAQ?milestone=`+m.ID+`"`,
-		"No milestone", "1 open", `href="/p/VAQ?milestone=none"`)
+	page := e.Client().Get("/p/VAQ/board").Body
+	contains(t, page, "Beta", "Dec 15, 2026", "2 of 3 done", `<progress`, `href="/p/VAQ/board?milestone=`+m.ID+`"`,
+		"No milestone", "1 open", `href="/p/VAQ/board?milestone=none"`)
 }
 
 func TestMoveEndpoint(t *testing.T) {
@@ -103,7 +103,7 @@ func TestMoveEndpoint(t *testing.T) {
 	}
 	// Without htmx: back to the board.
 	r = c.Post("/t/VAQ-1/move", url.Values{"status": {statusID(t, e, "Todo")}})
-	if r.Status != 303 || r.Location != "/p/VAQ" {
+	if r.Status != 303 || r.Location != "/p/VAQ/board" {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 }
@@ -143,7 +143,7 @@ func TestListViewShowsEverything(t *testing.T) {
 	ticket(t, e, p, core.TicketInput{Title: "long done", StatusID: statusID(t, e, "Done")})
 	e.Deps.Core.Now = now
 	c := e.Client()
-	boardPage := c.Get("/p/VAQ").Body
+	boardPage := c.Get("/p/VAQ/board").Body
 	contains(t, boardPage, "1 older", `href="/p/VAQ/list"`)
 	lacks(t, boardPage, "long done")
 	list := c.Get("/p/VAQ/list").Body
@@ -162,17 +162,17 @@ func TestOlderLinksToDoneList(t *testing.T) {
 	ticket(t, e, p, core.TicketInput{Title: "long done", StatusID: statusID(t, e, "Done"), Tags: []string{"ui"}})
 	e.Deps.Core.Now = now
 	c := e.Client()
-	contains(t, c.Get("/p/VAQ?tag=ui").Body, "1 older", `href="/p/VAQ/list?category=done&amp;tag=ui"`)
+	contains(t, c.Get("/p/VAQ/board?tag=ui").Body, "1 older", `href="/p/VAQ/list?category=done&amp;tag=ui"`)
 	list := c.Get("/p/VAQ/list?category=done").Body
 	contains(t, list, "long done", `href="/p/VAQ/list"`, "Clear filters")
 	lacks(t, list, "in backlog")
 	all := c.Get("/p/VAQ/list").Body
 	contains(t, all, `href="/p/VAQ/list?category=done"`, `href="/p/VAQ/list?category=backlog"`, "In review")
-	lacks(t, c.Get("/p/VAQ").Body, `href="/p/VAQ?category=done"`)
+	lacks(t, c.Get("/p/VAQ/board").Body, `href="/p/VAQ/board?category=done"`)
 	// The web filter reads an unknown category as any.
 	contains(t, c.Get("/p/VAQ/list?category=nope").Body, "long done", "in backlog")
 	// The board ignores category: every column stays, nothing to clear.
-	board := c.Get("/p/VAQ?category=done").Body
+	board := c.Get("/p/VAQ/board?category=done").Body
 	contains(t, board, "in backlog", `data-filter=""`)
 	lacks(t, board, "Clear filters", "category=done&amp;")
 }
@@ -180,23 +180,24 @@ func TestOlderLinksToDoneList(t *testing.T) {
 func TestBoardFragmentRoute(t *testing.T) {
 	e := webtest.New(t)
 	project(t, e)
-	r := e.Client().Get("/p/VAQ/board?mine=1")
+	r := e.Client().Get("/p/VAQ/board/fragment?mine=1")
 	if r.Status != 200 || !strings.HasPrefix(strings.TrimSpace(r.Body), `<div id="board"`) || strings.Contains(r.Body, "<html") {
 		t.Fatalf("%d %.80q", r.Status, r.Body)
 	}
 	contains(t, r.Body, `data-filter="mine=1"`)
 }
 
-// Chips are links, so the one that is on says aria-current, inside a
-// labelled group; a tag filter spelled in another case still marks its
-// chip (VAQ-43).
+// Chips and menu items are links, so the one that is on says
+// aria-current, inside a labelled group; a tag filter spelled in another
+// case still marks its menu item and names the stored tag (VAQ-43).
 func TestFilterChipsAccessible(t *testing.T) {
 	e := webtest.New(t)
 	p := project(t, e)
 	ticket(t, e, p, core.TicketInput{Title: "tagged", Tags: []string{"école"}})
-	for _, path := range []string{"/p/VAQ?tag=%C3%89cole", "/p/VAQ/list?tag=%C3%89cole"} {
+	for _, path := range []string{"/p/VAQ?tag=%C3%89cole", "/p/VAQ/board?tag=%C3%89cole", "/p/VAQ/list?tag=%C3%89cole"} {
 		page := e.Client().Get(path).Body
-		contains(t, page, `role="group" aria-label="Filters"`, `aria-current="true" class="rounded-full border px-3 py-0.5 text-xs border-accent`, ">école</a>")
+		contains(t, page, `role="group" aria-label="Filters"`, `aria-current="true" class="block rounded`, ">école</a>",
+			`aria-label="Remove filter Tag: école"`)
 		lacks(t, page, "aria-pressed", ">École</a>")
 	}
 }

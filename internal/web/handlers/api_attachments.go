@@ -121,7 +121,7 @@ func APIAttachmentDelete(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, gen.Project{}, err)
 			return
 		}
-		deleteBytes(r, d, key)
+		deleteBytes(r, d, key, a.ID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
