@@ -34,8 +34,8 @@ Each change an agent makes records where it came from, as the client reports it:
 |---|---|
 | `list_projects` | Every project, with its open ticket count |
 | `list_tickets` | A project's tickets: `project`, and optionally `status`, `tag`, `mine`, `open`, `limit` |
-| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim and version: `key` |
-| `ready_tickets` | Tickets ready to be worked on, most urgent first: optionally `project`, `limit` |
+| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim, version and tier, and with the [agent workflow](/help/agent-workflow#readiness) on its readiness: `key` |
+| `ready_tickets` | Tickets ready to be worked on, most urgent first, applying [readiness](/help/agent-workflow#readiness) where the agent workflow is on: optionally `project`, `limit` |
 | `search` | Find tickets by words: `query` |
 | `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few; reorders within a column are left out |
 | `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags`, `tier`, `model` |
@@ -57,7 +57,7 @@ Each change an agent makes records where it came from, as the client reports it:
 
 A tool's answer is the same JSON the API gives. Its structured content, for clients that read it, is that JSON too, except that a list arrives as `{"items": [...]}`, because structured content is always an object. A refusal (an unknown ticket, a claim someone else holds, a stale `version`) is a tool error whose text says what went wrong, the same message the API gives.
 
-The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping.
+The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words.
 
 ## The activity log
 

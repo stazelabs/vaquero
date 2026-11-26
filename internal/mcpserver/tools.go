@@ -239,7 +239,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/projects/"+url.PathEscape(in.Project)+"/tickets", q)
 		})
 	add(s, c, "get_ticket", "Get a ticket", true,
-		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim and version.",
+		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim, version and tier. With the project's agent workflow on it also has readiness: whether it passes the workflow's gate and the reasons it doesn't.",
 		func(in keyArgs) request { return get(ticketPath(in.Key, ""), nil) })
 	add(s, c, "get_plan", "Get a plan", true,
 		"A ticket's plan, a Markdown document with every revision kept: its text, revision, who wrote it and when. Pass revision for an earlier one.",
@@ -261,7 +261,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/decisions", q)
 		})
 	add(s, c, "ready_tickets", "List ready tickets", true,
-		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first.",
+		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first. In a project with the agent workflow on, only tickets with a tier and a current plan approval, each with its tier and readiness.",
 		func(in readyArgs) request {
 			q := url.Values{}
 			set(q, "project", in.Project)

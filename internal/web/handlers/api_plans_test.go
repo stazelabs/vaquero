@@ -56,6 +56,10 @@ func TestAPIPlanRoundTripAndConflict409(t *testing.T) {
 	if r.Status != 409 || e.Error.Code != "conflict" || e.Error.Current == nil || e.Error.Current.Revision != 2 || e.Error.Current.Body != "Step one.\nStep two." {
 		t.Fatalf("stale: %d %s", r.Status, r.Body)
 	}
+	// An explicit revision 0 is refused: leave it out for a first plan.
+	if r := c.API("PUT", "/api/v1/tickets/VAQ-1/plan", tok, map[string]any{"body": "Another take.", "revision": 0}); r.Status != 422 || !strings.Contains(r.Body, `"revision": "Send the revision you read`) {
+		t.Fatalf("revision 0: %d %s", r.Status, r.Body)
+	}
 	// So is creating one when there is one.
 	if r := c.API("PUT", "/api/v1/tickets/VAQ-1/plan", tok, map[string]any{"body": "Another take."}); r.Status != 409 {
 		t.Fatalf("create over: %d %s", r.Status, r.Body)
@@ -121,8 +125,10 @@ func TestTicketPageShowsPlan(t *testing.T) {
 	e, c, _ := apiWorld(t)
 	p, _ := e.Deps.R.GetProjectByKey(bg, "VAQ")
 	tk, _ := e.Deps.R.GetTicketByNumber(bg, gen.GetTicketByNumberParams{ProjectID: p.ID, Number: 1})
-	if body := c.Get("/t/VAQ-1").Body; strings.Contains(body, `id="plan"`) {
-		t.Fatal("a plan section without a plan")
+	// Without a plan the live wrapper is there, empty, so a plan saved
+	// elsewhere appears on the next change.
+	if body := c.Get("/t/VAQ-1").Body; !strings.Contains(body, `id="plan"`) || strings.Contains(body, "Revision 1") {
+		t.Fatal("no empty plan wrapper without a plan")
 	}
 	if _, err := e.Deps.Core.SavePlan(bg, e.Deps.Actor.ID, tk.ID, "## Approach\n\nUse the *board*.", 0); err != nil {
 		t.Fatal(err)

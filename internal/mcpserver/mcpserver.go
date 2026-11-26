@@ -42,7 +42,10 @@ const Instructions = "Vaquero is a ticket tracker shared by people and agents; t
 	"While you work, call heartbeat before the lease ends, record progress with add_comment and update_ticket, and move_ticket it when it is done. " +
 	"Call release_ticket when you stop; a claim you stop renewing lapses and the ticket goes back to the queue. " +
 	"To work several tickets at once, bulk_update claims, renews, updates, comments on, moves and releases up to 100 in one call, " +
-	"and view \"summary\" on a write answers with a short summary instead of the whole ticket."
+	"and view \"summary\" on a write answers with a short summary instead of the whole ticket. " +
+	"In a project with the agent workflow on, write a ticket's plan with save_plan, park questions and approvals for the owner with ask_decision, " +
+	"record the owner's answer with answer_decision only as relayed, quoting their words (run vaquero mcp with --agent NAME), " +
+	"and ready_tickets lists only tickets that pass readiness: a tier and a current plan approval."
 
 // Handler is POST /mcp. api serves /api/v1 without the token check (the
 // router's API routes); the request's actor, set by middleware.APIToken in

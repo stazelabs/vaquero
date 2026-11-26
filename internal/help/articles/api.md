@@ -73,7 +73,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
-| `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan; to revise it, send the revision you read. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
+| `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan (`0` is `422`); to revise it, send the revision you read. The body limit is 1 MiB, as for every request. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
 | `DELETE /api/v1/comments/{id}` | Nothing; your own comments only |
 | `POST /api/v1/tickets/{ticket}/attachments` | A multipart form with the file in a part named `file`; answers `201` with the attachment. Up to 10 MB: more is `413` |
@@ -108,7 +108,7 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 
 ## Decisions
 
-A [decision](/help/agent-workflow#decisions) is a question for the owner, a ruling an agent made, or an approval of a plan, a merge or a release. Only the owner answers one. A request acting as an agent (your token with `Vaquero-Agent`) that answers is relaying the owner's answer, given in conversation: it must quote the owner in `words`, or it is `422` on `words`. Without the header, the owner answers directly, and `words` is refused; a direct answer comes from the web page, the command line or the API, never through MCP, where an answer is always relayed by the agent `vaquero mcp --agent NAME` names.
+A [decision](/help/agent-workflow#decisions) is a question for the owner, a ruling an agent made, or an approval of a plan, a merge or a release. Only the owner answers one. A request acting as an agent (your token with `Vaquero-Agent`) that answers is relaying the owner's answer, given in conversation: it must quote the owner in `words`, or it is `422` on `words`. Without the header, the owner answers directly, and `words` is refused; a direct answer comes from the command line or the API, never through MCP, where an answer is always relayed by the agent `vaquero mcp --agent NAME` names.
 
 | Request | Body or query |
 |---|---|

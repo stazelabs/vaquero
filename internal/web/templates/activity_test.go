@@ -116,3 +116,20 @@ func TestDecisionWording(t *testing.T) {
 		t.Error("icon")
 	}
 }
+
+func TestWorkflowWording(t *testing.T) {
+	ch := func(c map[string]any) EventView {
+		return EventView{Kind: core.EvProjectUpdated, ProjectKey: "VAQ", Payload: map[string]any{"changes": c}}
+	}
+	for want, e := range map[string]EventView{
+		"turned the agent workflow on in VAQ":                          ch(map[string]any{"workflow": map[string]any{"from": false, "to": true}}),
+		"turned the agent workflow off in VAQ":                         ch(map[string]any{"workflow": map[string]any{"from": true, "to": false}}),
+		"turned the agent workflow on in VAQ and changed its tier map": ch(map[string]any{"workflow": map[string]any{"from": false, "to": true}, "tier_map": map[string]any{}}),
+		"changed the tier map of VAQ":                                  ch(map[string]any{"tier_map": map[string]any{}}),
+		"updated project VAQ":                                          ch(map[string]any{"name": map[string]any{"from": "A", "to": "B"}}),
+	} {
+		if got := EventSentence(e); got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
+	}
+}

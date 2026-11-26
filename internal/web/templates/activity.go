@@ -161,7 +161,7 @@ func EventSentence(e EventView) string {
 		if from, to, ok := change(e.Payload, "key"); ok {
 			return fmt.Sprintf("changed the key of %s to %s", from, to)
 		}
-		return "updated project " + e.ProjectKey
+		return projectUpdated(e)
 	case core.EvProjectArchived:
 		return "archived project " + e.ProjectKey
 	case core.EvProjectRestored:
@@ -340,6 +340,30 @@ func change(p map[string]any, field string) (from, to string, ok bool) {
 	from, _ = c["from"].(string)
 	to, _ = c["to"].(string)
 	return from, to, true
+}
+
+// projectUpdated is a project.updated sentence: the agent workflow turned
+// on or off and the tier map changed, when they did, else "updated
+// project VAQ".
+func projectUpdated(e EventView) string {
+	changes, _ := e.Payload["changes"].(map[string]any)
+	_, tierMap := changes["tier_map"]
+	var out string
+	if c, ok := changes["workflow"].(map[string]any); ok {
+		state := "off"
+		if on, _ := c["to"].(bool); on {
+			state = "on"
+		}
+		out = "turned the agent workflow " + state + " in " + e.ProjectKey
+		if tierMap {
+			out += " and changed its tier map"
+		}
+		return out
+	}
+	if tierMap {
+		return "changed the tier map of " + e.ProjectKey
+	}
+	return "updated project " + e.ProjectKey
 }
 
 // joinAnd is "a", "a and b", "a, b and c".

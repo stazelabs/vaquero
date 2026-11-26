@@ -87,13 +87,23 @@ func APIPlanSave(d Deps) http.HandlerFunc {
 		}
 		var in struct {
 			Body     string `json:"body"`
-			Revision int64  `json:"revision"`
+			Revision *int64 `json:"revision"` // nil: a first plan; 0 is refused
 		}
 		if f := api.Decode(r, &in); f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
-		saved, err := d.Core.SavePlan(r.Context(), apiActor(r).ID, t.ID, in.Body, in.Revision)
+		var base int64
+		if in.Revision != nil {
+			if base = *in.Revision; base < 1 {
+				const msg = "Send the revision you read, 1 or more, or leave it out to write a new plan."
+				f := api.Fail(http.StatusUnprocessableEntity, "invalid", msg)
+				f.Fields = map[string]string{"revision": msg}
+				api.WriteFailure(w, f)
+				return
+			}
+		}
+		saved, err := d.Core.SavePlan(r.Context(), apiActor(r).ID, t.ID, in.Body, base)
 		if err != nil {
 			f := api.FromCore(err, nil)
 			if pc, ok := errors.AsType[*core.PlanConflict](err); ok {
