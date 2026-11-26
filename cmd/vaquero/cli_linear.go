@@ -128,11 +128,10 @@ type linearProject struct {
 	Tickets     int          `json:"tickets"`
 	NewStatuses []api.Status `json:"new_statuses"`
 
-	issues     []linearIssue
-	statuses   []api.Status
-	team       string
-	nextNumber int64
-	touched    bool // the import wrote to it
+	issues   []linearIssue
+	statuses []api.Status
+	team     string
+	touched  bool // the import wrote to it
 }
 
 func cmdImportLinear(ctx context.Context, stdout, stderr io.Writer, args []string) int {
