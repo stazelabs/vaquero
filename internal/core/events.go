@@ -35,6 +35,9 @@ import (
 //   - ticket.claimed: ClaimPayload. ticket.released: {}.
 //   - ticket.claim_lapsed: {"status"}, the status the ticket was left in;
 //     its actor is the claimant whose lease ran out.
+//   - tag.renamed, tag.merged: {"from", "to", "tickets"}; tag.deleted:
+//     {"name", "tickets"}: TagPayload, a project event (no ticket), tickets
+//     being how many of the project's tickets changed.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -69,6 +72,9 @@ const (
 	EvTicketClaimed     = "ticket.claimed"
 	EvTicketReleased    = "ticket.released"
 	EvClaimLapsed       = "ticket.claim_lapsed"
+	EvTagRenamed        = "tag.renamed"
+	EvTagMerged         = "tag.merged"
+	EvTagDeleted        = "tag.deleted"
 )
 
 // ClaimPayload is a ticket.claimed event's payload: the lease's end, the
@@ -122,6 +128,7 @@ func EventKinds() []string {
 		EvLinkCreated, EvLinkDeleted,
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
+		EvTagRenamed, EvTagMerged, EvTagDeleted,
 	}
 }
 

@@ -17,7 +17,7 @@ type fixture struct {
 	Owner     gen.Actor
 	Project   gen.Project
 	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo), moved there
-	T1, T2    gen.Ticket
+	T1, T2    gen.Ticket // T1 tagged bug, T2 tagged ui
 	Milestone gen.Milestone
 	Other     gen.Project
 	O1        gen.Ticket
@@ -25,6 +25,7 @@ type fixture struct {
 	Comment   gen.Comment    // on T1
 	Link      gen.TicketLink // T2 relates to T1
 	Token     gen.ApiToken   // the owner's, live
+	Bug, UI   gen.Tag        // T1's and T2's tags
 }
 
 func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
@@ -50,8 +51,16 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	must(err)
 	f.T1, err = c.CreateTicket(ctx, owner.ID, f.Project.ID, core.TicketInput{Title: "First", Tags: []string{"bug"}})
 	must(err)
-	f.T2, err = c.CreateTicket(ctx, owner.ID, f.Project.ID, core.TicketInput{Title: "Second"})
+	f.T2, err = c.CreateTicket(ctx, owner.ID, f.Project.ID, core.TicketInput{Title: "Second", Tags: []string{"ui"}})
 	must(err)
+	for _, tg := range [...]struct {
+		into *gen.Tag
+		tk   gen.Ticket
+	}{{&f.Bug, f.T1}, {&f.UI, f.T2}} {
+		tt, err := d.RQ.ListTicketTags(ctx, tg.tk.ID)
+		must(err)
+		*tg.into = tt[0]
+	}
 	f.Milestone, err = c.CreateMilestone(ctx, owner.ID, f.Project.ID, core.MilestoneInput{Name: "M1"})
 	must(err)
 	f.Other, err = c.CreateProject(ctx, owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})

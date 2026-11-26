@@ -30,16 +30,26 @@ func (f SubForm) Val(name, def string) string {
 	return def
 }
 
+// TagRow is one tag on the settings page: how many of the project's
+// tickets carry it.
+type TagRow struct {
+	ID, Name string
+	Tickets  int64
+}
+
 // SettingsView is the project settings page. NewStatus and NewMilestone
-// are the add forms; EditStatus and EditMilestone the row form that was
-// refused, if any.
+// are the add forms; EditStatus, EditMilestone and EditTag the row form
+// that was refused, if any. MergeInto names the tag a refused rename would
+// merge EditTag into, offered as a merge button.
 type SettingsView struct {
 	Project    gen.Project
 	Form       ProjectForm
 	Statuses   []StatusRow
 	Milestones []gen.Milestone
+	Tags       []TagRow
+	MergeInto  string
 
-	NewStatus, NewMilestone, EditStatus, EditMilestone SubForm
+	NewStatus, NewMilestone, EditStatus, EditMilestone, EditTag SubForm
 }
 
 // row is the refused form f when it edits id, else an empty one.
@@ -178,6 +188,22 @@ templ ProjectSettingsPage(v SettingsView) {
 		</section>
 		<section class="mt-10">
 			<h2 class={ h2IconClass }>
+				@Icon("tag")
+				Tags
+			</h2>
+			if len(v.Tags) == 0 {
+				<p class="mt-2 text-sm text-muted">No tags yet. Tags are added on tickets.</p>
+			} else {
+				<p class="mt-1 max-w-2xl text-sm text-muted">Renaming a tag here changes it on this project's tickets only. Rename it to a name the project already uses to merge the two.</p>
+				<ul class="mt-3 max-w-2xl divide-y divide-line rounded-md border border-line">
+					for _, t := range v.Tags {
+						@tagItem(v.Project.Key, t, v.EditTag.row(t.ID), v.MergeInto)
+					}
+				</ul>
+			}
+		</section>
+		<section class="mt-10">
+			<h2 class={ h2IconClass }>
 				@Icon("archive")
 				Archive
 			</h2>
@@ -270,6 +296,45 @@ templ milestoneItem(key string, m gen.Milestone, edit SubForm) {
 					Close milestone
 				}
 			</button>
+		</form>
+	</li>
+}
+
+// tagItem is one tag's row: rename, its ticket count and delete. When a
+// rename was refused because the name is taken, merge offers to fold this
+// tag into that one.
+templ tagItem(key string, t TagRow, edit SubForm, mergeInto string) {
+	<li class="flex flex-wrap items-center gap-3 px-3 py-2">
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/tags/" + t.ID + "/rename") } class="flex-1">
+			<div class="flex items-center gap-2">
+				<label for={ "tag-" + t.ID } class="sr-only">Name</label>
+				<input
+					id={ "tag-" + t.ID }
+					name="name"
+					value={ edit.Val("name", t.Name) }
+					if edit.Errors["name"] != "" {
+						aria-invalid="true"
+						aria-describedby={ "tag-" + t.ID + "-error" }
+					}
+					class={ inputClass + " max-w-48" }
+				/>
+				<button type="submit" class={ btnLink }>Rename</button>
+			</div>
+			@FieldError("tag-"+t.ID+"-error", edit.Errors["name"])
+		</form>
+		if edit.ID != "" && mergeInto != "" {
+			<form method="post" action={ templ.SafeURL("/p/" + key + "/tags/" + t.ID + "/rename") } data-confirm={ mergeQuestion(key, t, mergeInto) }>
+				<input type="hidden" name="name" value={ edit.Val("name", mergeInto) }/>
+				<input type="hidden" name="merge" value="1"/>
+				<button type="submit" class={ btnSecondary + " gap-1.5" }>
+					@Icon("merge")
+					Merge into { mergeInto }
+				</button>
+			</form>
+		}
+		<span class="w-24 text-xs text-muted">{ countLabel(t.Tickets, "ticket", "tickets") }</span>
+		<form method="post" action={ templ.SafeURL("/p/" + key + "/tags/" + t.ID + "/delete") } data-confirm={ "Delete the tag " + t.Name + "? It comes off " + countLabel(t.Tickets, "ticket", "tickets") + " in " + key + "." }>
+			<button type="submit" class="text-sm text-danger hover:underline" aria-label={ "Delete tag " + t.Name }>Delete</button>
 		</form>
 	</li>
 }

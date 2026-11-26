@@ -65,6 +65,13 @@ func countLabel(n int64, one, many string) string {
 	return itoa(n) + " " + many
 }
 
+// mergeQuestion is the confirm dialog's question before t merges into the
+// tag named into: "Merge bug into ui? Its 2 tickets in VAQ will be tagged
+// ui instead."
+func mergeQuestion(key string, t TagRow, into string) string {
+	return "Merge " + t.Name + " into " + into + "? Its " + countLabel(t.Tickets, "ticket", "tickets") + " in " + key + " will be tagged " + into + " instead."
+}
+
 func hasArchived(rows []gen.ListProjectsRow) bool {
 	for _, p := range rows {
 		if p.ArchivedAt.Valid {

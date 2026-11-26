@@ -234,8 +234,20 @@ func EventSentence(e EventView) string {
 			return fmt.Sprintf("let the claim on %s lapse; it is back in %s", e.TicketKey, st)
 		}
 		return "let the claim on " + e.TicketKey + " lapse"
+	case core.EvTagRenamed:
+		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
+	case core.EvTagMerged:
+		return fmt.Sprintf("merged tag %s into %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
+	case core.EvTagDeleted:
+		return fmt.Sprintf("deleted tag %s from %s (%s)", s("name"), e.ProjectKey, tagTickets(e.Payload))
 	}
 	return "made a change"
+}
+
+// tagTickets is a tag event's ticket count: "1 ticket", "3 tickets".
+func tagTickets(p map[string]any) string {
+	n, _ := p["tickets"].(float64)
+	return countLabel(int64(n), "ticket", "tickets")
 }
 
 func ticketUpdated(e EventView) string {
@@ -296,13 +308,14 @@ var eventIcons = map[string]string{
 	core.EvTicketCreated: "plus", core.EvTicketUpdated: "edit", core.EvTicketReordered: "moved",
 	core.EvProjectDeleted: "delete", core.EvStatusDeleted: "delete", core.EvCommentDeleted: "delete",
 	core.EvLinkDeleted: "delete", core.EvActorCreated: "person",
+	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
 	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
 }
 
 // prefixIcons are the glyphs for each kind's first word.
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
-	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token",
+	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token", "tag": "tag",
 }
 
 // EventIcon is the glyph an activity line starts with.

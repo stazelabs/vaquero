@@ -17,11 +17,21 @@ Every new project starts with six statuses: Backlog, Todo, In progress, In revie
 A ticket has a title (up to 200 characters), a description in markdown, a status, a priority, an assignee, tags, an optional parent and an optional milestone.
 
 - **Priority** is none, urgent, high, medium or low.
-- **Tags** are words you make up as you go; a new one is created the first time you use it.
+- **Tags** are words you make up as you go; a new one is created the first time you use it. See [Tags](#tags) to rename, merge or delete them.
 - **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
 - **Comments** are markdown. You can edit or delete your own.
 
 Every change is recorded in the ticket's history and on the Activity page, except that reordering a card within its column shows only in the ticket's history.
+
+## Tags
+
+Tags match whatever their case: `UI`, `ui` and `Ui` are one tag, which keeps the spelling it was first given. Project settings list each tag the project's tickets carry, with how many carry it.
+
+- **Rename** a tag to change it on every ticket in the project. Other projects that use the same tag keep it as it was, unless only its case changes, which respells it everywhere.
+- **Merge** by renaming a tag to a name the project already has. Vaquero asks first, then tags those tickets with the other tag; a ticket that had both keeps one.
+- **Delete** a tag to take it off every ticket in the project, after a confirmation. Its tickets stay as they are otherwise.
+
+Each of these is one line on the Activity page, and it raises the version of every ticket it changes, so an edit form opened before it asks you to look again rather than putting the old tag back.
 
 ## History
 

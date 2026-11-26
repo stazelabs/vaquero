@@ -16,6 +16,18 @@ func formWith(body, action string) string {
 	return re.FindString(body)
 }
 
+// formWithConfirm is the opening tag of the form with that action that
+// carries data-confirm, or "".
+func formWithConfirm(body, action string) string {
+	re := regexp.MustCompile(`<form[^>]*action="` + regexp.QuoteMeta(action) + `"[^>]*>`)
+	for _, f := range re.FindAllString(body, -1) {
+		if strings.Contains(f, "data-confirm=") {
+			return f
+		}
+	}
+	return ""
+}
+
 // VAQ-27: destructive forms ask first through the Shell's dialog, and still
 // post on their own without JavaScript (a plain method="post" form).
 func TestDestructiveFormsAskFirst(t *testing.T) {
