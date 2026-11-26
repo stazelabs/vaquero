@@ -27,7 +27,12 @@ jobs:
         run: test -z "$(gofmt -l $(git ls-files '*.go'))"
       - run: make vet
       - run: make lint
-      - run: make test
+      - name: Tests
+        # The runner has git; the variable makes a missing git a failure in
+        # the gitread tests rather than a skip.
+        env:
+          VQ_GIT_REQUIRE: "1"
+        run: make test
       - name: Browser tests
         # ubuntu-latest has Google Chrome installed; the variable makes a
         # missing Chrome a failure here rather than a skip.

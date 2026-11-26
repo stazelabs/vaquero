@@ -1,6 +1,8 @@
 package vaquero_test
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -200,15 +202,19 @@ func publishFormula(t *testing.T, mode string) (int, string, []string) {
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(fakeGH), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	sha, err := exec.Command("git", "hash-object", "scripts/formula/testdata/vaquero.rb.golden").Output()
+	// The golden file's git blob id, as git hash-object gives it (only
+	// internal/gitread runs git).
+	golden, err := os.ReadFile("scripts/formula/testdata/vaquero.rb.golden")
 	if err != nil {
 		t.Fatal(err)
 	}
+	sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(golden))), golden...))
+	sha := hex.EncodeToString(sum[:])
 	log := filepath.Join(t.TempDir(), "gh.log")
 	cmd := exec.Command("scripts/publish-formula.sh", "v0.1.2", "scripts/formula/testdata/checksums.txt")
 	cmd.Env = append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"FAKE_GH_LOG="+log, "FAKE_GH_MODE="+mode, "FAKE_GH_SHA="+strings.TrimSpace(string(sha)))
+		"FAKE_GH_LOG="+log, "FAKE_GH_MODE="+mode, "FAKE_GH_SHA="+sha)
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if ee, ok := err.(*exec.ExitError); ok {
