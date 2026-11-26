@@ -39,6 +39,13 @@ import (
 //     tag.deleted: {"name", "tickets", "ticket_ids"}: TagPayload, a project
 //     event (no ticket); ticket_ids names the project's tickets whose tags
 //     changed, tickets how many.
+//   - plan.created, plan.revised: PlanPayload, the plan's revision only;
+//     the text stays in plans and plan_revisions, never in an event.
+//   - decision.asked, decision.ruled, decision.answered,
+//     decision.withdrawn: DecisionPayload. The event's ticket is the
+//     decision's one ticket; a decision naming several (a group approval)
+//     or none is a project event, ticket_ids naming them. A group answer is
+//     one event, however many approval rows it writes.
 //
 // Every successful operation appends exactly one event, with one
 // exception: Heartbeat, which only extends a lease, appends none (a busy
@@ -76,7 +83,18 @@ const (
 	EvTagRenamed        = "tag.renamed"
 	EvTagMerged         = "tag.merged"
 	EvTagDeleted        = "tag.deleted"
+	EvPlanCreated       = "plan.created"
+	EvPlanRevised       = "plan.revised"
+	EvDecisionAsked     = "decision.asked"
+	EvDecisionRuled     = "decision.ruled"
+	EvDecisionAnswered  = "decision.answered"
+	EvDecisionWithdrawn = "decision.withdrawn"
 )
+
+// PlanPayload is a plan.created or plan.revised event's payload.
+type PlanPayload struct {
+	Revision int64 `json:"revision"`
+}
 
 // ClaimPayload is a ticket.claimed event's payload: the lease's end, the
 // status before and after, and whether it renewed the claimant's own claim.
@@ -94,7 +112,7 @@ type Change struct {
 }
 
 // emit appends one event inside the caller's transaction. Empty ids are
-// stored as NULL; a nil payload is {}.
+// stored as NULL; a nil payload is {}. The Origin on ctx is stored as meta.
 func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectID, ticketID string, payload any) error {
 	body := []byte("{}")
 	if payload != nil {
@@ -110,6 +128,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 		ProjectID: nullString(projectID),
 		TicketID:  nullString(ticketID),
 		Payload:   string(body),
+		Meta:      OriginFrom(ctx).meta(),
 	})
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)
@@ -130,6 +149,8 @@ func EventKinds() []string {
 		EvActorCreated, EvTokenCreated, EvTokenRevoked,
 		EvTicketClaimed, EvTicketReleased, EvClaimLapsed,
 		EvTagRenamed, EvTagMerged, EvTagDeleted,
+		EvPlanCreated, EvPlanRevised,
+		EvDecisionAsked, EvDecisionRuled, EvDecisionAnswered, EvDecisionWithdrawn,
 	}
 }
 

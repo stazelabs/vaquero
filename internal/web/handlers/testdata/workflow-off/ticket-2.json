@@ -1,0 +1,18 @@
+{
+  "key": "VAQ-2",
+  "title": "Columns",
+  "status": "Todo",
+  "category": "todo",
+  "priority": 0,
+  "tags": [],
+  "ready": true,
+  "version": 1,
+  "body": "",
+  "parent": "VAQ-1",
+  "sub_tickets": [],
+  "links": [],
+  "comments": [],
+  "attachments": [],
+  "created_at": "2026-11-18T12:00:00.000Z",
+  "updated_at": "2026-11-18T12:00:00.000Z"
+}

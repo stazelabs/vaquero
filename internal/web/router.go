@@ -27,6 +27,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.CrossOrigin(d.Logger),
 		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload.
 		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
+		// Provenance for every change: the surface and the Vaquero-Client,
+		// -Harness, -Model and -Run headers, as reported (core.Origin).
+		middleware.Origin,
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
 		chimw.GetHead,
@@ -86,6 +89,8 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.With(fs).Post("/", handlers.ProjectUpdate(d))
 			r.Get("/settings", handlers.ProjectSettings(d))
 			r.Post("/key", handlers.ProjectKeyChange(d))
+			r.With(fs).Post("/workflow", handlers.ProjectWorkflow(d))
+			r.Post("/triage-statuses", handlers.TriageStatuses(d))
 			r.Post("/delete", handlers.ProjectDelete(d))
 			r.Post("/archive", handlers.ProjectArchive(d))
 			r.Post("/restore", handlers.ProjectRestore(d))
@@ -157,6 +162,14 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.Post("/tickets/{ticket}/comments", handlers.APICommentCreate(d))
 	r.Patch("/comments/{id}", handlers.APICommentUpdate(d))
 	r.Delete("/comments/{id}", handlers.APICommentDelete(d))
+	r.Get("/tickets/{ticket}/plan", handlers.APIPlan(d))
+	r.Put("/tickets/{ticket}/plan", handlers.APIPlanSave(d))
+	r.Get("/tickets/{ticket}/plan/revisions/{n}", handlers.APIPlanRevision(d))
+	r.Post("/decisions", handlers.APIDecisionCreate(d))
+	r.Get("/decisions", handlers.APIDecisions(d))
+	r.Get("/decisions/{id}", handlers.APIDecision(d))
+	r.Post("/decisions/{id}/answer", handlers.APIDecisionAnswer(d))
+	r.Post("/decisions/{id}/withdraw", handlers.APIDecisionWithdraw(d))
 	r.Get("/tickets/{ticket}/attachments", handlers.APIAttachmentList(d))
 	r.Post("/tickets/{ticket}/attachments", handlers.APIAttachmentUpload(d))
 	r.Get("/attachments/{id}", handlers.APIAttachmentGet(d))

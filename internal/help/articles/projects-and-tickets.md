@@ -18,6 +18,7 @@ A ticket has a title (up to 200 characters), a description in markdown, a status
 
 - **Priority** is none, urgent, high, medium or low.
 - **Tags** are words you make up as you go; a new one is created the first time you use it. See [Tags](#tags) to rename, merge or delete them.
+- **Tier** is the execution tier, shown when the [agent workflow](/help/agent-workflow#execution-tiers) is on: design, light, standard or heavy, or none. A ticket may also name an exact **model**; otherwise the project's tier map picks one.
 - **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
 - **Comments** are markdown. You can edit or delete your own.
 

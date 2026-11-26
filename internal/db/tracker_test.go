@@ -99,10 +99,13 @@ func TestEventPayloadMustBeJSON(t *testing.T) {
 	d := dbtest.New(t)
 	ctx := context.Background()
 	actor, _, _ := seed(t, d)
-	if _, err := d.Q.AppendEvent(ctx, gen.AppendEventParams{At: stamp, ActorID: actor, Kind: "x", Payload: "not json"}); err == nil {
+	if _, err := d.Q.AppendEvent(ctx, gen.AppendEventParams{At: stamp, ActorID: actor, Kind: "x", Payload: "not json", Meta: "{}"}); err == nil {
 		t.Fatal("non-JSON payload accepted")
 	}
-	if _, err := d.Q.AppendEvent(ctx, gen.AppendEventParams{At: stamp, ActorID: actor, Kind: "x", Payload: "{}"}); err != nil {
+	if _, err := d.Q.AppendEvent(ctx, gen.AppendEventParams{At: stamp, ActorID: actor, Kind: "x", Payload: "{}", Meta: "not json"}); err == nil {
+		t.Fatal("non-JSON meta accepted")
+	}
+	if _, err := d.Q.AppendEvent(ctx, gen.AppendEventParams{At: stamp, ActorID: actor, Kind: "x", Payload: "{}", Meta: "{}"}); err != nil {
 		t.Fatal(err)
 	}
 }

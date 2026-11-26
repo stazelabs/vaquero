@@ -11,6 +11,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
@@ -27,6 +28,12 @@ type Card struct {
 	// lapsed and not yet been swept); ClaimExpiresAt its lease's end, as stored.
 	ClaimedBy, ClaimExpiresAt string
 	ClaimantIsAgent           bool
+	// With the project's agent workflow on: Tier is the ticket's tier,
+	// Readiness the workflow's gate for a todo ticket (nil otherwise), and
+	// Ready needs it too. With it off, both are empty and Ready is the
+	// board's rule alone.
+	Tier      string
+	Readiness *readiness.Readiness
 }
 
 // Column is one status and its cards, top to bottom.
@@ -138,6 +145,8 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 		index[s.ID] = i
 	}
 	cutoff := now.Add(-DoneWindow)
+	workflow := p.Workflow == 1
+	todo := map[string]cardAt{} // with the workflow on: the todo cards, by ticket id
 	for _, r := range rows {
 		i, ok := index[r.StatusID]
 		if !ok {
@@ -163,8 +172,46 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 			ClaimExpiresAt:  r.ClaimExpiresAt,
 			ClaimantIsAgent: r.ClaimantKind == "agent",
 		})
+		if workflow {
+			c.Cards[len(c.Cards)-1].Tier = r.Tier
+			if r.StatusCategory == "todo" {
+				todo[r.ID] = cardAt{i, len(c.Cards) - 1}
+			}
+		}
+	}
+	if len(todo) > 0 {
+		if err := gate(ctx, q, cols, todo); err != nil {
+			return nil, err
+		}
 	}
 	return cols, nil
+}
+
+// cardAt is a card's place in the columns.
+type cardAt struct{ col, card int }
+
+// gate applies the agent workflow's readiness to the todo cards at, in
+// one batch.
+func gate(ctx context.Context, q *gen.Queries, cols []Column, at map[string]cardAt) error {
+	ids := make([]string, 0, len(at))
+	for id := range at {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	got, err := readiness.CheckAll(ctx, q, ids)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		rd, ok := got[id]
+		if !ok {
+			continue
+		}
+		k := &cols[at[id].col].Cards[at[id].card]
+		k.Readiness = &rd
+		k.Ready = k.Ready && rd.Ready
+	}
+	return nil
 }
 
 func params(p gen.Project, owner gen.Actor, f Filter) gen.ListBoardTicketsParams {

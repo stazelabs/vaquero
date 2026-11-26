@@ -27,6 +27,7 @@ import (
 var tables = []string{
 	"settings", "actors", "api_tokens", "projects", "statuses", "milestones",
 	"tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "blobs", "events", "mcp_calls",
+	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals",
 }
 
 func main() {

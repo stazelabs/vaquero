@@ -22,7 +22,11 @@ For Claude Code, add it once:
 
 Give each agent you run its own `--agent` name, so their claims and comments stay apart. `--agent` works only with the local owner's token; with any other token it is ignored, and `vaquero mcp` says so on standard error.
 
-**HTTP.** A client that connects over HTTP uses `http://127.0.0.1:7878/mcp` (Streamable HTTP, one request per message, plain JSON answers) with an API token in an `Authorization: Bearer vq_...` header, and the agent's name in a `Vaquero-Agent` header. [API tokens](/help/api-tokens) explains making a token, and [Agents and claims](/help/agents-and-claims#naming-an-agent) how names work.
+Each change an agent makes records where it came from, as the client reports it: that it arrived over MCP, the `vaquero mcp` version, the client's own name and version (from the session's first message), and the model, given with `--model ID` or the `VAQUERO_MODEL` environment variable. Whatever is missing is left out. These are recorded as reported, not checked; the agent's name is what says who made the change.
+
+    vaquero mcp --agent builder --model my-model-id
+
+**HTTP.** A client that connects over HTTP uses `http://127.0.0.1:7878/mcp` (Streamable HTTP, one request per message, plain JSON answers) with an API token in an `Authorization: Bearer vq_...` header, and the agent's name in a `Vaquero-Agent` header. [API tokens](/help/api-tokens) explains making a token, and [Agents and claims](/help/agents-and-claims#naming-an-agent) how names work. Such a client can report its name and version in a `Vaquero-Harness` header and its model in `Vaquero-Model`; see [the API](/help/api#where-a-change-came-from).
 
 ## Tools
 
@@ -30,14 +34,19 @@ Give each agent you run its own `--agent` name, so their claims and comments sta
 |---|---|
 | `list_projects` | Every project, with its open ticket count |
 | `list_tickets` | A project's tickets: `project`, and optionally `status`, `tag`, `mine`, `open`, `limit` |
-| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim and version: `key` |
-| `ready_tickets` | Tickets ready to be worked on, most urgent first: optionally `project`, `limit` |
+| `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim, version and tier, and with the [agent workflow](/help/agent-workflow#readiness) on its readiness: `key` |
+| `ready_tickets` | Tickets ready to be worked on, most urgent first, applying [readiness](/help/agent-workflow#readiness) where the agent workflow is on: optionally `project`, `limit` |
 | `search` | Find tickets by words: `query` |
 | `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few; reorders within a column are left out |
-| `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags` |
-| `update_ticket` | `key` and any fields to change, plus `add_tags`, `remove_tags` and `version` |
+| `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags`, `tier`, `model` |
+| `update_ticket` | `key` and any fields to change (`tier` and `model` among them), plus `add_tags`, `remove_tags` and `version` |
 | `move_ticket` | `key`, `status` |
 | `add_comment` | `key`, `body` |
+| `get_plan` | A ticket's [plan](/help/agent-workflow#plans): `key`, optionally `revision` for an earlier one |
+| `save_plan` | Write or revise a plan: `key`, `body` (the whole text) and `revision`, the one you read (leave it out only for a ticket's first plan); a stale revision is refused |
+| `ask_decision` | Park a [decision](/help/agent-workflow#decisions): `project`, `kind` (`question`, `approval` or `ruling`), `question`, and optionally `tickets`, `subject` (an approval's `plan`, `merge` or `release`), `options` (each a `label` and `tradeoff`), `recommendation`, `why` and `run`. A ruling is your own call, recorded answered: give `answer` (an option's label, or words) and `note` |
+| `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted. The answer is recorded as relayed by the agent `vaquero mcp --agent NAME` (or `Vaquero-Agent`) names; without an agent, or without `words`, it is refused. An agent never answers as itself |
+| `list_decisions` | Decisions, newest first: optionally `project`, `state`, `kind`, `ticket` and `limit` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
@@ -48,7 +57,7 @@ Give each agent you run its own `--agent` name, so their claims and comments sta
 
 A tool's answer is the same JSON the API gives. Its structured content, for clients that read it, is that JSON too, except that a list arrives as `{"items": [...]}`, because structured content is always an object. A refusal (an unknown ticket, a claim someone else holds, a stale `version`) is a tool error whose text says what went wrong, the same message the API gives.
 
-The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping.
+The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words.
 
 ## The activity log
 

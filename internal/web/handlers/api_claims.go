@@ -29,7 +29,9 @@ func priorityRank(p int64) int64 {
 
 // ReadyTickets is the ready queue: the ready tickets of project (every
 // active project when nil), urgent to low then no priority, each in board
-// order, at most limit. It is the board's ready rule, read from the board.
+// order, at most limit. It is the board's ready rule, read from the board;
+// in a project with the agent workflow on, the board's ready cards also
+// passed readiness.Check (board.Card.Readiness), so each carries it.
 func ReadyTickets(r *http.Request, d Deps, project *gen.Project, limit int64) ([]api.TicketSummary, error) {
 	var projects []gen.Project
 	if project != nil {
@@ -41,7 +43,7 @@ func ReadyTickets(r *http.Request, d Deps, project *gen.Project, limit int64) ([
 		}
 		for _, p := range rows {
 			if !p.ArchivedAt.Valid {
-				projects = append(projects, gen.Project{ID: p.ID, Key: p.Key, Name: p.Name})
+				projects = append(projects, gen.Project{ID: p.ID, Key: p.Key, Name: p.Name, Workflow: p.Workflow})
 			}
 		}
 	}

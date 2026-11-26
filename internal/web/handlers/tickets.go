@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/text/unicode/norm"
@@ -100,9 +101,11 @@ func readTicketForm(r *http.Request, d Deps, p gen.Project, f *templates.TicketF
 	f.StatusID, f.Priority = r.PostFormValue("status"), r.PostFormValue("priority")
 	f.AssigneeID, f.MilestoneID = r.PostFormValue("assignee"), r.PostFormValue("milestone")
 	f.Parent, f.Tags = strings.TrimSpace(r.PostFormValue("parent")), r.PostFormValue("tags")
+	f.Tier, f.Model = r.PostFormValue("tier"), r.PostFormValue("model")
 	in := core.TicketInput{
 		Title: f.Title, Body: f.Body, StatusID: f.StatusID,
 		AssigneeID: f.AssigneeID, MilestoneID: f.MilestoneID, Tags: splitTags(f.Tags),
+		Tier: f.Tier, Model: f.Model,
 	}
 	errs := map[string]string{}
 	if f.Priority != "" {
@@ -189,7 +192,7 @@ func TicketEdit(d Deps) http.HandlerFunc {
 			Project: p, TicketKey: ticketKey(p, t.Number), Title: t.Title, Body: t.Body,
 			StatusID: t.StatusID, Priority: strconv.FormatInt(t.Priority, 10),
 			AssigneeID: t.AssigneeID.String, MilestoneID: t.MilestoneID.String,
-			Version: strconv.FormatInt(t.Version, 10),
+			Tier: t.Tier, Model: t.Model, Version: strconv.FormatInt(t.Version, 10),
 		}
 		if t.ParentID.Valid {
 			parent, err := d.R.GetTicket(ctx, t.ParentID.String)
@@ -252,7 +255,12 @@ func TicketUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		version, _ := strconv.ParseInt(f.Version, 10, 64)
-		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, in.Patch(), version); err != nil {
+		patch := in.Patch()
+		if p.Workflow != 1 {
+			// The form shows no tier or model then; keep what the API set.
+			patch.Tier, patch.Model = nil, nil
+		}
+		if _, err := d.Core.PatchTicket(r.Context(), d.Actor.ID, t.ID, patch, version); err != nil {
 			if conflict, ok := errors.AsType[*core.Conflict](err); ok {
 				// Keep what was typed; the form now carries the current
 				// version, so saving again overwrites knowingly.
@@ -367,6 +375,9 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			By: a.UploaderName, Ago: timefmt.Ago(at, now, nil), CanDelete: core.CanDeleteAttachment(d.Actor, gen.Attachment{UploadedBy: a.UploadedBy}),
 		})
 	}
+	if v.Plan, err = planView(r, d, t.ID, now); err != nil {
+		return v, err
+	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))
 	if err != nil {
 		return v, err
@@ -384,6 +395,28 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 		return v, err
 	}
 	v.Events = templates.FoldReorders(v.Events)
+	return v, nil
+}
+
+// planView is the ticket's plan for its page, nil when it has none.
+func planView(r *http.Request, d Deps, ticketID string, now time.Time) (*templates.PlanView, error) {
+	ctx := r.Context()
+	pl, err := d.R.GetTicketPlan(ctx, ticketID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	at, _ := timefmt.Parse(pl.UpdatedAt)
+	v := &templates.PlanView{Body: markdown.Render(pl.Body), Revision: pl.Revision, By: pl.UpdatedByName, Ago: timefmt.Ago(at, now, nil)}
+	if pl.Revision > 1 {
+		prev, err := d.R.GetPlanRevision(ctx, gen.GetPlanRevisionParams{PlanID: pl.ID, Revision: pl.Revision - 1})
+		if err != nil {
+			return nil, err
+		}
+		v.Diff = templates.LineDiff(prev.Body, pl.Body)
+	}
 	return v, nil
 }
 

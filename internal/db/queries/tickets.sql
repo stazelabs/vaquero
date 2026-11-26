@@ -1,7 +1,8 @@
 -- name: CreateTicket :one
 INSERT INTO tickets (id, project_id, number, title, body, status_id, priority, assignee_id,
-                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
+                     parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at,
+                     tier, model)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *;
 
 -- name: GetTicket :one
 SELECT * FROM tickets WHERE id = ?;
@@ -27,7 +28,7 @@ ORDER BY t.number;
 -- name: UpdateTicket :exec
 UPDATE tickets SET title = ?, body = ?, status_id = ?, priority = ?, assignee_id = ?,
        parent_id = ?, milestone_id = ?, position = ?, updated_at = ?, status_changed_at = ?,
-       version = version + 1
+       tier = ?, model = ?, version = version + 1
 WHERE id = ?;
 
 -- name: MaxPositionInStatus :one
@@ -57,5 +58,12 @@ UPDATE tickets SET status_id = ?, position = ?, status_changed_at = ?, updated_a
 -- The current key of each given ticket that still exists, in one read
 -- (link targets in history, named by id).
 SELECT t.id, p.key AS project_key, t.number FROM tickets t
+JOIN projects p ON p.id = t.project_id
+WHERE t.id IN (sqlc.slice('ids'));
+
+-- name: ListTicketBriefs :many
+-- The key and title of each given ticket that still exists, in one read
+-- (what a plan approval asked about).
+SELECT t.id, p.key AS project_key, t.number, t.title FROM tickets t
 JOIN projects p ON p.id = t.project_id
 WHERE t.id IN (sqlc.slice('ids'));

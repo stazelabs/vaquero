@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -61,16 +62,39 @@ func (c *Core) CreateProject(ctx context.Context, by string, in ProjectInput) (g
 	return p, err
 }
 
-// UpdateProject changes a project's name and description. The key never changes.
-func (c *Core) UpdateProject(ctx context.Context, by, projectID, name, description string) (gen.Project, error) {
-	f := fields{}
-	name = text(f, "name", name, 120, "Enter a name.", "Keep the name under 120 characters.")
-	description = text(f, "description", description, 20000, "", "Keep the description under 20,000 characters.")
+// ProjectPatch names a project's fields to change; a nil field keeps its
+// value. TierMap is JSON (ParseTierMap), "" for the default map.
+type ProjectPatch struct {
+	Name, Description *string
+	Workflow          *bool
+	TierMap           *string
+}
+
+// UpdateProject changes the fields patch names. The key never changes
+// here (ChangeProjectKey). A patch that changes nothing writes nothing.
+func (c *Core) UpdateProject(ctx context.Context, by, projectID string, patch ProjectPatch) (gen.Project, error) {
 	var p gen.Project
 	err := c.tx(ctx, func(q *gen.Queries) error {
 		var err error
 		if p, err = q.GetProject(ctx, projectID); err != nil {
 			return notFound(err, "get project")
+		}
+		f := fields{}
+		name, description, workflow, tierMap := p.Name, p.Description, p.Workflow == 1, p.TierMap
+		if patch.Name != nil {
+			name = text(f, "name", *patch.Name, 120, "Enter a name.", "Keep the name under 120 characters.")
+		}
+		if patch.Description != nil {
+			description = text(f, "description", *patch.Description, 20000, "", "Keep the description under 20,000 characters.")
+		}
+		if patch.Workflow != nil {
+			workflow = *patch.Workflow
+		}
+		if patch.TierMap != nil {
+			if tierMap, err = storedTierMap(*patch.TierMap); err != nil {
+				inv, _ := errors.AsType[*Invalid](err)
+				maps.Copy(f, inv.Fields)
+			}
 		}
 		if err := f.err(); err != nil {
 			return err
@@ -82,14 +106,24 @@ func (c *Core) UpdateProject(ctx context.Context, by, projectID, name, descripti
 		if description != p.Description {
 			changes["description"] = Change{}
 		}
+		if workflow != (p.Workflow == 1) {
+			changes["workflow"] = Change{p.Workflow == 1, workflow}
+		}
+		if tierMap != p.TierMap {
+			changes["tier_map"] = Change{}
+		}
 		if len(changes) == 0 {
 			return nil
 		}
 		now := timefmt.Format(c.Now())
-		if err := q.UpdateProject(ctx, gen.UpdateProjectParams{Name: name, Description: description, UpdatedAt: now, ID: p.ID}); err != nil {
+		wf := int64(0)
+		if workflow {
+			wf = 1
+		}
+		if err := q.UpdateProject(ctx, gen.UpdateProjectParams{Name: name, Description: description, Workflow: wf, TierMap: tierMap, UpdatedAt: now, ID: p.ID}); err != nil {
 			return fmt.Errorf("update project: %w", err)
 		}
-		p.Name, p.Description, p.UpdatedAt = name, description, now
+		p.Name, p.Description, p.Workflow, p.TierMap, p.UpdatedAt = name, description, wf, tierMap, now
 		return c.emit(ctx, q, by, EvProjectUpdated, p.ID, "", map[string]any{"changes": changes})
 	})
 	return p, err
@@ -154,7 +188,8 @@ func (c *Core) ChangeProjectKey(ctx context.Context, by, projectID, newKey strin
 }
 
 // DeleteProject removes a project and everything in it: its tickets, their
-// tags, comments and links (including links from other projects' tickets),
+// tags, comments, plans (every revision) and links (including links from
+// other projects' tickets), its decisions with their tickets and approvals,
 // its milestones, statuses and history. confirm must be the project's key
 // (any case). One project.deleted event remains, with no project id.
 // Callers take a backup first.
@@ -175,6 +210,11 @@ func (c *Core) DeleteProject(ctx context.Context, by, projectID, confirm string)
 			{"comments", q.DeleteProjectComments},
 			{"attachments", q.DeleteProjectAttachments},
 			{"links", q.DeleteProjectLinks},
+			{"plan revisions", q.DeleteProjectPlanRevisions},
+			{"plans", q.DeleteProjectPlans},
+			{"approvals", q.DeleteProjectApprovals},
+			{"decision tickets", q.DeleteProjectDecisionTickets},
+			{"decisions", q.DeleteProjectDecisions},
 			{"events", func(ctx context.Context, id string) error {
 				return q.DeleteProjectEvents(ctx, nullString(id))
 			}},

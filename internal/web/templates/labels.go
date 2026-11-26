@@ -40,6 +40,23 @@ func PriorityLabel(p int64) string {
 	return priorityLabels[p]
 }
 
+// TierLabel is an execution tier in words: "Standard", or "No tier".
+func TierLabel(t string) string {
+	if t == "" {
+		return "No tier"
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
+}
+
+// TierOptions are the tiers for a Select: none, then design to heavy.
+func TierOptions() []Option {
+	out := []Option{{Value: "", Label: "No tier"}}
+	for _, t := range core.Tiers {
+		out = append(out, Option{Value: t, Label: TierLabel(t)})
+	}
+	return out
+}
+
 // PriorityOptions are the priorities for a Select: none, then urgent to low.
 func PriorityOptions() []Option {
 	out := make([]Option, len(priorityLabels))

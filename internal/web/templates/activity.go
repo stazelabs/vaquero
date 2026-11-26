@@ -147,6 +147,7 @@ func ParsePayload(raw string) map[string]any {
 var fieldWords = [][2]string{
 	{"title", "title"}, {"body", "description"}, {"status", "status"}, {"priority", "priority"},
 	{"assignee", "assignee"}, {"parent", "parent"}, {"milestone", "milestone"}, {"tags", "tags"},
+	{"tier", "tier"}, {"model", "model"},
 }
 
 // EventSentence is what happened, after the actor's name: "moved VAQ-4
@@ -160,7 +161,7 @@ func EventSentence(e EventView) string {
 		if from, to, ok := change(e.Payload, "key"); ok {
 			return fmt.Sprintf("changed the key of %s to %s", from, to)
 		}
-		return "updated project " + e.ProjectKey
+		return projectUpdated(e)
 	case core.EvProjectArchived:
 		return "archived project " + e.ProjectKey
 	case core.EvProjectRestored:
@@ -234,6 +235,15 @@ func EventSentence(e EventView) string {
 			return fmt.Sprintf("let the claim on %s lapse; it is back in %s", e.TicketKey, st)
 		}
 		return "let the claim on " + e.TicketKey + " lapse"
+	case core.EvPlanCreated:
+		return "wrote the plan for " + e.TicketKey
+	case core.EvPlanRevised:
+		if n, ok := e.Payload["revision"].(float64); ok {
+			return fmt.Sprintf("revised the plan for %s (revision %d)", e.TicketKey, int64(n))
+		}
+		return "revised the plan for " + e.TicketKey
+	case core.EvDecisionAsked, core.EvDecisionRuled, core.EvDecisionAnswered, core.EvDecisionWithdrawn:
+		return decisionSentence(e)
 	case core.EvTagRenamed:
 		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagMerged:
@@ -242,6 +252,57 @@ func EventSentence(e EventView) string {
 		return fmt.Sprintf("deleted tag %s from %s (%s)", s("name"), e.ProjectKey, tagTickets(e.Payload))
 	}
 	return "made a change"
+}
+
+// decisionSentence words a decision.* event: what was asked, ruled,
+// answered (approved, overruled, relayed) or withdrawn, and about what.
+func decisionSentence(e EventView) string {
+	s := func(k string) string { v, _ := e.Payload[k].(string); return v }
+	scope := func(prep string) string {
+		ids, _ := e.Payload["ticket_ids"].([]any)
+		switch {
+		case e.TicketKey != "":
+			return prep + " " + e.TicketKey
+		case len(ids) > 1:
+			return prep + " " + countLabel(int64(len(ids)), "ticket", "tickets") + " in " + e.ProjectKey
+		}
+		return "in " + e.ProjectKey
+	}
+	noun := map[string]string{"plan": "the plan", "merge": "a merge", "release": "a release"}[s("subject")]
+	if noun == "" {
+		noun = "a change"
+	}
+	answer := ""
+	if a := s("answer"); a != "" {
+		answer = ": " + a
+	}
+	if e.Payload["relayed"] == true {
+		answer += " (relayed by " + s("relayed_by") + ")"
+	}
+	kind := s("kind")
+	switch e.Kind {
+	case core.EvDecisionAsked:
+		if kind == core.DecisionApproval {
+			return "asked to approve " + noun + " " + scope("for")
+		}
+		return "asked a question " + scope("about")
+	case core.EvDecisionRuled:
+		return "made a ruling " + scope("on") + answer
+	case core.EvDecisionAnswered:
+		switch {
+		case kind == core.DecisionApproval && e.Payload["approved"] == true:
+			return "approved " + noun + " " + scope("for") + strings.TrimPrefix(answer, ": "+s("answer"))
+		case kind == core.DecisionApproval:
+			return "answered the request to approve " + noun + " " + scope("for") + answer
+		case kind == core.DecisionRuling:
+			return "overruled a ruling " + scope("on") + answer
+		}
+		return "answered a question " + scope("about") + answer
+	}
+	if kind == core.DecisionApproval {
+		return "withdrew the request to approve " + noun + " " + scope("for")
+	}
+	return "withdrew a question " + scope("about")
 }
 
 // tagTickets is a tag event's ticket count: "1 ticket", "3 tickets".
@@ -281,6 +342,30 @@ func change(p map[string]any, field string) (from, to string, ok bool) {
 	return from, to, true
 }
 
+// projectUpdated is a project.updated sentence: the agent workflow turned
+// on or off and the tier map changed, when they did, else "updated
+// project VAQ".
+func projectUpdated(e EventView) string {
+	changes, _ := e.Payload["changes"].(map[string]any)
+	_, tierMap := changes["tier_map"]
+	var out string
+	if c, ok := changes["workflow"].(map[string]any); ok {
+		state := "off"
+		if on, _ := c["to"].(bool); on {
+			state = "on"
+		}
+		out = "turned the agent workflow " + state + " in " + e.ProjectKey
+		if tierMap {
+			out += " and changed its tier map"
+		}
+		return out
+	}
+	if tierMap {
+		return "changed the tier map of " + e.ProjectKey
+	}
+	return "updated project " + e.ProjectKey
+}
+
 // joinAnd is "a", "a and b", "a, b and c".
 func joinAnd(xs []string) string {
 	switch len(xs) {
@@ -316,6 +401,7 @@ var eventIcons = map[string]string{
 var prefixIcons = map[string]string{
 	"project": "project", "status": "settings", "milestone": "milestone",
 	"comment": "comment", "attachment": "attachment", "link": "link", "token": "token", "tag": "tag",
+	"plan": "plan", "decision": "decision",
 }
 
 // EventIcon is the glyph an activity line starts with.

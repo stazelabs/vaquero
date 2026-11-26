@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -11,6 +12,8 @@ import (
 	"time"
 
 	"github.com/stazelabs/vaquero/internal/client"
+	"github.com/stazelabs/vaquero/internal/version"
+	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
 const initLine = `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`
@@ -222,5 +225,91 @@ func TestMCPBridgeWarnsWhenAgentIgnored(t *testing.T) {
 	// With the owner's token the agent applies, and nothing is warned.
 	if _, _, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "t", "--agent", "builder"); strings.Contains(errOut, "ignored") {
 		t.Fatalf("warned for the owner: %s", errOut)
+	}
+}
+
+// newestEventMeta is the newest event's meta, read from the server's
+// database.
+func newestEventMeta(t *testing.T, e *webtest.Env) map[string]string {
+	t.Helper()
+	evs, err := e.Deps.R.ListEventsNewest(context.Background(), 1)
+	if err != nil || len(evs) != 1 {
+		t.Fatalf("%v %v", evs, err)
+	}
+	var m map[string]string
+	if err := json.Unmarshal([]byte(evs[0].Meta), &m); err != nil {
+		t.Fatalf("meta %q: %v", evs[0].Meta, err)
+	}
+	return m
+}
+
+// Review Focus 5: the harness from initialize's clientInfo and the model
+// from --model reach the event a later tools/call writes.
+func TestMCPBridgeSendsHarnessAndModel(t *testing.T) {
+	e := cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Bridge me")
+	in := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codex","version":"1.2"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_comment","arguments":{"key":"VAQ-1","body":"With provenance."}}}`,
+	}, "\n") + "\n"
+	t.Setenv("VAQUERO_MODEL", "ignored-when-the-flag-is-given")
+	code, out, errOut := bridge(t, strings.NewReader(in), "--model", "gpt-x")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if as := answers(t, out); len(as) != 2 || as[1].Error != nil || strings.Contains(string(as[1].Result), `"isError":true`) {
+		t.Fatalf("%s", out)
+	}
+	m := newestEventMeta(t, e)
+	if m["surface"] != "mcp" || m["harness"] != "codex/1.2" || m["model"] != "gpt-x" || m["client"] != "vaquero-mcp/"+version.Version {
+		t.Fatalf("meta %v", m)
+	}
+}
+
+// The model comes from VAQUERO_MODEL without the flag; no clientInfo leaves
+// the harness out and the call still goes through.
+func TestMCPBridgeModelFromEnvWithoutClientInfo(t *testing.T) {
+	e := cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Bridge me")
+	in := strings.Join([]string{
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_comment","arguments":{"key":"VAQ-1","body":"No harness."}}}`,
+	}, "\n") + "\n"
+	t.Setenv("VAQUERO_MODEL", "env-model")
+	code, out, errOut := bridge(t, strings.NewReader(in))
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if as := answers(t, out); len(as) != 2 || as[1].Error != nil || strings.Contains(string(as[1].Result), `"isError":true`) {
+		t.Fatalf("%s", out)
+	}
+	m := newestEventMeta(t, e)
+	if _, ok := m["harness"]; ok || m["model"] != "env-model" || m["surface"] != "mcp" {
+		t.Fatalf("meta %v", m)
+	}
+}
+
+// The CLI names itself, so its changes record surface cli.
+func TestCLISendsClientHeader(t *testing.T) {
+	e := cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "From the CLI")
+	m := newestEventMeta(t, e)
+	if m["surface"] != "cli" || m["client"] != "vaquero-cli/"+version.Version {
+		t.Fatalf("meta %v", m)
+	}
+}
+
+// A reported value a header can't carry is tidied, never a failed call.
+func TestMCPBridgeHeaderValue(t *testing.T) {
+	for in, want := range map[string]string{
+		"codex/1.2":              "codex/1.2",
+		"  co\r\ndex\x00/1\x7f ": "codex/1",
+		strings.Repeat("é", 90):  strings.Repeat("é", 80),
+		"\xff":                   "",
+	} {
+		if got := headerValue(in); got != want {
+			t.Errorf("headerValue(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

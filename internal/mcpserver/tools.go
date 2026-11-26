@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
@@ -63,6 +64,8 @@ type (
 		Milestone string   `json:"milestone,omitempty" jsonschema:"A milestone, by name."`
 		Parent    string   `json:"parent,omitempty" jsonschema:"The parent ticket's key, making this a sub-ticket."`
 		Tags      []string `json:"tags,omitempty" jsonschema:"Tags; new ones are created."`
+		Tier      string   `json:"tier,omitempty" jsonschema:"The execution tier: design, light, standard or heavy."`
+		Model     string   `json:"model,omitempty" jsonschema:"An exact model for the work, overriding the project's tier map."`
 	}
 
 	updateArgs struct {
@@ -82,6 +85,8 @@ type (
 		Assignee   *string  `json:"assignee,omitempty" jsonschema:"Who to assign it to, by name; an empty string clears it."`
 		Milestone  *string  `json:"milestone,omitempty" jsonschema:"A milestone, by name; an empty string clears it."`
 		Parent     *string  `json:"parent,omitempty" jsonschema:"The parent ticket's key; an empty string clears it."`
+		Tier       *string  `json:"tier,omitempty" jsonschema:"The execution tier: design, light, standard or heavy; an empty string clears it."`
+		Model      *string  `json:"model,omitempty" jsonschema:"An exact model for the work, overriding the project's tier map; an empty string clears it."`
 		Tags       []string `json:"tags,omitempty" jsonschema:"Replace every tag with these."`
 		AddTags    []string `json:"add_tags,omitempty" jsonschema:"Tags to add."`
 		RemoveTags []string `json:"remove_tags,omitempty" jsonschema:"Tags to remove."`
@@ -130,6 +135,52 @@ type (
 		View         string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
 
+	getPlanArgs struct {
+		Key      string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Revision int64  `json:"revision,omitempty" jsonschema:"An earlier revision to read. Leave it out for the current plan."`
+	}
+
+	savePlanArgs struct {
+		Key      string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
+		Body     string `json:"body" jsonschema:"The whole plan, in Markdown; it replaces the current text."`
+		Revision int64  `json:"revision,omitempty" jsonschema:"The revision you read; the save is refused if the plan changed since. Leave it out only to write a ticket's first plan."`
+	}
+
+	askDecisionArgs struct {
+		Project        string           `json:"project" jsonschema:"The project's key, such as VAQ."`
+		Kind           string           `json:"kind" jsonschema:"question (for the owner), approval (of a plan, a merge or a release) or ruling (a call you made, recorded with its answer)."`
+		Question       string           `json:"question" jsonschema:"What is to be decided, in a sentence or two."`
+		Tickets        []string         `json:"tickets,omitempty" jsonschema:"The tickets it concerns, by key, all in the project. A plan approval names at least one; leave it out for a project-level decision."`
+		Subject        string           `json:"subject,omitempty" jsonschema:"For an approval: plan, merge or release."`
+		Options        []decisionOption `json:"options,omitempty" jsonschema:"The answers offered, each a label and its trade-off. An approval's must include Approve, the only option that approves; without options it offers Approve and Request changes."`
+		Recommendation string           `json:"recommendation,omitempty" jsonschema:"The option you recommend, and why."`
+		Why            string           `json:"why,omitempty" jsonschema:"Why the decision matters."`
+		Run            string           `json:"run,omitempty" jsonschema:"The run it was made in."`
+		Answer         string           `json:"answer,omitempty" jsonschema:"For a ruling only: the option you chose, by label, or your answer in words."`
+		Note           string           `json:"note,omitempty" jsonschema:"For a ruling only: a one-line reason."`
+	}
+
+	decisionOption struct {
+		Label    string `json:"label" jsonschema:"The option's label."`
+		Tradeoff string `json:"tradeoff,omitempty" jsonschema:"What choosing it costs."`
+	}
+
+	answerDecisionArgs struct {
+		ID     string `json:"id" jsonschema:"The decision's id."`
+		Option string `json:"option,omitempty" jsonschema:"The owner's choice, by the option's label."`
+		Text   string `json:"text,omitempty" jsonschema:"The owner's answer in words, when it is none of the options."`
+		Note   string `json:"note,omitempty" jsonschema:"A note on the answer."`
+		Words  string `json:"words,omitempty" jsonschema:"The owner's own words, quoted from your conversation. An agent must send them: it relays the owner's answer, never its own."`
+	}
+
+	listDecisionsArgs struct {
+		Project string `json:"project,omitempty" jsonschema:"Only this project's decisions, by key."`
+		State   string `json:"state,omitempty" jsonschema:"open, answered or withdrawn."`
+		Kind    string `json:"kind,omitempty" jsonschema:"question, ruling or approval."`
+		Ticket  string `json:"ticket,omitempty" jsonschema:"Only decisions about this ticket, by key."`
+		Limit   int64  `json:"limit,omitempty" jsonschema:"At most this many, up to 500. Leave it out for 100."`
+	}
+
 	releaseArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
@@ -138,8 +189,9 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
-	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "search", "update_ticket",
+	"add_comment", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
+	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket",
+	"save_plan", "search", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -187,10 +239,29 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/projects/"+url.PathEscape(in.Project)+"/tickets", q)
 		})
 	add(s, c, "get_ticket", "Get a ticket", true,
-		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim and version.",
+		"One ticket with its description, tags, sub-tickets, links, comments, attachments (name, type, size and url), claim, version and tier. With the project's agent workflow on it also has readiness: whether it passes the workflow's gate and the reasons it doesn't.",
 		func(in keyArgs) request { return get(ticketPath(in.Key, ""), nil) })
+	add(s, c, "get_plan", "Get a plan", true,
+		"A ticket's plan, a Markdown document with every revision kept: its text, revision, who wrote it and when. Pass revision for an earlier one.",
+		func(in getPlanArgs) request {
+			if in.Revision > 0 {
+				return get(ticketPath(in.Key, "/plan/revisions/"+strconv.FormatInt(in.Revision, 10)), nil)
+			}
+			return get(ticketPath(in.Key, "/plan"), nil)
+		})
+	add(s, c, "list_decisions", "List decisions", true,
+		"Questions, rulings and approvals, newest first, each with its options, state, answer (direct from the owner or relayed), and for an approved plan the approvals it pinned.",
+		func(in listDecisionsArgs) request {
+			q := url.Values{}
+			set(q, "project", in.Project)
+			set(q, "state", in.State)
+			set(q, "kind", in.Kind)
+			set(q, "ticket", in.Ticket)
+			num(q, "limit", in.Limit)
+			return get("/decisions", q)
+		})
 	add(s, c, "ready_tickets", "List ready tickets", true,
-		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first.",
+		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first. In a project with the agent workflow on, only tickets with a tier and a current plan approval, each with its tier and readiness.",
 		func(in readyArgs) request {
 			q := url.Values{}
 			set(q, "project", in.Project)
@@ -212,7 +283,7 @@ func addTools(s *mcp.Server, c *caller) {
 		"Create a ticket in a project. Only the title is required.",
 		func(in createArgs) request {
 			b := map[string]any{"title": in.Title}
-			for k, v := range map[string]string{"body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent} {
+			for k, v := range map[string]string{"body": in.Body, "status": in.Status, "assignee": in.Assignee, "milestone": in.Milestone, "parent": in.Parent, "tier": in.Tier, "model": in.Model} {
 				if v != "" {
 					b[k] = v
 				}
@@ -278,6 +349,55 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in commentArgs) request {
 			return viewed(post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body}), in.View)
 		})
+	add(s, c, "save_plan", "Save a plan", false,
+		"Write a ticket's plan, or revise it: send the whole text and the revision you read. If someone saved since, nothing is written and the error says so; read it again with get_plan.",
+		func(in savePlanArgs) request {
+			b := map[string]any{"body": in.Body}
+			if in.Revision != 0 {
+				b["revision"] = in.Revision
+			}
+			return request{method: http.MethodPut, path: ticketPath(in.Key, "/plan"), body: b}
+		})
+	add(s, c, "ask_decision", "Ask for a decision", false,
+		"Park a question for the owner, ask for an approval, or record a ruling you made (kind ruling, with answer and note), open to the owner's overruling. Never answer your own question: relay the owner's answer with answer_decision.",
+		func(in askDecisionArgs) request {
+			b := map[string]any{"project": in.Project, "kind": in.Kind, "question": in.Question}
+			for k, v := range map[string]string{"subject": in.Subject, "recommendation": in.Recommendation, "why": in.Why, "run": in.Run} {
+				if v != "" {
+					b[k] = v
+				}
+			}
+			if in.Tickets != nil {
+				b["tickets"] = in.Tickets
+			}
+			if in.Options != nil {
+				b["options"] = in.Options
+			}
+			if in.Answer != "" || in.Note != "" {
+				a := map[string]string{"text": in.Answer}
+				for _, o := range in.Options {
+					if strings.EqualFold(strings.TrimSpace(o.Label), strings.TrimSpace(in.Answer)) {
+						a = map[string]string{"option": o.Label}
+					}
+				}
+				if in.Note != "" {
+					a["note"] = in.Note
+				}
+				b["answer"] = a
+			}
+			return post("/decisions", b)
+		})
+	add(s, c, "answer_decision", "Relay the owner's answer", false,
+		"Record the answer the owner gave you in conversation to an open question or approval, or the owner's overruling of a ruling, quoting the owner's words. Only the owner decides; the answer is stored as relayed by you, the agent vaquero mcp --agent names, and is refused without one.",
+		func(in answerDecisionArgs) request {
+			b := map[string]string{}
+			for k, v := range map[string]string{"option": in.Option, "text": in.Text, "note": in.Note, "words": in.Words} {
+				if v != "" {
+					b[k] = v
+				}
+			}
+			return post("/decisions/"+url.PathEscape(in.ID)+"/answer", b)
+		})
 	add(s, c, "link_tickets", "Link two tickets", false,
 		"Record that one ticket blocks, relates to or duplicates another. A blocking loop is refused.",
 		func(in linkArgs) request {
@@ -302,7 +422,7 @@ func addTools(s *mcp.Server, c *caller) {
 // given are sent.
 func (f fieldArgs) body() map[string]any {
 	b := map[string]any{}
-	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent} {
+	for k, v := range map[string]*string{"title": f.Title, "body": f.Body, "status": f.Status, "assignee": f.Assignee, "milestone": f.Milestone, "parent": f.Parent, "tier": f.Tier, "model": f.Model} {
 		if v != nil {
 			b[k] = *v
 		}
@@ -404,6 +524,7 @@ var errSomething = &toolError{Code: "server_error", Message: "Something went wro
 type caller struct {
 	api    http.Handler
 	actor  gen.Actor
+	origin core.Origin // the /mcp request's, for every event a tool writes
 	logger *slog.Logger
 }
 
@@ -422,7 +543,7 @@ func (c *caller) do(ctx context.Context, rq request) ([]byte, *toolError) {
 	}
 	// A fresh routing context: the /mcp request's would make the API's
 	// router treat this call as a sub-route of /mcp.
-	ctx = context.WithValue(middleware.WithAPIActor(ctx, c.actor), chi.RouteCtxKey, nil)
+	ctx = context.WithValue(middleware.WithAPIActor(core.WithOrigin(ctx, c.origin), c.actor), chi.RouteCtxKey, nil)
 	req, err := http.NewRequestWithContext(ctx, rq.method, target, &body)
 	if err != nil {
 		return nil, &toolError{Code: "bad_request", Message: fmt.Sprintf("%s isn't a valid request.", rq.path)}

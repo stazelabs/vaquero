@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -115,6 +116,10 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	for i, s := range statuses {
 		v.Statuses = append(v.Statuses, templates.StatusRow{Status: s, First: i == 0, Last: i == len(statuses)-1})
 	}
+	v.TierMap = core.EffectiveTierMap(p.TierMap).Indent()
+	if p.Workflow == 1 {
+		v.TriageMissing = missingTriage(statuses)
+	}
 	for _, fn := range set {
 		fn(&v)
 	}
@@ -140,7 +145,7 @@ func ProjectUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		f := templates.ProjectForm{Key: p.Key, Name: r.PostFormValue("name"), Description: r.PostFormValue("description")}
-		if _, err := d.Core.UpdateProject(r.Context(), d.Actor.ID, p.ID, f.Name, f.Description); err != nil {
+		if _, err := d.Core.UpdateProject(r.Context(), d.Actor.ID, p.ID, core.ProjectPatch{Name: &f.Name, Description: &f.Description}); err != nil {
 			invalidOrError(w, r, d, err, func(fields map[string]string) {
 				f.Errors = fields
 				settingsPage(w, r, d, p, f, http.StatusUnprocessableEntity)
@@ -148,6 +153,68 @@ func ProjectUpdate(d Deps) http.HandlerFunc {
 			return
 		}
 		redirectWithFlash(w, r, flash.Success, "Project saved.", projectPath(p, "/settings"))
+	}
+}
+
+// triageStatuses are the backlog statuses the agent workflow parks
+// tickets in, in order.
+var triageStatuses = []string{"Needs decision", "Needs design"}
+
+// missingTriage is the triage statuses the project lacks. A status of the
+// same name in any category counts as present, since names are unique.
+func missingTriage(ss []gen.Status) []string {
+	var out []string
+	for _, name := range triageStatuses {
+		if !slices.ContainsFunc(ss, func(s gen.Status) bool { return strings.EqualFold(s.Name, name) }) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// ProjectWorkflow saves the workflow switch and the tier map. A refused map
+// re-renders settings with its message and what was typed.
+func ProjectWorkflow(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		on := r.PostFormValue("workflow") == "on"
+		tierMap := r.PostFormValue("tier_map")
+		sf := templates.SubForm{Values: map[string]string{"workflow": r.PostFormValue("workflow"), "tier_map": tierMap}}
+		settingsForm(w, r, d, p, "Workflow saved.", sf, func(v *templates.SettingsView, sf templates.SubForm) { v.Workflow = sf }, func() error {
+			_, err := d.Core.UpdateProject(r.Context(), d.Actor.ID, p.ID, core.ProjectPatch{Workflow: &on, TierMap: &tierMap})
+			return err
+		})
+	}
+}
+
+// TriageStatuses adds the missing triage statuses at the end of the
+// backlog category, one status (and one event) each.
+func TriageStatuses(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		if p.Workflow != 1 {
+			// The offer shows only with the workflow on; a stale page changes nothing.
+			http.Redirect(w, r, projectPath(p, "/settings"), http.StatusSeeOther)
+			return
+		}
+		settingsAction(w, r, d, p, "Triage statuses added.", func() error {
+			ss, err := d.R.ListStatuses(r.Context(), p.ID)
+			if err != nil {
+				return err
+			}
+			for _, name := range missingTriage(ss) {
+				if _, err := d.Core.CreateStatusAt(r.Context(), d.Actor.ID, p.ID, name, "backlog", core.StatusPlace{}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 	}
 }
 

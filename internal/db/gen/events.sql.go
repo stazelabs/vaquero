@@ -11,8 +11,8 @@ import (
 )
 
 const appendEvent = `-- name: AppendEvent :one
-INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING seq
+INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload, meta)
+VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq
 `
 
 type AppendEventParams struct {
@@ -22,6 +22,7 @@ type AppendEventParams struct {
 	ProjectID sql.NullString
 	TicketID  sql.NullString
 	Payload   string
+	Meta      string
 }
 
 func (q *Queries) AppendEvent(ctx context.Context, arg AppendEventParams) (int64, error) {
@@ -32,6 +33,7 @@ func (q *Queries) AppendEvent(ctx context.Context, arg AppendEventParams) (int64
 		arg.ProjectID,
 		arg.TicketID,
 		arg.Payload,
+		arg.Meta,
 	)
 	var seq int64
 	err := row.Scan(&seq)
@@ -50,7 +52,7 @@ func (q *Queries) CountEvents(ctx context.Context) (int64, error) {
 }
 
 const listEvents = `-- name: ListEvents :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
@@ -69,6 +71,7 @@ type ListEventsRow struct {
 	ProjectID    sql.NullString
 	TicketID     sql.NullString
 	Payload      string
+	Meta         string
 	ActorName    string
 	ProjectKey   string
 	TicketNumber int64
@@ -94,6 +97,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 			&i.ProjectID,
 			&i.TicketID,
 			&i.Payload,
+			&i.Meta,
 			&i.ActorName,
 			&i.ProjectKey,
 			&i.TicketNumber,
@@ -113,7 +117,7 @@ func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow,
 }
 
 const listEventsAfter = `-- name: ListEventsAfter :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
@@ -137,6 +141,7 @@ type ListEventsAfterRow struct {
 	ProjectID    sql.NullString
 	TicketID     sql.NullString
 	Payload      string
+	Meta         string
 	ActorName    string
 	ProjectKey   string
 	TicketNumber int64
@@ -162,6 +167,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 			&i.ProjectID,
 			&i.TicketID,
 			&i.Payload,
+			&i.Meta,
 			&i.ActorName,
 			&i.ProjectKey,
 			&i.TicketNumber,
@@ -181,7 +187,7 @@ func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams
 }
 
 const listEventsNewest = `-- name: ListEventsNewest :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
@@ -200,6 +206,7 @@ type ListEventsNewestRow struct {
 	ProjectID    sql.NullString
 	TicketID     sql.NullString
 	Payload      string
+	Meta         string
 	ActorName    string
 	ProjectKey   string
 	TicketNumber int64
@@ -225,6 +232,7 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 			&i.ProjectID,
 			&i.TicketID,
 			&i.Payload,
+			&i.Meta,
 			&i.ActorName,
 			&i.ProjectKey,
 			&i.TicketNumber,
@@ -244,7 +252,7 @@ func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEven
 }
 
 const listTicketEvents = `-- name: ListTicketEvents :many
-SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, a.name AS actor_name, coalesce(p.key, '') AS project_key,
+SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM (
     SELECT o.seq FROM events o WHERE o.ticket_id = ?1
@@ -267,6 +275,7 @@ type ListTicketEventsRow struct {
 	ProjectID    sql.NullString
 	TicketID     sql.NullString
 	Payload      string
+	Meta         string
 	ActorName    string
 	ProjectKey   string
 	TicketNumber int64
@@ -294,6 +303,7 @@ func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString)
 			&i.ProjectID,
 			&i.TicketID,
 			&i.Payload,
+			&i.Meta,
 			&i.ActorName,
 			&i.ProjectKey,
 			&i.TicketNumber,

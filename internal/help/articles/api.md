@@ -16,6 +16,10 @@ Make tokens on the Admin page or with `vaquero token create`; see [API tokens](/
 
 On this machine, a request made with your token can act as an agent by naming it in a `Vaquero-Agent` header; the agent is created the first time its name is used, and its comments, edits and claims are recorded under that name. Agent names are 1 to 80 letters, digits, spaces, dots, dashes or underscores; any other name gets `400` with code `bad_request`. A token that belongs to an agent always acts as that agent, whatever the header says.
 
+## Where a change came from
+
+Every change records where it came from, as the caller reports it, in the event's `meta`: `surface` (`web`, `cli`, `api` or `mcp`), and, when sent, `client` (the `Vaquero-Client` header; the command line sends `vaquero-cli/VERSION`), `harness` (`Vaquero-Harness`, the coding agent's name and version), `model` (`Vaquero-Model`) and `run` (`Vaquero-Run`). Each value is cut to 80 characters, and one not sent is left out. They are recorded as reported, never checked, and never decide who made the change: the token and `Vaquero-Agent` do. Changes Vaquero makes on its own, such as a claim lapsing or the local token minted at boot, carry no `meta`, and neither do older changes.
+
 ## Conventions
 
 - Projects are named by key (`VAQ`), tickets by key (`VAQ-12`), in any case.
@@ -32,27 +36,29 @@ On this machine, a request made with your token can act as an agent by naming it
 |---|---|
 | `GET /api/v1/me` | The actor the token belongs to |
 | `GET /api/v1/projects` | Every project, with `open_count` |
-| `GET /api/v1/projects/{key}` | One project |
+| `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
-| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
+| `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
+| `GET /api/v1/tickets/{ticket}/plan` | The ticket's [plan](/help/agent-workflow#plans): `ticket`, `revision`, `body`, `updated_by` and `updated_at`; `404` when it has none |
+| `GET /api/v1/tickets/{ticket}/plan/revisions/{n}` | Revision `n` of the plan, the current one included, in the same shape: `updated_by` and `updated_at` are who wrote that revision and when |
 | `GET /api/v1/attachments/{id}` | A file's bytes, served the way [the page serves them](/help/attachments#how-files-are-served) |
 | `GET /api/v1/search` | Search with `q`; each hit has a `snippet` with `[` and `]` around the matched words; a ticket found by its title alone has the start of its description, unmarked, or an empty snippet |
 | `GET /api/v1/export` | Everything, as a `.tar.gz` download (`application/gzip`); the owner's token only, `403` for anyone else, including an agent acting through it. `HEAD` makes the same checks and sends no body. See [Your data and backups](/help/data-and-backups#exporting-everything) |
-| `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
+| `GET /api/v1/events` | Changes, oldest first: `after=SEQ` for those after a sequence number (poll with the last `seq` you saw), or `newest=N` for the newest N. Reordering a card within its column is left out, though it still advances `seq`. A description edit's text is not included; its payload has `"body_diff": true` when the ticket page can show the diff. A plan's events (`plan.created`, `plan.revised`) carry only its `revision`, never its text. Each event's `meta` says where it came from (see [Where a change came from](#where-a-change-came-from)), left out when it has none. Each event's `text` is its sentence, as the activity page has it, naming a link's target by its current key, or "a deleted ticket". The answer's `Vaquero-Seq` header is the newest sequence number: when an `after=` answer is empty (it held only reorders, or nothing), continue from `Vaquero-Seq` |
 
 An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
-A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets).
+A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets). In a project with the [agent workflow](/help/agent-workflow) on, it also has `tier`, and a todo ticket's has `readiness`, `{"ready", "reasons"}`; a ticket's own answer has `readiness` whatever its status. `ready` then needs both the board's rule and `readiness` (see [Readiness](/help/agent-workflow#readiness)).
 
 ## Writing
 
 | Request | Body |
 |---|---|
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
-| `PATCH /api/v1/projects/{key}` | `{"name"}` and/or `{"description"}` |
+| `PATCH /api/v1/projects/{key}` | Any of `{"name", "description", "workflow", "tier_map"}`: `workflow` is `true` or `false`; `tier_map` is an object, harness to tier to model, that replaces the [tier map](/help/agent-workflow#the-tier-map), or `null` for the default |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
@@ -62,11 +68,12 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `PATCH /api/v1/projects/{key}/milestones/{name}` | Any of `{"name", "description", "due_on"}`; `"due_on": ""` clears the date. Answers with the milestone |
 | `POST /api/v1/projects/{key}/milestones/{name}/close` | Nothing; closes the milestone and answers with it |
 | `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
-| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags"}`; only `title` is required |
+| `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
 | `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
+| `PUT /api/v1/tickets/{ticket}/plan` | `{"body", "revision"}`: the whole plan, in Markdown (at most 200,000 characters). Leave out `revision` to write a ticket's first plan (`0` is `422`); to revise it, send the revision you read. The body limit is 1 MiB, as for every request. A stale or missing revision on a ticket that has a plan is `409` with the plan as it is now in `current`. Answers with the plan; saving the same text changes nothing |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
 | `DELETE /api/v1/comments/{id}` | Nothing; your own comments only |
 | `POST /api/v1/tickets/{ticket}/attachments` | A multipart form with the file in a part named `file`; answers `201` with the attachment. Up to 10 MB: more is `413` |
@@ -94,10 +101,24 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 
 | Request | Body or query |
 |---|---|
-| `GET /api/v1/ready` | Ready tickets, urgent first, then high, medium, low and no priority, each in board order: `project=KEY` for one project, `limit=N` (default 50) |
+| `GET /api/v1/ready` | Ready tickets, urgent first, then high, medium, low and no priority, each in board order: `project=KEY` for one project, `limit=N` (default 50). In a project with the agent workflow on, only tickets that pass [readiness](/help/agent-workflow#readiness) |
 | `POST /api/v1/tickets/{ticket}/claim` | `{"lease_minutes"}`, optional: 1 to 120, default 15. Assigns the ticket to you and moves a backlog or todo ticket to the first in-progress status; claiming your own claim again renews it |
 | `POST /api/v1/tickets/{ticket}/heartbeat` | `{"lease_minutes"}`, optional: extends your claim from now |
 | `POST /api/v1/tickets/{ticket}/release` | Nothing; gives up your claim, keeping the status and assignee |
+
+## Decisions
+
+A [decision](/help/agent-workflow#decisions) is a question for the owner, a ruling an agent made, or an approval of a plan, a merge or a release. Only the owner answers one. A request acting as an agent (your token with `Vaquero-Agent`) that answers is relaying the owner's answer, given in conversation: it must quote the owner in `words`, or it is `422` on `words`. Without the header, the owner answers directly, and `words` is refused; a direct answer comes from the command line or the API, never through MCP, where an answer is always relayed by the agent `vaquero mcp --agent NAME` names.
+
+| Request | Body or query |
+|---|---|
+| `POST /api/v1/decisions` | `{"project", "kind", "question", "tickets", "subject", "options", "recommendation", "why", "run", "answer"}`: `kind` is `question`, `approval` (with `subject` `plan`, `merge` or `release`) or `ruling`. `tickets` are keys in the project (a plan approval names at least one; leave them out for a project-level decision). `options` are `{"label", "tradeoff"}`, up to 10; an approval's must include one labelled `Approve` (any case), the only option that approves, or it is `422`, and an approval with none offers `Approve` and `Request changes`. A ruling is recorded already answered by you: send `answer` as `{"option"}` or `{"text"}`, with an optional `"note"`; other kinds take no `answer`. Answers `201` with the decision |
+| `GET /api/v1/decisions` | Newest first: `project=KEY`, `state` (`open`, `answered` or `withdrawn`), `kind`, `ticket=KEY`, `limit=N` (default 100, at most 500); an unknown one is `422` |
+| `GET /api/v1/decisions/{id}` | One decision |
+| `POST /api/v1/decisions/{id}/answer` | `{"option"}` (a label, any case) or `{"text"}`, with optional `"note"` and, when relaying, `"words"`. Answers an open question or approval; on a ruling it overrules the answer, which the decision's history keeps. An answered question or approval, or a withdrawn decision, is `422` |
+| `POST /api/v1/decisions/{id}/withdraw` | Nothing; withdraws an open question or approval. Only who asked, or the owner |
+
+A decision has `id`, `project`, `tickets`, `kind`, `subject` (approvals), `question`, `options`, `recommendation`, `why`, `run`, `state`, `asked_by` and `asked_at`, and once answered `answer`, `note`, `answered_by` and `answered_at`. `answered` is `direct` or `relayed` when the owner answered, with `relayed_by` (the agent) and `words` (the owner's, quoted) for a relayed one; a ruling an agent made has none until the owner overrules it. An approval's `approves` names its approving option. An approval of a plan answered `Approve` records, for each ticket, an entry in `approvals`: `ticket`, `requirement_hash` (a SHA-256 of the ticket's title and description as approved), `plan_revision` (the ticket's own plan's revision, or `0` when it has none: a sub-ticket then relies on its epic's own approval) and `at`. Any other answer records none. A plan approval also has `asked`, what an `Approve` covers, as asked: for each ticket its `ticket`, `plan_revision`, `parent` (its epic's key, left out for none) and `children` (its sub-tickets, each `key` and `title`). If any of that changes before the answer, `Approve` is `422`; ask again. An answered approval is final: to take one back, ask for a new plan approval and answer it `Request changes` (the latest answered plan approval of a ticket is the one that counts), or edit the ticket's requirement or plan, which makes the approval stale. The events (`decision.asked`, `decision.ruled`, `decision.answered`, `decision.withdrawn`) carry `decision_id`, `kind`, `subject`, `ticket_ids`, and the question and answer cut to 200 characters; never the owner's quoted words.
 
 ## Bulk changes
 
@@ -143,7 +164,7 @@ Every refusal has the same shape:
 | 403 | `forbidden` | Only the owner may do this (an export) |
 | 404 | `not_found` | No such project, ticket, comment, link or token, or no such endpoint |
 | 405 | `method_not_allowed` | The endpoint exists but not for that method (say, `DELETE` on a ticket) |
-| 409 | `conflict` | The ticket changed since the `version` you sent (an edit, or a tag change in project settings); `current` holds it as it is now |
+| 409 | `conflict` | The ticket changed since the `version` you sent (an edit, or a tag change in project settings), or its plan since the `revision` you sent; `current` holds the ticket, or the plan, as it is now |
 | 413 | `too_large` | The body is over 1 MiB, or an uploaded file is over 10 MB |
 | 422 | `invalid` | The change was refused; `message` says why and `fields` names the fields. Deleting an attachment you didn't upload (and aren't the owner) is a 422 with `fields.attachment`, not a 403 |
 | 500 | `server_error` | Something broke on the server; its log has the details |

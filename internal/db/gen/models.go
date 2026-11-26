@@ -26,6 +26,16 @@ type ApiToken struct {
 	RevokedAt  sql.NullString
 }
 
+type Approval struct {
+	ID              string
+	TicketID        string
+	DecisionID      string
+	RequirementHash string
+	PlanRevision    int64
+	Pins            string
+	At              string
+}
+
 type Attachment struct {
 	ID          string
 	TicketID    string
@@ -59,6 +69,36 @@ type CommentsFt struct {
 	Body string
 }
 
+type Decision struct {
+	ID             string
+	ProjectID      string
+	RunID          sql.NullString
+	Kind           string
+	Subject        string
+	Question       string
+	Options        string
+	Recommendation string
+	Why            string
+	State          string
+	Answer         string
+	AnswerNote     string
+	AnsweredBy     sql.NullString
+	AnsweredAt     sql.NullString
+	RelayedBy      sql.NullString
+	RelayedWords   string
+	AskedBy        string
+	AskedAt        string
+}
+
+type DecisionTicket struct {
+	DecisionID      string
+	TicketID        string
+	RequirementHash string
+	PlanRevision    int64
+	ParentID        string
+	Children        string
+}
+
 type Event struct {
 	Seq       int64
 	At        string
@@ -67,6 +107,7 @@ type Event struct {
 	ProjectID sql.NullString
 	TicketID  sql.NullString
 	Payload   string
+	Meta      string
 }
 
 type McpCall struct {
@@ -91,6 +132,24 @@ type Milestone struct {
 	ClosedAt    sql.NullString
 }
 
+type Plan struct {
+	ID        string
+	TicketID  string
+	Revision  int64
+	Body      string
+	CreatedAt string
+	UpdatedAt string
+	UpdatedBy string
+}
+
+type PlanRevision struct {
+	PlanID   string
+	Revision int64
+	Body     string
+	At       string
+	ActorID  string
+}
+
 type Project struct {
 	ID          string
 	Key         string
@@ -100,6 +159,8 @@ type Project struct {
 	CreatedAt   string
 	UpdatedAt   string
 	ArchivedAt  sql.NullString
+	Workflow    int64
+	TierMap     string
 }
 
 type Setting struct {
@@ -142,6 +203,8 @@ type Ticket struct {
 	ClaimedBy         sql.NullString
 	ClaimExpiresAt    sql.NullString
 	ClaimPrevStatusID sql.NullString
+	Tier              string
+	Model             string
 }
 
 type TicketLink struct {

@@ -24,6 +24,8 @@ type TicketInput struct {
 	ParentID    string   // "" for none
 	MilestoneID string   // "" for none
 	Tags        []string // names; created as needed
+	Tier        string   // one of Tiers, "" for none
+	Model       string   // an exact model id, "" for the tier map's choice
 }
 
 // positionStep spaces tickets within a status column so later drags can
@@ -83,6 +85,7 @@ func checkTicket(ctx context.Context, q *gen.Queries, p gen.Project, ticketID st
 	if in.Priority < 0 || in.Priority > 4 {
 		f.add("priority", "Choose a priority.")
 	}
+	tf.Tier, tf.Model = checkTier(f, in.Tier, in.Model)
 
 	statuses, err := q.ListStatuses(ctx, p.ID)
 	if err != nil {
@@ -252,6 +255,7 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 			StatusID: tf.StatusID, Priority: tf.Priority, AssigneeID: nullString(tf.AssigneeID),
 			ParentID: nullString(tf.ParentID), MilestoneID: nullString(tf.MilestoneID),
 			Position: pos, CreatedBy: by, CreatedAt: now, UpdatedAt: now, StatusChangedAt: now,
+			Tier: tf.Tier, Model: tf.Model,
 		})
 		if err != nil {
 			return fmt.Errorf("create ticket: %w", err)
@@ -279,6 +283,7 @@ func (c *Core) ticketView(ctx context.Context, q *gen.Queries, p gen.Project, t 
 	in := TicketInput{
 		Title: t.Title, Body: t.Body, StatusID: t.StatusID, Priority: t.Priority,
 		AssigneeID: t.AssigneeID.String, ParentID: t.ParentID.String, MilestoneID: t.MilestoneID.String,
+		Tier: t.Tier, Model: t.Model,
 	}
 	tf, err := checkTicket(ctx, q, p, t.ID, in)
 	if _, ok := errors.AsType[*Invalid](err); ok {
@@ -317,6 +322,12 @@ func diffTicket(old, cur ticketFields) map[string]Change {
 	}
 	if old.MilestoneID != cur.MilestoneID {
 		ch["milestone"] = Change{old.milestone, cur.milestone}
+	}
+	if old.Tier != cur.Tier {
+		ch["tier"] = Change{old.Tier, cur.Tier}
+	}
+	if old.Model != cur.Model {
+		ch["model"] = Change{old.Model, cur.Model}
 	}
 	if from, to := tagNames(old.tags), tagNames(cur.tags); !slices.Equal(from, to) {
 		ch["tags"] = Change{from, to}

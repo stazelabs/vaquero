@@ -66,6 +66,9 @@ type cmd struct {
 	// outsideTold: the note that the server runs outside brew services
 	// was printed; it too shows once a run.
 	outsideTold bool
+	// printCurrent prints a conflict's current object; nil prints it as a
+	// ticket.
+	printCurrent func(current json.RawMessage)
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
@@ -292,7 +295,7 @@ func (c *cmd) table(rows [][]string) {
 }
 
 // finish turns a command's error into its exit code, printing the message.
-// A conflict prints the ticket as it is now and exits 3.
+// A conflict prints the ticket (or the plan) as it is now and exits 3.
 func (c *cmd) finish(err error) int {
 	if err == nil {
 		return exitOK
@@ -308,6 +311,8 @@ func (c *cmd) finish(err error) int {
 		case len(apiErr.Current) == 0:
 		case c.jsonOut:
 			fmt.Fprintln(c.stdout, string(apiErr.Current))
+		case c.printCurrent != nil:
+			c.printCurrent(apiErr.Current)
 		default:
 			var t apiTicket
 			if json.Unmarshal(apiErr.Current, &t) == nil {

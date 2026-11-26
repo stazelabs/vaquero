@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -182,26 +183,33 @@ func APIProjectCreate(d Deps) http.HandlerFunc {
 	}
 }
 
-// APIProjectUpdate is PATCH /api/v1/projects/{key} {name?, description?}.
+// APIProjectUpdate is PATCH /api/v1/projects/{key} {name?, description?,
+// workflow?, tier_map?}: tier_map is an object (harness → tier → model)
+// that replaces the map, or null for the default.
 func APIProjectUpdate(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := apiProject(w, r, d)
 		if !ok {
 			return
 		}
-		var in struct{ Name, Description *string }
+		var in struct {
+			Name, Description *string
+			Workflow          *bool
+			TierMap           json.RawMessage `json:"tier_map"`
+		}
 		if f := api.Decode(r, &in); f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
-		name, desc := p.Name, p.Description
-		if in.Name != nil {
-			name = *in.Name
+		patch := core.ProjectPatch{Name: in.Name, Description: in.Description, Workflow: in.Workflow}
+		switch raw := strings.TrimSpace(string(in.TierMap)); {
+		case raw == "":
+		case raw == "null":
+			patch.TierMap = new("")
+		default:
+			patch.TierMap = &raw
 		}
-		if in.Description != nil {
-			desc = *in.Description
-		}
-		np, err := d.Core.UpdateProject(r.Context(), apiActor(r).ID, p.ID, name, desc)
+		np, err := d.Core.UpdateProject(r.Context(), apiActor(r).ID, p.ID, patch)
 		if err != nil {
 			apiCoreFail(w, r, d, p, err)
 			return
@@ -242,6 +250,8 @@ type ticketRequest struct {
 	Parent     *string   `json:"parent"`
 	Milestone  *string   `json:"milestone"`
 	Tags       *[]string `json:"tags"`
+	Tier       *string   `json:"tier"`
+	Model      *string   `json:"model"`
 	AddTags    []string  `json:"add_tags"`
 	RemoveTags []string  `json:"remove_tags"`
 	Version    int64     `json:"version"`
@@ -249,7 +259,7 @@ type ticketRequest struct {
 
 // patch resolves the request's names into a core.TicketPatch.
 func (in ticketRequest) patch(n *names) core.TicketPatch {
-	p := core.TicketPatch{Title: in.Title, Body: in.Body, Priority: in.Priority, AddTags: in.AddTags, RemoveTags: in.RemoveTags}
+	p := core.TicketPatch{Title: in.Title, Body: in.Body, Priority: in.Priority, Tier: in.Tier, Model: in.Model, AddTags: in.AddTags, RemoveTags: in.RemoveTags}
 	resolve := func(v *string, fn func(string) string) *string {
 		if v == nil {
 			return nil
@@ -302,6 +312,7 @@ func APITicketCreate(d Deps) http.HandlerFunc {
 		input.Title, input.Body = deref(pt.Title), deref(pt.Body)
 		input.StatusID, input.AssigneeID = deref(pt.StatusID), deref(pt.AssigneeID)
 		input.ParentID, input.MilestoneID = deref(pt.ParentID), deref(pt.MilestoneID)
+		input.Tier, input.Model = deref(pt.Tier), deref(pt.Model)
 		if pt.Priority != nil {
 			input.Priority = *pt.Priority
 		}

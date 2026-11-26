@@ -85,3 +85,51 @@ func TestTagWording(t *testing.T) {
 		t.Error("tag icons")
 	}
 }
+
+func TestDecisionWording(t *testing.T) {
+	ev := func(kind string, p map[string]any, ticket string) EventView {
+		return EventView{Kind: kind, ProjectKey: "VAQ", TicketKey: ticket, Payload: p}
+	}
+	group := []any{"a", "b", "c"}
+	for _, c := range []struct {
+		e    EventView
+		want string
+	}{
+		{ev(core.EvDecisionAsked, map[string]any{"kind": "question", "ticket_ids": []any{"a"}}, "VAQ-3"), "asked a question about VAQ-3"},
+		{ev(core.EvDecisionAsked, map[string]any{"kind": "question", "ticket_ids": []any{}}, ""), "asked a question in VAQ"},
+		{ev(core.EvDecisionAsked, map[string]any{"kind": "approval", "subject": "plan", "ticket_ids": group}, ""), "asked to approve the plan for 3 tickets in VAQ"},
+		{ev(core.EvDecisionAsked, map[string]any{"kind": "approval", "subject": "release", "ticket_ids": []any{}}, ""), "asked to approve a release in VAQ"},
+		{ev(core.EvDecisionRuled, map[string]any{"kind": "ruling", "answer": "light", "ticket_ids": []any{"a"}}, "VAQ-3"), "made a ruling on VAQ-3: light"},
+		{ev(core.EvDecisionAnswered, map[string]any{"kind": "question", "answer": "By age", "ticket_ids": []any{"a"}}, "VAQ-3"), "answered a question about VAQ-3: By age"},
+		{ev(core.EvDecisionAnswered, map[string]any{"kind": "question", "answer": "By age", "relayed": true, "relayed_by": "builder", "ticket_ids": []any{"a"}}, "VAQ-3"), "answered a question about VAQ-3: By age (relayed by builder)"},
+		{ev(core.EvDecisionAnswered, map[string]any{"kind": "approval", "subject": "plan", "answer": "Approve", "approved": true, "ticket_ids": group}, ""), "approved the plan for 3 tickets in VAQ"},
+		{ev(core.EvDecisionAnswered, map[string]any{"kind": "approval", "subject": "merge", "answer": "Not yet", "ticket_ids": []any{"a"}}, "VAQ-3"), "answered the request to approve a merge for VAQ-3: Not yet"},
+		{ev(core.EvDecisionAnswered, map[string]any{"kind": "ruling", "answer": "heavy", "overruled": map[string]any{"answer": "light"}, "ticket_ids": []any{"a"}}, "VAQ-3"), "overruled a ruling on VAQ-3: heavy"},
+		{ev(core.EvDecisionWithdrawn, map[string]any{"kind": "question", "ticket_ids": []any{"a"}}, "VAQ-3"), "withdrew a question about VAQ-3"},
+		{ev(core.EvDecisionWithdrawn, map[string]any{"kind": "approval", "subject": "plan", "ticket_ids": []any{"a"}}, "VAQ-3"), "withdrew the request to approve the plan for VAQ-3"},
+	} {
+		if got := EventSentence(c.e); got != c.want {
+			t.Errorf("got %q, want %q", got, c.want)
+		}
+	}
+	if EventIcon(core.EvDecisionAnswered) != "decision" {
+		t.Error("icon")
+	}
+}
+
+func TestWorkflowWording(t *testing.T) {
+	ch := func(c map[string]any) EventView {
+		return EventView{Kind: core.EvProjectUpdated, ProjectKey: "VAQ", Payload: map[string]any{"changes": c}}
+	}
+	for want, e := range map[string]EventView{
+		"turned the agent workflow on in VAQ":                          ch(map[string]any{"workflow": map[string]any{"from": false, "to": true}}),
+		"turned the agent workflow off in VAQ":                         ch(map[string]any{"workflow": map[string]any{"from": true, "to": false}}),
+		"turned the agent workflow on in VAQ and changed its tier map": ch(map[string]any{"workflow": map[string]any{"from": false, "to": true}, "tier_map": map[string]any{}}),
+		"changed the tier map of VAQ":                                  ch(map[string]any{"tier_map": map[string]any{}}),
+		"updated project VAQ":                                          ch(map[string]any{"name": map[string]any{"from": "A", "to": "B"}}),
+	} {
+		if got := EventSentence(e); got != want {
+			t.Errorf("%q, want %q", got, want)
+		}
+	}
+}

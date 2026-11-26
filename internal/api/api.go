@@ -72,11 +72,16 @@ func Internal() *Failure {
 
 // FromCore turns a core error into its answer: *core.Invalid is 422
 // invalid with the field messages, core.ErrNotFound 404, *core.Conflict 409
-// with current(conflict) as the current object. Anything else is a 500.
+// with current(conflict) as the current object, and *core.PlanConflict 409
+// (its caller sets Current to the plan, which only it can name). Anything
+// else is a 500.
 func FromCore(err error, current func(*core.Conflict) any) *Failure {
 	var inv *core.Invalid
 	var conflict *core.Conflict
+	var planConflict *core.PlanConflict
 	switch {
+	case errors.As(err, &planConflict):
+		return Fail(http.StatusConflict, "conflict", planConflict.Error())
 	case errors.As(err, &inv):
 		f := Fail(http.StatusUnprocessableEntity, "invalid", inv.Error())
 		f.Fields = inv.Fields

@@ -12,6 +12,11 @@ type Project struct {
 	Description string `json:"description"`
 	Archived    bool   `json:"archived"`
 	OpenCount   int64  `json:"open_count"`
+	// Workflow is the agent workflow switch. TierMap is the project's
+	// effective tier map, harness → tier → model: its own, else the
+	// default.
+	Workflow bool                         `json:"workflow"`
+	TierMap  map[string]map[string]string `json:"tier_map"`
 }
 
 type Status struct {
@@ -44,13 +49,34 @@ type TicketSummary struct {
 	// ClaimedBy and ClaimExpiresAt are set while a claim is held.
 	ClaimedBy      string `json:"claimed_by,omitempty"`
 	ClaimExpiresAt string `json:"claim_expires_at,omitempty"`
+	// Tier is the execution tier, absent when unset. On a summary it is
+	// given only when the project's agent workflow is on; a full Ticket
+	// gives it always (Ticket.Tier).
+	Tier string `json:"tier,omitempty"`
+	// Readiness is the agent workflow's gate, given only when the
+	// project's workflow is on: on every full ticket, and on the summary
+	// of a todo ticket. Ready above is then the board's rule and this one.
+	Readiness *Readiness `json:"readiness,omitempty"`
+}
+
+// Readiness says whether a ticket passes the agent workflow's gate: a
+// todo, with a tier, and a current plan approval. Reasons lists what
+// fails, in a fixed order; it is empty when Ready.
+type Readiness struct {
+	Ready   bool     `json:"ready"`
+	Reasons []string `json:"reasons"`
 }
 
 type Ticket struct {
 	TicketSummary
-	Body        string          `json:"body"`
-	Parent      string          `json:"parent,omitempty"`
-	Milestone   string          `json:"milestone,omitempty"`
+	Body      string `json:"body"`
+	Parent    string `json:"parent,omitempty"`
+	Milestone string `json:"milestone,omitempty"`
+	// Tier is the execution tier (design, light, standard or heavy) and
+	// Model an exact model for it; both absent when unset. Tier here
+	// shadows TicketSummary.Tier, so a full ticket gives it always.
+	Tier        string          `json:"tier,omitempty"`
+	Model       string          `json:"model,omitempty"`
 	SubTickets  []TicketSummary `json:"sub_tickets"`
 	Links       []Link          `json:"links"`
 	Comments    []Comment       `json:"comments"`
@@ -121,6 +147,83 @@ type Comment struct {
 	Warning        string `json:"warning,omitempty"`
 }
 
+// Plan is a ticket's plan at one revision: the current one from GET and
+// PUT /tickets/{ticket}/plan, an earlier one from .../plan/revisions/{n}.
+// UpdatedBy and UpdatedAt are who wrote that revision, and when.
+type Plan struct {
+	Ticket    string `json:"ticket"`
+	Revision  int64  `json:"revision"`
+	Body      string `json:"body"`
+	UpdatedBy string `json:"updated_by"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// Decision is a question for the owner, a ruling an agent (or the owner)
+// made, or an approval of a plan, a merge or a release. Tickets are keys;
+// people are names. Answered is "direct" when the owner answered without an
+// agent, "relayed" when RelayedBy recorded the owner's answer, quoting
+// Words. Approves is an approval's approving option, its Approve label as
+// spelled. Approvals are the pins a plan approval recorded, one per ticket.
+type Decision struct {
+	ID             string             `json:"id"`
+	Project        string             `json:"project"`
+	Tickets        []string           `json:"tickets"`
+	Run            string             `json:"run,omitempty"`
+	Kind           string             `json:"kind"`
+	Subject        string             `json:"subject,omitempty"`
+	Question       string             `json:"question"`
+	Options        []DecisionOption   `json:"options"`
+	Approves       string             `json:"approves,omitempty"`
+	Recommendation string             `json:"recommendation,omitempty"`
+	Why            string             `json:"why,omitempty"`
+	State          string             `json:"state"`
+	Answer         string             `json:"answer,omitempty"`
+	Note           string             `json:"note,omitempty"`
+	AnsweredBy     string             `json:"answered_by,omitempty"`
+	AnsweredAt     string             `json:"answered_at,omitempty"`
+	Answered       string             `json:"answered,omitempty"`
+	RelayedBy      string             `json:"relayed_by,omitempty"`
+	Words          string             `json:"words,omitempty"`
+	AskedBy        string             `json:"asked_by"`
+	AskedAt        string             `json:"asked_at"`
+	Approvals      []DecisionApproval `json:"approvals,omitempty"`
+	// Asked is, for a plan approval, what each ticket was asked about: its
+	// plan revision, its epic and its sub-tickets then. An Approve covers
+	// exactly these, and is refused if any changed since.
+	Asked []DecisionAsked `json:"asked,omitempty"`
+}
+
+// DecisionAsked is one plan-approval ticket as asked: Parent is its epic's
+// key (absent for none), Children its sub-tickets, by key and title. A
+// ticket deleted since is left out.
+type DecisionAsked struct {
+	Ticket       string         `json:"ticket"`
+	PlanRevision int64          `json:"plan_revision"`
+	Parent       string         `json:"parent,omitempty"`
+	Children     []DecisionItem `json:"children"`
+}
+
+// DecisionItem is a ticket a decision names, by key and title.
+type DecisionItem struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+}
+
+// DecisionOption is one answer a decision offers, and what it costs.
+type DecisionOption struct {
+	Label    string `json:"label"`
+	Tradeoff string `json:"tradeoff,omitempty"`
+}
+
+// DecisionApproval is one ticket's approval: its requirement's hash and the
+// plan revision approved (0: none), as they stood when approved.
+type DecisionApproval struct {
+	Ticket          string `json:"ticket"`
+	RequirementHash string `json:"requirement_hash"`
+	PlanRevision    int64  `json:"plan_revision"`
+	At              string `json:"at"`
+}
+
 // Attachment is a file on a ticket. URL is the address of its bytes on the
 // server, as a ticket body or comment refers to it.
 type Attachment struct {
@@ -165,6 +268,9 @@ type Event struct {
 	Ticket  string         `json:"ticket,omitempty"`
 	Text    string         `json:"text"` // the activity page's wording
 	Payload map[string]any `json:"payload"`
+	// Meta is where the change came from, as reported (surface, client,
+	// harness, model, run); left out for an event with none.
+	Meta map[string]string `json:"meta,omitempty"`
 }
 
 type SearchHit struct {

@@ -3,6 +3,7 @@ package handlers
 import (
 	"cmp"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"maps"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/search"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/units"
@@ -80,7 +82,8 @@ func apiTicket(w http.ResponseWriter, r *http.Request, d Deps) (gen.Ticket, gen.
 }
 
 func projectDTO(p gen.Project, open int64) api.Project {
-	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open}
+	return api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: open,
+		Workflow: p.Workflow == 1, TierMap: core.EffectiveTierMap(p.TierMap)}
 }
 
 // APIProjects is GET /api/v1/projects.
@@ -93,7 +96,7 @@ func APIProjects(d Deps) http.HandlerFunc {
 		}
 		out := make([]api.Project, len(rows))
 		for i, p := range rows {
-			out[i] = api.Project{Key: p.Key, Name: p.Name, Description: p.Description, Archived: p.ArchivedAt.Valid, OpenCount: p.OpenCount}
+			out[i] = projectDTO(gen.Project{Key: p.Key, Name: p.Name, Description: p.Description, ArchivedAt: p.ArchivedAt, Workflow: p.Workflow, TierMap: p.TierMap}, p.OpenCount)
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
@@ -134,7 +137,15 @@ func summary(k board.Card, s gen.Status) api.TicketSummary {
 	}
 	return api.TicketSummary{Key: k.Key, Title: k.Title, Status: s.Name, Category: s.Category,
 		Priority: k.Priority, Assignee: k.Assignee, Tags: tags, Ready: k.Ready, Version: k.Version,
-		ClaimedBy: k.ClaimedBy, ClaimExpiresAt: k.ClaimExpiresAt}
+		ClaimedBy: k.ClaimedBy, ClaimExpiresAt: k.ClaimExpiresAt, Tier: k.Tier, Readiness: apiReadiness(k.Readiness)}
+}
+
+// apiReadiness is a readiness answer, nil for none (the workflow off).
+func apiReadiness(r *readiness.Readiness) *api.Readiness {
+	if r == nil {
+		return nil
+	}
+	return &api.Readiness{Ready: r.Ready, Reasons: r.Reasons}
 }
 
 // APITickets is GET /api/v1/projects/{key}/tickets: the board's filters,
@@ -218,7 +229,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 	out := api.Ticket{
 		Key: ticketKey(p, t.Number), Title: t.Title, Status: st.Name, Category: st.Category,
 		Priority: t.Priority, Tags: []string{}, Version: t.Version,
-		Body: t.Body, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
+		Body: t.Body, Tier: t.Tier, Model: t.Model, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt,
 		SubTickets: []api.TicketSummary{}, Links: []api.Link{}, Comments: []api.Comment{}, Attachments: []api.Attachment{},
 	}
 	if t.AssigneeID.Valid {
@@ -265,6 +276,23 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		return out, err
 	}
 	slices.SortFunc(subs, func(a, b gen.ListBoardTicketsRow) int { return cmp.Compare(a.Number, b.Number) })
+	// With the workflow on, the ticket (always) and its todo sub-tickets
+	// carry the readiness gate, in one batch, and ready needs it.
+	var gate map[string]readiness.Readiness
+	if p.Workflow == 1 {
+		ids := []string{t.ID}
+		for _, s := range subs {
+			if s.StatusCategory == "todo" {
+				ids = append(ids, s.ID)
+			}
+		}
+		if gate, err = readiness.CheckAll(ctx, d.R, ids); err != nil {
+			return out, err
+		}
+		rd := gate[t.ID]
+		out.Readiness = apiReadiness(&rd)
+		out.Ready = out.Ready && rd.Ready
+	}
 	subTags := map[string][]string{}
 	if len(subs) > 0 {
 		ids := make([]string, len(subs))
@@ -284,9 +312,17 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		if names == nil {
 			names = []string{}
 		}
-		out.SubTickets = append(out.SubTickets, api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
+		sum := api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
 			Category: s.StatusCategory, Priority: s.Priority, Assignee: s.AssigneeName, Tags: names, Ready: s.Ready, Version: s.Version,
-			ClaimedBy: s.ClaimantName, ClaimExpiresAt: s.ClaimExpiresAt})
+			ClaimedBy: s.ClaimantName, ClaimExpiresAt: s.ClaimExpiresAt}
+		if p.Workflow == 1 {
+			sum.Tier = s.Tier
+			if rd, ok := gate[s.ID]; ok {
+				sum.Readiness = apiReadiness(&rd)
+				sum.Ready = sum.Ready && rd.Ready
+			}
+		}
+		out.SubTickets = append(out.SubTickets, sum)
 	}
 	from, err := d.R.ListLinksFrom(ctx, t.ID)
 	if err != nil {
@@ -390,11 +426,21 @@ func APIEvents(d Deps) http.HandlerFunc {
 				at = timefmt.Format(parsed)
 			}
 			out[i] = api.Event{Seq: e.Seq, At: at, Actor: e.ActorName, Kind: e.Kind, Project: e.ProjectKey,
-				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload)}
+				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload), Meta: eventMeta(e.Meta)}
 		}
 		w.Header().Set("Vaquero-Seq", strconv.FormatInt(newestSeq, 10))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// eventMeta is an event's stored meta, nil when it has none (or, never
+// expected, isn't an object of strings).
+func eventMeta(raw string) map[string]string {
+	var m map[string]string
+	if json.Unmarshal([]byte(raw), &m) != nil || len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // apiPayload is an event's payload as the API shows it: a description

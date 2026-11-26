@@ -2,7 +2,10 @@
 // can hold, through internal/core: projects, statuses, a milestone, tickets
 // with sub-tickets, tags (one renamed), a description edit, a reorder,
 // comments (one edited, one deleted), links, an agent with a claim, tokens
-// (one revoked), two attachments and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
+// (one revoked), two attachments, the agent workflow on with its own tier
+// map, a ticket with a tier and a model, a change with full provenance, a
+// plan with two revisions, decisions (a ruling, and a group plan approval
+// answered by relay, with its approvals) and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
 package coreseed
 
 import (
@@ -96,7 +99,9 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if err := c.DeleteComment(ctx, by, gone.ID); err != nil {
 		return err
 	}
-	if _, err := c.AddComment(ctx, by, lasso.ID, "Lasso first, then sort."); err != nil {
+	// A change with its provenance, every field set, as through the MCP bridge.
+	origin := core.WithOrigin(ctx, core.Origin{Surface: core.SurfaceMCP, Client: "vaquero-mcp/0.1.6", Harness: "claude-code/2.1.3", Model: "mid-model", Run: "run-1"})
+	if _, err := c.AddComment(origin, by, lasso.ID, "Lasso first, then sort."); err != nil {
 		return err
 	}
 	if _, err := c.AddLink(ctx, by, child.ID, "blocks", core.TicketKey{Project: "VAQ", Number: parent.Number}); err != nil {
@@ -128,6 +133,16 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if _, err := c.MoveTicket(ctx, by, child.ID, byCategory["todo"], "", parent.ID); err != nil {
 		return err
 	}
+	// The agent workflow on VAQ, with a tier map of its own, and a tier and
+	// a model on the install guide.
+	on, tierMap := true, `{"claude":{"design":"big-model","light":"small-model","standard":"mid-model","heavy":"big-model"}}`
+	if _, err := c.UpdateProject(ctx, by, vaq.ID, core.ProjectPatch{Workflow: &on, TierMap: &tierMap}); err != nil {
+		return err
+	}
+	tier, model := "light", "small-model-2"
+	if _, err := c.PatchTicket(ctx, by, child.ID, core.TicketPatch{Tier: &tier, Model: &model}, 0); err != nil {
+		return err
+	}
 	agent, err := c.EnsureAgent(ctx, by, "builder")
 	if err != nil {
 		return err
@@ -149,6 +164,31 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if err := attach(ctx, c, store, instance, agent.ID, lasso.ID, "notes.txt", "text/plain; charset=utf-8", []byte("Lasso notes.\n")); err != nil {
+		return err
+	}
+	// A plan with two revisions.
+	if _, err := c.SavePlan(ctx, by, parent.ID, "1. Cut the release branch.", 0); err != nil {
+		return err
+	}
+	if _, err := c.SavePlan(ctx, agent.ID, parent.ID, "1. Cut the release branch.\n2. Write the notes.", 1); err != nil {
+		return err
+	}
+	// A ruling, and a plan approval for the epic and its child, relayed.
+	if _, err := c.RecordRuling(ctx, agent.ID, core.DecisionInput{
+		ProjectID: vaq.ID, TicketIDs: []string{child.ID}, RunID: "run-1", Kind: core.DecisionRuling,
+		Question: "Which tier is the install guide?", Options: []core.Option{{Label: "light", Tradeoff: "Cheaper"}, {Label: "standard"}},
+		Recommendation: "light", Why: "It is docs work.",
+	}, core.Answer{Option: "light", Note: "Docs only."}); err != nil {
+		return err
+	}
+	approval, err := c.AskDecision(ctx, agent.ID, core.DecisionInput{
+		ProjectID: vaq.ID, TicketIDs: []string{parent.ID, child.ID}, Kind: core.DecisionApproval, Subject: "plan",
+		Question: "Approve the release plan?",
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := c.AnswerDecision(ctx, by, approval.ID, core.Answer{Option: core.ApproveLabel, Note: "Go.", RelayedBy: agent.ID, Words: "Looks good, go."}); err != nil {
 		return err
 	}
 	// Archived last: an archived project takes no new tickets or links.

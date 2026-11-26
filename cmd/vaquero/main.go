@@ -38,6 +38,7 @@ tickets:
   tickets      list a project's tickets
   ticket       show, new, edit or move a ticket
   comment      add a comment to a ticket
+  plan         show or save a ticket's plan
   link         link two tickets (blocks, relates, duplicates)
   unlink       remove the links between two tickets
   attach       attach files to a ticket
@@ -51,6 +52,8 @@ agents:
   claim        claim a ticket, with a lease (--lease 30m)
   heartbeat    extend your claim's lease
   release      give up your claim
+  decisions    list questions, rulings and approvals
+  decision     show, ask, rule on, answer or withdraw a decision
   mcp          an MCP server on standard input and output, for agent clients
 
 setup:

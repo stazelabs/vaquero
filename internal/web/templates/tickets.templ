@@ -2,21 +2,23 @@ package templates
 
 import (
 	"html/template"
+	"strconv"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
 // TicketForm is the new-ticket and edit-ticket form.
 type TicketForm struct {
-	Project                                       gen.Project
-	TicketKey                                     string // "" when creating
-	Title, Body, StatusID, Priority, AssigneeID   string
-	Parent, MilestoneID, Tags                     string
-	Version                                       string // the version the form was opened at
-	Conflict                                      string // set when a save was refused as stale
-	ClaimNote                                     string // someone else's claim (ClaimNote), "" for none
-	Statuses, Assignees, Milestones               []Option
-	Errors                                        map[string]string
+	Project                                     gen.Project
+	TicketKey                                   string // "" when creating
+	Title, Body, StatusID, Priority, AssigneeID string
+	Parent, MilestoneID, Tags                   string
+	Tier, Model                                 string
+	Version                                     string // the version the form was opened at
+	Conflict                                    string // set when a save was refused as stale
+	ClaimNote                                   string // someone else's claim (ClaimNote), "" for none
+	Statuses, Assignees, Milestones             []Option
+	Errors                                      map[string]string
 }
 
 // TicketRef is another ticket, named on this one's page.
@@ -45,24 +47,35 @@ type AttachmentRow struct {
 	CanDelete                    bool
 }
 
+// PlanView is a ticket's plan on its page: the current revision rendered,
+// and Diff, the lines changed since the previous revision (nil for the
+// first).
+type PlanView struct {
+	Body     template.HTML
+	Revision int64
+	By, Ago  string
+	Diff     []DiffLine
+}
+
 // TicketView is the ticket page.
 type TicketView struct {
-	Project                    gen.Project
-	Ticket                     gen.Ticket
-	Key                        string
-	Body                       template.HTML
-	Status                     gen.Status
-	Assignee, Milestone        string
-	AssigneeIsAgent            bool
-	Parent                     *TicketRef
-	Tags                       []string
-	Subs                       []TicketRef
-	Links                      []LinkGroup
-	Comments                   []CommentRow
-	Attachments                []AttachmentRow
-	Events                     []EventView
-	LinkKind, LinkTo, LinkErr  string
-	CommentBody, CommentErr    string
+	Project                   gen.Project
+	Ticket                    gen.Ticket
+	Key                       string
+	Body                      template.HTML
+	Status                    gen.Status
+	Assignee, Milestone       string
+	AssigneeIsAgent           bool
+	Parent                    *TicketRef
+	Tags                      []string
+	Subs                      []TicketRef
+	Links                     []LinkGroup
+	Comments                  []CommentRow
+	Attachments               []AttachmentRow
+	Plan                      *PlanView // nil when the ticket has no plan
+	Events                    []EventView
+	LinkKind, LinkTo, LinkErr string
+	CommentBody, CommentErr   string
 }
 
 // TicketFormPage is the form for a new ticket or an edit.
@@ -110,6 +123,10 @@ templ TicketFormPage(f TicketForm) {
 				@Select(SelectProps{Name: "milestone", Label: "Milestone", Selected: f.MilestoneID, Options: f.Milestones, Error: f.Errors["milestone"]})
 				@TextInput(InputProps{Name: "parent", Label: "Parent ticket", Value: f.Parent, Placeholder: f.Project.Key + "-12", Error: f.Errors["parent"]})
 				@TextInput(InputProps{Name: "tags", Label: "Tags", Value: f.Tags, Placeholder: "ui, bug", Error: f.Errors["tags"]})
+				if f.Project.Workflow == 1 {
+					@Select(SelectProps{Name: "tier", Label: "Tier", Selected: f.Tier, Options: TierOptions(), Error: f.Errors["tier"]})
+					@TextInput(InputProps{Name: "model", Label: "Model", Value: f.Model, Placeholder: "From the tier map", Error: f.Errors["model"]})
+				}
 			</div>
 			<div class="flex items-center gap-4 lg:col-span-3">
 				<button type="submit" class={ btnPrimary }>
@@ -155,6 +172,7 @@ templ TicketPage(v TicketView) {
 						</div>
 					}
 				</section>
+				@planSection(v.Key, v.Plan)
 				<section>
 					<div class="flex items-center justify-between">
 						<h2 class={ h2IconClass }>
@@ -287,6 +305,15 @@ templ TicketPage(v TicketView) {
 						<p class="text-muted">None</p>
 					}
 				</div>
+				if v.Project.Workflow == 1 {
+					<div data-tier>
+						<p class={ labelClass }>Tier</p>
+						<p class={ templ.KV("text-muted", v.Ticket.Tier == "") }>{ TierLabel(v.Ticket.Tier) }</p>
+						if v.Ticket.Model != "" {
+							<p class="font-mono text-xs text-muted">{ v.Ticket.Model }</p>
+						}
+					</div>
+				}
 				<div>
 					<p class={ labelClass }>Tags</p>
 					if len(v.Tags) == 0 {
@@ -300,6 +327,39 @@ templ TicketPage(v TicketView) {
 				</div>
 			</aside>
 		</div>
+	}
+}
+
+// planSection is the ticket's plan, read-only: the current revision and,
+// folded, its changes from the one before. The live wrapper is always
+// there, so a plan written elsewhere appears; empty, it is hidden and adds
+// no gap.
+templ planSection(key string, p *PlanView) {
+	<section id="plan" hx-get={ "/t/" + key } hx-trigger="vq:change" hx-select="#plan" hx-swap="outerHTML" data-live class="empty:hidden">
+		if p != nil {
+			@planBody(*p)
+		}
+	</section>
+}
+
+templ planBody(p PlanView) {
+	<h2 class={ h2IconClass + " mb-1" }>
+		@Icon("plan")
+		Plan
+	</h2>
+	<p class="mb-2 text-xs text-muted">Revision { strconv.FormatInt(p.Revision, 10) } · { p.By } · { p.Ago }</p>
+	<div class={ proseClass }>
+		@templ.Raw(string(p.Body))
+	</div>
+	if p.Diff != nil {
+		<details data-plan-diff class="mt-2">
+			<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
+			<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+				for _, l := range p.Diff {
+					<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+				}
+			</pre>
+		</details>
 	}
 }
 
@@ -413,4 +473,3 @@ templ EventLine(e EventView) {
 		}
 	</li>
 }
-

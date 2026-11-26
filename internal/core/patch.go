@@ -13,9 +13,11 @@ import (
 // TicketPatch names the fields to change; a nil field keeps its value.
 // AssigneeID, ParentID and MilestoneID may be "" to clear them. Tags (when
 // SetTags) replaces the whole tag set; AddTags and RemoveTags then adjust
-// it, ignoring case.
+// it, ignoring case. Tier may be "" to clear it, Model "" for the tier
+// map's choice.
 type TicketPatch struct {
 	Title, Body, StatusID, AssigneeID, ParentID, MilestoneID *string
+	Tier, Model                                              *string
 	Priority                                                 *int64
 	Tags, AddTags, RemoveTags                                []string
 	SetTags                                                  bool
@@ -26,7 +28,7 @@ func (in TicketInput) Patch() TicketPatch {
 	return TicketPatch{
 		Title: &in.Title, Body: &in.Body, StatusID: &in.StatusID, AssigneeID: &in.AssigneeID,
 		ParentID: &in.ParentID, MilestoneID: &in.MilestoneID, Priority: &in.Priority,
-		Tags: in.Tags, SetTags: true,
+		Tier: &in.Tier, Model: &in.Model, Tags: in.Tags, SetTags: true,
 	}
 }
 
@@ -90,7 +92,8 @@ func (c *Core) PatchTicket(ctx context.Context, by, ticketID string, patch Ticke
 		if err := q.UpdateTicket(ctx, gen.UpdateTicketParams{
 			Title: tf.Title, Body: tf.Body, StatusID: tf.StatusID, Priority: tf.Priority,
 			AssigneeID: nullString(tf.AssigneeID), ParentID: nullString(tf.ParentID),
-			MilestoneID: nullString(tf.MilestoneID), Position: pos, UpdatedAt: now, StatusChangedAt: statusAt, ID: t.ID,
+			MilestoneID: nullString(tf.MilestoneID), Position: pos, UpdatedAt: now, StatusChangedAt: statusAt,
+			Tier: tf.Tier, Model: tf.Model, ID: t.ID,
 		}); err != nil {
 			return fmt.Errorf("update ticket: %w", err)
 		}
@@ -128,6 +131,7 @@ func (c *Core) applyPatch(ctx context.Context, q *gen.Queries, t gen.Ticket, p T
 	in := TicketInput{
 		Title: t.Title, Body: t.Body, StatusID: t.StatusID, Priority: t.Priority,
 		AssigneeID: t.AssigneeID.String, ParentID: t.ParentID.String, MilestoneID: t.MilestoneID.String,
+		Tier: t.Tier, Model: t.Model,
 	}
 	set := func(dst *string, src *string) {
 		if src != nil {
@@ -140,6 +144,8 @@ func (c *Core) applyPatch(ctx context.Context, q *gen.Queries, t gen.Ticket, p T
 	set(&in.AssigneeID, p.AssigneeID)
 	set(&in.ParentID, p.ParentID)
 	set(&in.MilestoneID, p.MilestoneID)
+	set(&in.Tier, p.Tier)
+	set(&in.Model, p.Model)
 	if p.Priority != nil {
 		in.Priority = *p.Priority
 	}

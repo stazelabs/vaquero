@@ -62,8 +62,9 @@ func mcpCall(t *testing.T, cs *mcp.ClientSession, name string, args map[string]a
 }
 
 var frozenTools = []string{
-	"add_comment", "bulk_update", "claim_ticket", "create_ticket", "get_ticket", "heartbeat", "link_tickets", "list_projects",
-	"list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket", "search", "update_ticket",
+	"add_comment", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
+	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "ready_tickets", "recent_activity", "release_ticket",
+	"save_plan", "search", "update_ticket",
 }
 
 func TestMCPToolList(t *testing.T) {
