@@ -551,11 +551,16 @@ func distinct(ctx context.Context, cfg config.Config, a blobs.Store, pa movePlac
 	}
 	_, serr := b.Stat(pctx, key)
 	derr := a.Delete(context.WithoutCancel(pctx), key)
+	// A probe that couldn't be deleted is named whatever else was found.
+	left := ""
+	if derr != nil {
+		left = fmt.Sprintf(" The test file %s couldn't be deleted from %s (%v); remove it by hand.", key, pa.where(cfg.DataDir), derr)
+	}
 	switch {
 	case serr == nil:
-		return sameStorage(done)
+		return message(sameStorage(done).Error() + left)
 	case !errors.Is(serr, blobs.ErrNotFound):
-		return fmt.Errorf("can't read %s (%w), so nothing was %s", pb.where(cfg.DataDir), serr, done)
+		return fmt.Errorf("can't read %s (%w), so nothing was %s.%s", pb.where(cfg.DataDir), serr, done, left)
 	case derr != nil:
 		return fmt.Errorf("can't delete from %s (%w); remove %s from it by hand", pa.where(cfg.DataDir), derr, key)
 	}

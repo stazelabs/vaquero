@@ -21,6 +21,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
+	"github.com/stazelabs/vaquero/internal/idgen"
 )
 
 // movedFrom is an instance whose two seeded attachments (and a preview of
@@ -979,5 +980,61 @@ func TestMoveElsewhereRemovesTempFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
 		t.Fatalf("temporary file left: %v", err)
+	}
+}
+
+// A move never deletes its own probe's leftovers as an attachment's.
+func TestMoveProbeKeyIsNotDeletable(t *testing.T) {
+	if deletable("attachments/i/move-probe-"+strings.ToLower(idgen.New()), "i") {
+		t.Fatal("a probe key is deletable")
+	}
+}
+
+// probeStore is a store whose Stat and Delete answer as told: the probe's
+// own errors, for distinct.
+type probeStore struct {
+	blobs.Store
+	statErr, delErr error
+}
+
+func (s probeStore) Stat(ctx context.Context, key string) (int64, error) {
+	if s.statErr != nil {
+		return 0, s.statErr
+	}
+	return s.Store.Stat(ctx, key)
+}
+
+func (s probeStore) Delete(ctx context.Context, key string) error {
+	if s.delErr != nil {
+		return s.delErr
+	}
+	return s.Store.Delete(ctx, key)
+}
+
+// A probe that can't be deleted is named, whatever else the probe found:
+// one store, or a target that can't be read.
+func TestMoveNamesAProbeLeftBehind(t *testing.T) {
+	dir := t.TempDir()
+	base, err := blobs.NewDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{DataDir: t.TempDir()}
+	pa := movePlace{Backend: "dir", Location: dir}
+	pb := movePlace{Backend: "s3", Location: "s3.example.test/bucket"}
+	for _, c := range []struct {
+		name string
+		b    blobs.Store
+		want string
+	}{
+		{"same storage", base, "These are the same storage; nothing was moved."},
+		{"stat fails", probeStore{Store: base, statErr: errors.New("timeout")}, "can't read s3 s3.example.test/bucket (timeout), so nothing was moved"},
+	} {
+		a := probeStore{Store: base, delErr: errors.New("read-only")}
+		err := distinct(t.Context(), cfg, a, pa, c.b, pb, "inst", "moved")
+		if err == nil || !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "attachments/inst/move-probe-") ||
+			!strings.Contains(err.Error(), "by hand") {
+			t.Fatalf("%s: %v", c.name, err)
+		}
 	}
 }
