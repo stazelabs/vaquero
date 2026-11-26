@@ -175,7 +175,7 @@ func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Rea
 		if a.AskedAt <= arrived[a.TicketID] {
 			continue // asked before the ticket last arrived in its project (N-R5)
 		}
-		an := answer{approved: a.Approved, hash: a.RequirementHash, rev: a.PlanRevision}
+		an := answer{approved: a.Approved, hash: a.RequirementHash, rev: a.PlanRevision, askedAt: a.AskedAt}
 		if a.Approved {
 			// Pins that don't parse cover no child, and hold under no
 			// parent but none.
@@ -183,7 +183,7 @@ func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Rea
 		}
 		latest[a.TicketID] = an
 	}
-	s := state{tickets: tickets, plans: plans, latest: latest}
+	s := state{tickets: tickets, plans: plans, latest: latest, arrived: arrived}
 	for _, r := range rows {
 		out[r.ID] = s.check(r)
 	}
@@ -214,6 +214,7 @@ type answer struct {
 	hash     string
 	rev      int64
 	pins     core.ApprovalPins
+	askedAt  string // when its decision was asked
 }
 
 // state is what CheckAll read.
@@ -221,6 +222,7 @@ type state struct {
 	tickets map[string]gen.ListReadinessTicketsRow
 	plans   map[string]int64  // ticket id -> current plan revision
 	latest  map[string]answer // ticket id -> latest answered plan approval
+	arrived map[string]string // ticket id -> when it last arrived in its project
 }
 
 func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
@@ -250,13 +252,13 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 			} else if !ownPlan && hasParent {
 				// No plan of its own: its epic's approval must be current
 				// too, though it need not list it.
-				s.lean(t, 1, false, found)
+				s.lean(t, 1, false, found, []string{t.ID})
 			}
 		}
 	} else {
 		// No plan and no approval of its own: its epic's approval, which
 		// must list it.
-		s.lean(t, 1, true, found)
+		s.lean(t, 1, true, found, []string{t.ID})
 	}
 	out := Readiness{Reasons: []string{}}
 	for _, r := range Reasons {
@@ -276,7 +278,14 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 // ("Plan not approved.", "Requirement changed since approval."). A parent
 // with no plan of its own leans on its parent in turn, up to the first
 // ancestor with a plan, each link failing with the epic's reasons.
-func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found map[string]bool) {
+//
+// chain is the tickets from the one leaning up to t. The parent's approval
+// counts only if its decision was asked after every ticket in the chain,
+// and the parent, last arrived in its project (ruling N-R8): any of them
+// moving after the approval was asked voids it for the leaning ticket
+// ("Plan not approved."), whatever the parents were then. Each is one map
+// lookup; the chain is already loaded.
+func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found map[string]bool, chain []string) {
 	notApproved := EpicPlanNotApproved
 	if listed {
 		notApproved = PlanNotApproved
@@ -290,6 +299,12 @@ func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found
 	if !answered || !a.approved {
 		found[notApproved] = true
 		return
+	}
+	for _, id := range append(slices.Clone(chain), p.ID) {
+		if s.arrived[id] >= a.askedAt {
+			found[PlanNotApproved] = true // moved since it was asked (N-R8)
+			return
+		}
 	}
 	if listed {
 		i := slices.IndexFunc(a.pins.Children, func(c core.PinnedChild) bool { return c.ID == t.ID })
@@ -312,6 +327,6 @@ func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found
 		return
 	}
 	if _, plan := s.plans[p.ID]; !plan && p.ParentID.Valid {
-		s.lean(p, depth+1, false, found)
+		s.lean(p, depth+1, false, found, append(slices.Clone(chain), p.ID))
 	}
 }

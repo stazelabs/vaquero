@@ -562,3 +562,90 @@ func TestDetachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
 	w.approve(s)
 	expect(t, w.check(s))
 }
+
+// roundTrip moves tk to OTH (workflow on, made on first use) and back, as
+// actor.
+func (w *world) roundTrip(actor string, tk gen.Ticket) {
+	w.t.Helper()
+	other, err := w.d.RQ.GetProjectByKey(bg, "OTH")
+	if err != nil {
+		if other, err = w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+			w.t.Fatal(err)
+		}
+		on := true
+		if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+			w.t.Fatal(err)
+		}
+	}
+	for _, to := range []string{other.ID, w.p.ID} {
+		if _, err := w.c.MoveTicketToProject(bg, actor, tk.ID, to, 0); err != nil {
+			w.t.Fatal(err)
+		}
+	}
+}
+
+func (w *world) parent(actor string, tk gen.Ticket, parentID string) {
+	w.t.Helper()
+	if _, err := w.c.PatchTicket(bg, actor, tk.ID, core.TicketPatch{ParentID: &parentID}, 0); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// N-R8, the review's first probe: an approved epic lists X; an agent
+// detaches X, moves it out and back, and attaches it again. The epic's
+// approval was asked before X last arrived, so X doesn't lean on it.
+func TestReattachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(epic, "1. Columns.", 0)
+	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.approve(epic)
+	expect(t, w.check(x))
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.parent(agent.ID, x, "")
+	w.roundTrip(agent.ID, x)
+	w.parent(agent.ID, x, epic.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	expect(t, w.check(epic))
+	w.approve(epic)
+	expect(t, w.check(x))
+}
+
+// N-R8, the second probe: F lists X; an agent puts X under R, carries it
+// out and back with R, and attaches it to F again. A grandchild leaning
+// through a plan-less X is covered by the same chain.
+func TestCarriedAndReattachedNeedsApprovalAgain(t *testing.T) {
+	w := newWorld(t)
+	f := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
+	w.plan(f, "1. Columns.", 0)
+	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: f.ID, Tier: "light"})
+	w.approve(f)
+	expect(t, w.check(x))
+	r := w.ticket(core.TicketInput{Title: "Other epic", Tier: "standard"})
+	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.parent(agent.ID, x, r.ID)
+	w.roundTrip(agent.ID, r)
+	w.parent(agent.ID, x, f.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	// Approved again, with a grandchild G leaning on X's own approval and,
+	// through X (no plan), on F's; then X goes out and back carrying G:
+	// G loses the lean too.
+	g := w.ticket(core.TicketInput{Title: "One column", ParentID: x.ID, Tier: "light"})
+	w.approve(f)
+	w.approve(x)
+	expect(t, w.check(x))
+	expect(t, w.check(g))
+	w.parent(agent.ID, x, "")
+	w.roundTrip(agent.ID, x) // carries g
+	w.parent(agent.ID, x, f.ID)
+	expect(t, w.check(x), readiness.PlanNotApproved)
+	if got := w.check(g); got.Ready {
+		t.Fatalf("grandchild ready: %+v", got)
+	}
+}

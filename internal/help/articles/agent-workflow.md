@@ -72,6 +72,7 @@ Which approval counts:
 - **A ticket with no plan and no epic** can be approved as it is, for a small change.
 - **An approval holds under the epic it was asked under.** A ticket moved to another epic, out of its epic, or under an epic when it had none is not ready ("Epic's plan not approved.") until it is approved again where it now is.
 - **Leaning goes up the tree.** When a ticket's epic has no plan of its own, the epic relies on its own epic in turn, up to the first one with a plan, and every approval on the way must be current. Revising the plan at the top makes the grandchildren not ready too, with the reason for the link that broke: "Epic's requirement changed since approval.", "Epic's plan changed since approval." or "Epic's plan not approved."
+- **A move to another project voids it.** An approval counts only if it was asked after the ticket last arrived in its project; and when a ticket leans on an epic's approval, any ticket in the chain from it up to that epic moving to another project after the approval was asked voids it ("Plan not approved."), even if the ticket came back or was detached and attached again.
 
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that fails this. Every ticket in the API answer, and the summary of a todo ticket in a list, then carries `readiness`: `ready`, and the `reasons` it is not, in this order:
 
