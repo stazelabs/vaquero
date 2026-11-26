@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -264,7 +265,37 @@ func backupRestore(ctx context.Context, c *cmd, cfg config.Config, dir, name str
 	} else {
 		fmt.Fprintf(c.stdout, "Restored %s.\n", name)
 	}
+	if note := restoredStorageNote(ctx, cfg); note != "" {
+		fmt.Fprintln(c.stdout, note)
+	}
 	return nil
+}
+
+// restoredStorageNote says what to change when vaquero.env names other
+// storage than the restored database keeps its attachments in (a snapshot
+// from before a move), which serve would refuse; else "".
+func restoredStorageNote(ctx context.Context, cfg config.Config) string {
+	if cfg.Source("VQ_BLOB_STORE") != config.SourceFile {
+		return ""
+	}
+	file := strings.ToLower(strings.TrimSpace(cfg.Lookup("VQ_BLOB_STORE")))
+	r, err := appdb.OpenReader(cfg.DBPath, 1)
+	if err != nil {
+		return ""
+	}
+	defer r.Close()
+	var n int
+	if err := r.QueryRowContext(ctx, `SELECT count(*) FROM attachments`).Scan(&n); err != nil || n == 0 {
+		return ""
+	}
+	store := "sqlite"
+	if err := r.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = ?`, settingBlobStore).Scan(&store); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return ""
+	}
+	if store == file {
+		return ""
+	}
+	return fmt.Sprintf("vaquero.env sets VQ_BLOB_STORE=%s, but the restored database keeps its attachments in %s; set VQ_BLOB_STORE=%s there before starting vaquero.", file, store, store)
 }
 
 // swapDatabase puts the closed database file at newPath in place of the

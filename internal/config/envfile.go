@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -35,14 +36,15 @@ var Known = []string{
 
 // ReadEnvFile reads {dataDir}/vaquero.env. A missing file is no settings
 // and no error. The file is refused when its mode lets group or other
-// users read it (it may hold the S3 secret), when a line isn't KEY=value,
+// users read it (it may hold the S3 secret) or change it, when a line isn't KEY=value,
 // when a key isn't a VQ_ setting, and when it sets VQ_DATA_DIR, which
 // would have to be known before the file is found.
 //
 // Format: one KEY=value per line, the value optionally in double quotes
 // (taken as is, with no escapes); spaces around the key and value are
 // dropped; a line starting with # is a comment; blank lines are skipped.
-// A key set twice takes the later value. Errors never quote a value.
+// A key set twice takes the later value. Everything after the first = is
+// the value, a trailing "# note" included. Errors never quote a value.
 func ReadEnvFile(dataDir string) (map[string]string, error) {
 	path := EnvFilePath(dataDir)
 	f, err := os.Open(path)
@@ -61,7 +63,12 @@ func ReadEnvFile(dataDir string) (map[string]string, error) {
 		//lint:ignore ST1005 a sentence the operator reads as is
 		return nil, fmt.Errorf("vaquero.env can be read by other users; run chmod 600 %s.", path)
 	}
-	b, err := os.ReadFile(path)
+	// P-R6: one others could change could point the storage elsewhere.
+	if st.Mode().Perm()&0o022 != 0 {
+		//lint:ignore ST1005 a sentence the operator reads as is
+		return nil, fmt.Errorf("vaquero.env can be changed by other users; run chmod 600 %s.", path)
+	}
+	b, err := io.ReadAll(f)
 	if err != nil {
 		return nil, fmt.Errorf("can't read %s: %w", path, err)
 	}
@@ -84,9 +91,14 @@ func ParseEnvFile(path, text string) (map[string]string, error) {
 			//lint:ignore ST1005 a sentence the operator reads as is
 			return nil, fmt.Errorf("Line %d of %s isn't a KEY=value setting.", n, path)
 		}
-		if !strings.HasPrefix(key, "VQ_") || !validKey(key) {
+		if !validKey(key) {
+			// Not a key at all (a pasted secret, say): quote nothing.
 			//lint:ignore ST1005 a sentence the operator reads as is
-			return nil, fmt.Errorf("Line %d of %s sets %s; vaquero.env takes only VQ_ settings.", n, path, printableKey(key))
+			return nil, fmt.Errorf("Line %d of %s doesn't set a VQ_ setting.", n, path)
+		}
+		if !strings.HasPrefix(key, "VQ_") {
+			//lint:ignore ST1005 a sentence the operator reads as is
+			return nil, fmt.Errorf("Line %d of %s sets %s; vaquero.env takes only VQ_ settings.", n, path, key)
 		}
 		if key == "VQ_DATA_DIR" {
 			//lint:ignore ST1005 the ruled message
@@ -101,29 +113,18 @@ func ParseEnvFile(path, text string) (map[string]string, error) {
 	return vals, nil
 }
 
-// validKey: upper-case ASCII letters, digits and underscores.
+// validKey: upper-case ASCII letters, digits and underscores, at most 64,
+// the first a letter. Only such a key is ever named in a message.
 func validKey(k string) bool {
+	if len(k) > 64 || k[0] < 'A' || k[0] > 'Z' {
+		return false
+	}
 	for _, r := range k {
 		if (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
 			return false
 		}
 	}
 	return true
-}
-
-// printableKey is k for a message: at most 40 characters, control
-// characters dropped.
-func printableKey(k string) string {
-	k = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
-			return -1
-		}
-		return r
-	}, k)
-	if r := []rune(k); len(r) > 40 {
-		k = string(r[:40]) + "…"
-	}
-	return k
 }
 
 // unknownKeys are the file's VQ_ keys Vaquero doesn't read, sorted.
@@ -140,7 +141,8 @@ func unknownKeys(file map[string]string) []string {
 
 // Layered looks a key up in the environment (get), then in the file's
 // values: a variable set in the environment overrides the file, and one
-// set to nothing there falls through to the file.
+// set to nothing there (VQ_BLOB_DIR=) falls through to the file, not to
+// the default.
 func Layered(get func(string) string, file map[string]string) func(string) string {
 	return func(k string) string {
 		if v := get(k); v != "" {

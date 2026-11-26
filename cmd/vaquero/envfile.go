@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stazelabs/vaquero/internal/blobs"
 	"github.com/stazelabs/vaquero/internal/config"
 )
 
@@ -17,7 +18,9 @@ import (
 // end, in config.Known order; a key set to "" is removed. Comments, blank
 // lines and every other setting stay as they were. The file is written
 // through a synced temp file at mode 0600, then renamed into place, so a
-// kill leaves the old file or the new one, never half of either.
+// kill leaves the old file or the new one, never half of either. A
+// vaquero.env that is a symlink is replaced by a regular file; the file it
+// pointed to is left as it was.
 func writeEnvFile(dataDir string, set map[string]string) error {
 	path := config.EnvFilePath(dataDir)
 	for k, v := range set {
@@ -159,7 +162,14 @@ func storageSettings(cfg config.Config, dropStale bool) map[string]string {
 	}
 	switch cfg.BlobBackend {
 	case "dir":
-		set["VQ_BLOB_DIR"] = cfg.BlobDir
+		// The default directory is left out, so it moves with the data
+		// directory as blob_location's {data dir}/attachments does; any
+		// other directory is written as its absolute path.
+		if blobs.Location(cfg) == defaultBlobLocation {
+			set["VQ_BLOB_DIR"] = ""
+		} else {
+			set["VQ_BLOB_DIR"] = cfg.BlobDir
+		}
 	case "s3":
 		maps.Copy(set, s3)
 	}
@@ -174,6 +184,24 @@ func storageSettings(cfg config.Config, dropStale bool) map[string]string {
 		}
 	}
 	return set
+}
+
+// defaultBlobLocation is blobs.Location of {data dir}/attachments.
+const defaultBlobLocation = blobs.DataDirMarker + "/attachments"
+
+// envFileHolds reports whether vaquero.env already says set: each key at
+// its value, and each key set to "" absent.
+func envFileHolds(cfg config.Config, set map[string]string) bool {
+	vals, err := config.ReadEnvFile(cfg.DataDir)
+	if err != nil {
+		return false
+	}
+	for k, v := range set {
+		if vals[k] != v {
+			return false
+		}
+	}
+	return true
 }
 
 // shownSettings is shown, settings already through config.Redact, as a

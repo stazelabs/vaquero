@@ -73,6 +73,7 @@ type moveResult struct {
 	Earlier    int    `json:"earlier"`     // copied and checked by an interrupted run
 	DeletedOld bool   `json:"deleted_old"` // the old copies are gone
 	Finished   bool   `json:"finished"`    // only an interrupted run's last steps were left
+	Already    bool   `json:"already"`     // nothing to move: only vaquero.env was saved
 	From       string `json:"from"`
 	Snapshot   string `json:"snapshot,omitempty"` // the premove snapshot, in backups/
 	// SettingsFile is vaquero.env when the move wrote it, and Settings
@@ -140,6 +141,9 @@ func cmdAttachmentsMove(ctx context.Context, stdout, stderr io.Writer, args []st
 // printMove is a move's report and what to start the server with.
 func printMove(w io.Writer, cfg config.Config, res moveResult) {
 	switch {
+	case res.Already:
+		fmt.Fprintf(w, "Attachments are already stored there. Saved %s in %s; vaquero serve reads it on every start, under brew services too.\n", shownSettings(res.Settings), res.SettingsFile)
+		return
 	case res.Moved == 0 && !res.Finished:
 		fmt.Fprint(w, "There are no attachments to move.")
 		if res.SettingsFile != "" {
@@ -197,7 +201,7 @@ func saveSettings(cfg config.Config, dropStale bool, res *moveResult) error {
 func startWith(cfg config.Config) string {
 	switch cfg.BlobBackend {
 	case "dir":
-		if blobs.Location(cfg) == blobs.DataDirMarker+"/attachments" {
+		if blobs.Location(cfg) == defaultBlobLocation {
 			return "VQ_BLOB_STORE=dir"
 		}
 		return "VQ_BLOB_STORE=dir and VQ_BLOB_DIR=" + cfg.BlobDir
@@ -319,7 +323,17 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 	}
 
 	if from.Backend == to.Backend && (from.Location == to.Location || blobs.SameLocation(from.Location, cfg)) {
-		return res, message("Attachments are already stored there.")
+		// Storage moved before vaquero.env existed (environment settings
+		// only) gets its file here; with the file already saying so, this
+		// is the refusal it always was.
+		if envFileHolds(cfg, storageSettings(cfg, true)) {
+			return res, message("Attachments are already stored there.")
+		}
+		if err := saveSettings(cfg, true, &res); err != nil {
+			return res, err
+		}
+		res.Already, res.Moved = true, len(items)
+		return res, nil
 	}
 	if len(items) == 0 {
 		// Nothing to switch: serve records the new storage on its next

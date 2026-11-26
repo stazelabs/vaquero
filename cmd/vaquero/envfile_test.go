@@ -73,7 +73,9 @@ func TestMoveWritesEnvFile(t *testing.T) {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	vals, mode := envFile(t, dataDir)
-	if mode != 0o600 || vals["VQ_BLOB_STORE"] != "dir" || vals["VQ_BLOB_DIR"] != filepath.Join(dataDir, "attachments") || vals["VQ_LOG_LEVEL"] != "debug" {
+	// The default directory isn't written: it moves with the data
+	// directory, as blob_location records it.
+	if _, ok := vals["VQ_BLOB_DIR"]; mode != 0o600 || vals["VQ_BLOB_STORE"] != "dir" || ok || vals["VQ_LOG_LEVEL"] != "debug" {
 		t.Fatalf("%o %v", mode, vals)
 	}
 	if b, _ := os.ReadFile(config.EnvFilePath(dataDir)); !strings.HasPrefix(string(b), mine) {
@@ -271,4 +273,80 @@ func TestRedactNeverLeaks(t *testing.T) {
 		}
 	})
 	configtest.NoLeak(t, "the boot log", log)
+}
+
+// Review I1: after a move to the default directory, the data directory
+// moved whole still boots from the file, and a directory outside it is
+// written as its path.
+func TestMovedDataDirBootsFromEnvFile(t *testing.T) {
+	dataDir, _ := movedFrom(t, "sqlite")
+	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	moved := filepath.Join(t.TempDir(), "moved")
+	if err := os.Rename(dataDir, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := bootOnce(t, moved, nil); err != nil {
+		t.Fatalf("the moved data directory: %v", err)
+	}
+	if err := os.Rename(moved, dataDir); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "files")
+	t.Setenv("VQ_BLOB_DIR", outside)
+	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if vals, _ := envFile(t, dataDir); vals["VQ_BLOB_DIR"] != outside {
+		t.Fatalf("%v", vals)
+	}
+	t.Setenv("VQ_BLOB_DIR", "")
+	if err := bootOnce(t, dataDir, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Review I2: storage moved with environment settings (before vaquero.env)
+// gets its file from a move to where it already is; a second run has
+// nothing to save and is refused as before. Nothing shown holds a secret.
+func TestMoveSavesSettingsForStorageInUse(t *testing.T) {
+	withStores(t, nil)
+	dataDir, _ := movedFrom(t, "sqlite")
+	s3Env(t)
+	if code, out, e := runCLI(t, "attachments", "move", "--to", "s3"); code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if err := os.Remove(config.EnvFilePath(dataDir)); err != nil {
+		t.Fatal(err)
+	}
+	code, out, e := runCLI(t, "attachments", "move", "--to", "s3")
+	if code != 0 || !strings.Contains(out, "Attachments are already stored there. Saved VQ_BLOB_STORE=s3") || !strings.Contains(out, config.EnvFilePath(dataDir)) {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	configtest.NoLeak(t, "the save's output", out+e)
+	if vals, mode := envFile(t, dataDir); mode != 0o600 || vals["VQ_S3_SECRET_ACCESS_KEY"] != configtest.Secret || vals["VQ_BLOB_STORE"] != "s3" {
+		t.Fatalf("%o %v", mode, vals)
+	}
+	code, out, e = runCLI(t, "attachments", "move", "--to", "s3", "--json")
+	configtest.NoLeak(t, "the JSON", out+e)
+	if code != 1 || !strings.Contains(e, "Attachments are already stored there.") {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+}
+
+// Review minor 6: restoring a snapshot whose storage isn't the one
+// vaquero.env names says what to change.
+func TestRestoreNotesEnvFileStorage(t *testing.T) {
+	dataDir, _ := movedFrom(t, "sqlite")
+	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	if code != 0 {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	snaps := premoves(t, dataDir)
+	code, out, e = runCLI(t, "backup", "restore", filepath.Base(snaps[0]))
+	want := "vaquero.env sets VQ_BLOB_STORE=dir, but the restored database keeps its attachments in sqlite; set VQ_BLOB_STORE=sqlite there before starting vaquero."
+	if code != 0 || !strings.Contains(out, want) {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
 }

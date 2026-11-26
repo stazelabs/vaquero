@@ -474,6 +474,11 @@ func TestMoveStopsOnAMissingFile(t *testing.T) {
 
 func TestMoveRefusals(t *testing.T) {
 	dataDir, _ := movedFrom(t, "dir")
+	// vaquero.env already names the storage in use, so a move there has
+	// nothing to save.
+	if err := os.WriteFile(config.EnvFilePath(dataDir), []byte("VQ_BLOB_STORE=dir\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	before := settingsDump(t, dataDir)
 	for _, tc := range []struct {
 		name string
