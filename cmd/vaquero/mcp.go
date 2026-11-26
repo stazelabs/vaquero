@@ -11,7 +11,10 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
+	"github.com/stazelabs/vaquero/internal/core"
+	"github.com/stazelabs/vaquero/internal/units"
 	"github.com/stazelabs/vaquero/internal/version"
 )
 
@@ -29,10 +32,21 @@ const mcpLineMax = 4 << 20
 // standard error. A line that isn't JSON, or a request the server refuses,
 // gets a JSON-RPC error for its id; a notification gets no answer. The end
 // of standard input ends it with exit 0.
+//
+// Each forwarded message carries provenance headers, recorded with every
+// change it makes: Vaquero-Client (vaquero-mcp/{version}), Vaquero-Harness
+// (initialize's clientInfo, "name/version", once seen) and Vaquero-Model
+// (--model, else $VAQUERO_MODEL). A value missing is left out; it never
+// fails a call.
 func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero mcp [--profile NAME] [--agent NAME]")
+	c := newCmd(stdout, stderr, "vaquero mcp [--profile NAME] [--agent NAME] [--model ID]")
+	var model string
+	c.fs.StringVar(&model, "model", "", "the model this session runs (default $VAQUERO_MODEL), recorded with each change")
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return c.finish(err)
+	}
+	if model == "" {
+		model = os.Getenv("VAQUERO_MODEL")
 	}
 	// Anything a command would print goes to stderr: stdout is the protocol's.
 	c.stdout = stderr
@@ -54,7 +68,8 @@ func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	}
 	b := &mcpBridge{
 		url: strings.TrimRight(c.client.BaseURL, "/") + "/mcp", token: c.client.Token, agent: c.client.Agent,
-		http: &http.Client{Timeout: 2 * time.Minute}, out: stdout, log: stderr, restart: c.restartLocal,
+		model: headerValue(model),
+		http:  &http.Client{Timeout: 2 * time.Minute}, out: stdout, log: stderr, restart: c.restartLocal,
 	}
 	rd := bufio.NewReaderSize(in, 64<<10)
 	for {
@@ -100,8 +115,11 @@ func readMCPLine(rd *bufio.Reader) (line []byte, tooLong bool, err error) {
 // mcpBridge posts messages to /mcp and writes the answers.
 type mcpBridge struct {
 	url, token, agent string
-	http              *http.Client
-	out, log          io.Writer
+	// harness is initialize's clientInfo ("name/version"), once seen;
+	// model is --model or $VAQUERO_MODEL. Both are sent as reported.
+	harness, model string
+	http           *http.Client
+	out, log       io.Writer
 	// restart, for the local profile, starts the server again when it
 	// stopped mid-session, and returns the token to use.
 	restart func(ctx context.Context) (string, error)
@@ -125,6 +143,9 @@ func (b *mcpBridge) forward(ctx context.Context, msg []byte) {
 	if msg[0] == '{' && json.Unmarshal(msg, &head) != nil || msg[0] != '{' && msg[0] != '[' || !json.Valid(msg) {
 		b.fail(nil, -32700, "Parse error: send one JSON-RPC message per line.")
 		return
+	}
+	if head.Method == "initialize" {
+		b.noteClientInfo(msg)
 	}
 	// A notification (a message with no id) never gets an answer.
 	if msg[0] == '{' && len(head.ID) == 0 {
@@ -189,11 +210,51 @@ func (b *mcpBridge) post(ctx context.Context, msg []byte) (*http.Response, error
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+b.token)
-	req.Header.Set("Vaquero-Client", version.Version)
+	req.Header.Set("Vaquero-Client", "vaquero-mcp/"+version.Version)
 	if b.agent != "" {
 		req.Header.Set("Vaquero-Agent", b.agent)
 	}
+	if b.harness != "" {
+		req.Header.Set("Vaquero-Harness", b.harness)
+	}
+	if b.model != "" {
+		req.Header.Set("Vaquero-Model", b.model)
+	}
 	return b.http.Do(req)
+}
+
+// noteClientInfo remembers initialize's clientInfo as the harness, "name/
+// version" (the name alone without a version). A message without one
+// leaves the harness as it was.
+func (b *mcpBridge) noteClientInfo(msg []byte) {
+	var init struct {
+		Params struct {
+			ClientInfo struct{ Name, Version string } `json:"clientInfo"`
+		} `json:"params"`
+	}
+	if json.Unmarshal(msg, &init) != nil {
+		return
+	}
+	name := strings.TrimSpace(init.Params.ClientInfo.Name)
+	if name == "" {
+		return
+	}
+	if v := strings.TrimSpace(init.Params.ClientInfo.Version); v != "" {
+		name += "/" + v
+	}
+	b.harness = headerValue(name)
+}
+
+// headerValue is s fit to send as a header: control characters dropped,
+// spaces trimmed, cut to the characters the server keeps.
+func headerValue(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r == utf8.RuneError {
+			return -1
+		}
+		return r
+	}, s)
+	return units.Clip(strings.TrimSpace(s), core.MaxOriginField)
 }
 
 // fail writes a JSON-RPC error for id (null when it is unknown, as for a

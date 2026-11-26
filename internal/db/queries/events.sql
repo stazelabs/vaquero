@@ -1,6 +1,6 @@
 -- name: AppendEvent :one
-INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING seq;
+INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload, meta)
+VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq;
 
 -- name: ListEvents :many
 -- The activity feed, newest first. Reorders within a column are left out

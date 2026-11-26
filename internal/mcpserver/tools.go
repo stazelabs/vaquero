@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
@@ -404,6 +405,7 @@ var errSomething = &toolError{Code: "server_error", Message: "Something went wro
 type caller struct {
 	api    http.Handler
 	actor  gen.Actor
+	origin core.Origin // the /mcp request's, for every event a tool writes
 	logger *slog.Logger
 }
 
@@ -422,7 +424,7 @@ func (c *caller) do(ctx context.Context, rq request) ([]byte, *toolError) {
 	}
 	// A fresh routing context: the /mcp request's would make the API's
 	// router treat this call as a sub-route of /mcp.
-	ctx = context.WithValue(middleware.WithAPIActor(ctx, c.actor), chi.RouteCtxKey, nil)
+	ctx = context.WithValue(middleware.WithAPIActor(core.WithOrigin(ctx, c.origin), c.actor), chi.RouteCtxKey, nil)
 	req, err := http.NewRequestWithContext(ctx, rq.method, target, &body)
 	if err != nil {
 		return nil, &toolError{Code: "bad_request", Message: fmt.Sprintf("%s isn't a valid request.", rq.path)}

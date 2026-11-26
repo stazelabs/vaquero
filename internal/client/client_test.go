@@ -35,7 +35,8 @@ func TestMain(m *testing.M) {
 
 func TestDoDecodesAndErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("Vaquero-Agent") != "builder" {
+		if r.Header.Get("Authorization") != "Bearer tok" || r.Header.Get("Vaquero-Agent") != "builder" ||
+			r.Header.Get("Vaquero-Client") != "vaquero-cli/1.2.0" {
 			w.WriteHeader(401)
 			return
 		}

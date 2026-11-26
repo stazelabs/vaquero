@@ -94,7 +94,7 @@ type Change struct {
 }
 
 // emit appends one event inside the caller's transaction. Empty ids are
-// stored as NULL; a nil payload is {}.
+// stored as NULL; a nil payload is {}. The Origin on ctx is stored as meta.
 func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectID, ticketID string, payload any) error {
 	body := []byte("{}")
 	if payload != nil {
@@ -110,6 +110,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 		ProjectID: nullString(projectID),
 		TicketID:  nullString(ticketID),
 		Payload:   string(body),
+		Meta:      OriginFrom(ctx).meta(),
 	})
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)

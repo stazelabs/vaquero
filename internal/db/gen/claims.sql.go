@@ -108,7 +108,7 @@ func (q *Queries) LapseClaim(ctx context.Context, arg LapseClaimParams) error {
 }
 
 const listLapsedClaims = `-- name: ListLapsedClaims :many
-SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at, version, claimed_by, claim_expires_at, claim_prev_status_id FROM tickets WHERE claimed_by IS NOT NULL AND claim_expires_at <= ? ORDER BY claim_expires_at, id
+SELECT id, project_id, number, title, body, status_id, priority, assignee_id, parent_id, milestone_id, position, created_by, created_at, updated_at, status_changed_at, version, claimed_by, claim_expires_at, claim_prev_status_id, tier, model FROM tickets WHERE claimed_by IS NOT NULL AND claim_expires_at <= ? ORDER BY claim_expires_at, id
 `
 
 func (q *Queries) ListLapsedClaims(ctx context.Context, claimExpiresAt sql.NullString) ([]Ticket, error) {
@@ -140,6 +140,8 @@ func (q *Queries) ListLapsedClaims(ctx context.Context, claimExpiresAt sql.NullS
 			&i.ClaimedBy,
 			&i.ClaimExpiresAt,
 			&i.ClaimPrevStatusID,
+			&i.Tier,
+			&i.Model,
 		); err != nil {
 			return nil, err
 		}

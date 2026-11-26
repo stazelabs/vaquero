@@ -165,6 +165,9 @@ type Event struct {
 	Ticket  string         `json:"ticket,omitempty"`
 	Text    string         `json:"text"` // the activity page's wording
 	Payload map[string]any `json:"payload"`
+	// Meta is where the change came from, as reported (surface, client,
+	// harness, model, run); left out for an event with none.
+	Meta map[string]string `json:"meta,omitempty"`
 }
 
 type SearchHit struct {

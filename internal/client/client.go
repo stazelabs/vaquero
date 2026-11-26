@@ -24,7 +24,7 @@ type Client struct {
 	BaseURL string // "http://127.0.0.1:7878"
 	Token   string // bearer token
 	Agent   string // an agent's name (local mode), sent as Vaquero-Agent
-	Version string // this client's release, sent as Vaquero-Client
+	Version string // this client's release, sent as Vaquero-Client: vaquero-cli/{Version}
 	HTTP    *http.Client
 
 	minClient     string   // the last answer's Vaquero-Min-Client
@@ -140,7 +140,7 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 		req.Header.Set("Vaquero-Agent", c.Agent)
 	}
 	if c.Version != "" {
-		req.Header.Set("Vaquero-Client", c.Version)
+		req.Header.Set("Vaquero-Client", "vaquero-cli/"+c.Version)
 	}
 	return req, nil
 }

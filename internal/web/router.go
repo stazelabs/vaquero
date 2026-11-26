@@ -27,6 +27,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 		middleware.CrossOrigin(d.Logger),
 		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload.
 		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
+		// Provenance for every change: the surface and the Vaquero-Client,
+		// -Harness, -Model and -Run headers, as reported (core.Origin).
+		middleware.Origin,
 		// A HEAD for a GET route is served by the GET handler (net/http drops
 		// the body), so curl -I and uptime probes see 200, not a redirect.
 		chimw.GetHead,

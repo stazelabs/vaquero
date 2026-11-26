@@ -36,7 +36,8 @@ func eventCount(t *testing.T, d dbtest.DB) int64 {
 }
 
 // trackerTables are every table only core writes.
-var trackerTables = []string{"api_tokens", "actors", "projects", "statuses", "milestones", "tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "events"}
+var trackerTables = []string{"api_tokens", "actors", "projects", "statuses", "milestones", "tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "events",
+	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals"}
 
 // snapshot is the row count and a content hash of every tracker table, so
 // any insert, update or delete shows, whatever it does to lengths.

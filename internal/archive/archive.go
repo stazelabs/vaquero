@@ -21,7 +21,8 @@
 // (strconv 'g', -1) with ".0" added when that form has neither a point nor
 // an exponent. So a reader decoding with json.Decoder.UseNumber knows every
 // value's type: a number with '.', 'e' or 'E' is a float64, any other is an
-// int64. The only REAL column today is tickets.position. Exported tables
+// int64. events.meta (an event's provenance, a JSON object as text) is
+// exported like any TEXT column; an export from before it loads with {}. The only REAL column today is tickets.position. Exported tables
 // have no BLOB columns, and Write refuses one.
 //
 // Left out: api_tokens, mcp_calls, blobs (its bytes are the attachments/

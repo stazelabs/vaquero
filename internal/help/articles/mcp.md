@@ -22,7 +22,11 @@ For Claude Code, add it once:
 
 Give each agent you run its own `--agent` name, so their claims and comments stay apart. `--agent` works only with the local owner's token; with any other token it is ignored, and `vaquero mcp` says so on standard error.
 
-**HTTP.** A client that connects over HTTP uses `http://127.0.0.1:7878/mcp` (Streamable HTTP, one request per message, plain JSON answers) with an API token in an `Authorization: Bearer vq_...` header, and the agent's name in a `Vaquero-Agent` header. [API tokens](/help/api-tokens) explains making a token, and [Agents and claims](/help/agents-and-claims#naming-an-agent) how names work.
+Each change an agent makes records where it came from, as the client reports it: that it arrived over MCP, the `vaquero mcp` version, the client's own name and version (from the session's first message), and the model, given with `--model ID` or the `VAQUERO_MODEL` environment variable. Whatever is missing is left out. These are recorded as reported, not checked; the agent's name is what says who made the change.
+
+    vaquero mcp --agent builder --model my-model-id
+
+**HTTP.** A client that connects over HTTP uses `http://127.0.0.1:7878/mcp` (Streamable HTTP, one request per message, plain JSON answers) with an API token in an `Authorization: Bearer vq_...` header, and the agent's name in a `Vaquero-Agent` header. [API tokens](/help/api-tokens) explains making a token, and [Agents and claims](/help/agents-and-claims#naming-an-agent) how names work. Such a client can report its name and version in a `Vaquero-Harness` header and its model in `Vaquero-Model`; see [the API](/help/api#where-a-change-came-from).
 
 ## Tools
 

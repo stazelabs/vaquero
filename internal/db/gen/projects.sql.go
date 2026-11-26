@@ -12,7 +12,7 @@ import (
 
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (id, key, name, description, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at
+VALUES (?, ?, ?, ?, ?, ?) RETURNING id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map
 `
 
 type CreateProjectParams struct {
@@ -43,6 +43,8 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.Workflow,
+		&i.TierMap,
 	)
 	return i, err
 }
@@ -127,7 +129,7 @@ func (q *Queries) DeleteProjectTickets(ctx context.Context, projectID string) er
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at FROM projects WHERE id = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map FROM projects WHERE id = ?
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -142,12 +144,14 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.Workflow,
+		&i.TierMap,
 	)
 	return i, err
 }
 
 const getProjectByKey = `-- name: GetProjectByKey :one
-SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at FROM projects WHERE key = ?
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map FROM projects WHERE key = ?
 `
 
 func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, error) {
@@ -162,12 +166,14 @@ func (q *Queries) GetProjectByKey(ctx context.Context, key string) (Project, err
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.Workflow,
+		&i.TierMap,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at,
+SELECT p.id, p."key", p.name, p.description, p.next_number, p.created_at, p.updated_at, p.archived_at, p.workflow, p.tier_map,
        (SELECT count(*) FROM tickets t JOIN statuses s ON s.id = t.status_id
          WHERE t.project_id = p.id AND s.category NOT IN ('done', 'cancelled')) AS open_count
 FROM projects p
@@ -183,6 +189,8 @@ type ListProjectsRow struct {
 	CreatedAt   string
 	UpdatedAt   string
 	ArchivedAt  sql.NullString
+	Workflow    int64
+	TierMap     string
 	OpenCount   int64
 }
 
@@ -205,6 +213,8 @@ func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ArchivedAt,
+			&i.Workflow,
+			&i.TierMap,
 			&i.OpenCount,
 		); err != nil {
 			return nil, err

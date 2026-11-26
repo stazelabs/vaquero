@@ -3,6 +3,7 @@ package handlers
 import (
 	"cmp"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"maps"
 	"net/http"
@@ -390,11 +391,21 @@ func APIEvents(d Deps) http.HandlerFunc {
 				at = timefmt.Format(parsed)
 			}
 			out[i] = api.Event{Seq: e.Seq, At: at, Actor: e.ActorName, Kind: e.Kind, Project: e.ProjectKey,
-				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload)}
+				Ticket: ev.TicketKey, Text: templates.EventSentence(ev), Payload: apiPayload(ev.Payload), Meta: eventMeta(e.Meta)}
 		}
 		w.Header().Set("Vaquero-Seq", strconv.FormatInt(newestSeq, 10))
 		api.WriteJSON(w, http.StatusOK, out)
 	}
+}
+
+// eventMeta is an event's stored meta, nil when it has none (or, never
+// expected, isn't an object of strings).
+func eventMeta(raw string) map[string]string {
+	var m map[string]string
+	if json.Unmarshal([]byte(raw), &m) != nil || len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 // apiPayload is an event's payload as the API shows it: a description

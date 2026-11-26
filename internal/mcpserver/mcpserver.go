@@ -31,6 +31,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/stazelabs/vaquero/internal/api"
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/version"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
@@ -84,7 +85,7 @@ func Handler(apiRoutes http.Handler, logger *slog.Logger, calls CallLog, now fun
 			return
 		}
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		caller := &caller{api: apiRoutes, actor: actor, logger: logger.With("request_id", middleware.GetRequestID(ctx))}
+		caller := &caller{api: apiRoutes, actor: actor, origin: core.OriginFrom(ctx), logger: logger.With("request_id", middleware.GetRequestID(ctx))}
 		s := mcp.NewServer(&mcp.Implementation{Name: "vaquero", Title: "Vaquero", Version: version.Version}, &mcp.ServerOptions{
 			Instructions: Instructions,
 			Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
