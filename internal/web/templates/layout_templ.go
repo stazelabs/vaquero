@@ -269,7 +269,7 @@ func Shell(title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<span class=\"max-sm:sr-only\">Activity</span></a></nav><form method=\"get\" action=\"/search\" role=\"search\" class=\"relative ml-auto\"><label for=\"vq-search\" class=\"sr-only\">Search tickets and comments</label> <span class=\"pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<span class=\"max-sm:sr-only\">Activity</span></a></nav><form method=\"get\" action=\"/search\" role=\"search\" class=\"relative ml-auto\"><label for=\"vq-search\" class=\"sr-only\">Search tickets, comments and help</label> <span class=\"pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

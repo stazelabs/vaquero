@@ -3,21 +3,51 @@ package templates
 import (
 	"strconv"
 
+	"github.com/stazelabs/vaquero/internal/help"
 	"github.com/stazelabs/vaquero/internal/search"
 )
 
-// SearchPage is the results of a search across tickets and comments.
-templ SearchPage(q string, res search.Result) {
+// SearchPage is the results of a search: matching help articles first,
+// when there are any, then tickets and comments.
+templ SearchPage(q string, helpHits []help.Hit, res search.Result) {
 	@Shell("Search") {
 		@titleWithHelp("Search", "search", "How search works")
 		<form method="get" action="/search" role="search" class="mt-4 flex max-w-xl gap-3">
-			<label for="f-q" class="sr-only">Search tickets and comments</label>
-			<input id="f-q" name="q" type="search" value={ q } autocomplete="off" class={ inputClass } placeholder="Search tickets and comments"/>
+			<label for="f-q" class="sr-only">Search tickets, comments and help</label>
+			<input id="f-q" name="q" type="search" value={ q } autocomplete="off" class={ inputClass } placeholder="Search tickets, comments and help"/>
 			<button type="submit" class={ btnPrimary + " gap-1.5" }>
 				@Icon("search")
 				Search
 			</button>
 		</form>
+		if len(helpHits) > 0 {
+			<section data-help-hits aria-labelledby="help-hits" class="mt-6">
+				<h2 id="help-hits" class={ h2IconClass }>
+					@Icon("help")
+					Help
+				</h2>
+				<ul class="mt-3 space-y-3">
+					for _, h := range helpHits {
+						<li class={ panelClass + " p-3" }>
+							<a href={ templ.SafeURL(h.URL()) } class="flex flex-wrap items-baseline gap-x-2 hover:text-accent">
+								<span class="inline-flex items-center gap-1.5 font-medium text-ink">
+									@Icon("article")
+									{ h.Title }
+								</span>
+								if h.Heading != "" {
+									<span class="text-sm text-muted">{ h.Heading }</span>
+								}
+							</a>
+							<p class="mt-1 text-sm text-ink/80">{ h.Summary }</p>
+						</li>
+					}
+				</ul>
+			</section>
+			<h2 class={ h2IconClass + " mt-8" }>
+				@Icon("list")
+				Tickets
+			</h2>
+		}
 		if q != "" && len(res.Hits) == 0 {
 			@emptyState("no-results", "No tickets match.")
 		}
