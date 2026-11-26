@@ -3,8 +3,9 @@
 -- whatever its length.
 
 -- name: ListReadinessTickets :many
--- The ticket fields the readiness rule reads, with the status category.
-SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
+-- The ticket fields the readiness rule reads, with the status category and
+-- when it last changed (when a cancelled ancestor was cancelled, VAQ-145).
+SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category, t.status_changed_at
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN (sqlc.slice('ids'));

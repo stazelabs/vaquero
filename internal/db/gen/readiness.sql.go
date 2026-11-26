@@ -230,26 +230,28 @@ func (q *Queries) ListReadinessRefs(ctx context.Context, ids []string) ([]ListRe
 
 const listReadinessTickets = `-- name: ListReadinessTickets :many
 
-SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
+SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category, t.status_changed_at
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN (/*SLICE:ids*/?)
 `
 
 type ListReadinessTicketsRow struct {
-	ID             string
-	ProjectID      string
-	Title          string
-	Body           string
-	Tier           string
-	ParentID       sql.NullString
-	StatusCategory string
+	ID              string
+	ProjectID       string
+	Title           string
+	Body            string
+	Tier            string
+	ParentID        sql.NullString
+	StatusCategory  string
+	StatusChangedAt string
 }
 
 // What internal/readiness reads to decide whether tickets are ready: each
 // query takes a batch of ticket ids, so a list costs the same few reads
 // whatever its length.
-// The ticket fields the readiness rule reads, with the status category.
+// The ticket fields the readiness rule reads, with the status category and
+// when it last changed (when a cancelled ancestor was cancelled, VAQ-145).
 func (q *Queries) ListReadinessTickets(ctx context.Context, ids []string) ([]ListReadinessTicketsRow, error) {
 	query := listReadinessTickets
 	var queryParams []interface{}
@@ -277,6 +279,7 @@ func (q *Queries) ListReadinessTickets(ctx context.Context, ids []string) ([]Lis
 			&i.Tier,
 			&i.ParentID,
 			&i.StatusCategory,
+			&i.StatusChangedAt,
 		); err != nil {
 			return nil, err
 		}

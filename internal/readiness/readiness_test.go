@@ -661,9 +661,11 @@ func (w *world) status(tk gen.Ticket, category string) {
 	w.edit(tk, core.TicketPatch{StatusID: &st.ID})
 }
 
-// VAQ-145: cancelling an epic withdraws the approval it gave the children
-// leaning on it, and the same goes for a cancelled ancestor further up the
-// chain a child leans on.
+// VAQ-145, ruling P-R5: cancelling an epic withdraws the approval it gave
+// the children leaning on it. A child with no plan of its own is then
+// judged as if it had no parent: its own approval counts, but only one
+// asked after the epic was cancelled. Back in todo, the epic is leaned on
+// as before (L-R6).
 func TestCancelledEpicStopsCovering(t *testing.T) {
 	w := newWorld(t)
 	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
@@ -673,25 +675,65 @@ func TestCancelledEpicStopsCovering(t *testing.T) {
 	expect(t, w.check(child))
 	w.status(epic, "cancelled")
 	expect(t, w.check(child), readiness.EpicPlanNotApproved)
-	// Its own approval doesn't help while it leans on the epic (L-R6) ...
-	w.approve(child)
-	expect(t, w.check(child), readiness.EpicPlanNotApproved)
-	// ... but a plan of its own, approved, stands alone.
-	w.plan(child, "1. Columns, sorted.", 0)
+	// (b) Approved itself after the cancel, it stands alone.
 	w.approve(child)
 	expect(t, w.check(child))
-	// Back to todo, the epic's approval covers again.
+	w.edit(child, core.TicketPatch{Body: new("Columns, sorted.")})
+	expect(t, w.check(child), readiness.RequirementChanged)
+	w.edit(child, core.TicketPatch{Body: new("")})
+	expect(t, w.check(child))
+	// Edits to the cancelled epic don't touch it.
+	w.edit(epic, core.TicketPatch{Body: new("A board, changed.")})
+	expect(t, w.check(child))
+	// (d) Back in todo, the epic is leaned on again (L-R6): its edit since
+	// its approval shows.
 	w.status(epic, "todo")
-	other := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
+	expect(t, w.check(child), readiness.EpicRequirementChanged)
 	w.approve(epic)
-	expect(t, w.check(other))
+	expect(t, w.check(child))
 
-	// A cancelled grandparent in the leaning chain.
+	// A ticket with its own approved plan leans on nothing.
+	own := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
+	w.plan(own, "1. Rails.", 0)
+	w.approve(own)
+	expect(t, w.check(own))
+	w.status(epic, "cancelled")
+	expect(t, w.check(own))
+}
+
+// P-R5 (a): an own approval asked before the cancel was given leaning on
+// the epic (L-R6), and doesn't count once the epic is cancelled: cancelling
+// never by itself makes a child ready.
+func TestCancelledEpicOwnApprovalBeforeCancel(t *testing.T) {
+	w := newWorld(t)
+	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
+	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	w.plan(epic, "1. Columns.", 0)
+	w.approve(child)
+	expect(t, w.check(child), readiness.EpicPlanNotApproved) // L-R6: the epic isn't approved
+	w.status(epic, "cancelled")
+	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+	w.status(epic, "todo")
+	w.approve(epic)
+	expect(t, w.check(child))
+	w.status(epic, "cancelled")
+	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+	// A request for changes after the cancel is no approval either.
+	w.answer("Request changes", child)
+	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+}
+
+// P-R5 (c): the same through a cancelled grandparent in the leaning chain.
+// Where more than one is cancelled, leaning stops at the nearest, and the
+// child's approval must be asked after that one was cancelled.
+func TestCancelledGrandparentStopsCovering(t *testing.T) {
+	w := newWorld(t)
 	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
 	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
 	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
 	w.plan(e, "1. Child.", 0)
 	w.approve(e, c)
+	w.approve(g) // its own, leaning on C and E (L-R6)
 	expect(t, w.check(g))
 	w.status(e, "cancelled")
 	expect(t, w.check(g), readiness.EpicPlanNotApproved)
@@ -702,10 +744,23 @@ func TestCancelledEpicStopsCovering(t *testing.T) {
 	expect(t, all[g.ID], readiness.EpicPlanNotApproved)
 	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
 	expect(t, all[e.ID], readiness.NotATodo, readiness.NoTier)
-
-	// A grandparent outside the chain (the parent has its own plan) doesn't
-	// matter.
+	w.approve(g)
+	expect(t, w.check(g))
+	// C cancelled later is now the nearest: G's approval predates it.
+	w.status(c, "cancelled")
+	expect(t, w.check(g), readiness.EpicPlanNotApproved)
+	w.approve(g)
+	expect(t, w.check(g))
+	// (d) Both back in todo: G leans through C on E again.
+	w.status(c, "todo")
 	w.status(e, "todo")
+	expect(t, w.check(g))
+	w.edit(e, core.TicketPatch{Body: new("The epic, changed.")})
+	expect(t, w.check(g), readiness.EpicRequirementChanged)
+
+	// A grandparent outside the chain (the parent has its own approved
+	// plan) doesn't matter.
+	w.approve(e, c)
 	w.plan(c, "1. Grandchild.", 0)
 	w.approve(c)
 	expect(t, w.check(g))

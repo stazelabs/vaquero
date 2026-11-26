@@ -50,12 +50,17 @@
 // approved.").
 //
 // A cancelled ancestor in the chain a ticket leans on covers nothing
-// (VAQ-145): cancelling it withdrew its approval, and the ticket is "Epic's
-// plan not approved." until it has an approved plan of its own or a new
-// parent. A done ancestor still covers its open children (ruling P-R2): its
-// approved work finished, and what is left open is follow-up under the same
-// plan. A ticket with its own plan leans on nothing, so no ancestor's state
-// touches it.
+// (VAQ-145): cancelling it withdrew its approval. The ticket leans no
+// further, and is judged as if it had no parent there (ruling P-R5): its
+// own approval counts, with its requirement as approved, but only one
+// asked after that ancestor was cancelled (its status_changed_at). An own
+// approval asked before was given leaning on the ancestor (L-R6), so
+// cancelling never by itself makes a ticket ready; until then it is
+// "Epic's plan not approved.". With more than one cancelled, leaning stops
+// at the nearest. A done ancestor still covers its open children (ruling
+// P-R2): its approved work finished, and what is left open is follow-up
+// under the same plan. A ticket with its own plan leans on nothing, so no
+// ancestor's state touches it.
 //
 // An approval pins the ticket's repo files (core.FilePin, P2-R2), and
 // holds while each one's content on main, renames followed, is what was
@@ -273,7 +278,27 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 	own, answered := s.latest[t.ID]
 	_, ownPlan := s.plans[t.ID]
 	hasParent := t.ParentID.Valid
-	if ownPlan || answered || !hasParent {
+	if cancelled, ok := s.cancelledAbove(t); !ownPlan && ok {
+		// The chain it leans on reaches a cancelled ancestor (VAQ-145,
+		// ruling P-R5): it leans no further, and is judged as if it had no
+		// parent, on its own approval, which counts only if asked after
+		// that ancestor was cancelled.
+		files = s.files[t.ID]
+		markFiles(found, files, FilesChanged)
+		switch {
+		case !answered || !own.approved || own.askedAt <= cancelled:
+			found[EpicPlanNotApproved] = true
+		case own.pins.Parent != t.ParentID.String:
+			found[EpicPlanNotApproved] = true // moved since (L-R11)
+		default:
+			if own.hash != core.RequirementHash(t.Title, t.Body) {
+				found[RequirementChanged] = true
+			}
+			if own.rev != 0 {
+				found[PlanChanged] = true
+			}
+		}
+	} else if ownPlan || answered || !hasParent {
 		// Its own approval counts.
 		if !answered || !own.approved {
 			found[PlanNotApproved] = true
@@ -312,6 +337,28 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 	return out
 }
 
+// cancelledAbove is when the nearest cancelled ancestor in the chain t
+// leans on was cancelled (its status_changed_at), if there is one: the
+// chain goes up from t's parent to the first ancestor with a plan of its
+// own, that one included, within the chain read (VAQ-145). A done ancestor
+// is no stop (ruling P-R2).
+func (s state) cancelledAbove(t gen.ListReadinessTicketsRow) (string, bool) {
+	for depth := 1; t.ParentID.Valid && depth <= MaxDepth; depth++ {
+		p, ok := s.tickets[t.ParentID.String]
+		if !ok {
+			return "", false
+		}
+		if p.StatusCategory == "cancelled" {
+			return p.StatusChangedAt, true
+		}
+		if _, plan := s.plans[p.ID]; plan {
+			return "", false
+		}
+		t = p
+	}
+	return "", false
+}
+
 // lean marks in found why t's lean on its parent fails (ruling L-R10).
 // The parent's own approval must be current: approved, its requirement and
 // plan revision as pinned, and still under the parent it was asked under.
@@ -328,9 +375,8 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 // ("Plan not approved."), whatever the parents were then. Each is one map
 // lookup; the chain is already loaded.
 //
-// A cancelled parent covers nothing (VAQ-145): cancelling it withdrew the
-// approval it gave, so the lean fails with "Epic's plan not approved.",
-// at any link. A done one still covers (ruling P-R2).
+// lean never meets a cancelled ancestor: check stops the chain below one
+// first (cancelledAbove).
 func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found map[string]bool, chain []string) {
 	notApproved := EpicPlanNotApproved
 	if listed {
@@ -339,10 +385,6 @@ func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found
 	p, ok := s.tickets[t.ParentID.String]
 	if !ok || depth > MaxDepth {
 		found[EpicPlanNotApproved] = true // beyond the chain read
-		return
-	}
-	if p.StatusCategory == "cancelled" {
-		found[EpicPlanNotApproved] = true // cancelling withdrew its approval (VAQ-145)
 		return
 	}
 	a, answered := s.latest[p.ID]
