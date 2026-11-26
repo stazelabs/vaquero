@@ -134,9 +134,13 @@ templ BoardSection(b board.Board) {
 	</div>
 }
 
+// rail is a backlog or cancelled status at the board's edge, a closed
+// strip until opened. From md it opens in place; below md the strip stays
+// and its cards overlay the columns (railPanelClass), with a close control
+// and Escape to close (app.js).
 templ rail(b board.Board, c board.Column) {
-	<details data-rail={ c.Status.ID } class="group shrink-0 rounded-md bg-paper-alt open:w-64">
-		<summary class="cursor-pointer list-none px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] group-open:[writing-mode:horizontal-tb] hover:text-accent">
+	<details data-rail={ c.Status.ID } class="group relative shrink-0 rounded-md bg-paper-alt md:open:w-64">
+		<summary class="cursor-pointer list-none px-2 py-3 text-xs font-semibold uppercase tracking-wider text-muted [writing-mode:vertical-rl] md:group-open:[writing-mode:horizontal-tb] hover:text-accent group-open:max-md:text-accent">
 			<span class="inline-flex items-center gap-1.5">
 				<span class={ categoryTint(c.Status.Category) }>
 					@Icon(CategoryIcon(c.Status.Category))
@@ -144,7 +148,18 @@ templ rail(b board.Board, c board.Column) {
 				{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
 			</span>
 		</summary>
-		<div class="px-2 pb-2">
+		<div data-rail-panel={ c.Status.ID } class={ railPanelClass(c.Status.Category) }>
+			<div class="mb-2 flex items-center justify-between gap-2 px-1 md:hidden">
+				<span class="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted">
+					<span class={ categoryTint(c.Status.Category) }>
+						@Icon(CategoryIcon(c.Status.Category))
+					</span>
+					{ c.Status.Name } · { itoa(int64(len(c.Cards))) }
+				</span>
+				<button type="button" data-rail-close aria-label={ "Close " + c.Status.Name } class="rounded-md p-1 text-muted hover:bg-paper hover:text-accent md:hidden">
+					@Icon("close")
+				</button>
+			</div>
 			@cards(b, c)
 		</div>
 	</details>

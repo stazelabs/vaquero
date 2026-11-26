@@ -420,6 +420,55 @@ window.vqDragging = false;
   });
 })();
 
+// Rails below md: an open rail's cards overlay the columns (see the rail
+// template), so one is open at a time, and its close control or Escape
+// closes it and puts focus back on its strip. From md rails open in place
+// and these do nothing.
+(function () {
+  var narrow = window.matchMedia("not all and (min-width: 48rem)");
+  function closeRail(d) {
+    d.open = false;
+    var s = d.querySelector("summary");
+    if (s) {
+      s.focus({ preventScroll: true });
+    }
+  }
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest ? ev.target.closest("[data-rail-close]") : null;
+    var d = btn ? btn.closest("details[data-rail]") : null;
+    if (d) {
+      ev.preventDefault();
+      closeRail(d);
+    }
+  });
+  // toggle doesn't bubble: listen in the capture phase.
+  document.addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (!narrow.matches || !d.matches || !d.matches("details[data-rail]") || !d.open) {
+      return;
+    }
+    document.querySelectorAll("details[data-rail][open]").forEach(function (o) {
+      if (o !== d) {
+        o.open = false;
+      }
+    });
+  }, true);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape" || !narrow.matches || ev.defaultPrevented) {
+      return;
+    }
+    var dialog = document.getElementById("vq-shortcuts");
+    if (dialog && dialog.open) {
+      return; // the dialog closes itself
+    }
+    var open = document.querySelector("details[data-rail][open]");
+    if (open) {
+      ev.preventDefault();
+      closeRail(open);
+    }
+  });
+})();
+
 // Claim countdowns: every [data-claim-expires] (a lease's end, an ISO
 // instant) reads "12 min left", rewritten every 30 seconds and after each
 // swap. A lease that has run out reads "lapsing" until the sweep returns
