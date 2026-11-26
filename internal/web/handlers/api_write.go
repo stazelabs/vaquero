@@ -179,7 +179,7 @@ func APIProjectCreate(d Deps) http.HandlerFunc {
 			apiCoreFail(w, r, d, p, err)
 			return
 		}
-		api.WriteJSON(w, http.StatusCreated, projectDTO(p, 0))
+		api.WriteJSON(w, http.StatusCreated, projectDTO(p, 0, nil))
 	}
 }
 

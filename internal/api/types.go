@@ -20,6 +20,21 @@ type Project struct {
 	// Icon is how the project is drawn: its monogram, a glyph, or an
 	// uploaded image served at URL.
 	Icon *ProjectIcon `json:"icon,omitempty"`
+	// Links are the project's links to other projects (VAQ-119), both
+	// ends: what it depends on, what depends on it, what it relates to.
+	Links []ProjectLink `json:"links"`
+}
+
+// ProjectLink is one of a project's links as that project sees it. Kind
+// is "depends on" or "relates"; Direction "out" (this project depends on
+// or relates to Key) or "in" (Key depends on or relates to this one);
+// Key and Name are the other project's. ID removes it.
+type ProjectLink struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Direction string `json:"direction"`
+	Key       string `json:"key"`
+	Name      string `json:"name"`
 }
 
 // ProjectIcon is a project's icon. Kind is monogram, glyph or image; Glyph

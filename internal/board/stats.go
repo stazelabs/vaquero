@@ -11,18 +11,20 @@ import (
 
 // ProjectStats is one project's line on the projects page: its ready, in
 // review and open ticket counts, its open milestone (the earliest due,
-// else the first open one by name; nil when none is open) and when it
-// last changed (its newest event; zero when it has none).
+// else the first open one by name; nil when none is open), when it last
+// changed (its newest event; zero when it has none) and its project links
+// (LoadProjectLinks' order; VAQ-119).
 type ProjectStats struct {
 	Ready, InReview, Open int
 	Milestone             *MilestoneProgress
 	LastChange            time.Time
+	Links                 []ProjectLink
 }
 
 // LoadProjectStats reads every project's stats, by project id, in a fixed
 // number of queries however many projects there are: one per stat across
 // all projects, and one readiness batch for the board-ready tickets of
-// projects with the workflow on. Ready is the board's rule, and with the
+// projects with the workflow on, and one for every project link. Ready is the board's rule, and with the
 // workflow on readiness's too, so it counts the cards the board and Focus
 // mark ready.
 func LoadProjectStats(ctx context.Context, q *gen.Queries) (map[string]ProjectStats, error) {
@@ -80,6 +82,16 @@ func LoadProjectStats(ctx context.Context, q *gen.Queries) (map[string]ProjectSt
 		}
 		s.Milestone = &mp
 		out[m.ProjectID] = s
+	}
+	links, err := LoadProjectLinks(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	for id, ls := range links {
+		if s, ok := out[id]; ok {
+			s.Links = ls
+			out[id] = s
+		}
 	}
 	return out, nil
 }

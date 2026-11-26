@@ -185,6 +185,22 @@ func settingsPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	if p.Workflow == 1 {
 		v.TriageMissing = missingTriage(statuses)
 	}
+	links, err := board.LoadProjectLinks(ctx, d.R)
+	if err != nil {
+		serverError(w, r, d, err)
+		return
+	}
+	v.Links = links[p.ID]
+	projects, err := d.R.ListProjects(ctx)
+	if err != nil {
+		serverError(w, r, d, err)
+		return
+	}
+	for _, o := range projects {
+		if o.ID != p.ID {
+			v.LinkTargets = append(v.LinkTargets, templates.Option{Value: o.Key, Label: o.Key + " · " + o.Name})
+		}
+	}
 	for _, fn := range set {
 		fn(&v)
 	}
@@ -634,6 +650,36 @@ func TagDelete(d Deps) http.HandlerFunc {
 		}
 		settingsAction(w, r, d, p, "Tag deleted.", func() error {
 			return d.Core.DeleteTag(r.Context(), d.Actor.ID, p.ID, chi.URLParam(r, "id"))
+		})
+	}
+}
+
+// ProjectLinkCreate links the project to another (VAQ-119); a refusal
+// re-renders settings with the form as chosen.
+func ProjectLinkCreate(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		sf := templates.SubForm{Values: formValues(r, "kind", "project")}
+		settingsForm(w, r, d, p, "Link added.", sf, func(v *templates.SettingsView, f templates.SubForm) { v.NewLink = f }, func() error {
+			_, err := d.Core.AddProjectLink(r.Context(), d.Actor.ID, p.ID, r.PostFormValue("kind"), r.PostFormValue("project"))
+			return err
+		})
+	}
+}
+
+// ProjectLinkDelete removes the {id} link, which must be the project's
+// (either end).
+func ProjectLinkDelete(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		p, ok := projectFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		settingsAction(w, r, d, p, "Link removed.", func() error {
+			return d.Core.RemoveProjectLink(r.Context(), d.Actor.ID, p.ID, chi.URLParam(r, "id"))
 		})
 	}
 }
