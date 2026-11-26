@@ -26,7 +26,7 @@ All along, the design artifacts behind the work are visible in Vaquero and are u
 ## Non-goals
 
 - Vaquero calling model APIs itself. The door stays open: Phase 7 can add an API-backed runner that follows the same prompts and writes the same records.
-- Writing to git: branches, commits, pull requests and GitHub all stay in Phase 5. This milestone only reads.
+- Writing to git: branches, commits, pull requests and GitHub all stay in Phase 5. This milestone only reads, with one exception: an optional `git fetch` that is off by default and updates only the remote's branches (Part 2, owner 2026-11-26).
 - Requirements as repo files with front matter, and Vaquero scanning the repo (option C below). Left for later, if needed.
 - Hosted mode, sign-in and users (Phase 4).
 - Replacing the stazelabs skills for Linear projects. They stay as they are.
@@ -210,7 +210,22 @@ Each value is bounded to 80 characters. It is stored with the event (columns or 
 - check whether a branch is merged into main;
 - check whether a tag exists.
 
+Added for the Trace panel (Part 5; owner, 2026-11-26):
+- the diffstat of the commits that mention a ticket (lines added and removed, and the files touched);
+- the first tag that contains a commit (`git tag --contains`, sorted by version);
+- the comparison of a local ref with its remote-tracking ref (ahead and behind counts), whether a branch has a remote-tracking ref at all, and whether a tag is on the remote, read from the remote-tracking refs as of the last fetch;
+- when the last fetch happened (the mtime of `FETCH_HEAD`, else "never fetched").
+
 The main branch name is a project setting, default `main`.
+
+**The remote (owner, 2026-11-26).** A single developer has a local repo and a remote, and the trace shows both: merged locally but not pushed, or a tag that isn't on the remote.
+- **Remote:** a project setting chosen from the repo's own remotes (`git remote`), default `origin`. Vaquero shows its URL as git reports it (`git remote get-url`), never typed in, so it can't drift from the repo. Credentials embedded in a URL (`https://user:token@…`) are cut out before display.
+- **Reading the remote:** the remote-tracking refs, as of the last fetch, with no network. Every remote line says "as of last fetch, 2 h ago".
+- **Fetching:** a per-project setting, "Fetch every N minutes", off by default, plus a Fetch now button on the project page and the ticket's Trace panel (the API and CLI too).
+  - Each fetch is one `git fetch --prune {remote}` with a timeout, `GIT_TERMINAL_PROMPT=0` and `GIT_SSH_COMMAND` carrying `-o BatchMode=yes`, so a remote that needs a password fails instead of waiting for one.
+  - It updates only remote-tracking refs and tags, never local branches or the work tree.
+  - It is the one network command and the one write. A failure is shown with the time and git's first line, and never blocks reads.
+  - Fetches are not tracker changes and write no event.
 
 **Inputs are checked before reaching git:**
 - paths are relative and clean, with no `..`, no leading `/` and no leading `-`;
@@ -220,7 +235,7 @@ The main branch name is a project setting, default `main`.
 Repo content is untrusted. Markdown renders through `internal/markdown`, other text as escaped text.
 
 **Artifact references.**
-- New table: ticket, kind (`requirement`, `design`, `plan`, `spec`, `other`), target (a repo path or a URL) and an optional label. Core operations with events: `ref.added`, `ref.removed`.
+- New table: ticket, kind (`requirement`, `design`, `plan`, `spec`, `other`), target (a repo path or a URL), an optional heading anchor (`#part-2-read-only-git`, used for the link only; pins stay per file) and an optional label. Core operations with events: `ref.added`, `ref.removed`.
 - New plans live in Vaquero (Part 1). The `plan` kind is for older plan files in the repo.
 - The ticket page lists references. A repo path opens the file view: rendered at main, or at a pinned commit, with "changed since approval" and a diff when it has.
 - Renames are followed by git. A reference whose file is gone is flagged.
@@ -276,9 +291,27 @@ Repo content is untrusted. Markdown renders through `internal/markdown`, other t
 
 - **Decision queue** (`/decisions`, plus a header count): open questions first, each with its options and recommendation, answered in place. Rulings are listed with an overrule action. The queue is filterable by project, run and kind.
 - **Ticket page:** decisions, references, readiness (and why not), tier, the commits that mention the ticket, and provenance in history.
+- **The Trace panel (owner, 2026-11-26)** leads the ticket page, above the description, one line per stage:
+
+  ```
+  Spec     agent-workflow-design.md §Part 2   (unchanged since approval)
+  Plan     rev 3 · approved by you, Nov 26
+  Branch   run-o  ·  pushed, 2 commits not pushed
+  Commits  9 mention VAQ-136   (+612 −40, 14 files)
+  Files    internal/gitread/… · internal/core/refs.go · …
+  Merged   main ✓  ·  origin/main ✓
+  Released v0.1.6  ·  tag on origin ✓
+  Repo     main 3 ahead of origin  ·  as of last fetch, 2 h ago
+  ```
+
+  - The branch comes from the ticket's run (Part 3).
+  - Released is the first tag containing the merge.
+  - With the workflow off, the panel shows only the git lines (commits, files, merged, released and repo), and only when the project has a repo path. With no repo path and the workflow off, there's no panel, so the page is unchanged.
+  - The project page carries the Repo line too: main ahead or behind its remote, and branches never pushed.
+  - Pull requests, checks and reviews aren't shown. They need GitHub over the network, and they come with Phase 5.
 - **Run pages** (Part 3), and a project's run list.
 - **File view** (Part 2).
-- **Settings:** the workflow switch, the repo path, the main branch and the tier map.
+- **Settings:** the workflow switch, the repo path, the main branch, the remote and its fetch interval, and the tier map.
 
 All views stay live through `/events/stream`, are checked with `make e2e` at the desk and phone widths, and are documented in the help.
 
@@ -289,6 +322,9 @@ All views stay live through `/events/stream`, are checked with `make e2e` at the
 - VAQ-94 → Part 1 (provenance).
 - A new ticket for the read-only git slice of VAQ-1 → Part 2.
 - VAQ-77 is closed as superseded by Part 4.
+- Later views of the same links, under VAQ-1 (owner, 2026-11-26):
+  - the view from a spec ("is it fully built?": each section, its tickets, merged or not, gaps flagged), on the Requirements and review milestone with VAQ-2;
+  - the view from the code ("why is this file the way it is?"), and pull requests, checks and reviews, on Phase 5.
 
 ## Calls made after the builder check (controller, 2026-11-25; the owner can overrule)
 
