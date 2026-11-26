@@ -158,7 +158,7 @@ func TestFetchIsTheOnlyNetwork(t *testing.T) {
 	g.Blob(ctx, "main", "a.md")
 	g.Blobs(ctx, c, []string{"a.md"})
 	g.Follow(ctx, "a.md", c)
-	g.FollowTo(ctx, "a.md", c, c)
+	g.Renames(ctx, c, c)
 	g.PathLog(ctx, "a.md", "", 5)
 	g.Mentions(ctx, "VAQ-1", 5)
 	g.BranchCommits(ctx, "main", 5)

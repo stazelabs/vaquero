@@ -269,42 +269,65 @@ func (g *Repo) Follow(ctx context.Context, path, since string) (current string, 
 	return current, false, nil
 }
 
-// FollowTo is where path, as it was at since, is at head (a commit hash
-// on main, as Head answers): Follow's renames, without reading main again
-// or whether the file is there, which Blobs answers for many paths at once.
-func (g *Repo) FollowTo(ctx context.Context, path, since, head string) (string, error) {
+// Rename is one rename on main's first-parent history.
+type Rename struct{ From, To string }
+
+// Renames is every rename on head's first-parent history since since, in
+// order (head a commit hash on main, as Head answers): one history walk
+// for every path pinned at since. FollowRenames applies them to a path.
+func (g *Repo) Renames(ctx context.Context, since, head string) ([]Rename, error) {
 	if !isHash(head) {
-		return "", ErrInvalid
+		return nil, ErrInvalid
 	}
-	return g.follow(ctx, path, since, head)
+	return g.renames(ctx, since, head)
+}
+
+// FollowRenames is where path is after renames, applied in order.
+func FollowRenames(path string, renames []Rename) string {
+	for _, r := range renames {
+		if r.From == path {
+			path = r.To
+		}
+	}
+	return path
 }
 
 // follow is path's renames on tip's first-parent history since since.
 func (g *Repo) follow(ctx context.Context, path, since, tip string) (string, error) {
-	if !ValidPath(path) || !ValidRev(since) {
+	if !ValidPath(path) {
 		return "", ErrInvalid
+	}
+	list, err := g.renames(ctx, since, tip)
+	if err != nil {
+		return "", err
+	}
+	return FollowRenames(path, list), nil
+}
+
+// renames is the renames on tip's first-parent history since since.
+func (g *Repo) renames(ctx context.Context, since, tip string) ([]Rename, error) {
+	if !ValidRev(since) {
+		return nil, ErrInvalid
 	}
 	from, err := g.commit(ctx, since)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	out, err := g.git(ctx, "log", "-z", "--reverse", "--first-parent", "--diff-merges=first-parent", "--format=",
 		"--name-status", "-M", "--diff-filter=RD", "--no-textconv", "--no-ext-diff", "--no-show-signature",
 		"--end-of-options", "^"+from, tip)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	current := path
+	var list []Rename
 	f := bytes.Split(bytes.TrimSuffix(out, []byte{0}), []byte{0})
 	for i := 0; i < len(f); {
-		status := string(f[i])
+		status := strings.TrimLeft(string(f[i]), "\n")
 		switch {
 		case status == "":
 			i++
 		case strings.HasPrefix(status, "R") && i+2 < len(f):
-			if string(f[i+1]) == current {
-				current = string(f[i+2])
-			}
+			list = append(list, Rename{From: string(f[i+1]), To: string(f[i+2])})
 			i += 3
 		case i+1 < len(f):
 			i += 2
@@ -312,7 +335,7 @@ func (g *Repo) follow(ctx context.Context, path, since, tip string) (string, err
 			i++
 		}
 	}
-	return current, nil
+	return list, nil
 }
 
 // logFormat is a commit as the reads parse it: hash, short hash, subject,
