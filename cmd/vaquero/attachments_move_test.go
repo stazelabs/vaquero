@@ -309,7 +309,7 @@ type failingPut struct {
 }
 
 func (f *failingPut) Put(ctx context.Context, key string, r io.Reader, size int64, ctype string) error {
-	if strings.HasPrefix(key, "attachments/") {
+	if strings.HasPrefix(key, "attachments/") && !strings.Contains(key, "/move-probe-") {
 		f.puts++
 		if f.puts == f.n {
 			return errors.New("the disk went away")
@@ -534,7 +534,9 @@ func TestMoveRefusesAnOlderDatabase(t *testing.T) {
 }
 
 // The room for the copies is checked on the target's volume first, and a
-// refusal writes nothing.
+// refusal writes nothing. On the data directory's volume it must hold the
+// premove snapshot too (the database, grown by the copies when they go
+// into it) and appdb.MinBackupMargin.
 func TestMoveChecksFreeSpace(t *testing.T) {
 	dataDir, want := movedFrom(t, "sqlite")
 	var total int64
@@ -543,10 +545,17 @@ func TestMoveChecksFreeSpace(t *testing.T) {
 	}
 	var asked string
 	saved := moveFreeBytes
-	moveFreeBytes = func(p string) (int64, error) { asked = p; return total - 1, nil }
 	t.Cleanup(func() { moveFreeBytes = saved })
+	free := func(n int64) { moveFreeBytes = func(p string) (int64, error) { asked = p; return n, nil } }
+	savedFS := sameFilesystem
+	t.Cleanup(func() { sameFilesystem = savedFS })
+	onDataVolume := func(same bool) { sameFilesystem = func(string, string) (bool, error) { return same, nil } }
+
+	// Another volume: the copies alone.
+	onDataVolume(false)
 	root := filepath.Join(t.TempDir(), "store")
 	t.Setenv("VQ_BLOB_DIR", root)
+	free(total - 1)
 	code, _, e := runCLI(t, "attachments", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "free in "+root) || asked != root {
 		t.Fatalf("%d %q, asked %q", code, e, asked)
@@ -554,8 +563,27 @@ func TestMoveChecksFreeSpace(t *testing.T) {
 	if movePending(dataDir) || dirObjects(t, root) != 0 {
 		t.Fatal("the refusal wrote something")
 	}
-	moveFreeBytes = func(p string) (int64, error) { return total, nil }
+
+	// The data directory's volume: the copies, the snapshot and the margin.
+	onDataVolume(true)
+	size := dbSize(t, filepath.Join(dataDir, "vaquero.db"))
+	free(total + size + appdb.MinBackupMargin - 1)
+	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 || !strings.Contains(e, "free in "+root) {
+		t.Fatalf("same volume: %d %q", code, e)
+	}
+	free(total + size + appdb.MinBackupMargin)
 	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+		t.Fatal(e)
+	}
+
+	// Into the database: the snapshot holds the copies as well.
+	size = dbSize(t, filepath.Join(dataDir, "vaquero.db"))
+	free(total + size + total + appdb.MinBackupMargin - 1)
+	if code, _, e := runCLI(t, "attachments", "move", "--to", "sqlite"); code != 1 || !strings.Contains(e, "free in "+dataDir) || asked != dataDir {
+		t.Fatalf("sqlite: %d %q, asked %q", code, e, asked)
+	}
+	free(total + size + total + appdb.MinBackupMargin)
+	if code, _, e := runCLI(t, "attachments", "move", "--to", "sqlite"); code != 0 {
 		t.Fatal(e)
 	}
 }
@@ -773,5 +801,183 @@ func TestMoveSnapshotFailureSwitchesNothing(t *testing.T) {
 	moveSnapshot = saved
 	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "2 copied by an earlier run") {
 		t.Fatalf("%d %q %q", code, out, e)
+	}
+}
+
+// sameStorageRefusal is the refusal when source and target are one place.
+const sameStorageRefusal = "These are the same storage; nothing was moved."
+
+// caseInsensitive skips a test on a case-sensitive filesystem, where a
+// case variant of a path is another directory.
+func caseInsensitive(t *testing.T, dir string) string {
+	t.Helper()
+	upper := filepath.Join(filepath.Dir(dir), strings.ToUpper(filepath.Base(dir)))
+	if _, err := os.Stat(upper); err != nil {
+		t.Skipf("%s is on a case-sensitive filesystem, where %s is another directory", dir, upper)
+	}
+	return upper
+}
+
+// N-R10: a VQ_BLOB_DIR that differs from the recorded directory only in
+// case (the same directory on macOS's default filesystem) passes
+// SameLocation, so only the probe stands between --delete-old and every file.
+func TestMoveRefusesACaseVariantDir(t *testing.T) {
+	dataDir, want := movedFrom(t, "dir")
+	upper := caseInsensitive(t, filepath.Join(dataDir, "attachments"))
+	t.Setenv("VQ_BLOB_DIR", upper)
+	code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	if code != 1 || !strings.Contains(e, sameStorageRefusal) {
+		t.Fatalf("%d %q", code, e)
+	}
+	if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "dir", "")); !maps.Equal(got, want) {
+		t.Fatalf("files lost: %v", got)
+	}
+	if movePending(dataDir) || len(premoves(t, dataDir)) != 0 {
+		t.Fatal("the refusal recorded a move")
+	}
+}
+
+// N-R10: two bucket names for one store (another endpoint spelling for
+// the same service): the probe put into the target is seen through the
+// source, so nothing is moved or deleted, and no probe is left.
+func TestMoveRefusesAliasedBuckets(t *testing.T) {
+	withStores(t, nil)
+	dataDir, want := movedFrom(t, "sqlite")
+	t.Setenv("VQ_S3_ENDPOINT", "s3.example.test:9000")
+	t.Setenv("VQ_S3_BUCKET", "vq")
+	t.Setenv("VQ_S3_ACCESS_KEY_ID", "AKIATEST")
+	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "secret")
+	if code, _, e := runCLI(t, "attachments", "move", "--to", "s3"); code != 0 {
+		t.Fatal(e)
+	}
+	bucket := fakeS3Store(t, "s3.example.test:9000/vq")
+	fakeBuckets.Lock()
+	fakeBuckets.dirs["alias.example.test:9000/vq"] = fakeBuckets.dirs["s3.example.test:9000/vq"]
+	fakeBuckets.Unlock()
+	before := objectKeys(t, bucket)
+	t.Setenv("VQ_S3_ENDPOINT", "alias.example.test:9000")
+	code, _, e := runCLI(t, "attachments", "move", "--to", "s3", "--delete-old")
+	if code != 1 || !strings.Contains(e, sameStorageRefusal) {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now := objectKeys(t, bucket); !slices.Equal(now, before) {
+		t.Fatalf("the bucket changed: %v, was %v", now, before)
+	}
+	if got := attachmentBytes(t, dataDir, bucket); !maps.Equal(got, want) {
+		t.Fatalf("files lost: %v", got)
+	}
+	if s := readSetting(t, dataDir, "blob_location"); s != "s3.example.test:9000/vq" {
+		t.Fatalf("switched to %q", s)
+	}
+}
+
+// N-R10: a record left by an interrupted move to another name for the
+// storage in use (here a symlink to it) is never cleaned up by deleting:
+// a rerun to elsewhere refuses and deletes nothing. The same holds for a
+// record whose old storage is the one in use now.
+func TestMoveAliasedLeftoversDeleteNothing(t *testing.T) {
+	dataDir, want := movedFrom(t, "dir")
+	instance := readSetting(t, dataDir, "instance_id")
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(filepath.Join(dataDir, "attachments"), alias); err != nil {
+		t.Fatal(err)
+	}
+	inUse := movePlace{Backend: "dir", Location: "{data dir}/attachments"}
+	other := filepath.Join(t.TempDir(), "other")
+	for _, tc := range []struct {
+		name string
+		plan movePlan
+		dir  string
+	}{
+		{"cleanup of the target", movePlan{Instance: instance, From: inUse, To: movePlace{Backend: "dir", Location: alias}}, other},
+		{"finish of the deletes", movePlan{Instance: instance, From: movePlace{Backend: "dir", Location: alias}, To: inUse, DeleteOld: true}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, _ := json.Marshal(tc.plan)
+			if err := os.WriteFile(filepath.Join(dataDir, "move.pending"), append(b, '\n'), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("VQ_BLOB_DIR", tc.dir)
+			code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+			if code != 1 || !strings.Contains(e, "These are the same storage; nothing was deleted.") {
+				t.Fatalf("%d %q", code, e)
+			}
+			if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "dir", "")); !maps.Equal(got, want) {
+				t.Fatalf("files lost: %v", got)
+			}
+			if !movePending(dataDir) {
+				t.Fatal("the record went")
+			}
+		})
+	}
+}
+
+// N-R10: a directory inside the other, either way, is refused.
+func TestMoveRefusesNestedDirs(t *testing.T) {
+	dataDir, want := movedFrom(t, "dir")
+	for _, dir := range []string{
+		filepath.Join(dataDir, "attachments", "nested"), // the target inside the source
+		dataDir, // the source inside the target
+	} {
+		t.Setenv("VQ_BLOB_DIR", dir)
+		code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+		if code != 1 || !strings.Contains(e, "is inside") {
+			t.Fatalf("%s: %d %q", dir, code, e)
+		}
+	}
+	if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "dir", "")); !maps.Equal(got, want) {
+		t.Fatalf("files lost: %v", got)
+	}
+	if _, err := os.Stat(filepath.Join(dataDir, "attachments", "nested")); !os.IsNotExist(err) {
+		t.Fatalf("the nested target was made: %v", err)
+	}
+}
+
+// N-R10: --delete-old deletes only attachments/{instance}/{id} and
+// thumbs/{instance}/{id}; anything else there is left and named.
+func TestMoveDeleteOldOnlyDeletesAttachmentKeys(t *testing.T) {
+	dataDir, _ := movedFrom(t, "dir")
+	instance := readSetting(t, dataDir, "instance_id")
+	old := backendStore(t, dataDir, "dir", "")
+	stray := "attachments/" + instance + "/notes.txt"
+	if err := old.Put(t.Context(), stray, strings.NewReader("mine"), 4, "text/plain"); err != nil {
+		t.Fatal(err)
+	}
+	code, out, e := runCLI(t, "attachments", "move", "--to", "sqlite", "--delete-old")
+	if code != 0 || !strings.Contains(e, stray) {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if left := objectKeys(t, old); !slices.Equal(left, []string{stray}) {
+		t.Fatalf("left %v", left)
+	}
+}
+
+// A move elsewhere also removes the half-written temporary files a killed
+// copy left in the directory it was moving to.
+func TestMoveElsewhereRemovesTempFiles(t *testing.T) {
+	dataDir, _ := movedFrom(t, "sqlite")
+	first := filepath.Join(t.TempDir(), "first")
+	t.Setenv("VQ_BLOB_DIR", first)
+	withStores(t, func(cfg config.Config, s blobs.Store) blobs.Store {
+		if cfg.BlobBackend == "dir" {
+			return &failingPut{Store: s, n: 2}
+		}
+		return s
+	})
+	if code, _, _ := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+		t.Fatal("the first run passed")
+	}
+	instance := readSetting(t, dataDir, "instance_id")
+	tmp := filepath.Join(first, "attachments", instance, ".tmp-01abc-123")
+	if err := os.WriteFile(tmp, []byte("half"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withStores(t, nil)
+	t.Setenv("VQ_BLOB_DIR", filepath.Join(t.TempDir(), "second"))
+	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+		t.Fatal(e)
+	}
+	if _, err := os.Stat(tmp); !os.IsNotExist(err) {
+		t.Fatalf("temporary file left: %v", err)
 	}
 }

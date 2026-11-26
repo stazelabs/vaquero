@@ -20,6 +20,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/config"
 	appdb "github.com/stazelabs/vaquero/internal/db"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/units"
 )
@@ -243,7 +244,11 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 				res.Finished, res.From = true, plan.From.where(cfg.DataDir)
 				res.Moved = len(items)
 				if plan.DeleteOld || deleteOld {
-					if err := deleteOldCopies(ctx, cfg, plan.From, instance, items, w, r, get); err != nil {
+					live, err := openPlace(cfg, from, w, r, get)
+					if err != nil {
+						return res, err
+					}
+					if err := deleteOldCopies(ctx, cfg, plan.From, live, from, instance, items, w, r, get, warn); err != nil {
 						return res, err
 					}
 					res.DeletedOld = true
@@ -262,7 +267,11 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 		case sameTarget(plan.To, cfg):
 			// Resumed below.
 		default:
-			n, err := cleanMoveLeftovers(ctx, cfg, plan, w, r)
+			live, err := openPlace(cfg, from, w, r, get)
+			if err != nil {
+				return res, err
+			}
+			n, err := cleanMoveLeftovers(ctx, cfg, plan, live, from, w, r, warn)
 			if err != nil {
 				return res, err
 			}
@@ -283,9 +292,17 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 	if err != nil {
 		return res, err
 	}
+	// Directories are checked before the store is opened, which creates
+	// a missing one.
+	if err := distinctDirs(cfg, from, to, "moved"); err != nil {
+		return res, err
+	}
 	dst, err := openBlobStore(cfg, w, r, time.Now)
 	if err != nil {
 		return res, fmt.Errorf("attachment store: %w", err)
+	}
+	if err := distinct(ctx, cfg, dst, to, src, from, instance, "moved"); err != nil {
+		return res, err
 	}
 
 	// What an interrupted run copied and checked, and is still there.
@@ -301,7 +318,7 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 		todo = append(todo, a)
 		need += a.size
 	}
-	if err := checkMoveRoom(cfg, need); err != nil {
+	if err := checkMoveRoom(ctx, cfg, r, need); err != nil {
 		return res, err
 	}
 
@@ -347,7 +364,7 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 	}
 	res.Moved = len(items)
 	if deleteOld {
-		if err := deleteOldCopies(ctx, cfg, from, instance, items, w, r, get); err != nil {
+		if err := deleteOldCopies(ctx, cfg, from, dst, to, instance, items, w, r, get, warn); err != nil {
 			//lint:ignore ST1005 the report is a sentence the operator reads as is
 			return res, fmt.Errorf("Moved %s to %s, but %w", count(len(items), "attachment"), to.Backend, err)
 		}
@@ -468,26 +485,156 @@ func openPlace(cfg config.Config, p movePlace, w, r *sql.DB, get func(string) st
 }
 
 // checkMoveRoom refuses a move whose copies won't fit: into a directory,
-// on its volume; into the database, on the data directory's. A bucket's
-// room is the provider's to know.
-func checkMoveRoom(cfg config.Config, need int64) error {
+// on its volume; into the database, on the data directory's. When the
+// target is on the data directory's volume, that volume must also hold the
+// premove snapshot (the database, plus the copies when they go into it)
+// and appdb.MinBackupMargin. A bucket's room is the provider's to know (the
+// snapshot checks its own).
+func checkMoveRoom(ctx context.Context, cfg config.Config, r *sql.DB, need int64) error {
 	var dir string
+	onData := false
 	switch cfg.BlobBackend {
 	case "dir":
 		dir = cfg.BlobDir
+		same, err := sameFilesystem(cfg.DataDir, cfg.BlobDir)
+		onData = err != nil || same // when in doubt, ask for the room
 	case "sqlite":
-		dir = cfg.DataDir
+		dir, onData = cfg.DataDir, true
 	default:
 		return nil
+	}
+	want := need
+	if onData {
+		size, err := appdb.Size(ctx, r)
+		if err != nil {
+			return err
+		}
+		snap := size
+		if cfg.BlobBackend == "sqlite" {
+			snap += need
+		}
+		want += snap + appdb.MinBackupMargin
 	}
 	free, err := moveFreeBytes(dir)
 	if err != nil {
 		return fmt.Errorf("free space in %s: %w", dir, err)
 	}
-	if free < need {
-		return message(fmt.Sprintf("Moving the attachments needs %s free in %s, and %s is free.", units.SizeWords(need), dir, units.SizeWords(free)))
+	if free < want {
+		return message(fmt.Sprintf("Moving the attachments needs %s free in %s, and %s is free.", units.SizeWords(want), dir, units.SizeWords(free)))
 	}
 	return nil
+}
+
+// sameStorage is the refusal when two places are one store; done says
+// what was spared ("moved", "deleted").
+func sameStorage(done string) error {
+	return message("These are the same storage; nothing was " + done + ".")
+}
+
+// distinct proves that a (at pa) and b (at pb) are different storage
+// before anything is copied into one or deleted from the other (N-R10).
+// Names can't prove it (a case-insensitive filesystem, a symlink, two
+// endpoints for one service), so: for two directories, neither may be the
+// other or inside it (os.SameFile up the parents); then for any pair, a
+// probe object with a fresh name is put into a under this instance's
+// prefix and looked for through b. Seen, they are one store. The probe is
+// deleted again either way.
+func distinct(ctx context.Context, cfg config.Config, a blobs.Store, pa movePlace, b blobs.Store, pb movePlace, instance, done string) error {
+	if err := distinctDirs(cfg, pa, pb, done); err != nil {
+		return err
+	}
+	key := "attachments/" + instance + "/move-probe-" + strings.ToLower(idgen.New())
+	pctx, cancel := context.WithTimeout(ctx, blobs.PutTimeout(0))
+	defer cancel()
+	if err := a.Put(pctx, key, strings.NewReader(""), 0, "application/octet-stream"); err != nil {
+		return fmt.Errorf("can't write to %s (%w), so nothing was %s", pa.where(cfg.DataDir), err, done)
+	}
+	_, serr := b.Stat(pctx, key)
+	derr := a.Delete(context.WithoutCancel(pctx), key)
+	switch {
+	case serr == nil:
+		return sameStorage(done)
+	case !errors.Is(serr, blobs.ErrNotFound):
+		return fmt.Errorf("can't read %s (%w), so nothing was %s", pb.where(cfg.DataDir), serr, done)
+	case derr != nil:
+		return fmt.Errorf("can't delete from %s (%w); remove %s from it by hand", pa.where(cfg.DataDir), derr, key)
+	}
+	return nil
+}
+
+// distinctDirs is distinct's check of two directories, which needs no
+// store: neither may be the other (os.SameFile) or inside it.
+func distinctDirs(cfg config.Config, pa, pb movePlace, done string) error {
+	if pa.Backend != "dir" || pb.Backend != "dir" {
+		return nil
+	}
+	ra, rb := dirRoot(cfg, pa), dirRoot(cfg, pb)
+	if sameDirFile(ra, rb) {
+		return sameStorage(done)
+	}
+	inner, outer := ra, rb
+	if dirInside(rb, ra) {
+		inner, outer = rb, ra
+	} else if !dirInside(ra, rb) {
+		return nil
+	}
+	return message(fmt.Sprintf("%s is inside %s; attachments can't move between a directory and one inside it, so nothing was %s.", inner, outer, done))
+}
+
+// dirRoot is a dir place's directory.
+func dirRoot(cfg config.Config, p movePlace) string {
+	if p.Location == cfg.BlobDir || p.Location == blobs.Location(cfg) {
+		return cfg.BlobDir
+	}
+	return blobs.ResolveLocation(p.Location, cfg.DataDir)
+}
+
+// sameDirFile reports whether a and b both exist and are one directory.
+func sameDirFile(a, b string) bool {
+	sa, err1 := os.Stat(a)
+	sb, err2 := os.Stat(b)
+	return err1 == nil && err2 == nil && os.SameFile(sa, sb)
+}
+
+// dirInside reports whether dir is strictly inside root: some parent of
+// dir (dir need not exist yet) is root itself, by os.SameFile, so case and
+// symlinks don't hide it.
+func dirInside(dir, root string) bool {
+	rs, err := os.Stat(root)
+	if err != nil {
+		return false
+	}
+	p, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	for {
+		up := filepath.Dir(p)
+		if up == p {
+			return false
+		}
+		p = up
+		if st, err := os.Stat(p); err == nil && os.SameFile(st, rs) {
+			return true
+		}
+	}
+}
+
+// deletable reports whether key is one a move may delete: exactly
+// attachments/{instance}/{id} or thumbs/{instance}/{id}, the id a ULID in
+// lower case. Anything else under those prefixes is left alone.
+func deletable(key, instance string) bool {
+	parts := strings.Split(key, "/")
+	return len(parts) == 3 && (parts[0] == "attachments" || parts[0] == "thumbs") && parts[1] == instance &&
+		parts[2] == strings.ToLower(parts[2]) && idgen.Valid(parts[2])
+}
+
+// tellSkipped names the keys a delete left because they aren't a
+// move's to delete.
+func tellSkipped(warn io.Writer, where string, skipped []string) {
+	if len(skipped) > 0 {
+		fmt.Fprintf(warn, "Left %s in %s that no attachment names: %s.\n", count(len(skipped), "file"), where, strings.Join(skipped, ", "))
+	}
 }
 
 // copyChecked copies a's bytes from src to dst under the same key, then
@@ -564,13 +711,19 @@ func switchStorage(ctx context.Context, w *sql.DB, to movePlace) error {
 }
 
 // deleteOldCopies deletes, from the storage at from, every attachment's
-// bytes and everything under this instance's attachments/ and thumbs/
-// prefixes (previews, and files no record names). It runs only after the
-// switch, so nothing reads from there any more.
-func deleteOldCopies(ctx context.Context, cfg config.Config, from movePlace, instance string, items []moveItem, w, r *sql.DB, get func(string) string) error {
+// bytes and the other attachment and preview files under this instance's
+// prefixes (deletable keys only; the rest are named on warn). It runs
+// only after the switch, so nothing reads from there any more, and only
+// once distinct proves from isn't live, the storage now in use at at.
+func deleteOldCopies(ctx context.Context, cfg config.Config, from movePlace, live blobs.Store, at movePlace, instance string, items []moveItem, w, r *sql.DB, get func(string) string, warn io.Writer) error {
 	old, err := openPlace(cfg, from, w, r, get)
 	if err != nil {
 		return oldNotDeleted(cfg, from, err)
+	}
+	// The probe goes into the live store, whose sweep would remove one
+	// left behind, and is looked for through the old one.
+	if err := distinct(ctx, cfg, live, at, old, from, instance, "deleted"); err != nil {
+		return err
 	}
 	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Minute)
 	defer cancel()
@@ -586,11 +739,22 @@ func deleteOldCopies(ctx context.Context, cfg config.Config, from movePlace, ins
 			return oldNotDeleted(cfg, from, err)
 		}
 	}
+	var skipped []string
+	seen := map[string]bool{}
 	for _, k := range keys {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		if !deletable(k, instance) {
+			skipped = append(skipped, k)
+			continue
+		}
 		if err := old.Delete(dctx, k); err != nil && !errors.Is(err, blobs.ErrNotFound) {
 			return oldNotDeleted(cfg, from, err)
 		}
 	}
+	tellSkipped(warn, from.where(cfg.DataDir), skipped)
 	if from.Backend == "dir" {
 		root := blobs.ResolveLocation(from.Location, cfg.DataDir)
 		for _, d := range []string{"attachments", "thumbs"} {
@@ -606,16 +770,22 @@ func oldNotDeleted(cfg config.Config, from movePlace, err error) error {
 }
 
 // cleanMoveLeftovers deletes what an interrupted move to plan.To put
-// there: everything under this instance's attachments/ prefix, which the
-// database never pointed at. A bucket is left for the operator: its keys
-// may not be the ones in the environment now.
-func cleanMoveLeftovers(ctx context.Context, cfg config.Config, plan *movePlan, w, r *sql.DB) (int, error) {
+// there: the deletable keys under this instance's attachments/ prefix,
+// which the database never pointed at, and a directory's half-written
+// temporary files there; anything else is named on warn. Only once
+// distinct proves plan.To isn't live, the storage in use at at. A bucket
+// is left for the operator: its keys may not be the ones in the
+// environment now.
+func cleanMoveLeftovers(ctx context.Context, cfg config.Config, plan *movePlan, live blobs.Store, at movePlace, w, r *sql.DB, warn io.Writer) (int, error) {
 	if plan.To.Backend == "s3" {
 		return 0, plan.byHand(cfg.DataDir, "it moved to another bucket")
 	}
 	store, err := openPlace(cfg, plan.To, w, r, func(string) string { return "" })
 	if err != nil {
 		return 0, plan.byHand(cfg.DataDir, err.Error())
+	}
+	if err := distinct(ctx, cfg, live, at, store, plan.To, plan.Instance, "deleted"); err != nil {
+		return 0, err
 	}
 	prefix := "attachments/" + plan.Instance + "/"
 	var keys []string
@@ -625,15 +795,30 @@ func cleanMoveLeftovers(ctx context.Context, cfg config.Config, plan *movePlan, 
 	}); err != nil {
 		return 0, plan.byHand(cfg.DataDir, err.Error())
 	}
-	for i, k := range keys {
-		if err := store.Delete(ctx, k); err != nil {
-			return i, plan.byHand(cfg.DataDir, err.Error())
+	n := 0
+	var skipped []string
+	for _, k := range keys {
+		if !deletable(k, plan.Instance) {
+			skipped = append(skipped, k)
+			continue
 		}
+		if err := store.Delete(ctx, k); err != nil {
+			return n, plan.byHand(cfg.DataDir, err.Error())
+		}
+		n++
 	}
+	tellSkipped(warn, plan.To.where(cfg.DataDir), skipped)
 	if plan.To.Backend == "dir" {
-		_ = os.Remove(filepath.Join(blobs.ResolveLocation(plan.To.Location, cfg.DataDir), "attachments", plan.Instance))
+		dir := filepath.Join(blobs.ResolveLocation(plan.To.Location, cfg.DataDir), "attachments", plan.Instance)
+		tmps, _ := filepath.Glob(filepath.Join(dir, ".tmp-*"))
+		for _, t := range tmps {
+			if os.Remove(t) == nil {
+				n++
+			}
+		}
+		_ = os.Remove(dir) // only when empty
 	}
-	return len(keys), nil
+	return n, nil
 }
 
 // byHand is the refusal for a record this run can't act on.
