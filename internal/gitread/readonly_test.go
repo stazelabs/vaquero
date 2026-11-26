@@ -66,6 +66,12 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		{"diff", "--no-ext-diff", "--no-textconv", "HEAD", "--", "../x"},
 		{"log", "--no-ext-diff", "--no-textconv", "--end-of-options", "/etc/hosts"},
 		{"show", "--no-ext-diff", "--no-textconv", "HEAD:a.md"},
+		// An order file is read from anywhere.
+		{"diff", "--no-ext-diff", "--no-textconv", "-O", "/etc/passwd", "HEAD", "HEAD", "--"},
+		{"diff", "--no-ext-diff", "--no-textconv", "-O/etc/passwd", "HEAD", "HEAD", "--"},
+		{"log", "--no-ext-diff", "--no-textconv", "-p", "--orderfile=/etc/passwd"},
+		{"show", "--no-ext-diff", "--no-textconv", "--orderfile", "/etc/passwd", "HEAD"},
+		{"show", "--no-ext-diff", "--no-textconv", "-pO/etc/passwd", "HEAD"},
 		{"rev-parse", "--no-index"},
 		{"rev-parse", "--", "--no-index"},
 		{"log", "--no-ext-diff", "--no-textconv", "--", "--no-index"},

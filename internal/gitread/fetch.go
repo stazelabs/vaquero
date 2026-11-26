@@ -21,11 +21,13 @@ import (
 //
 // Credentials: the repo's own credential.helper never runs (every command
 // resets the list with -c credential.helper=). Fetch then re-adds the
-// user's helpers, read with git config --system --get-all
-// credential.helper and git config --global --get-all credential.helper
-// (from /, never --local, so no repo config or include is read), as
-// -c credential.helper=<value> after the reset, in git's own order (system,
-// then global; an empty value resets the list, as in git); with
+// user's helpers, credential.helper and every credential.<url>.helper (so
+// gh auth setup-git's credential.https://github.com.helper works), read
+// with git config --system and --global -z --get-regexp
+// '^credential\.(.+\.)?helper$' (from /, never --local, so no repo config
+// or include is read), as -c key=value after the reset, in git's own
+// order (system, then global, each in file order; an empty value resets
+// the list, as in git); with
 // credential.interactive=never, GIT_TERMINAL_PROMPT=0 and an empty askpass
 // nothing ever prompts. So a private https remote fetches with the user's
 // keychain helper, and a repo can't add a program of its own.
@@ -95,26 +97,46 @@ func (r *Repos) hasFetched(path, remote string) bool {
 	return r.fetched[path+"\x00"+remote]
 }
 
-// userHelpers is the user's credential.helper values in git's order:
-// system config, then global, each in its file's order, an empty value
-// resetting the list. A read that fails adds none (no helper is safe: the
-// fetch then just can't authenticate).
+// userHelpers is the user's credential helpers as -c values
+// ("credential.helper=…" and "credential.<url>.helper=…"), in git's own
+// order: system config, then global, each in its file's order, empty
+// values included (git treats them as a reset, as in the user's own git).
+// A read that fails adds none (no helper is safe: the fetch then just
+// can't authenticate).
 func (r *Repos) userHelpers(ctx context.Context) []string {
 	var out []string
-	for _, read := range [][]string{helperReads[1], helperReads[0]} {
+	for _, read := range helperReads {
 		b, err := r.run(ctx, "/", read, maxHelpers)
 		if err != nil {
 			continue
 		}
-		for line := range strings.SplitSeq(strings.TrimSuffix(string(b), "\n"), "\n") {
-			if line == "" {
-				out = nil
-				continue
+		for entry := range strings.SplitSeq(strings.TrimSuffix(string(b), "\x00"), "\x00") {
+			key, value, ok := strings.Cut(entry, "\n")
+			if ok && helperKey(key) {
+				out = append(out, key+"="+value)
 			}
-			out = append(out, line)
 		}
 	}
 	return out
+}
+
+// helperKey is a credential helper's config key: credential.helper or
+// credential.<url>.helper, with no "=" (a -c value couldn't carry it) or
+// control character.
+func helperKey(k string) bool {
+	l := strings.ToLower(k)
+	if !strings.HasPrefix(l, "credential.") || !strings.HasSuffix(l, "helper") || len(k) > 1024 || strings.Contains(k, "=") {
+		return false
+	}
+	if l != "credential.helper" && !strings.HasSuffix(l, ".helper") {
+		return false
+	}
+	for _, r := range k {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // maxHelpers bounds the helper config read.

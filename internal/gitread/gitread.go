@@ -22,15 +22,20 @@
 // Only these subcommands run (Allowed): rev-parse, show, cat-file, log,
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
 // the list and get-url) and diff, which read; and fetch, which only Fetch
-// runs, with the two fixed reads of the user's credential.helper (git
-// config --global and --system --get-all credential.helper, never the
-// repo's). diff, log and show run only with --no-ext-diff and
+// runs, with the two fixed reads of the user's credential helpers (git
+// config --system and --global -z --get-regexp for credential.helper and
+// credential.<url>.helper, never the repo's). diff, log and show run only
+// with --no-ext-diff and
 // --no-textconv (both on by default in git, so a repo's diff.external or
 // textconv would run), and their positional arguments must be revisions,
 // with paths only after "--" and each a ValidPath (two paths outside the
 // work tree would turn diff into --no-index by itself). No option that
-// writes a file (--output), reads outside the repo (--no-index, anywhere)
-// or applies a repo's drivers (--textconv, --filters, --ext-diff) passes.
+// writes a file (--output), reads outside the repo (--no-index, anywhere;
+// -O and --orderfile on diff, log and show, with diff.orderFile pinned to
+// /dev/null) or applies a repo's drivers (--textconv, --filters,
+// --ext-diff) passes. The environment keeps GIT_CONFIG_GLOBAL,
+// GIT_CONFIG_SYSTEM and GIT_CONFIG_NOSYSTEM, which only say where the
+// user's own config is.
 // Fetch is the one
 // command that touches the network and the one that writes: remote-tracking
 // refs under refs/remotes/{remote}/ and the remote's tags under
@@ -163,6 +168,7 @@ var guardConfig = []string{
 	"column.ui=never",
 	"color.ui=never",
 	"diff.relative=false",
+	"diff.orderFile=/dev/null",
 	"http.saveCookies=false",
 	"http.cookieFile=",
 	"gc.auto=0",
@@ -184,14 +190,17 @@ var guardConfig = []string{
 var guardOptions = []string{"--no-pager", "--literal-pathspecs", "--no-replace-objects", "--no-optional-locks"}
 
 // prefix is every command's start: -C dir and the guards, with helpers
-// (Fetch's user credential helpers) right after the credential.helper reset.
+// (Fetch's user credential helpers, each "key=value") right after the
+// credential.helper reset. That one empty value empties git's whole helper
+// list, the repo's credential.<url>.helper entries and included ones too
+// (checked with real git), so only what follows it counts.
 func (r *Repos) prefix(dir string, helpers []string) []string {
 	out := []string{"-C", dir}
 	for _, c := range guardConfig {
 		out = append(out, "-c", c)
 		if c == "credential.helper=" {
 			for _, h := range helpers {
-				out = append(out, "-c", "credential.helper="+h)
+				out = append(out, "-c", h)
 			}
 		}
 	}
@@ -206,11 +215,13 @@ func helpersFrom(ctx context.Context) []string {
 	return h
 }
 
-// helperReads are the only config commands: the user's credential.helper
-// from global and system config, run from / so no repo is in view.
+// helperReads are the only config commands: the user's credential helpers
+// (credential.helper and every credential.<url>.helper, in file order) from
+// system and global config, run from / so no repo is in view. Never
+// --local, never a repo's includes.
 var helperReads = [][]string{
-	{"-C", "/", "--no-pager", "config", "--global", "--get-all", "credential.helper"},
-	{"-C", "/", "--no-pager", "config", "--system", "--get-all", "credential.helper"},
+	{"-C", "/", "--no-pager", "config", "--system", "-z", "--get-regexp", `^credential\.(.+\.)?helper$`},
+	{"-C", "/", "--no-pager", "config", "--global", "-z", "--get-regexp", `^credential\.(.+\.)?helper$`},
 }
 
 // diffLike run only with --no-ext-diff and --no-textconv.
@@ -320,6 +331,9 @@ func checkDiffLike(sub string, rest []string) error {
 			paths = true
 		case a == "--end-of-options":
 			opts = false
+		case opts && (strings.HasPrefix(a, "--orderfile") || (strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "O"))):
+			// -O, -Ofile, --orderfile=…: git reads that file, anywhere.
+			return fmt.Errorf("%w: git %s %s", ErrRefused, sub, a)
 		case opts && strings.HasPrefix(a, "-"):
 			ext = ext || a == "--no-ext-diff"
 			tc = tc || a == "--no-textconv"
@@ -346,13 +360,17 @@ func revArg(a string) bool {
 	return ValidRev(a)
 }
 
+// userConfigEnv are the GIT_ variables kept: they only say which global and
+// system config files are the user's, which the server's operator decides.
+var userConfigEnv = []string{"GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}
+
 // environ is the server's environment without any GIT_ variable or
 // SSH_ASKPASS, plus the guards; fetch adds GIT_SSH_COMMAND.
 func environ(fetch bool) []string {
 	var env []string
 	for _, e := range os.Environ() {
 		name, _, _ := strings.Cut(e, "=")
-		if strings.HasPrefix(name, "GIT_") || strings.HasPrefix(name, "SSH_ASKPASS") || name == "LC_ALL" {
+		if (strings.HasPrefix(name, "GIT_") && !slices.Contains(userConfigEnv, name)) || strings.HasPrefix(name, "SSH_ASKPASS") || name == "LC_ALL" {
 			continue
 		}
 		env = append(env, e)

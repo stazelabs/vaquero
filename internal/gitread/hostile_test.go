@@ -337,7 +337,7 @@ func TestCommandEnvironment(t *testing.T) {
 		}
 		for _, e := range env {
 			name, _, _ := strings.Cut(e, "=")
-			if (strings.HasPrefix(name, "GIT_") && !slices.Contains([]string{"GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "GIT_PAGER", "GIT_SSH_COMMAND"}, name)) || name == "SSH_ASKPASS" {
+			if (strings.HasPrefix(name, "GIT_") && !slices.Contains([]string{"GIT_TERMINAL_PROMPT", "GIT_OPTIONAL_LOCKS", "GIT_PAGER", "GIT_SSH_COMMAND", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"}, name)) || name == "SSH_ASKPASS" {
 				t.Errorf("git %s: %s passed through", subs[i], e)
 			}
 		}
