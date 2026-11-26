@@ -115,10 +115,23 @@ type TicketSummary struct {
 
 // Readiness says whether a ticket passes the agent workflow's gate: a
 // todo, with a tier, and a current plan approval. Reasons lists what
-// fails, in a fixed order; it is empty when Ready.
+// fails, in a fixed order; it is empty when Ready. Files is how the
+// ticket's repo files stand against its approval's pins, by path; absent
+// when it has none.
 type Readiness struct {
-	Ready   bool     `json:"ready"`
-	Reasons []string `json:"reasons"`
+	Ready   bool            `json:"ready"`
+	Reasons []string        `json:"reasons"`
+	Files   []ReadinessFile `json:"files,omitempty"`
+}
+
+// ReadinessFile is one repo file against an approval's pins: State is
+// unchanged, changed, renamed (Now is the path on main), gone (not on main
+// any more, or no longer referenced), added (referenced since the
+// approval, so not pinned) or unchecked (the repo couldn't be read).
+type ReadinessFile struct {
+	Path  string `json:"path"`
+	State string `json:"state"`
+	Now   string `json:"now,omitempty"`
 }
 
 type Ticket struct {

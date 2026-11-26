@@ -27,7 +27,7 @@ type ProjectStats struct {
 // projects with the workflow on, and one for every project link. Ready is the board's rule, and with the
 // workflow on readiness's too, so it counts the cards the board and Focus
 // mark ready.
-func LoadProjectStats(ctx context.Context, q *gen.Queries) (map[string]ProjectStats, error) {
+func LoadProjectStats(ctx context.Context, q *gen.Queries, files readiness.Files) (map[string]ProjectStats, error) {
 	rows, err := q.ListProjectStats(ctx)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func LoadProjectStats(ctx context.Context, q *gen.Queries) (map[string]ProjectSt
 		bump(out, r.ProjectID)
 	}
 	if len(gated) > 0 {
-		got, err := readiness.CheckAll(ctx, q, gated)
+		got, err := readiness.CheckAll(ctx, q, files, gated)
 		if err != nil {
 			return nil, err
 		}

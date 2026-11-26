@@ -26,6 +26,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/dbtest"
 	"github.com/stazelabs/vaquero/internal/gitread"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/web"
 	"github.com/stazelabs/vaquero/internal/web/handlers"
 )
@@ -122,6 +123,7 @@ func New(t testing.TB, opts ...func(*config.Config)) *Env {
 		Blobs:      blobs.NewSQLite(d.W, d.R, now),
 		Instance:   Instance,
 		Git:        c.Git,
+		Files:      readiness.NewFiles(c.Git),
 	}
 	e := &Env{DB: d, Deps: deps, t: t, shutdown: shutdown}
 	e.serve()

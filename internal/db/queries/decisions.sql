@@ -7,12 +7,12 @@ INSERT INTO decisions (id, project_id, run_id, kind, subject, question, options,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: AddDecisionTicket :exec
-INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children, files)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListDecisionTicketPins :many
 -- What a plan approval asked about for each of its tickets, by number.
-SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children,
+SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children, dt.files,
        t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number,
        t.project_id
 FROM decision_tickets dt

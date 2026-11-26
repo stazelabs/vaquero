@@ -12,7 +12,9 @@ import (
 )
 
 // FileView is GET /p/{key}/files/*?at=REV: a repo file at main, or at a
-// revision. A path or revision Vaquero won't pass to git is the 404 page,
+// revision. Opened at main from a ticket's reference (?ref=ID) whose
+// approval pinned the file, it says when the file changed, was renamed or
+// left main since (fileSince). A path or revision Vaquero won't pass to git is the 404 page,
 // before git runs; a missing file or revision is a 404 that names it.
 func FileView(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +35,9 @@ func FileView(d Deps) http.HandlerFunc {
 			return
 		}
 		v.Main = repo.Main
+		if at == "" {
+			v.Since = fileSince(r.Context(), d, repo, p, name, r.URL.Query().Get("ref"))
+		}
 		file, f, err := readFile(r.Context(), repo, name, at)
 		if err != nil {
 			f = repoTrouble(r.Context(), d, p, err)

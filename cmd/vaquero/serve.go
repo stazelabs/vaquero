@@ -23,6 +23,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/lockfile"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/sweep"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 	"github.com/stazelabs/vaquero/internal/version"
@@ -139,7 +140,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	}
 	shutdown := make(chan struct{})
 	d := handlers.Deps{Cfg: cfg, DB: w, R: gen.New(r), RDB: r, Core: c, Actor: owner, Logger: logger, Now: time.Now, Shutdown: shutdown, Touch: gen.New(w), MCPCalls: gen.New(w),
-		Blobs: store, Instance: instance, Git: c.Git,
+		Blobs: store, Instance: instance, Git: c.Git, Files: readiness.NewFiles(c.Git),
 		BackupDir:       filepath.Join(cfg.DataDir, "backups"),
 		RenewLocalToken: func(ctx context.Context) error { return ensureLocalToken(ctx, c, gen.New(r), owner, cfg.DataDir) }}
 	srv := &http.Server{

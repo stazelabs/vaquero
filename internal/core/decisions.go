@@ -278,18 +278,41 @@ func decisionEvent(ids []string) string {
 
 // createDecision writes d and its tickets. A plan approval pins, for each
 // ticket, what it asks about: the RequirementHash, the plan revision, the
-// parent and the sub-tickets with their RequirementHash, so the answer
-// approves exactly what was asked (rulings L-R7 and L-R9).
-func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets []string) error {
+// parent, the sub-tickets with their RequirementHash and the repo files
+// files read before the transaction (refused when the ticket's references
+// or the repo settings changed meanwhile), so the answer approves exactly
+// what was asked (rulings L-R7, L-R9 and P2-R2).
+func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets []string, files askedFiles) error {
 	if err := q.CreateDecision(ctx, gen.CreateDecisionParams(d)); err != nil {
 		return fmt.Errorf("create decision: %w", err)
 	}
+	var proj gen.Project
+	if d.Kind == DecisionApproval && d.Subject == "plan" {
+		p, err := q.GetProject(ctx, d.ProjectID)
+		if err != nil {
+			return fmt.Errorf("get project: %w", err)
+		}
+		proj = p
+		if p.RepoPath != files.repoPath || p.MainBranch != files.main {
+			return invalid("tickets", "The repo settings changed while asking; ask again.")
+		}
+	}
 	for _, id := range tickets {
-		row := gen.AddDecisionTicketParams{DecisionID: d.ID, TicketID: id, Children: "[]"}
+		row := gen.AddDecisionTicketParams{DecisionID: d.ID, TicketID: id, Children: "[]", Files: "[]"}
 		if d.Kind == DecisionApproval && d.Subject == "plan" {
 			t, err := q.GetTicket(ctx, id)
 			if err != nil {
 				return fmt.Errorf("get ticket: %w", err)
+			}
+			refs, err := q.ListTicketRefs(ctx, id)
+			if err != nil {
+				return fmt.Errorf("list references: %w", err)
+			}
+			if !samePaths(files.pins[id], refs) {
+				return invalid("tickets", "The references of "+TicketKey{Project: proj.Key, Number: t.Number}.String()+" changed while asking; ask again.")
+			}
+			if row.Files, err = filesJSON(files.pins[id]); err != nil {
+				return err
 			}
 			if row.PlanRevision, err = planRevision(ctx, q, id); err != nil {
 				return err
@@ -328,9 +351,11 @@ func childPins(ctx context.Context, q *gen.Queries, ticketID string) (string, er
 
 // askedUnchanged is what plan approval d asked about for each ticket,
 // refusing an Approve when any of it changed since: the ticket's
-// requirement, its plan revision, its parent, or its sub-tickets (one
-// added, removed, or with its requirement changed).
-func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) ([]gen.ListDecisionTicketPinsRow, error) {
+// requirement, its plan revision, its parent, its sub-tickets (one
+// added, removed, or with its requirement changed), its repo-path
+// references, or a pinned file's content on main (files, read before the
+// transaction; rulings P2-R3 and P2-R4).
+func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision, proj gen.Project, files fileVerdict) ([]gen.ListDecisionTicketPinsRow, error) {
 	pins, err := q.ListDecisionTicketPins(ctx, d.ID)
 	if err != nil {
 		return nil, fmt.Errorf("decision pins: %w", err)
@@ -353,6 +378,9 @@ func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) ([]gen.
 			key := TicketKey{Project: p.ProjectKey, Number: p.Number}.String()
 			return nil, invalid("answer", "The plan or requirement for "+key+" changed since this was asked; ask again.")
 		}
+		if err := filesUnchanged(ctx, q, proj, p, files); err != nil {
+			return nil, err
+		}
 	}
 	return pins, nil
 }
@@ -360,8 +388,18 @@ func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision) ([]gen.
 // AskDecision records a question for the owner, or asks for an approval
 // (subject plan, merge or release), open until answered or withdrawn. One
 // decision.asked event, on the decision's ticket when it names one.
+// A plan approval pins each ticket's repo-path references' files at main's
+// head, read with git before the transaction (pinFiles): asking is refused
+// when one isn't on main or the repo can't be read (ruling P2-R2).
 func (c *Core) AskDecision(ctx context.Context, by string, in DecisionInput) (gen.Decision, error) {
 	var d gen.Decision
+	var files askedFiles
+	if strings.TrimSpace(in.Kind) == DecisionApproval && strings.TrimSpace(in.Subject) == "plan" {
+		var err error
+		if files, err = c.pinFiles(ctx, in); err != nil {
+			return d, err
+		}
+	}
 	err := c.tx(ctx, func(q *gen.Queries) error {
 		cd, err := checkDecision(ctx, q, in, DecisionQuestion, DecisionApproval)
 		if err != nil {
@@ -372,7 +410,7 @@ func (c *Core) AskDecision(ctx context.Context, by string, in DecisionInput) (ge
 			Question: cd.in.Question, Options: cd.options, Recommendation: cd.in.Recommendation, Why: cd.in.Why,
 			State: "open", AskedBy: by, AskedAt: timefmt.Format(c.Now()),
 		}
-		if err := createDecision(ctx, q, d, cd.tickets); err != nil {
+		if err := createDecision(ctx, q, d, cd.tickets, files); err != nil {
 			return err
 		}
 		return c.emit(ctx, q, by, EvDecisionAsked, cd.project.ID, decisionEvent(cd.tickets), DecisionPayload{
@@ -412,7 +450,7 @@ func (c *Core) RecordRuling(ctx context.Context, by string, in DecisionInput, a 
 			State: "answered", Answer: answer, AnswerNote: note, AnsweredBy: nullString(by), AnsweredAt: nullString(now),
 			AskedBy: by, AskedAt: now,
 		}
-		if err := createDecision(ctx, q, d, cd.tickets); err != nil {
+		if err := createDecision(ctx, q, d, cd.tickets, askedFiles{}); err != nil {
 			return err
 		}
 		return c.emit(ctx, q, by, EvDecisionRuled, cd.project.ID, decisionEvent(cd.tickets), DecisionPayload{
@@ -437,14 +475,22 @@ func (c *Core) RecordRuling(ctx context.Context, by string, in DecisionInput, a 
 // answered Approve writes one approvals row per ticket from what was asked
 // (createDecision): the ticket's RequirementHash, its own plan's revision
 // (0 with none: a sub-ticket then leans on its epic's own approval) and its
-// sub-tickets with theirs. The Approve is refused when any of that, or the
-// ticket's parent, changed since it was asked (askedUnchanged); any other
-// answer is taken. An answered approval
+// sub-tickets with theirs, and its pinned files. The Approve is refused
+// when any of that, the ticket's parent, its repo-path references or a
+// pinned file's content on main changed since it was asked
+// (askedUnchanged; the files compared with git before the transaction);
+// any other answer is taken. An answered approval
 // is final; a later approval answered otherwise takes its place. One
 // decision.answered event either way, the group's ticket_ids in it. The
 // project must not be archived.
 func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a Answer) (gen.Decision, error) {
 	var d gen.Decision
+	// The pinned files are compared with main before the transaction (git
+	// never runs inside one), and only for what could be an Approve.
+	var files fileVerdict
+	if strings.EqualFold(strings.TrimSpace(a.Option), ApproveLabel) {
+		files = c.checkAskedFiles(ctx, decisionID)
+	}
 	err := c.tx(ctx, func(q *gen.Queries) error {
 		var err error
 		d, err = q.GetDecision(ctx, decisionID)
@@ -502,7 +548,7 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 		}
 		var asked []gen.ListDecisionTicketPinsRow
 		if d.Kind == DecisionApproval && d.Subject == "plan" && approves(opts, index) {
-			if asked, err = askedUnchanged(ctx, q, d); err != nil {
+			if asked, err = askedUnchanged(ctx, q, d, p, files); err != nil {
 				return err
 			}
 		}
@@ -547,14 +593,17 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 }
 
 // ApprovalPins is an approval row's pins: the ticket's parent and its
-// sub-tickets as the owner was asked about them, the only children its approval covers, each
-// with its requirement then (rulings L-R8 and L-R9). Repo pins arrive in
-// part 2.
+// sub-tickets as the owner was asked about them, the only children its
+// approval covers, each with its requirement then (rulings L-R8 and
+// L-R9), and its repo files (P2-R2).
 type ApprovalPins struct {
 	// Parent is the id of the ticket's parent when asked, "" for none: a
 	// ticket moved since leans on nothing it was approved under (L-R11).
 	Parent   string        `json:"parent"`
 	Children []PinnedChild `json:"children"`
+	// Files are the ticket's repo-path references as asked, at main's
+	// commit then; an approval from before part 2 has none.
+	Files []FilePin `json:"files"`
 }
 
 // PinnedChild is a sub-ticket an approval covers, with its RequirementHash
@@ -567,9 +616,12 @@ type PinnedChild struct {
 // approve writes one ticket's approval row for decision decisionID from
 // what was asked, which askedUnchanged found still current.
 func approve(ctx context.Context, q *gen.Queries, decisionID string, p gen.ListDecisionTicketPinsRow, at string) error {
-	pins := ApprovalPins{Parent: p.ParentID}
+	pins := ApprovalPins{Parent: p.ParentID, Files: []FilePin{}}
 	if err := json.Unmarshal([]byte(p.Children), &pins.Children); err != nil {
 		return fmt.Errorf("asked children: %w", err)
+	}
+	if err := json.Unmarshal([]byte(p.Files), &pins.Files); err != nil {
+		return fmt.Errorf("asked files: %w", err)
 	}
 	b, err := json.Marshal(pins)
 	if err != nil {

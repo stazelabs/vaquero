@@ -206,7 +206,11 @@ func apiReadiness(r *readiness.Readiness) *api.Readiness {
 	if r == nil {
 		return nil
 	}
-	return &api.Readiness{Ready: r.Ready, Reasons: r.Reasons}
+	out := &api.Readiness{Ready: r.Ready, Reasons: r.Reasons}
+	for _, f := range r.Files {
+		out.Files = append(out.Files, api.ReadinessFile{Path: f.Path, State: f.State, Now: f.Now})
+	}
+	return out
 }
 
 // APITickets is GET /api/v1/projects/{key}/tickets: the board's filters,
@@ -237,7 +241,7 @@ func APITickets(d Deps) http.HandlerFunc {
 		if n.fail(w, r) {
 			return
 		}
-		cols, _, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
+		cols, _, err := board.LoadList(r.Context(), d.R, d.files(), p, apiActor(r), f)
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return
@@ -354,7 +358,7 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 				ids = append(ids, s.ID)
 			}
 		}
-		if gate, err = readiness.CheckAll(ctx, d.R, ids); err != nil {
+		if gate, err = readiness.CheckAll(ctx, d.R, d.files(), ids); err != nil {
 			return out, err
 		}
 		rd := gate[t.ID]

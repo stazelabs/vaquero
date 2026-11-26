@@ -126,9 +126,111 @@ func (q *Queries) ListPlanRevisionsForTickets(ctx context.Context, ids []string)
 	return items, nil
 }
 
+const listReadinessProjects = `-- name: ListReadinessProjects :many
+SELECT id, "key", name, description, next_number, created_at, updated_at, archived_at, workflow, tier_map, icon_kind, icon_glyph, repo_path, main_branch, remote, fetch_minutes FROM projects WHERE id IN (/*SLICE:ids*/?) ORDER BY id
+`
+
+// The projects whose repos hold the given approvals' pinned files.
+func (q *Queries) ListReadinessProjects(ctx context.Context, ids []string) ([]Project, error) {
+	query := listReadinessProjects
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.Key,
+			&i.Name,
+			&i.Description,
+			&i.NextNumber,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArchivedAt,
+			&i.Workflow,
+			&i.TierMap,
+			&i.IconKind,
+			&i.IconGlyph,
+			&i.RepoPath,
+			&i.MainBranch,
+			&i.Remote,
+			&i.FetchMinutes,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReadinessRefs = `-- name: ListReadinessRefs :many
+SELECT ticket_id, id, target FROM ticket_refs
+WHERE ticket_id IN (/*SLICE:ids*/?)
+ORDER BY ticket_id, created_at, id
+`
+
+type ListReadinessRefsRow struct {
+	TicketID string
+	ID       string
+	Target   string
+}
+
+// The references of the given tickets, which a plan approval's file pins
+// are compared with (ruling P2-R4).
+func (q *Queries) ListReadinessRefs(ctx context.Context, ids []string) ([]ListReadinessRefsRow, error) {
+	query := listReadinessRefs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListReadinessRefsRow{}
+	for rows.Next() {
+		var i ListReadinessRefsRow
+		if err := rows.Scan(&i.TicketID, &i.ID, &i.Target); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReadinessTickets = `-- name: ListReadinessTickets :many
 
-SELECT t.id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
+SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN (/*SLICE:ids*/?)
@@ -136,6 +238,7 @@ WHERE t.id IN (/*SLICE:ids*/?)
 
 type ListReadinessTicketsRow struct {
 	ID             string
+	ProjectID      string
 	Title          string
 	Body           string
 	Tier           string
@@ -168,6 +271,7 @@ func (q *Queries) ListReadinessTickets(ctx context.Context, ids []string) ([]Lis
 		var i ListReadinessTicketsRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.ProjectID,
 			&i.Title,
 			&i.Body,
 			&i.Tier,

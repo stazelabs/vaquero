@@ -49,6 +49,17 @@
 // approval.", "Epic's plan changed since approval.", "Epic's plan not
 // approved.").
 //
+// An approval pins the ticket's repo files (core.FilePin, P2-R2), and
+// holds while each one's content on main, renames followed, is what was
+// pinned (P2-R3) and the ticket's repo-path references name the same files
+// (P2-R4); else "Files changed since approval.", or for an epic leaned on
+// "Epic's files changed since approval.". A ticket leaning on its epic
+// with repo-path references of its own has them added: its epic's
+// approval wasn't asked about them. Files that can't be checked (no repo
+// path, no git, a read error) are "Files can't be checked.", never a pass.
+// Files (files.go) runs git outside any transaction, once per project per
+// CheckAll; a project with nothing pinned runs none.
+//
 // The board's conditions (unassigned, unclaimed, no open blocker or
 // sub-ticket) are not reasons here: the board query decides them, and the
 // ready queue needs both.
@@ -74,21 +85,28 @@ const (
 	PlanChanged            = "Plan changed since approval."
 	EpicRequirementChanged = "Epic's requirement changed since approval."
 	EpicPlanChanged        = "Epic's plan changed since approval."
+	FilesChanged           = "Files changed since approval."
+	EpicFilesChanged       = "Epic's files changed since approval."
+	FilesUnchecked         = "Files can't be checked."
 )
 
 // Reasons is every reason, in the order an answer lists them.
-var Reasons = []string{NotATodo, NoTier, PlanNotApproved, EpicPlanNotApproved, RequirementChanged, PlanChanged, EpicRequirementChanged, EpicPlanChanged}
+var Reasons = []string{NotATodo, NoTier, PlanNotApproved, EpicPlanNotApproved, RequirementChanged, PlanChanged,
+	EpicRequirementChanged, EpicPlanChanged, FilesChanged, EpicFilesChanged, FilesUnchecked}
 
 // Readiness is one ticket's answer. Reasons is never nil, and Ready is
-// true exactly when it is empty.
+// true exactly when it is empty. Files is how the ticket's own repo files
+// stand against its approval's pins, by path (nil when it has none).
 type Readiness struct {
 	Ready   bool
 	Reasons []string
+	Files   []FileState
 }
 
-// Check is t's readiness, read through q (the reader).
-func Check(ctx context.Context, q *gen.Queries, t gen.Ticket) (Readiness, error) {
-	all, err := CheckAll(ctx, q, []string{t.ID})
+// Check is t's readiness, read through q (the reader), its pinned files
+// through files (nil: they can't be checked).
+func Check(ctx context.Context, q *gen.Queries, files Files, t gen.Ticket) (Readiness, error) {
+	all, err := CheckAll(ctx, q, files, []string{t.ID})
 	if err != nil {
 		return Readiness{}, err
 	}
@@ -107,9 +125,11 @@ const MaxDepth = 16
 
 // CheckAll is the readiness of each ticket named in ids that exists. It
 // reads the tickets, their ancestors a level at a time (at most MaxDepth
-// levels, however many tickets), then the plans and the plan approvals of
-// all of them: never a read per ticket.
-func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Readiness, error) {
+// levels, however many tickets), then the plans, the plan approvals and
+// the references of all of them: never a read per ticket. The approvals'
+// pinned files go to files once per project (nil: pins unchecked); a
+// project with nothing pinned runs no git.
+func CheckAll(ctx context.Context, q *gen.Queries, files Files, ids []string) (map[string]Readiness, error) {
 	out := map[string]Readiness{}
 	if len(ids) == 0 {
 		return out, nil
@@ -184,6 +204,9 @@ func CheckAll(ctx context.Context, q *gen.Queries, ids []string) (map[string]Rea
 		latest[a.TicketID] = an
 	}
 	s := state{tickets: tickets, plans: plans, latest: latest, arrived: arrived}
+	if s.files, err = fileStates(ctx, q, files, tickets, latest, every); err != nil {
+		return nil, err
+	}
 	for _, r := range rows {
 		out[r.ID] = s.check(r)
 	}
@@ -220,9 +243,10 @@ type answer struct {
 // state is what CheckAll read.
 type state struct {
 	tickets map[string]gen.ListReadinessTicketsRow
-	plans   map[string]int64  // ticket id -> current plan revision
-	latest  map[string]answer // ticket id -> latest answered plan approval
-	arrived map[string]string // ticket id -> when it last arrived in its project
+	plans   map[string]int64       // ticket id -> current plan revision
+	latest  map[string]answer      // ticket id -> latest answered plan approval
+	arrived map[string]string      // ticket id -> when it last arrived in its project
+	files   map[string][]FileState // ticket id -> its files against its latest approval
 }
 
 func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
@@ -233,6 +257,7 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 	if t.Tier == "" {
 		found[NoTier] = true
 	}
+	var files []FileState // its own, when its readiness rests on them
 	own, answered := s.latest[t.ID]
 	_, ownPlan := s.plans[t.ID]
 	hasParent := t.ParentID.Valid
@@ -247,6 +272,8 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 			if own.rev != s.plans[t.ID] {
 				found[PlanChanged] = true
 			}
+			files = s.files[t.ID]
+			markFiles(found, files, FilesChanged)
 			if own.pins.Parent != t.ParentID.String {
 				found[EpicPlanNotApproved] = true // moved since (L-R11)
 			} else if !ownPlan && hasParent {
@@ -257,10 +284,13 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 		}
 	} else {
 		// No plan and no approval of its own: its epic's approval, which
-		// must list it.
+		// must list it. Its own repo files were never asked about: each
+		// is added (P2-R4) until it is approved itself.
 		s.lean(t, 1, true, found, []string{t.ID})
+		files = s.files[t.ID]
+		markFiles(found, files, FilesChanged)
 	}
-	out := Readiness{Reasons: []string{}}
+	out := Readiness{Reasons: []string{}, Files: files}
 	for _, r := range Reasons {
 		if found[r] {
 			out.Reasons = append(out.Reasons, r)
@@ -322,6 +352,7 @@ func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found
 	if a.rev != s.plans[p.ID] {
 		found[EpicPlanChanged] = true
 	}
+	markFiles(found, s.files[p.ID], EpicFilesChanged)
 	if a.pins.Parent != p.ParentID.String {
 		found[EpicPlanNotApproved] = true // the epic moved since (L-R11)
 		return

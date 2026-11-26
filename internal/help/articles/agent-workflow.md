@@ -55,6 +55,8 @@ When the owner answers in conversation, the agent records the answer as relayed,
 
 Asking for a plan approval notes, for each ticket, its requirement, its plan revision, its epic, and its sub-tickets with their requirements, as they stand. If any of that changes before the answer (a sub-ticket added, removed or edited, or the ticket moved to another epic), Approve is refused ("The plan or requirement for VAQ-12 changed since this was asked; ask again."), so an approval always approves what you were shown; Request changes is still taken. `vaquero decision show` and the API's decision list, under "Approving covers" and `asked`, what an Approve covers: each ticket's plan revision, its epic and its sub-tickets. Approving a plan, with Approve, records for each of the decision's tickets the requirement as approved, a hash of the ticket's title and description, the revision of the ticket's own plan (none, for a sub-ticket without one: it relies on its epic's own approval), and the ticket's sub-tickets as you were asked about them. One approval can cover several tickets. Any other answer records no approval.
 
+A plan approval also pins the ticket's files: every [reference](/help/repositories) to a repo path, at the main branch's current commit, with the file's content then. URL references aren't pinned. Asking is refused when a referenced file isn't on main ("docs/x.md isn't on main; merge it before asking for approval."), or when the repository can't be read. If a pinned file's content changes on main before the answer, or the ticket gains or loses a repo-path reference, Approve is refused ("A file VAQ-12 references changed since this was asked; ask again."); a commit that leaves the file's content as it was changes nothing.
+
 An answered approval is final. To take one back, ask for a new plan approval and answer it Request changes: the latest answered plan approval of a ticket is the one that counts. Editing the ticket's requirement or plan also leaves the approval behind.
 
 ## Readiness
@@ -62,7 +64,7 @@ An answered approval is final. To take one back, ask for a new plan approval and
 With the workflow on, a ticket is ready to build only when it is clear enough and approved. On top of the board's rule (a todo, unassigned and unclaimed, nothing open blocking it, no open sub-tickets; see [the ready queue](/help/agents-and-claims#the-ready-queue)), it needs:
 
 - a tier, any of them: a design ticket can be ready, for planning work;
-- a current plan approval: the requirement and the plan as approved are still the ticket's.
+- a current plan approval: the requirement, the plan and the pinned files as approved are still the ticket's.
 
 Which approval counts:
 
@@ -72,6 +74,7 @@ Which approval counts:
 - **A ticket with no plan and no epic** can be approved as it is, for a small change.
 - **An approval holds under the epic it was asked under.** A ticket moved to another epic, out of its epic, or under an epic when it had none is not ready ("Epic's plan not approved.") until it is approved again where it now is.
 - **Leaning goes up the tree.** When a ticket's epic has no plan of its own, the epic relies on its own epic in turn, up to the first one with a plan, and every approval on the way must be current. Revising the plan at the top makes the grandchildren not ready too, with the reason for the link that broke: "Epic's requirement changed since approval.", "Epic's plan changed since approval." or "Epic's plan not approved."
+- **Pinned files must be as approved.** Files are judged by their content on main, with renames followed: a pinned file whose content changed, that left main, or a repo-path reference added or removed since the approval makes the ticket not ready ("Files changed since approval."); a rename alone doesn't. A ticket leaning on its epic is not ready when the epic's pinned files changed ("Epic's files changed since approval."). A sub-ticket's own repo-path references aren't covered by its epic's approval: with any, it needs an approval of its own. When the files can't be checked (no repository set, git not installed, or the repository can't be read) the ticket is never ready ("Files can't be checked.").
 - **A move to another project voids it.** An approval counts only if it was asked after the ticket last arrived in its project; and when a ticket leans on an epic's approval, any ticket in the chain from it up to that epic moving to another project after the approval was asked voids it ("Plan not approved."), even if the ticket came back or was detached and attached again.
 
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that fails this. Every ticket in the API answer, and the summary of a todo ticket in a list, then carries `readiness`: `ready`, and the `reasons` it is not, in this order:
@@ -84,5 +87,10 @@ The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool)
 - Plan changed since approval.
 - Epic's requirement changed since approval.
 - Epic's plan changed since approval.
+- Files changed since approval.
+- Epic's files changed since approval.
+- Files can't be checked.
+
+When the ticket's readiness rests on repo files, `readiness` also has `files`: each file's `path` as pinned and its `state`: `unchanged`, `changed`, `renamed` (with `now`, its path on main), `gone` (no longer on main, or no longer referenced), `added` (referenced, but not pinned by the approval) or `unchecked`. `vaquero ticket show` lists them under Files. Opened from the ticket's reference, the file view says when a file changed since the approval, with Show changes, or was renamed or removed.
 
 With the workflow off, tickets carry no `readiness`, and ready means what the board's rule says.

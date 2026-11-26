@@ -8,6 +8,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
@@ -71,9 +72,9 @@ const NeedsDecisionStatus = "Needs decision"
 // is (f.Category is ignored and dropped). With f.Mine, Next is the
 // owner's todo tickets, then the ready ones (ruling M-R2): the ready ones
 // are unassigned, so they are read without Mine, and nothing waits.
-func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Focus, error) {
+func LoadFocus(ctx context.Context, q *gen.Queries, files readiness.Files, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Focus, error) {
 	f.Category = ""
-	cols, tags, err := columns(ctx, q, p, owner, f, time.Time{})
+	cols, tags, err := columns(ctx, q, files, p, owner, f, time.Time{})
 	if err != nil {
 		return Focus{}, err
 	}
@@ -82,7 +83,7 @@ func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Act
 	if f.Mine {
 		all := f
 		all.Mine = false
-		allCols, _, err := columns(ctx, q, p, owner, all, time.Time{})
+		allCols, _, err := columns(ctx, q, files, p, owner, all, time.Time{})
 		if err != nil {
 			return Focus{}, err
 		}

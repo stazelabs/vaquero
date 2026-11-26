@@ -427,9 +427,9 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		hash, pins string
 		rev        int64
 	}{
-		f.T1.ID:  {sum("First\n"), `{"parent":"","children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}]}`, 2},
-		child.ID: {sum("Café\nCafé menu."), `{"parent":"` + f.T1.ID + `","children":[]}`, 0},
-		f.T2.ID:  {sum("Second\n"), `{"parent":"","children":[]}`, 0},
+		f.T1.ID:  {sum("First\n"), `{"parent":"","children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}],"files":[]}`, 2},
+		child.ID: {sum("Café\nCafé menu."), `{"parent":"` + f.T1.ID + `","children":[],"files":[]}`, 0},
+		f.T2.ID:  {sum("Second\n"), `{"parent":"","children":[],"files":[]}`, 0},
 	} {
 		var hash, pins, at string
 		var rev int64

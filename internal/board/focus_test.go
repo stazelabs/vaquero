@@ -14,7 +14,7 @@ import (
 
 func (e *env) focus(t *testing.T, f board.Filter) board.Focus {
 	t.Helper()
-	fo, err := board.LoadFocus(ctx, e.d.RQ, e.p, e.owner, f, e.now)
+	fo, err := board.LoadFocus(ctx, e.d.RQ, nil, e.p, e.owner, f, e.now)
 	if err != nil {
 		t.Fatal(err)
 	}

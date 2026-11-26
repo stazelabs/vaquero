@@ -55,7 +55,7 @@ func (e *env) ticket(t *testing.T, in core.TicketInput) gen.Ticket {
 
 func (e *env) load(t *testing.T, f board.Filter) board.Board {
 	t.Helper()
-	b, err := board.Load(ctx, e.d.RQ, e.p, e.owner, f, e.now)
+	b, err := board.Load(ctx, e.d.RQ, nil, e.p, e.owner, f, e.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestDoneWindowHidesOld(t *testing.T) {
 	if got := titles(done); len(got) != 1 || got[0] != "new" || done.Older != 1 {
 		t.Fatalf("%v older=%d", got, done.Older)
 	}
-	list, _, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, any_())
+	list, _, err := board.LoadList(ctx, e.d.RQ, nil, e.p, e.owner, any_())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestUnknownTagFilterShowsNothing(t *testing.T) {
 	if n, r := count(b.Active), count(b.Rails); n != 0 || r != 0 {
 		t.Fatalf("board: %d active, %d on rails", n, r)
 	}
-	list, _, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
+	list, _, err := board.LoadList(ctx, e.d.RQ, nil, e.p, e.owner, f)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,11 +258,11 @@ func TestViewsGiveProjectTags(t *testing.T) {
 	if b := e.load(t, f); strings.Join(b.Tags, " ") != want {
 		t.Errorf("board %v", b.Tags)
 	}
-	fo, err := board.LoadFocus(ctx, e.d.RQ, e.p, e.owner, f, e.now)
+	fo, err := board.LoadFocus(ctx, e.d.RQ, nil, e.p, e.owner, f, e.now)
 	if err != nil || strings.Join(fo.Tags, " ") != want {
 		t.Errorf("focus %v %v", fo.Tags, err)
 	}
-	_, tags, err := board.LoadList(ctx, e.d.RQ, e.p, e.owner, f)
+	_, tags, err := board.LoadList(ctx, e.d.RQ, nil, e.p, e.owner, f)
 	if err != nil || strings.Join(tags, " ") != want {
 		t.Errorf("list %v %v", tags, err)
 	}

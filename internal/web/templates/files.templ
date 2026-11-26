@@ -32,8 +32,8 @@ type FileView struct {
 }
 
 // FileSince is a file against the version an approval pinned: State is
-// "changed" (DiffURL reads the diff when opened), "renamed" (to NewPath)
-// or "gone".
+// "changed" (DiffURL reads the diff when Show changes is first opened;
+// NewPath set when it moved too), "renamed" (to NewPath) or "gone".
 type FileSince struct {
 	State, NewPath, DiffURL string
 }
@@ -94,9 +94,18 @@ templ fileSince(s *FileSince) {
 		<div data-file-since class="mt-4 flex flex-wrap items-center gap-x-2 rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-ink" role="status">
 			switch s.State {
 				case "changed":
-					<span>Changed since approval</span>
+					if s.NewPath != "" {
+						<span class="min-w-0 break-all">Changed since approval, now at { s.NewPath }</span>
+					} else {
+						<span>Changed since approval</span>
+					}
 					if s.DiffURL != "" {
-						<a href={ templ.SafeURL(s.DiffURL) } class={ btnLink }>Show changes</a>
+						<details data-file-changes class="w-full" hx-get={ s.DiffURL } hx-trigger="toggle once" hx-target="find [data-changes]" hx-swap="innerHTML">
+							<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
+							<div data-changes>
+								<p class="mt-1 text-xs text-muted">Loading changes…</p>
+							</div>
+						</details>
 					}
 				case "renamed":
 					<span class="min-w-0 break-all">Renamed to { s.NewPath } since approval</span>
@@ -104,6 +113,21 @@ templ fileSince(s *FileSince) {
 					<span>Removed from main since approval</span>
 			}
 		</div>
+	}
+}
+
+// FileChanges is a referenced file's changes since its approval, read
+// into the file view's Show changes when first opened: the line diff, or
+// note when there is none to show.
+templ FileChanges(lines []DiffLine, note string) {
+	if note != "" {
+		<p class="mt-1 text-xs text-muted">{ note }</p>
+	} else {
+		<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+			for _, l := range lines {
+				<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+			}
+		</pre>
 	}
 }
 

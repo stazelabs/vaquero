@@ -22,6 +22,7 @@ type world struct {
 	d     dbtest.DB
 	owner gen.Actor
 	p     gen.Project
+	files readiness.Files // nil: pins unchecked
 }
 
 func newWorld(t *testing.T) *world {
@@ -95,15 +96,15 @@ func (w *world) check(tk gen.Ticket) readiness.Readiness {
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	one, err := readiness.Check(bg, w.d.RQ, cur)
+	one, err := readiness.Check(bg, w.d.RQ, w.files, cur)
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	all, err := readiness.CheckAll(bg, w.d.RQ, []string{tk.ID})
+	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{tk.ID})
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if got := all[tk.ID]; got.Ready != one.Ready || !slices.Equal(got.Reasons, one.Reasons) {
+	if got := all[tk.ID]; got.Ready != one.Ready || !slices.Equal(got.Reasons, one.Reasons) || !slices.Equal(got.Files, one.Files) {
 		w.t.Fatalf("Check %+v, CheckAll %+v", one, got)
 	}
 	return one
@@ -235,7 +236,7 @@ func TestEditedEpicMakesChildrenNotReady(t *testing.T) {
 	expect(t, w.check(grouped), readiness.EpicPlanChanged)
 
 	// Batched, every child gets its own answer.
-	all, err := readiness.CheckAll(bg, w.d.RQ, []string{inherits.ID, grouped.ID, epic.ID})
+	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{inherits.ID, grouped.ID, epic.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +302,7 @@ func TestSmallTicketApprovedWithoutPlan(t *testing.T) {
 
 func TestCheckAllEmpty(t *testing.T) {
 	w := newWorld(t)
-	all, err := readiness.CheckAll(bg, w.d.RQ, nil)
+	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, nil)
 	if err != nil || len(all) != 0 {
 		t.Fatalf("%v %v", all, err)
 	}
@@ -427,7 +428,7 @@ func TestGrandchildLeansThroughItsParent(t *testing.T) {
 	expect(t, w.check(g), readiness.EpicPlanNotApproved)
 
 	// Batched with its ancestors, every ticket gets its own answer.
-	all, err := readiness.CheckAll(bg, w.d.RQ, []string{g.ID, c.ID, e.ID})
+	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{g.ID, c.ID, e.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

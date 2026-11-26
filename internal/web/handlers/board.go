@@ -49,7 +49,7 @@ func ProjectFocus(d Deps) http.HandlerFunc {
 			return
 		}
 		f := board.ParseFilter(r.URL.Query())
-		fo, err := board.LoadFocus(r.Context(), d.R, p, d.Actor, f, d.Now())
+		fo, err := board.LoadFocus(r.Context(), d.R, d.files(), p, d.Actor, f, d.Now())
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -70,7 +70,7 @@ func FocusFragment(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		fo, err := board.LoadFocus(r.Context(), d.R, p, d.Actor, board.ParseFilter(r.URL.Query()), d.Now())
+		fo, err := board.LoadFocus(r.Context(), d.R, d.files(), p, d.Actor, board.ParseFilter(r.URL.Query()), d.Now())
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -80,7 +80,7 @@ func FocusFragment(d Deps) http.HandlerFunc {
 }
 
 func loadBoard(r *http.Request, d Deps, p gen.Project, f board.Filter) (board.Board, error) {
-	return board.Load(r.Context(), d.R, p, d.Actor, f, d.Now())
+	return board.Load(r.Context(), d.R, d.files(), p, d.Actor, f, d.Now())
 }
 
 // ProjectBoard is the project's board. A tab opened before the board
@@ -188,7 +188,7 @@ func ProjectListView(d Deps) http.HandlerFunc {
 		}
 		q := r.URL.Query()
 		f := board.ParseFilter(q)
-		cols, tags, err := board.LoadList(r.Context(), d.R, p, d.Actor, f)
+		cols, tags, err := board.LoadList(r.Context(), d.R, d.files(), p, d.Actor, f)
 		if err != nil {
 			serverError(w, r, d, err)
 			return

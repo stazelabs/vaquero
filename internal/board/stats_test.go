@@ -111,7 +111,7 @@ func TestProjectStats(t *testing.T) {
 	if _, err := e.c.AnswerDecision(ctx, e.owner.ID, d.ID, core.Answer{Option: core.ApproveLabel}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := board.LoadProjectStats(ctx, e.d.RQ)
+	got, err := board.LoadProjectStats(ctx, e.d.RQ, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestProjectStats(t *testing.T) {
 	// The ready counts are the board's, project by project.
 	for _, p := range []gen.Project{e.p, a, b} {
 		p, _ := e.d.RQ.GetProject(ctx, p.ID)
-		cols, _, err := board.LoadList(ctx, e.d.RQ, p, e.owner, board.Filter{Priority: -1})
+		cols, _, err := board.LoadList(ctx, e.d.RQ, nil, p, e.owner, board.Filter{Priority: -1})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -171,7 +171,7 @@ func TestProjectsStatsOneQuery(t *testing.T) {
 			}
 		}
 		cdb := &countingDB{DBTX: e.d.R}
-		got, err := board.LoadProjectStats(ctx, gen.New(cdb))
+		got, err := board.LoadProjectStats(ctx, gen.New(cdb), nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -184,11 +184,11 @@ func TestProjectsStatsOneQuery(t *testing.T) {
 	if one != six {
 		t.Fatalf("%d queries for 2 projects, %d for 6", one, six)
 	}
-	// Three stats queries, then readiness's batch (four for tickets
-	// without parents: tickets, plans, approvals, and moves for N-R5),
-	// then every project link in one (VAQ-119).
-	if six > 8 {
-		t.Fatalf("%d queries, want at most 8", six)
+	// Three stats queries, then readiness's batch (five for tickets
+	// without parents: tickets, plans, approvals, moves for N-R5 and
+	// references for P2-R4), then every project link in one (VAQ-119).
+	if six > 9 {
+		t.Fatalf("%d queries, want at most 9", six)
 	}
 }
 
@@ -215,7 +215,7 @@ func TestProjectStatsLinks(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := board.LoadProjectStats(ctx, e.d.RQ)
+	got, err := board.LoadProjectStats(ctx, e.d.RQ, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4,7 +4,7 @@
 
 -- name: ListReadinessTickets :many
 -- The ticket fields the readiness rule reads, with the status category.
-SELECT t.id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
+SELECT t.id, t.project_id, t.title, t.body, t.tier, t.parent_id, s.category AS status_category
 FROM tickets t
 JOIN statuses s ON s.id = t.status_id
 WHERE t.id IN (sqlc.slice('ids'));
@@ -42,3 +42,14 @@ SELECT ticket_id, CAST(max(moved_at) AS TEXT) AS arrived_at
 FROM ticket_old_keys
 WHERE ticket_id IN (sqlc.slice('ids'))
 GROUP BY ticket_id;
+
+-- name: ListReadinessRefs :many
+-- The references of the given tickets, which a plan approval's file pins
+-- are compared with (ruling P2-R4).
+SELECT ticket_id, id, target FROM ticket_refs
+WHERE ticket_id IN (sqlc.slice('ids'))
+ORDER BY ticket_id, created_at, id;
+
+-- name: ListReadinessProjects :many
+-- The projects whose repos hold the given approvals' pinned files.
+SELECT * FROM projects WHERE id IN (sqlc.slice('ids')) ORDER BY id;

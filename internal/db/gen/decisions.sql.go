@@ -40,8 +40,8 @@ func (q *Queries) AddApproval(ctx context.Context, arg AddApprovalParams) error 
 }
 
 const addDecisionTicket = `-- name: AddDecisionTicket :exec
-INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children, files)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type AddDecisionTicketParams struct {
@@ -51,6 +51,7 @@ type AddDecisionTicketParams struct {
 	PlanRevision    int64
 	ParentID        string
 	Children        string
+	Files           string
 }
 
 func (q *Queries) AddDecisionTicket(ctx context.Context, arg AddDecisionTicketParams) error {
@@ -61,6 +62,7 @@ func (q *Queries) AddDecisionTicket(ctx context.Context, arg AddDecisionTicketPa
 		arg.PlanRevision,
 		arg.ParentID,
 		arg.Children,
+		arg.Files,
 	)
 	return err
 }
@@ -354,7 +356,7 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, decisionID string)
 }
 
 const listDecisionTicketPins = `-- name: ListDecisionTicketPins :many
-SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children,
+SELECT dt.ticket_id, dt.requirement_hash, dt.plan_revision, dt.parent_id, dt.children, dt.files,
        t.title, t.body, coalesce(t.parent_id, '') AS current_parent_id, p.key AS project_key, t.number,
        t.project_id
 FROM decision_tickets dt
@@ -370,6 +372,7 @@ type ListDecisionTicketPinsRow struct {
 	PlanRevision    int64
 	ParentID        string
 	Children        string
+	Files           string
 	Title           string
 	Body            string
 	CurrentParentID string
@@ -394,6 +397,7 @@ func (q *Queries) ListDecisionTicketPins(ctx context.Context, decisionID string)
 			&i.PlanRevision,
 			&i.ParentID,
 			&i.Children,
+			&i.Files,
 			&i.Title,
 			&i.Body,
 			&i.CurrentParentID,

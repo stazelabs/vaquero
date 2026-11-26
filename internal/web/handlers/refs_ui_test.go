@@ -40,7 +40,7 @@ func TestTicketPageReferences(t *testing.T) {
 	sec := page[strings.Index(page, "References</h2>"):]
 	sec = sec[:strings.Index(sec, "</section>")]
 	for _, want := range []string{
-		`href="/p/VAQ/files/docs/a%20b.md#doc-intro"`, // a repo path opens the file view
+		`href="/p/VAQ/files/docs/a%20b.md?ref=` + file + `#doc-intro"`, // a repo path opens the file view, from this reference
 		"The spec", "spec", "#intro",
 		`href="https://example.com/d?x=1&amp;y=2"`, `target="_blank"`, `rel="noopener noreferrer"`,
 		"docs/z.md", // no label: the target

@@ -70,9 +70,9 @@ func isRail(category string) bool { return category == "backlog" || category == 
 
 // Load builds the board as of now. The board has no category filter (its
 // columns are the categories), so f.Category is ignored and dropped.
-func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Board, error) {
+func Load(ctx context.Context, q *gen.Queries, files readiness.Files, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Board, error) {
 	f.Category = ""
-	cols, tags, err := columns(ctx, q, p, owner, f, now)
+	cols, tags, err := columns(ctx, q, files, p, owner, f, now)
 	if err != nil {
 		return Board{}, err
 	}
@@ -106,15 +106,15 @@ func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f
 
 // LoadList is every status column with every matching card: nothing folded
 // or hidden by age; and, as Board.Tags, every tag on the project's tickets.
-func LoadList(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter) ([]Column, []string, error) {
-	return columns(ctx, q, p, owner, f, time.Time{})
+func LoadList(ctx context.Context, q *gen.Queries, files readiness.Files, p gen.Project, owner gen.Actor, f Filter) ([]Column, []string, error) {
+	return columns(ctx, q, files, p, owner, f, time.Time{})
 }
 
 // columns groups the filtered tickets by status, keeping only the filter's
 // category's statuses when it names one. A non-zero now hides done
 // cards older than DoneWindow, counting them in Older. It also gives every
 // tag on the project's tickets, sorted, read with the cards' tags.
-func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, []string, error) {
+func columns(ctx context.Context, q *gen.Queries, files readiness.Files, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, []string, error) {
 	statuses, err := q.ListStatuses(ctx, p.ID)
 	if err != nil {
 		return nil, nil, err
@@ -197,7 +197,7 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 		}
 	}
 	if len(todo) > 0 {
-		if err := gate(ctx, q, cols, todo); err != nil {
+		if err := gate(ctx, q, files, cols, todo); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -209,13 +209,13 @@ type cardAt struct{ col, card int }
 
 // gate applies the agent workflow's readiness to the todo cards at, in
 // one batch.
-func gate(ctx context.Context, q *gen.Queries, cols []Column, at map[string]cardAt) error {
+func gate(ctx context.Context, q *gen.Queries, files readiness.Files, cols []Column, at map[string]cardAt) error {
 	ids := make([]string, 0, len(at))
 	for id := range at {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
-	got, err := readiness.CheckAll(ctx, q, ids)
+	got, err := readiness.CheckAll(ctx, q, files, ids)
 	if err != nil {
 		return err
 	}

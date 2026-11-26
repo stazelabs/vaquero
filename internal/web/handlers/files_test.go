@@ -308,10 +308,11 @@ func TestReferenceAnchorLands(t *testing.T) {
 	e, c, _, repo := gitWorld(t)
 	repo.WriteCommit("docs/board.md", "# Board\n\n## Acceptance criteria\n\nIt works.\n", "spec")
 	t1, _, _ := e.Deps.Core.ResolveTicket(bg, e.Deps.R, core.TicketKey{Project: "VAQ", Number: 1})
-	if _, err := e.Deps.Core.AddRef(bg, e.Deps.Actor.ID, t1.ID, core.RefInput{Kind: "spec", Target: "docs/board.md", Anchor: "acceptance-criteria"}); err != nil {
+	ref, err := e.Deps.Core.AddRef(bg, e.Deps.Actor.ID, t1.ID, core.RefInput{Kind: "spec", Target: "docs/board.md", Anchor: "acceptance-criteria"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	contains(t, c.Get("/t/VAQ-1").Body, `href="/p/VAQ/files/docs/board.md#doc-acceptance-criteria"`)
+	contains(t, c.Get("/t/VAQ-1").Body, `href="/p/VAQ/files/docs/board.md?ref=`+ref.ID+`#doc-acceptance-criteria"`)
 	contains(t, c.Get("/p/VAQ/files/docs/board.md").Body, `<h2 id="doc-acceptance-criteria">Acceptance criteria</h2>`)
 }
 

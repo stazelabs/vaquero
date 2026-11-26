@@ -92,7 +92,7 @@ func projectsPage(w http.ResponseWriter, r *http.Request, d Deps, status int, ed
 		serverError(w, r, d, err)
 		return
 	}
-	stats, err := board.LoadProjectStats(ctx, d.R)
+	stats, err := board.LoadProjectStats(ctx, d.R, d.files())
 	if err != nil {
 		serverError(w, r, d, err)
 		return

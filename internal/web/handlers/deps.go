@@ -15,6 +15,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/gitread"
+	"github.com/stazelabs/vaquero/internal/readiness"
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
 
@@ -43,6 +44,10 @@ type Deps struct {
 	Instance string
 	// Git reads projects' repos; the same value as Core.Git.
 	Git *gitread.Repos
+	// Files compares approvals' pinned files with main for readiness
+	// (readiness.NewFiles over Git, kept for its cache); nil makes one
+	// over Git each time it is asked for.
+	Files readiness.Files
 
 	// Shutdown closes when the server starts shutting down, ending open
 	// live-update streams. StreamPoll is how often a stream checks for
@@ -54,4 +59,16 @@ type Deps struct {
 // MCPCallLog records an MCP tool call (mcpserver.CallLog).
 type MCPCallLog interface {
 	RecordMCPCall(ctx context.Context, arg gen.RecordMCPCallParams) error
+}
+
+// files is the readiness file checker: none without git (pins are then
+// unchecked, never passed).
+func (d Deps) files() readiness.Files {
+	if d.Git == nil {
+		return nil
+	}
+	if d.Files != nil {
+		return d.Files
+	}
+	return readiness.NewFiles(d.Git)
 }

@@ -124,14 +124,6 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if _, err := c.AddProjectLink(ctx, by, vaq.ID, "depends on", "OLD"); err != nil {
 		return err
 	}
-	// References (VAQ-136): a repo path with an anchor and a label, and a
-	// URL.
-	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "spec", Target: "docs/release.md", Anchor: "checklist", Label: "Release checklist"}); err != nil {
-		return err
-	}
-	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "design", Target: "https://example.com/designs/board"}); err != nil {
-		return err
-	}
 	// This release's event payloads: a description edit (body_before and
 	// body_after), a tag rename (ticket_ids) and a reorder.
 	body := "Everything **needed** for v0.1.0, and a checklist."
@@ -215,6 +207,15 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		return err
 	}
 	if _, err := c.AnswerDecision(ctx, by, approval.ID, core.Answer{Option: core.ApproveLabel, Note: "Go.", RelayedBy: agent.ID, Words: "Looks good, go."}); err != nil {
+		return err
+	}
+	// References (VAQ-136): a repo path with an anchor and a label, and a
+	// URL, added after the plan approval: the seed's repo is never read,
+	// and a plan approval pins a repo path's file from main (P2-R2).
+	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "spec", Target: "docs/release.md", Anchor: "checklist", Label: "Release checklist"}); err != nil {
+		return err
+	}
+	if _, err := c.AddRef(ctx, by, parent.ID, core.RefInput{Kind: "design", Target: "https://example.com/designs/board"}); err != nil {
 		return err
 	}
 	// A ticket moved from OLD to VAQ: it is VAQ-8 now, and OLD-2 still

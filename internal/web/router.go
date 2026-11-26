@@ -119,6 +119,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Post("/milestones/{id}/close", handlers.MilestoneClose(d))
 			r.Post("/milestones/{id}/reopen", handlers.MilestoneReopen(d))
 			r.Get("/files/*", handlers.FileView(d))
+			r.Get("/file-changes/*", handlers.FileChanges(d))
 			r.Get("/new", handlers.TicketNew(d))
 			r.With(fs).Post("/tickets", handlers.TicketCreate(d))
 		})

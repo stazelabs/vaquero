@@ -423,6 +423,16 @@ func printTicket(w io.Writer, t apiTicket) {
 		} else {
 			fmt.Fprintf(w, "Readiness: not ready. %s\n", strings.Join(r.Reasons, " "))
 		}
+		if len(r.Files) > 0 {
+			files := make([]string, len(r.Files))
+			for i, f := range r.Files {
+				files[i] = f.Path + " " + f.State
+				if f.Now != "" {
+					files[i] += " (now " + f.Now + ")"
+				}
+			}
+			fmt.Fprintf(w, "Files: %s\n", strings.Join(files, ", "))
+		}
 	}
 	if t.Parent != "" {
 		fmt.Fprintf(w, "Parent: %s\n", t.Parent)

@@ -705,7 +705,9 @@ func refRow(p gen.Project, x gen.TicketRef) templates.RefRow {
 		return row
 	}
 	// The file view gives a document's headings doc- ids (markdown.RenderDoc).
-	row.Href = (&url.URL{Path: "/p/" + p.Key + "/files/" + x.Target}).String()
+	// ?ref= lets the file view say how the file stands against the
+	// ticket's approval.
+	row.Href = (&url.URL{Path: "/p/" + p.Key + "/files/" + x.Target, RawQuery: url.Values{"ref": {x.ID}}.Encode()}).String()
 	if x.Anchor != "" {
 		row.Href += "#doc-" + x.Anchor
 	}

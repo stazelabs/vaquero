@@ -94,3 +94,24 @@ func TestCLIProjectEditRepo(t *testing.T) {
 		t.Fatalf("%s", out)
 	}
 }
+
+// P2-R5: ticket show lists the files a ticket's approval pinned.
+func TestCLIShowsReadinessFiles(t *testing.T) {
+	cliEnv(t)
+	r := gittest.Repo(t)
+	r.WriteCommit("docs/a.md", "# A\n", "a")
+	mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir, "--workflow", "on")
+	mustCLI(t, "ticket", "new", "VAQ", "Build it", "--tier", "light")
+	mustCLI(t, "ref", "add", "VAQ-1", "spec", "docs/a.md")
+	id := strings.TrimSpace(mustCLI(t, "decision", "ask", "VAQ", "Approve the plan?", "--approval", "plan", "--ticket", "VAQ-1"))
+	mustCLI(t, "decision", "answer", id, "Approve")
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: ready\nFiles: docs/a.md unchanged\n") {
+		t.Fatalf("%q", out)
+	}
+	r.Rename("docs/a.md", "docs/b.md")
+	r.Commit("rename")
+	r.WriteCommit("docs/b.md", "# B\n", "change")
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. Files changed since approval.\nFiles: docs/a.md changed (now docs/b.md)\n") {
+		t.Fatalf("%q", out)
+	}
+}
