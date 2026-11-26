@@ -95,7 +95,9 @@ func AdminBackupSnapshot(d Deps) http.HandlerFunc {
 // AdminBackupDelete is POST /admin/backups/{name}/delete, behind the
 // confirm dialog. It deletes only a snapshot the list shows
 // (appdb.DeleteBackup: a snapshot's name, a regular file in the backups
-// directory); any other name is a 404 and touches nothing.
+// directory). A name that isn't a snapshot's is a 404; a snapshot's name
+// with nothing behind it (pruned, or deleted in another tab) goes back to
+// the page with a toast (ruling PR-3a). Either way nothing is touched.
 func AdminBackupDelete(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "name")
@@ -109,8 +111,10 @@ func AdminBackupDelete(d Deps) http.HandlerFunc {
 		}
 		err := appdb.DeleteBackup(d.BackupDir, name)
 		switch {
-		case errors.Is(err, appdb.ErrBadBackupName), errors.Is(err, appdb.ErrBackupNotFound):
+		case errors.Is(err, appdb.ErrBadBackupName):
 			NotFound(d)(w, r)
+		case errors.Is(err, appdb.ErrBackupNotFound):
+			redirectWithFlash(w, r, flash.Error, "That snapshot is already gone.", backupsPath)
 		case err != nil:
 			serverError(w, r, d, err)
 		default:

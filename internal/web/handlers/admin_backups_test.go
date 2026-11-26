@@ -169,11 +169,19 @@ func TestDeleteBackupRefusesOutsideNames(t *testing.T) {
 		"x/y", "x%2Fy",
 		"/etc/passwd", "%2Fetc%2Fpasswd", url.PathEscape(outside["secret"]),
 		"..%2Fvaquero-20261013-000000.sqlite",
-		"vaquero-20261015-000000.sqlite", // not listed
-		"vaquero-20261014-000000.sqlite", // the link
 	} {
 		if r := c.Post("/admin/backups/"+name+"/delete", nil); r.Status != http.StatusNotFound {
 			t.Errorf("%s: %d", name, r.Status)
+		}
+	}
+	// A snapshot's name with nothing listed behind it (ruling PR-3a): back
+	// to the page with a toast, touching nothing.
+	for _, name := range []string{
+		"vaquero-20261015-000000.sqlite", // not listed
+		"vaquero-20261014-000000.sqlite", // the link
+	} {
+		if r := c.Post("/admin/backups/"+name+"/delete", nil); r.Status != http.StatusSeeOther || r.Location != "/admin/backups" {
+			t.Errorf("%s: %d %q", name, r.Status, r.Location)
 		}
 	}
 	for _, p := range outside {
@@ -187,6 +195,22 @@ func TestDeleteBackupRefusesOutsideNames(t *testing.T) {
 	if list, _ := appdb.ListBackups(e.Deps.BackupDir); len(list) != 1 {
 		t.Fatalf("%+v", list)
 	}
+}
+
+// Ruling PR-3a: a snapshot already gone (pruned, or deleted in another tab)
+// is a toast on the backups page, not a 404.
+func TestDeleteGoneBackupIsAToast(t *testing.T) {
+	e := webtest.New(t)
+	c := e.Client()
+	info := snap(t, e, appdb.KindManual, snapAt)
+	if r := c.Post("/admin/backups/"+info.Name+"/delete", nil); r.Status != http.StatusSeeOther {
+		t.Fatalf("%d", r.Status)
+	}
+	r := c.Post("/admin/backups/"+info.Name+"/delete", nil)
+	if r.Status != http.StatusSeeOther || r.Location != "/admin/backups" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "That snapshot is already gone.")
 }
 
 // As on every form, a cross-site post is refused.

@@ -52,7 +52,7 @@ For your own backups, copy the data directory while no server is running, or cop
 `/admin/backups` (Admin, then Backups) lists every snapshot in `backups/`, newest first, with why it was taken, when (UTC), its size and the database layout it records (its schema version), and the free space left on the disk that holds `backups/`.
 
 - **Take a snapshot now** saves a snapshot while the server runs, without stopping anyone working. Its name carries the kind `manual` (`vaquero-manual-…`), and the newest seven of those are kept, like every other kind.
-- **Delete** removes one snapshot, after asking. It deletes only a snapshot the page lists, never anything else in the data directory.
+- **Delete** removes one snapshot, after asking. It deletes only a snapshot the page lists, never anything else in the data directory. If the snapshot is already gone (deleted in another tab, say), the page says so.
 - **Restoring** stays on the command line, with the server stopped: each row shows its exact `vaquero backup restore NAME` command (see [Restoring a snapshot](#restoring-a-snapshot)).
 
 Taking or deleting a snapshot isn't a change to your projects, so neither shows in the activity history.

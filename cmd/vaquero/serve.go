@@ -167,6 +167,12 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 		Interval: sweepInterval, OnTick: sweepOnTick}
 	sweeper.Start()
 	defer sweeper.Stop()
+	// Ask the service manager now (bounded by probeTimeout per question),
+	// so the first admin page doesn't wait on it; serve waits for the
+	// answer before it returns, so nothing outlives it.
+	warmed := make(chan struct{})
+	go func() { defer close(warmed); d.BrewService() }()
+	defer func() { <-warmed }()
 	logger.Info("vaquero is running", "url", "http://"+ln.Addr().String(), "data", cfg.DataDir, "attachments", cfg.BlobBackend, "version", version.Version)
 
 	select {
@@ -374,12 +380,20 @@ func writeSecret(path string, b []byte) error {
 	return os.Rename(tmp, path)
 }
 
-// underBrewService reports whether brew services runs the server on
-// dataDir (brewServiceState says it is running), for the admin page. The
-// service manager is asked once, on first use, never at boot.
+// underBrewService reports whether brew services runs this very server on
+// dataDir, for the admin page: brewServiceState says the service is
+// running and the service manager's pid for it is this process's (as in
+// outsideService), so a server started outside brew while the service is
+// loaded never claims it. A pid the manager won't give is no. The manager
+// is asked once; serve warms it in the background after the listener is
+// up.
 func underBrewService(dataDir string) func() bool {
 	return sync.OnceValue(func() bool {
-		_, state := brewServiceState(dataDir)
-		return state == brewRunning
+		label, state := brewServiceState(dataDir)
+		if state != brewRunning {
+			return false
+		}
+		pid, known := servicePID(serviceOS, label, serviceProbe)
+		return known && pid == os.Getpid()
 	})
 }

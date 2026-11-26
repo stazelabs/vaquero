@@ -584,28 +584,55 @@ func TestServeAcceptsSymlinkedBlobLocationRecordedBefore(t *testing.T) {
 }
 
 // VAQ-150: /admin says "Running under brew services" only when
-// brewServiceState says the service runs this data directory, asked
-// through the test probe, never the real service manager.
+// brewServiceState says the service runs this data directory and the
+// service manager's pid for it is this server's, asked through the test
+// probe, never the real service manager. A server started outside brew
+// while the service is loaded neither claims it nor advises stopping the
+// service.
 func TestAdminShowsBrewService(t *testing.T) {
-	adminPage := func(dataDir string) string {
-		var page string
+	pages := func(dataDir string) (admin, backups string) {
 		bootLogged(t, dataDir, nil, func(base string) {
-			resp, err := http.Get(base + "/admin")
-			if err != nil {
-				t.Fatal(err)
+			for _, p := range []struct {
+				path string
+				into *string
+			}{{"/admin", &admin}, {"/admin/backups", &backups}} {
+				resp, err := http.Get(base + p.path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				*p.into = string(b)
 			}
-			b, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			page = string(b)
 		})
-		return page
+		return admin, backups
+	}
+	withPID := func(pid int) *fakeManager {
+		return &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): "gui/501/sh.brew.vaquero = {\n\tstate = running\n\tpid = " + strconv.Itoa(pid) + "\n}\n"}}
 	}
 	dataDir, _ := brewEnv(t)
-	if page := adminPage(dataDir); !strings.Contains(page, "Running under brew services") || !strings.Contains(page, "brew services stop vaquero") {
-		t.Fatal("the service's server doesn't say it runs under brew services")
+
+	m := withPID(os.Getpid())
+	useManager(t, m)
+	admin, backups := pages(dataDir)
+	if !strings.Contains(admin, "Running under brew services") || !strings.Contains(backups, "brew services stop vaquero") {
+		t.Fatal("the service's own server doesn't say it runs under brew services")
 	}
-	useManager(t, &fakeManager{}) // nothing loaded
-	if page := adminPage(dataDir); strings.Contains(page, "Running under brew services") {
-		t.Fatal("brew services named with no service loaded")
+	// Asked once, warmed at boot: the page views ask nothing more.
+	if n := len(m.called()); n == 0 || n > 3 {
+		t.Fatalf("asked the service manager %d times: %v", n, m.called())
+	}
+
+	for name, mgr := range map[string]*fakeManager{
+		"another pid":    withPID(os.Getpid() + 1),
+		"no pid":         {ok: map[string]string{launchctlPrint("sh.brew.vaquero"): "loaded\n"}},
+		"nothing loaded": {},
+	} {
+		useManager(t, mgr)
+		admin, backups := pages(dataDir)
+		if strings.Contains(admin, "Running under brew services") || strings.Contains(backups, "brew services stop vaquero") ||
+			!strings.Contains(backups, "vaquero stop") {
+			t.Fatalf("%s: brew services claimed", name)
+		}
 	}
 }
