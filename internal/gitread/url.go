@@ -5,8 +5,12 @@ import "strings"
 // DisplayURL is a remote URL as Vaquero shows it: a URL with a scheme
 // (https://user:token@host/…) loses its userinfo, so a credential written
 // into it never reaches a page, an answer or a log. Anything else, such as
-// git@host:o/r.git or a local path, is unchanged.
-func DisplayURL(u string) string {
+// git@host:o/r.git or a local path, keeps its text. Either way it has no
+// control characters (C0, DEL, C1), which a terminal would act on.
+func DisplayURL(u string) string { return oneLine(displayURL(u)) }
+
+// displayURL is DisplayURL before the controls go.
+func displayURL(u string) string {
 	i := strings.Index(u, "://")
 	if i < 0 {
 		return u
@@ -43,7 +47,7 @@ func fetchable(u string) bool {
 		default:
 			return false
 		}
-		host := DisplayURL(u)[i+3:]
+		host := displayURL(u)[i+3:]
 		return !strings.HasPrefix(host, "-")
 	}
 	if strings.HasPrefix(u, "/") {

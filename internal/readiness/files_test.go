@@ -459,3 +459,19 @@ func TestReadinessPartialCloneUnchecked(t *testing.T) {
 		t.Fatalf("checking fetched objects:\n%s\n%s", before, after)
 	}
 }
+
+// I1: a pinned file renamed to a path with control characters (ESC ] 52,
+// U+009B) is changed, and its new path is never shown.
+func TestReadinessRenameToControlCharacters(t *testing.T) {
+	for _, name := range []string{"docs/\x1b]52;c;aGk=\x07.md", "docs/\u009b2J.md"} {
+		w, r := gitWorld(t)
+		tk := w.ticket(core.TicketInput{Title: "Build", Tier: "light"})
+		w.ref(tk, "docs/a.md")
+		w.approve(tk)
+		r.Git("mv", "docs/a.md", name)
+		r.Commit("rename")
+		got := w.check(tk)
+		expect(t, got, readiness.FilesChanged)
+		files(t, got, "docs/a.md changed")
+	}
+}

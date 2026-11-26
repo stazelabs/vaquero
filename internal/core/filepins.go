@@ -135,6 +135,12 @@ func CheckFilePins(ctx context.Context, g *gitread.Repo, head string, pins []Fil
 			out[i].State = FileGone
 			continue
 		}
+		if !gitread.ValidPath(cur) {
+			// Renamed to a path Vaquero doesn't take (a control
+			// character, say): changed, and the path is never shown.
+			out[i].State = FileChanged
+			continue
+		}
 		current[i] = cur
 		moved = append(moved, cur)
 	}

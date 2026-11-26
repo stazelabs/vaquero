@@ -578,7 +578,7 @@ func (r *Repos) exec(ctx context.Context, _ string, args []string, env []string,
 }
 
 // firstLine is the first non-empty line of s, cut to maxLine characters,
-// with the userinfo of any URL in it removed.
+// with the userinfo of any URL in it removed and no control characters.
 func firstLine(s string) string {
 	for line := range strings.SplitSeq(s, "\n") {
 		line = strings.TrimSpace(line)
@@ -589,7 +589,8 @@ func firstLine(s string) string {
 		if utf8.RuneCountInString(line) > maxLine {
 			line = string([]rune(line)[:maxLine])
 		}
-		return strings.ToValidUTF8(line, "?")
+		// git relays a remote's sideband text: no escape sequence leaves.
+		return oneLine(strings.ToValidUTF8(line, "?"))
 	}
 	return ""
 }

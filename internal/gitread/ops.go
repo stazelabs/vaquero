@@ -554,6 +554,7 @@ func (g *Repo) Diffstat(ctx context.Context, list []string) (Diffstat, error) {
 			path = f[i+2]
 			i += 2
 		}
+		path = oneLine(path) // shown as is: no escape sequence leaves
 		if path != "" && !seen[path] {
 			seen[path] = true
 			d.Files = append(d.Files, path)

@@ -14,7 +14,7 @@ const (
 // ValidPath reports whether p is a repo path Vaquero passes to git: relative
 // and clean (no leading "/", no empty, "." or ".." part), not starting with
 // "-" or ":" (an option, or pathspec magic), no ".git" part, no backslash and
-// no control character, valid UTF-8. Spaces are fine.
+// no control character (C0, DEL or C1), valid UTF-8. Spaces are fine.
 func ValidPath(p string) bool {
 	if p == "" || len(p) > MaxPathLen || !utf8.ValidString(p) {
 		return false
@@ -23,7 +23,7 @@ func ValidPath(p string) bool {
 		return false
 	}
 	for _, r := range p {
-		if r < 0x20 || r == 0x7f || r == '\\' {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == '\\' {
 			return false
 		}
 	}

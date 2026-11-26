@@ -120,7 +120,7 @@ func failureLine(err error) string {
 	if r := []rune(line); len(r) > 200 {
 		line = string(r[:200])
 	}
-	return line
+	return oneLine(line)
 }
 
 // Waiting is how many callers wait on the repo's running fetch besides the
