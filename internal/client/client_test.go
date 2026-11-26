@@ -271,3 +271,29 @@ func TestSaveIgnoresStaleTmpMode(t *testing.T) {
 		t.Fatalf("mode %v %v", st.Mode().Perm(), err)
 	}
 }
+
+// VAQ-148: VQ_ADDR in {data dir}/vaquero.env moves where the CLI looks
+// for the local server; the environment still wins.
+func TestCLIFindsPortFromEnvFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "vaquero.env"), []byte("VQ_ADDR=127.0.0.1:9123\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"VQ_DATA_DIR": dir}
+	get := func(k string) string { return env[k] }
+	p, local, err := client.Resolve("local", get)
+	if err != nil || !local || p.URL != "http://127.0.0.1:9123" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	env["VQ_ADDR"] = "127.0.0.1:9124"
+	if p, _, err := client.Resolve("local", get); err != nil || p.URL != "http://127.0.0.1:9124" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if err := os.Chmod(filepath.Join(dir, "vaquero.env"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.Resolve("local", get); err == nil || !strings.Contains(err.Error(), "vaquero.env can be read by other users") {
+		t.Fatalf("%v", err)
+	}
+}

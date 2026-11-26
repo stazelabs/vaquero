@@ -23,6 +23,21 @@ A server started outside brew services can hold the port while the service keeps
 
 The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual. On Linux the default comes from the systemd user manager's `XDG_DATA_HOME`, which can differ from your shell's.
 
+## Settings for the server
+
+The server reads its `VQ_` settings from the environment and from `vaquero.env` in the data directory (`~/Library/Application Support/vaquero/vaquero.env` on a Mac, `~/.local/share/vaquero/vaquero.env` on Linux). Under `brew services` the server doesn't see your shell's environment, so settings that must outlast a restart, such as where attachments are kept, go in the file. Every `vaquero` command reads it too, so with `VQ_ADDR` there the command line finds the server on its port.
+
+One setting per line, with the same names as in the environment:
+
+    # vaquero.env
+    VQ_ADDR=127.0.0.1:7900
+    VQ_BLOB_STORE=dir
+    VQ_BLOB_DIR="/Volumes/Files/vaquero attachments"
+
+A line is `KEY=value`, the value optionally in double quotes. A line starting with `#` is a comment, and blank lines are skipped. Only `VQ_` settings are allowed. `VQ_DATA_DIR` can't be set there, since that is how the file is found: "VQ_DATA_DIR can't be set in vaquero.env." A `VQ_` setting Vaquero doesn't read is noted in the server's log, not refused. A setting in the environment wins over the file, and the file over the default.
+
+The file can hold the S3 secret, so only you may read it. A file other users can read is refused, by the server and by every command: "vaquero.env can be read by other users; run chmod 600 PATH." The server's log names where each storage setting came from (environment, file or default), never its value. `vaquero attachments move` writes the file for you (see [Your data and backups](/help/data-and-backups#moving-attachments-to-other-storage)). After editing it by hand, restart the server: `brew services restart vaquero` under brew services, else `vaquero stop` and any command.
+
 ## The server's log
 
     vaquero logs        # the last 100 lines

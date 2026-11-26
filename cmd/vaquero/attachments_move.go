@@ -75,6 +75,10 @@ type moveResult struct {
 	Finished   bool   `json:"finished"`    // only an interrupted run's last steps were left
 	From       string `json:"from"`
 	Snapshot   string `json:"snapshot,omitempty"` // the premove snapshot, in backups/
+	// SettingsFile is vaquero.env when the move wrote it, and Settings
+	// what it set there, through config.Redact.
+	SettingsFile string            `json:"settings_file,omitempty"`
+	Settings     map[string]string `json:"settings,omitempty"`
 }
 
 // moveFreeBytes is the free-space reading, replaceable by a test.
@@ -109,7 +113,8 @@ func cmdAttachmentsMove(ctx context.Context, stdout, stderr io.Writer, args []st
 		return c.finish(usageError{usage: moveUsage, hint: "--to names the storage to move to: sqlite, dir or s3"})
 	}
 	// The target is what serve will be started with afterwards, so a
-	// VQ_BLOB_STORE naming something else is a mistake to catch now.
+	// VQ_BLOB_STORE in the environment naming something else is a mistake
+	// to catch now. One in vaquero.env is what the move rewrites.
 	if env := strings.ToLower(strings.TrimSpace(os.Getenv("VQ_BLOB_STORE"))); env != "" && env != target {
 		return c.finish(message(fmt.Sprintf("--to is %s, but VQ_BLOB_STORE is %s. Set VQ_BLOB_STORE to %s, or unset it, and run the move again.", target, env, target)))
 	}
@@ -122,7 +127,9 @@ func cmdAttachmentsMove(ctx context.Context, stdout, stderr io.Writer, args []st
 	if err != nil {
 		return c.finish(err)
 	}
-	res, err := moveAttachments(ctx, cfg, *deleteOld, os.Getenv, c.stderr)
+	// The old storage's settings (a bucket's keys) come from the
+	// environment or vaquero.env, as serve read them.
+	res, err := moveAttachments(ctx, cfg, *deleteOld, cfg.Lookup, c.stderr)
 	if err != nil {
 		return c.finish(err)
 	}
@@ -134,7 +141,12 @@ func cmdAttachmentsMove(ctx context.Context, stdout, stderr io.Writer, args []st
 func printMove(w io.Writer, cfg config.Config, res moveResult) {
 	switch {
 	case res.Moved == 0 && !res.Finished:
-		fmt.Fprintf(w, "There are no attachments to move. Start vaquero with %s to store new ones there.\n", startWith(cfg))
+		fmt.Fprint(w, "There are no attachments to move.")
+		if res.SettingsFile != "" {
+			fmt.Fprintf(w, " Saved %s in %s; vaquero stores new ones there from its next start.\n", shownSettings(res.Settings), res.SettingsFile)
+		} else {
+			fmt.Fprintf(w, " Start vaquero with %s to store new ones there.\n", startWith(cfg))
+		}
 		return
 	case res.Finished:
 		fmt.Fprintf(w, "The earlier move to %s finished.", res.Backend)
@@ -156,7 +168,29 @@ func printMove(w io.Writer, cfg config.Config, res moveResult) {
 	if res.Snapshot != "" {
 		fmt.Fprintf(w, " The database before the move is saved as %s.", res.Snapshot)
 	}
+	if res.SettingsFile != "" {
+		fmt.Fprintf(w, "\nSaved %s in %s; vaquero serve reads it on every start, under brew services too, and refuses any other storage now.\n", shownSettings(res.Settings), res.SettingsFile)
+		return
+	}
 	fmt.Fprintf(w, "\nStart vaquero with %s; it refuses any other storage now.\n", startWith(cfg))
+}
+
+// saveSettings writes the storage settings serve needs for cfg into
+// vaquero.env (dropStale: see storageSettings) and records them in res.
+func saveSettings(cfg config.Config, dropStale bool, res *moveResult) error {
+	set := storageSettings(cfg, dropStale)
+	if err := writeEnvFile(cfg.DataDir, set); err != nil {
+		path := config.EnvFilePath(cfg.DataDir)
+		return fmt.Errorf("couldn't save the settings in %s (%w); set %s there, or in the environment, before starting vaquero", path, err, startWith(cfg))
+	}
+	res.SettingsFile = config.EnvFilePath(cfg.DataDir)
+	res.Settings = map[string]string{}
+	for k, v := range set {
+		if v != "" {
+			res.Settings[k] = config.Redact(k, v)
+		}
+	}
+	return nil
 }
 
 // startWith names the settings serve needs for cfg's storage.
@@ -254,6 +288,9 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 					res.DeletedOld = true
 				}
 				removeMovePlan(cfg.DataDir)
+				if err := saveSettings(cfg, true, &res); err != nil {
+					return res, err
+				}
 				return res, nil
 			}
 			if plan.DeleteOld {
@@ -285,6 +322,11 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 		return res, message("Attachments are already stored there.")
 	}
 	if len(items) == 0 {
+		// Nothing to switch: serve records the new storage on its next
+		// boot, so the settings are saved for it now.
+		if err := saveSettings(cfg, true, &res); err != nil {
+			return res, err
+		}
 		return res, nil
 	}
 
@@ -363,6 +405,15 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 		return res, notMoved{err, from}
 	}
 	res.Moved = len(items)
+	// The switch is made: serve must start on the new storage, so its
+	// settings go into vaquero.env before anything else. The old
+	// storage's stay while its copies are still to be deleted, since a
+	// rerun reads them there. A failed write leaves move.pending, and the
+	// rerun that finishes the move writes the file.
+	if err := saveSettings(cfg, !deleteOld, &res); err != nil {
+		//lint:ignore ST1005 the report is a sentence the operator reads as is
+		return res, fmt.Errorf("Moved %s to %s, but %w", count(len(items), "attachment"), to.Backend, err)
+	}
 	if deleteOld {
 		if err := deleteOldCopies(ctx, cfg, from, dst, to, instance, items, w, r, get, warn); err != nil {
 			//lint:ignore ST1005 the report is a sentence the operator reads as is
@@ -371,6 +422,12 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 		res.DeletedOld = true
 	}
 	removeMovePlan(cfg.DataDir)
+	if deleteOld {
+		if err := saveSettings(cfg, true, &res); err != nil {
+			//lint:ignore ST1005 the report is a sentence the operator reads as is
+			return res, fmt.Errorf("Moved %s to %s, but %w", count(len(items), "attachment"), to.Backend, err)
+		}
+	}
 	return res, nil
 }
 

@@ -282,8 +282,16 @@ func TestMoveThroughS3(t *testing.T) {
 		t.Fatalf("blob_location %q", l)
 	}
 
-	// Reading the old bucket needs its keys.
+	// Reading the old bucket needs its keys: the move saved them in
+	// vaquero.env, so they go from there too.
 	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "")
+	saved, err := os.ReadFile(config.EnvFilePath(dataDir))
+	if err != nil || !strings.Contains(string(saved), "VQ_S3_SECRET_ACCESS_KEY=s3cr3t-key-DO-NOT-LEAK") {
+		t.Fatalf("%q %v", saved, err)
+	}
+	if err := writeEnvFile(dataDir, map[string]string{"VQ_S3_SECRET_ACCESS_KEY": ""}); err != nil {
+		t.Fatal(err)
+	}
 	code, _, e = runCLI(t, "attachments", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "VQ_S3_SECRET_ACCESS_KEY") {
 		t.Fatalf("%d %q", code, e)
@@ -770,7 +778,12 @@ func TestMoveSnapshotsBeforeTheSwitch(t *testing.T) {
 	if s := readSetting(t, dataDir, "blob_store"); s != "sqlite" {
 		t.Fatalf("restored blob_store %q", s)
 	}
-	if err := bootOnce(t, dataDir, nil); err != nil {
+	// vaquero.env still names the moved storage, and serve says so.
+	err = bootOnce(t, dataDir, nil)
+	if err == nil || !strings.Contains(err.Error(), "VQ_BLOB_STORE is dir (from vaquero.env). Set it back to sqlite.") {
+		t.Fatalf("%v", err)
+	}
+	if err := bootOnce(t, dataDir, map[string]string{"VQ_BLOB_STORE": "sqlite"}); err != nil {
 		t.Fatal(err)
 	}
 }

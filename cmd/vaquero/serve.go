@@ -69,6 +69,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	if err := prepareDataDir(cfg.DataDir, logger); err != nil {
 		return err
 	}
+	logSettings(cfg, logger)
 	// One server per data directory, whatever port it listens on. Released
 	// last, after the WAL checkpoint (defers run in reverse).
 	release, held, err := lockfile.Acquire(cfg.DataDir)
@@ -272,7 +273,34 @@ func checkBlobBackend(ctx context.Context, r *gen.Queries, cfg config.Config) er
 		return blobLocationRefusal(cfg, loc.Value)
 	}
 	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s. Set it back to %s.", store.Value, cfg.BlobBackend, store.Value)
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_STORE is %s%s. Set it back to %s.", store.Value, cfg.BlobBackend, fromFile(cfg, "VQ_BLOB_STORE"), store.Value)
+}
+
+// fromFile is " (from vaquero.env)" when any of keys came from the file,
+// so a refusal says where to set the value back.
+func fromFile(cfg config.Config, keys ...string) string {
+	for _, k := range keys {
+		if cfg.Source(k) == config.SourceFile {
+			return " (from vaquero.env)"
+		}
+	}
+	return ""
+}
+
+// blobSettings are the storage settings whose sources the boot log names.
+var blobSettings = []string{"VQ_BLOB_STORE", "VQ_BLOB_DIR", "VQ_S3_ENDPOINT", "VQ_S3_BUCKET", "VQ_S3_ACCESS_KEY_ID", "VQ_S3_SECRET_ACCESS_KEY", "VQ_S3_REGION"}
+
+// logSettings logs where each storage setting came from (environment,
+// file or default), never a value, and vaquero.env's unknown keys.
+func logSettings(cfg config.Config, logger *slog.Logger) {
+	args := []any{"file", config.EnvFilePath(cfg.DataDir)}
+	for _, k := range blobSettings {
+		args = append(args, k, cfg.Source(k))
+	}
+	logger.Info("storage settings", args...)
+	for _, w := range cfg.Warnings {
+		logger.Warn(w)
+	}
 }
 
 // blobLocationRefusal says the attachments are in recorded, not where the
@@ -282,11 +310,11 @@ func blobLocationRefusal(cfg config.Config, recorded string) error {
 	if cfg.BlobBackend == "s3" {
 		ep, bucket, _ := strings.Cut(recorded, "/")
 		//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-		return fmt.Errorf("Attachments are stored in %s; VQ_S3_ENDPOINT and VQ_S3_BUCKET name %s. Set them back to %s and %s.", recorded, now, ep, bucket)
+		return fmt.Errorf("Attachments are stored in %s; VQ_S3_ENDPOINT and VQ_S3_BUCKET name %s%s. Set them back to %s and %s.", recorded, now, fromFile(cfg, "VQ_S3_ENDPOINT", "VQ_S3_BUCKET"), ep, bucket)
 	}
 	was := blobs.ResolveLocation(recorded, cfg.DataDir)
 	//lint:ignore ST1005 the refusal is a sentence the operator reads as is
-	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s. Set it back to %s.", was, blobs.ResolveLocation(now, cfg.DataDir), was)
+	return fmt.Errorf("Attachments are stored in %s; VQ_BLOB_DIR is %s%s. Set it back to %s.", was, blobs.ResolveLocation(now, cfg.DataDir), fromFile(cfg, "VQ_BLOB_DIR"), was)
 }
 
 // TokenFile is where the local token lives in the data directory. The CLI

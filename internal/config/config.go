@@ -1,4 +1,5 @@
-// Package config reads the VQ_* environment into one flat Config.
+// Package config reads the VQ_* settings into one flat Config: the
+// environment, then {data dir}/vaquero.env (envfile.go), then the defaults.
 //
 // No struct tags and no reflection: FromEnv reads each variable by name,
 // checks it, and reports every problem at once.
@@ -53,6 +54,35 @@ type Config struct {
 	S3AccessKeyID     string
 	S3SecretAccessKey Secret
 	S3Region          string
+
+	// Warnings name the keys vaquero.env sets that Vaquero doesn't read;
+	// serve logs them.
+	Warnings []string
+
+	// sources names where each setting came from (Source); lookup reads a
+	// setting, the environment over the file. Neither prints a value.
+	sources map[string]string
+	lookup  func(string) string
+}
+
+// Source says where key's value came from: SourceEnvironment,
+// SourceFile (vaquero.env) or SourceDefault. VQ_DATA_DIR is never from
+// the file.
+func (c Config) Source(key string) string {
+	if s, ok := c.sources[key]; ok {
+		return s
+	}
+	return SourceDefault
+}
+
+// Lookup reads one setting as the loaders did: the environment, else
+// vaquero.env, else "". For settings a command reads beyond Config (the
+// old bucket's keys during a move).
+func (c Config) Lookup(key string) string {
+	if c.lookup == nil {
+		return ""
+	}
+	return c.lookup(key)
 }
 
 // Secret is a credential that prints as "[redacted]" under every fmt verb,
@@ -85,9 +115,11 @@ func Load() (Config, error) {
 }
 
 // FromEnv builds the whole Config from get, which looks up one variable,
-// checking every setting: what vaquero serve reads.
+// layered over {data dir}/vaquero.env, checking every setting: what vaquero
+// serve reads.
 func FromEnv(get func(string) string) (Config, error) {
 	c, errs := local(get)
+	get = c.lookup
 	c.LogFormat = or(get("VQ_LOG_FORMAT"), "text")
 	c.LogLevel = or(get("VQ_LOG_LEVEL"), "info")
 	if c.LogFormat != "text" && c.LogFormat != "json" {
@@ -108,6 +140,7 @@ func FromEnv(get func(string) string) (Config, error) {
 // server and its data directory: VQ_MODE, VQ_ADDR and VQ_DATA_DIR (Mode,
 // Addr, DataDir, DBPath). The server-only settings (VQ_LOG_*, VQ_BLOB_*,
 // VQ_S3_*) are neither read nor checked, so a bad one stops only serve.
+// vaquero.env is read, and a refused file stops every command.
 func Local(get func(string) string) (Config, error) {
 	c, errs := local(get)
 	return c, errors.Join(errs...)
@@ -117,20 +150,47 @@ func Local(get func(string) string) (Config, error) {
 // VQ_S3_*), checked: what vaquero import reads.
 func LocalWithBlobs(get func(string) string) (Config, error) {
 	c, errs := local(get)
-	if err := readBlobs(&c, get); err != nil {
+	if err := readBlobs(&c, c.lookup); err != nil {
 		errs = append(errs, err)
 	}
 	return c, errors.Join(errs...)
 }
 
-// local reads mode, address and data directory, with their problems.
+// local resolves the data directory from get alone, reads its
+// vaquero.env, then reads mode and address from get layered over the file,
+// with their problems. c.lookup is the layered lookup for the rest.
 func local(get func(string) string) (Config, []error) {
-	c := Config{
-		Mode:    Mode(or(get("VQ_MODE"), string(ModeLocal))),
-		Addr:    or(get("VQ_ADDR"), "127.0.0.1:7878"),
-		DataDir: get("VQ_DATA_DIR"),
-	}
 	var errs []error
+	c := Config{DataDir: get("VQ_DATA_DIR")}
+	dataDirFrom := SourceEnvironment
+	if c.DataDir == "" {
+		dataDirFrom = SourceDefault
+		dir, err := DefaultDataDir(runtime.GOOS, get)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		c.DataDir = dir
+	}
+	c.DBPath = filepath.Join(c.DataDir, "vaquero.db")
+	var file map[string]string
+	if c.DataDir != "" {
+		f, err := ReadEnvFile(c.DataDir)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		file = f
+	}
+	for _, k := range unknownKeys(file) {
+		c.Warnings = append(c.Warnings, "vaquero.env sets "+k+", which Vaquero doesn't read.")
+	}
+	c.sources = map[string]string{"VQ_DATA_DIR": dataDirFrom}
+	for _, k := range Known {
+		c.sources[k] = sourceOf(k, get, file)
+	}
+	c.lookup = Layered(get, file)
+	get = c.lookup
+	c.Mode = Mode(or(get("VQ_MODE"), string(ModeLocal)))
+	c.Addr = or(get("VQ_ADDR"), "127.0.0.1:7878")
 	switch c.Mode {
 	case ModeLocal:
 	case ModeHosted:
@@ -141,14 +201,6 @@ func local(get func(string) string) (Config, []error) {
 	if err := checkAddr(c.Mode, c.Addr); err != nil {
 		errs = append(errs, err)
 	}
-	if c.DataDir == "" {
-		dir, err := DefaultDataDir(runtime.GOOS, get)
-		if err != nil {
-			errs = append(errs, err)
-		}
-		c.DataDir = dir
-	}
-	c.DBPath = filepath.Join(c.DataDir, "vaquero.db")
 	return c, errs
 }
 

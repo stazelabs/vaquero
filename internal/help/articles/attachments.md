@@ -40,7 +40,7 @@ Every file answer carries `X-Content-Type-Options: nosniff` and `Content-Securit
 
 ## Where the bytes are kept
 
-By default, in the database file, with everything else. Two settings move them, chosen when the server starts:
+By default, in the database file, with everything else. These settings move them, chosen when the server starts, from the environment or from `vaquero.env` in the data directory (see [Installing and upgrading](/help/installing-and-upgrading#settings-for-the-server)):
 
 | Variable | Meaning |
 |---|---|
