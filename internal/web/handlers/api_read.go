@@ -189,7 +189,7 @@ func APITickets(d Deps) http.HandlerFunc {
 		if n.fail(w, r) {
 			return
 		}
-		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
+		cols, _, err := board.LoadList(r.Context(), d.R, p, apiActor(r), f)
 		if err != nil {
 			apiFail(w, r, d, api.Internal(), err)
 			return

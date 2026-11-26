@@ -734,7 +734,7 @@ func focusCards(cs []board.Card) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, k := range cs {
-			templ_7745c5c3_Err = cardItem(k, focusCardClass(k.Ready)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = cardItem(k, cardClass(k.Ready, false)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

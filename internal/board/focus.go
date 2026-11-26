@@ -26,7 +26,8 @@ type Focus struct {
 	Project gen.Project
 	Filter  Filter
 	// Next is the ready tickets, by priority (Urgent first, no priority
-	// last), then board position.
+	// last), then board position; with Mine, the owner's todo tickets come
+	// first, in the same order.
 	Next, NextRest []Card
 	NextMore       int
 	// Waiting is the todo tickets that aren't ready, each with why.
@@ -41,6 +42,8 @@ type Focus struct {
 	// NeedsDecision says the project has a "Needs decision" status, which
 	// the empty Next lane points to.
 	NeedsDecision bool
+	// Tags is every tag on the project's tickets, as Board.Tags.
+	Tags []string
 }
 
 // Waiting is a todo ticket that isn't ready, and why: "Blocked by KEY",
@@ -65,15 +68,34 @@ type FlightGroup struct {
 const NeedsDecisionStatus = "Needs decision"
 
 // LoadFocus builds the Focus view as of now, narrowed by f as the board
-// is (f.Category is ignored and dropped).
+// is (f.Category is ignored and dropped). With f.Mine, Next is the
+// owner's todo tickets, then the ready ones (ruling M-R2): the ready ones
+// are unassigned, so they are read without Mine, and nothing waits.
 func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Focus, error) {
 	f.Category = ""
-	cols, err := columns(ctx, q, p, owner, f, time.Time{})
+	cols, tags, err := columns(ctx, q, p, owner, f, time.Time{})
 	if err != nil {
 		return Focus{}, err
 	}
-	fo := Focus{Project: p, Filter: f}
-	var next, waiting, finished []Card
+	fo := Focus{Project: p, Filter: f, Tags: tags}
+	var next, mine, waiting, finished []Card
+	if f.Mine {
+		all := f
+		all.Mine = false
+		allCols, _, err := columns(ctx, q, p, owner, all, time.Time{})
+		if err != nil {
+			return Focus{}, err
+		}
+		for _, c := range allCols {
+			if c.Status.Category == "todo" {
+				for _, k := range c.Cards {
+					if k.Ready {
+						next = append(next, k)
+					}
+				}
+			}
+		}
+	}
 	cutoff := now.Add(-DoneWindow)
 	for _, c := range cols {
 		if strings.EqualFold(c.Status.Name, NeedsDecisionStatus) {
@@ -82,6 +104,10 @@ func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Act
 		switch c.Status.Category {
 		case "todo":
 			for _, k := range c.Cards {
+				if f.Mine {
+					mine = append(mine, k) // the Mine filter read only the owner's
+					continue
+				}
 				if k.Ready {
 					next = append(next, k)
 				} else {
@@ -98,7 +124,7 @@ func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Act
 				if err != nil || at.Before(cutoff) {
 					continue
 				}
-				k.When = dayLabel(at, now)
+				k.When = timefmt.DayLabel(at, now)
 				finished = append(finished, k)
 			}
 		}
@@ -109,8 +135,10 @@ func LoadFocus(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Act
 	})
 	// The rows come in board order, so a stable sort by priority keeps it
 	// within each priority.
-	slices.SortStableFunc(next, func(a, b Card) int { return priorityRank(a.Priority) - priorityRank(b.Priority) })
-	fo.Next, fo.NextRest, fo.NextMore = split(next, FocusNext)
+	byPriority := func(a, b Card) int { return priorityRank(a.Priority) - priorityRank(b.Priority) }
+	slices.SortStableFunc(next, byPriority)
+	slices.SortStableFunc(mine, byPriority)
+	fo.Next, fo.NextRest, fo.NextMore = split(append(mine, next...), FocusNext)
 	slices.SortStableFunc(finished, func(a, b Card) int { return strings.Compare(b.StatusChangedAt, a.StatusChangedAt) })
 	fo.Finished, fo.FinishedRest, fo.FinishedMore = split(finished, FocusFinished)
 	if len(waiting) > 0 {
@@ -143,25 +171,6 @@ func flightRank(category string) int {
 	return 1
 }
 
-// dayLabel is a finished card's day, in UTC: "today", "yesterday", a
-// weekday ("Mon") for the rest of the week, else the date.
-func dayLabel(at, now time.Time) string {
-	day := func(t time.Time) time.Time {
-		y, m, d := t.UTC().Date()
-		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	}
-	switch back := int(day(now).Sub(day(at)).Hours() / 24); {
-	case back <= 0:
-		return "today"
-	case back == 1:
-		return "yesterday"
-	case back < 7:
-		return at.UTC().Weekday().String()[:3]
-	default:
-		return timefmt.DayOf(at)
-	}
-}
-
 // reasons says why each waiting card isn't ready, in two reads for the
 // whole project.
 func reasons(ctx context.Context, q *gen.Queries, p gen.Project, cards []Card) ([]Waiting, error) {
@@ -174,9 +183,13 @@ func reasons(ctx context.Context, q *gen.Queries, p gen.Project, cards []Card) (
 		k := core.TicketKey{Project: r.BlockerProject, Number: r.BlockerNumber}.String()
 		blockers[r.TicketID] = append(blockers[r.TicketID], k)
 	}
-	parents, err := q.ListParentsWithOpenSubTickets(ctx, p.ID)
+	parentRows, err := q.ListParentsWithOpenSubTickets(ctx, p.ID)
 	if err != nil {
 		return nil, err
+	}
+	parents := make(map[string]bool, len(parentRows))
+	for _, id := range parentRows {
+		parents[id] = true
 	}
 	out := make([]Waiting, 0, len(cards))
 	for _, k := range cards {
@@ -184,7 +197,7 @@ func reasons(ctx context.Context, q *gen.Queries, p gen.Project, cards []Card) (
 		if b := blockers[k.ID]; len(b) > 0 {
 			why = append(why, "Blocked by "+strings.Join(b, ", "))
 		}
-		if slices.Contains(parents, k.ID) {
+		if parents[k.ID] {
 			why = append(why, "Has open sub-tickets")
 		}
 		switch {

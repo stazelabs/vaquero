@@ -53,7 +53,7 @@ func ReadyTickets(r *http.Request, d Deps, project *gen.Project, limit int64) ([
 	}
 	var items []item
 	for _, p := range projects {
-		cols, err := board.LoadList(r.Context(), d.R, p, apiActor(r), board.Filter{Priority: -1})
+		cols, _, err := board.LoadList(r.Context(), d.R, p, apiActor(r), board.Filter{Priority: -1})
 		if err != nil {
 			return nil, err
 		}

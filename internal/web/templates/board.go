@@ -18,9 +18,13 @@ func chipClass(on bool) string {
 }
 
 // cardClass gives ready cards the accent edge, and a ring while the card's
-// link has focus (j and k move it).
-func cardClass(ready bool) string {
-	base := "cursor-grab rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
+// link has focus (j and k move it); drag adds the grab cursor of a card
+// that can be dragged (the board's, not Focus's).
+func cardClass(ready, drag bool) string {
+	base := "rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
+	if drag {
+		base = "cursor-grab " + base
+	}
 	if ready {
 		return base + " border-l-4 border-l-accent"
 	}

@@ -194,7 +194,7 @@ templ cards(b board.Board, c board.Column) {
 }
 
 templ card(k board.Card) {
-	@cardItem(k, cardClass(k.Ready))
+	@cardItem(k, cardClass(k.Ready, true))
 }
 
 // cardItem is a card's markup, shared by the board and Focus (which

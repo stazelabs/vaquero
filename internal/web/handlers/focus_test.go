@@ -2,6 +2,8 @@ package handlers_test
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
@@ -40,7 +42,9 @@ func TestFocusLanes(t *testing.T) {
 		`href="/p/VAQ/list?category=done"`, "Older: in List",
 		`hx-get="/p/VAQ/focus/fragment"`, `hx-trigger="vq:change"`, "data-live",
 		`href="/p/VAQ/board"`, `aria-current="page"`)
-	lacks(t, page, "Nothing ready.", "Nothing in flight.", "Nothing finished this week.", "data-board-column")
+	lacks(t, page, "Nothing ready.", "Nothing in flight.", "Nothing finished this week.", "data-board-column", "cursor-grab")
+	// Focus's cards can't be dragged; the board's can.
+	contains(t, e.Client().Get("/p/VAQ/board").Body, "cursor-grab")
 	// Lanes stack in the order Next, In flight, Just finished.
 	next, flight, finished := strings.Index(page, `data-lane="next"`), strings.Index(page, `data-lane="flight"`), strings.Index(page, `data-lane="finished"`)
 	if next < 0 || next > flight || flight > finished {
@@ -169,14 +173,80 @@ func TestListDonePagesFifty(t *testing.T) {
 	if m == nil || !strings.Contains(m[1], "offset=100") {
 		t.Fatalf("refresh show more: %v", m)
 	}
-	// The todo group isn't paged; a bad offset or group is the first page.
-	for _, q := range []string{"group=" + done + "&offset=-5", "group=nope&offset=50", "shown=" + done + ":abc", "shown=junk"} {
-		if r := c.Get("/p/VAQ/list?" + q); r.Status != 200 {
+	// A page request with bad paging input answers no rows: an offset that
+	// isn't a number, is negative or is past the end, an unknown group, a
+	// group that isn't paged, and a group the filter excludes.
+	todo := statusID(t, e, "Todo")
+	for _, q := range []string{
+		"group=" + done + "&offset=-5", "group=" + done + "&offset=abc", "group=" + done + "&offset=500",
+		"group=nope&offset=50", "group=" + todo + "&offset=0", "group=" + done + "&offset=50&category=todo",
+	} {
+		if r := c.Get("/p/VAQ/list?" + q); r.Status != 200 || strings.TrimSpace(r.Body) != "" {
+			t.Errorf("%s: %d %.80q", q, r.Status, r.Body)
+		}
+	}
+	// Malformed shown= entries are ignored.
+	for _, q := range []string{"shown=" + done + ":abc", "shown=junk"} {
+		if r := c.Get("/p/VAQ/list?" + q); r.Status != 200 || strings.Count(r.Body, `data-card="VAQ-`) != 51 {
 			t.Errorf("%s: %d", q, r.Status)
 		}
 	}
 	// The list filtered to done opens its group.
 	if !regexp.MustCompile(`<details[^>]*` + group + `[^>]*open`).MatchString(c.Get("/p/VAQ/list?category=done").Body) {
 		t.Error("done closed when the list is filtered to it")
+	}
+}
+
+// Ruling M-R2: with Mine on, Next shows the caller's todo tickets first
+// (most urgent first), then the ready ones; nothing of either is the
+// empty state.
+func TestFocusMineShowsAssignedThenReady(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	contains(t, c.Get("/p/VAQ?mine=1").Body, "Nothing ready. Triage the backlog.")
+	me := e.Deps.Actor.ID
+	ticket(t, e, p, core.TicketInput{Title: "ready low", Priority: 4})                   // VAQ-1
+	ticket(t, e, p, core.TicketInput{Title: "mine medium", AssigneeID: me, Priority: 3}) // VAQ-2
+	ticket(t, e, p, core.TicketInput{Title: "ready urgent", Priority: 1})                // VAQ-3
+	ticket(t, e, p, core.TicketInput{Title: "mine urgent", AssigneeID: me, Priority: 1}) // VAQ-4
+	ticket(t, e, p, core.TicketInput{Title: "mine doing", AssigneeID: me, StatusID: statusID(t, e, "In progress")})
+	ticket(t, e, p, core.TicketInput{Title: "others doing", StatusID: statusID(t, e, "In progress")})
+	page := c.Get("/p/VAQ?mine=1").Body
+	next := regexp.MustCompile(`(?s)data-lane="next".*?(data-keep="waiting"|data-lane="flight")`).FindString(page)
+	var keys []string
+	for _, m := range regexp.MustCompile(`data-card="(VAQ-\d+)"`).FindAllStringSubmatch(next, -1) {
+		keys = append(keys, m[1])
+	}
+	if strings.Join(keys, " ") != "VAQ-4 VAQ-2 VAQ-3 VAQ-1" {
+		t.Fatalf("next with mine: %v", keys)
+	}
+	lacks(t, page, "Nothing ready.", "waiting", "others doing")
+	contains(t, page, "mine doing")
+	// Without Mine, Next is the ready ones alone and the mine ones wait.
+	all := c.Get("/p/VAQ").Body
+	contains(t, all, "2 waiting")
+}
+
+// Board tabs opened before the board moved refresh their live part from
+// /p/{key}/board with HX-Target: board; they get the fragment, not a page.
+func TestOldBoardTabGetsFragment(t *testing.T) {
+	e := webtest.New(t)
+	project(t, e)
+	req, _ := http.NewRequest(http.MethodGet, e.Server.URL+"/p/VAQ/board?mine=1", nil)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "board")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != 200 || !strings.HasPrefix(strings.TrimSpace(string(b)), `<div id="board"`) || strings.Contains(string(b), "<html") {
+		t.Fatalf("%d %.80q", res.StatusCode, b)
+	}
+	// Any other htmx request for the board, and a plain one, get the page.
+	if r := e.Client().GetHX("/p/VAQ/board"); !strings.Contains(r.Body, "<html") {
+		t.Fatal("an htmx request without HX-Target: board got no page")
 	}
 }

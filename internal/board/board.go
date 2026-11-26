@@ -61,6 +61,9 @@ type Board struct {
 	Rails       []Column // backlog and cancelled statuses, in order
 	Milestones  []MilestoneProgress
 	NoMilestone int64 // open tickets without a milestone
+	// Tags is every tag on the project's tickets, sorted, whatever the
+	// filter: the filter bar's tag menu.
+	Tags []string
 }
 
 func isRail(category string) bool { return category == "backlog" || category == "cancelled" }
@@ -69,11 +72,11 @@ func isRail(category string) bool { return category == "backlog" || category == 
 // columns are the categories), so f.Category is ignored and dropped.
 func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) (Board, error) {
 	f.Category = ""
-	cols, err := columns(ctx, q, p, owner, f, now)
+	cols, tags, err := columns(ctx, q, p, owner, f, now)
 	if err != nil {
 		return Board{}, err
 	}
-	b := Board{Project: p, Filter: f}
+	b := Board{Project: p, Filter: f, Tags: tags}
 	for _, c := range cols {
 		if isRail(c.Status.Category) {
 			b.Rails = append(b.Rails, c)
@@ -102,18 +105,19 @@ func Load(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f
 }
 
 // LoadList is every status column with every matching card: nothing folded
-// or hidden by age.
-func LoadList(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter) ([]Column, error) {
+// or hidden by age; and, as Board.Tags, every tag on the project's tickets.
+func LoadList(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter) ([]Column, []string, error) {
 	return columns(ctx, q, p, owner, f, time.Time{})
 }
 
 // columns groups the filtered tickets by status, keeping only the filter's
 // category's statuses when it names one. A non-zero now hides done
-// cards older than DoneWindow, counting them in Older.
-func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, error) {
+// cards older than DoneWindow, counting them in Older. It also gives every
+// tag on the project's tickets, sorted, read with the cards' tags.
+func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor, f Filter, now time.Time) ([]Column, []string, error) {
 	statuses, err := q.ListStatuses(ctx, p.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	pr := params(p, owner, f)
 	if f.Tag != "" {
@@ -121,7 +125,7 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 		// the stored tag (SQLite folds only ASCII), so use the stored name.
 		known, err := q.ListTags(ctx)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if i := slices.IndexFunc(known, func(k gen.Tag) bool { return core.SameTag(k.Name, f.Tag) }); i >= 0 {
 			pr.Tag = sql.NullString{String: known[i].Name, Valid: true}
@@ -129,16 +133,23 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 	}
 	rows, err := q.ListBoardTickets(ctx, pr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tagRows, err := q.ListProjectTicketTags(ctx, p.ID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tags := map[string][]string{}
+	seen := map[string]bool{}
+	var names []string
 	for _, r := range tagRows {
 		tags[r.TicketID] = append(tags[r.TicketID], r.Name)
+		if !seen[r.Name] {
+			seen[r.Name] = true
+			names = append(names, r.Name)
+		}
 	}
+	slices.Sort(names)
 	if f.Category != "" {
 		statuses = slices.DeleteFunc(statuses, func(s gen.Status) bool { return s.Category != f.Category })
 	}
@@ -187,10 +198,10 @@ func columns(ctx context.Context, q *gen.Queries, p gen.Project, owner gen.Actor
 	}
 	if len(todo) > 0 {
 		if err := gate(ctx, q, cols, todo); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return cols, nil
+	return cols, names, nil
 }
 
 // cardAt is a card's place in the columns.

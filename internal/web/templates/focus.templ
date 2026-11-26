@@ -127,7 +127,7 @@ templ FocusSection(fo board.Focus) {
 templ focusCards(cs []board.Card) {
 	<ol class="space-y-2">
 		for _, k := range cs {
-			@cardItem(k, focusCardClass(k.Ready))
+			@cardItem(k, cardClass(k.Ready, false))
 		}
 	</ol>
 }

@@ -17,20 +17,11 @@ import (
 	"github.com/stazelabs/vaquero/internal/web/templates"
 )
 
-// filterBar builds the filter row for a page at base: the project's tags
-// and open milestones for the menus, and the assignee filter's name.
-func filterBar(r *http.Request, d Deps, p gen.Project, base string, f board.Filter, categories bool) (templates.FilterBar, error) {
-	b := templates.FilterBar{Base: base, Filter: f, Categories: categories}
-	tagRows, err := d.R.ListProjectTicketTags(r.Context(), p.ID)
-	if err != nil {
-		return b, err
-	}
-	for _, t := range tagRows {
-		if !slices.Contains(b.Tags, t.Name) {
-			b.Tags = append(b.Tags, t.Name)
-		}
-	}
-	slices.Sort(b.Tags)
+// filterBar builds the filter row for a page at base: tags (the project's,
+// as the board package read them with the cards) and the open milestones
+// for the menus, and the assignee filter's name.
+func filterBar(r *http.Request, d Deps, p gen.Project, base string, f board.Filter, categories bool, tags []string) (templates.FilterBar, error) {
+	b := templates.FilterBar{Base: base, Filter: f, Categories: categories, Tags: tags}
 	ms, err := d.R.ListMilestones(r.Context(), p.ID)
 	if err != nil {
 		return b, err
@@ -63,7 +54,7 @@ func ProjectFocus(d Deps) http.HandlerFunc {
 			serverError(w, r, d, err)
 			return
 		}
-		bar, err := filterBar(r, d, p, projectPath(p, ""), fo.Filter, false)
+		bar, err := filterBar(r, d, p, projectPath(p, ""), fo.Filter, false, fo.Tags)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -92,7 +83,9 @@ func loadBoard(r *http.Request, d Deps, p gen.Project, f board.Filter) (board.Bo
 	return board.Load(r.Context(), d.R, p, d.Actor, f, d.Now())
 }
 
-// ProjectBoard is the project's board.
+// ProjectBoard is the project's board. A tab opened before the board
+// moved here refreshes its live part (#board) from this address, so an
+// htmx request aimed at #board gets the fragment.
 func ProjectBoard(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projectFromURL(w, r, d)
@@ -100,12 +93,16 @@ func ProjectBoard(d Deps) http.HandlerFunc {
 			return
 		}
 		f := board.ParseFilter(r.URL.Query())
+		if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-Target") == "board" {
+			boardFragment(w, r, d, p, f)
+			return
+		}
 		b, err := loadBoard(r, d, p, f)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
 		}
-		bar, err := filterBar(r, d, p, projectPath(p, "/board"), b.Filter, false)
+		bar, err := filterBar(r, d, p, projectPath(p, "/board"), b.Filter, false, b.Tags)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -159,10 +156,30 @@ func listShown(q url.Values) map[string]int {
 	return out
 }
 
+// listPage answers one page of a paged group's rows, with its "Show 50
+// more" row. Bad input answers no rows: an offset that isn't a number from
+// 0 to the group's size, or a group that isn't one of cols' paged ones (an
+// unknown status, an active one, or one the filter leaves out).
+func listPage(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project, f board.Filter, cols []board.Column, group, offsetText string) {
+	i := slices.IndexFunc(cols, func(c board.Column) bool { return c.Status.ID == group && listPaged(c.Status.Category) })
+	offset, err := strconv.Atoi(offsetText)
+	if i < 0 || err != nil || offset < 0 || offset > len(cols[i].Cards) {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	c := cols[i]
+	end := min(offset+ListPageSize, len(c.Cards))
+	g := templates.ListGroup{Column: c, Shown: c.Cards[offset:end], Paged: true}
+	if end < len(c.Cards) {
+		g.Next = end
+	}
+	render(w, r, d, http.StatusOK, templates.ListRows(p, f, g))
+}
+
 // ProjectListView lists every status with every matching ticket. Done and
 // cancelled groups show ListPageSize at a time (more when the page says it
 // shows more: shown=STATUS:N); ?group=STATUS&offset=N answers the rows of
-// that group's next page alone, with its "Show 50 more" row.
+// that group's next page alone (listPage).
 func ProjectListView(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		p, ok := projectFromURL(w, r, d)
@@ -171,28 +188,14 @@ func ProjectListView(d Deps) http.HandlerFunc {
 		}
 		q := r.URL.Query()
 		f := board.ParseFilter(q)
-		cols, err := board.LoadList(r.Context(), d.R, p, d.Actor, f)
+		cols, tags, err := board.LoadList(r.Context(), d.R, p, d.Actor, f)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
 		}
-		if id := q.Get("group"); id != "" {
-			for _, c := range cols {
-				if c.Status.ID != id || !listPaged(c.Status.Category) {
-					continue
-				}
-				offset, err := strconv.Atoi(q.Get("offset"))
-				if err != nil || offset < 0 || offset > len(c.Cards) {
-					offset = 0
-				}
-				end := min(offset+ListPageSize, len(c.Cards))
-				g := templates.ListGroup{Column: c, Shown: c.Cards[offset:end], Paged: true}
-				if end < len(c.Cards) {
-					g.Next = end
-				}
-				render(w, r, d, http.StatusOK, templates.ListRows(p, f, g))
-				return
-			}
+		if q.Has("group") {
+			listPage(w, r, d, p, f, cols, q.Get("group"), q.Get("offset"))
+			return
 		}
 		shown := listShown(q)
 		groups := make([]templates.ListGroup, 0, len(cols))
@@ -212,7 +215,7 @@ func ProjectListView(d Deps) http.HandlerFunc {
 			}
 			groups = append(groups, g)
 		}
-		bar, err := filterBar(r, d, p, projectPath(p, "/list"), f, true)
+		bar, err := filterBar(r, d, p, projectPath(p, "/list"), f, true, tags)
 		if err != nil {
 			serverError(w, r, d, err)
 			return

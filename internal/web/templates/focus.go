@@ -1,22 +1,12 @@
 package templates
 
-import (
-	"strings"
-
-	"github.com/stazelabs/vaquero/internal/board"
-)
+import "github.com/stazelabs/vaquero/internal/board"
 
 const (
 	laneClass   = "min-w-0 rounded-md bg-paper-alt p-2"
 	laneHeading = "mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wider text-muted"
 	moreClass   = "cursor-pointer list-none px-1 text-xs text-muted hover:text-accent [&::-webkit-details-marker]:hidden"
 )
-
-// focusCardClass is a card in Focus: the board's, without the drag cursor
-// (Focus has no columns to drop into).
-func focusCardClass(ready bool) string {
-	return strings.Replace(cardClass(ready), "cursor-grab ", "", 1)
-}
 
 // nothingReady is the empty Next lane, naming Needs decision when the
 // project has that status.
