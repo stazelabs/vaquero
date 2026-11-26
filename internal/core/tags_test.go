@@ -14,15 +14,21 @@ import (
 func init() {
 	ops = append(ops,
 		coreOp{"RenameTag",
-			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect") },
+			func(c *core.Core, f fixture) error {
+				return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "defect")
+			},
 			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "  ") }},
 		// Renaming onto another tag's name merges the two.
 		coreOp{"RenameTagOntoAnother",
 			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, "UI") },
 			func(c *core.Core, f fixture) error { return c.RenameTag(bg, f.Owner.ID, f.Other.ID, f.Bug.ID, "UI") }},
 		coreOp{"MergeTag",
-			func(c *core.Core, f fixture) error { return c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.UI.ID) },
-			func(c *core.Core, f fixture) error { return c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.Bug.ID) }},
+			func(c *core.Core, f fixture) error {
+				return c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.UI.ID)
+			},
+			func(c *core.Core, f fixture) error {
+				return c.MergeTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID, f.Bug.ID)
+			}},
 		coreOp{"DeleteTag",
 			func(c *core.Core, f fixture) error { return c.DeleteTag(bg, f.Owner.ID, f.Project.ID, f.Bug.ID) },
 			func(c *core.Core, f fixture) error { return c.DeleteTag(bg, f.Owner.ID, f.Project.ID, "no-such-tag") }},

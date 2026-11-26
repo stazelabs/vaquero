@@ -17,7 +17,7 @@ type fixture struct {
 	Owner     gen.Actor
 	Project   gen.Project
 	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo), moved there
-	T1, T2    gen.Ticket // T1 tagged bug, T2 tagged ui
+	T1, T2    gen.Ticket   // T1 tagged bug, T2 tagged ui
 	Milestone gen.Milestone
 	Other     gen.Project
 	O1        gen.Ticket
