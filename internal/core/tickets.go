@@ -232,13 +232,21 @@ func (c *Core) CreateTicket(ctx context.Context, by, projectID string, in Ticket
 // commit references naming it still resolve. The number must be above every
 // number the project has given (deleted and moved tickets' included);
 // numbering goes on after it, and the numbers it skips are never given.
-// Imports send their tickets in ascending order.
+// Imports send their tickets in ascending order. Ruling N-R11: the number
+// is at most MaxTicketNumber, and only the owner acting directly chooses
+// one (an agent acting for the owner is its own actor).
 func (c *Core) ImportTicket(ctx context.Context, by, projectID string, number int64, in TicketInput) (gen.Ticket, error) {
-	if number < 1 {
+	switch {
+	case number < 1:
 		return gen.Ticket{}, invalid("number", "Give a ticket number of 1 or more.")
+	case number > MaxTicketNumber:
+		return gen.Ticket{}, invalid("number", "Use a number of 1,000,000,000 or less.")
 	}
 	return c.createTicket(ctx, by, projectID, number, in)
 }
+
+// MaxTicketNumber is the highest number ImportTicket gives.
+const MaxTicketNumber = 1_000_000_000
 
 // createTicket is CreateTicket with number, or the next number when it is 0.
 func (c *Core) createTicket(ctx context.Context, by, projectID string, number int64, in TicketInput) (gen.Ticket, error) {
@@ -259,7 +267,7 @@ func (c *Core) createTicket(ctx context.Context, by, projectID string, number in
 		if err != nil {
 			return err
 		}
-		num, err := c.ticketNumber(ctx, q, p, number)
+		num, err := c.ticketNumber(ctx, q, by, p, number)
 		if err != nil {
 			return err
 		}
@@ -290,13 +298,20 @@ func (c *Core) createTicket(ctx context.Context, by, projectID string, number in
 
 // ticketNumber takes the project's next number, or number when it isn't 0
 // and no number at or above it was given yet.
-func (c *Core) ticketNumber(ctx context.Context, q *gen.Queries, p gen.Project, number int64) (int64, error) {
+func (c *Core) ticketNumber(ctx context.Context, q *gen.Queries, by string, p gen.Project, number int64) (int64, error) {
 	if number == 0 {
 		num, err := q.NextTicketNumber(ctx, p.ID)
 		if err != nil {
 			return 0, fmt.Errorf("next number: %w", err)
 		}
 		return num, nil
+	}
+	owner, err := byOwner(ctx, q, by)
+	if err != nil {
+		return 0, err
+	}
+	if !owner {
+		return 0, invalid("number", "Only the owner chooses a ticket's number.")
 	}
 	n, err := q.TakeTicketNumber(ctx, gen.TakeTicketNumberParams{Next: number + 1, ID: p.ID})
 	if err != nil {

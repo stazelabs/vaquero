@@ -3,6 +3,8 @@ package core_test
 import (
 	"database/sql"
 	"errors"
+	"maps"
+	"math"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -51,5 +53,37 @@ func TestImportTicketKeepsItsNumber(t *testing.T) {
 	// The ticket's other fields are checked as CreateTicket checks them.
 	if _, err := c.ImportTicket(bg, f.Owner.ID, f.Project.ID, 200, core.TicketInput{Title: " "}); err == nil {
 		t.Fatal("blank title accepted")
+	}
+}
+
+// Ruling N-R11: a chosen number is the owner's alone, acting directly, and
+// at most MaxTicketNumber.
+func TestImportTicketOwnerOnlyAndCapped(t *testing.T) {
+	c, d, f := newFixture(t)
+	agent, err := c.EnsureAgent(bg, f.Owner.ID, "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := snapshot(t, d)
+	for _, tc := range []struct {
+		by     string
+		number int64
+		want   string
+	}{
+		{agent.ID, 50, "Only the owner chooses a ticket's number."},
+		{f.Owner.ID, 1_000_000_001, "Use a number of 1,000,000,000 or less."},
+		{f.Owner.ID, math.MaxInt64, "Use a number of 1,000,000,000 or less."},
+	} {
+		_, err := c.ImportTicket(bg, tc.by, f.Project.ID, tc.number, core.TicketInput{Title: "Chosen"})
+		inv, ok := errors.AsType[*core.Invalid](err)
+		if !ok || inv.Fields["number"] != tc.want {
+			t.Fatalf("%d: %v", tc.number, err)
+		}
+	}
+	if got := snapshot(t, d); !maps.Equal(got, snap) {
+		t.Fatal("a refused import wrote")
+	}
+	if tk, err := c.ImportTicket(bg, f.Owner.ID, f.Project.ID, core.MaxTicketNumber, core.TicketInput{Title: "Last"}); err != nil || tk.Number != core.MaxTicketNumber {
+		t.Fatalf("%v %+v", err, tk)
 	}
 }

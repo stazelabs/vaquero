@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -188,5 +189,24 @@ func TestAPICreateTicketWithNumber(t *testing.T) {
 	}
 	if r := c.API("PATCH", "/api/v1/tickets/VAQ-1", tok, map[string]any{"number": 300}); r.Status != 400 {
 		t.Fatalf("patch: %d %s", r.Status, r.Body)
+	}
+	// Ruling N-R11: capped, and the owner's alone.
+	for _, n := range []int64{1_000_000_001, math.MaxInt64} {
+		r = c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Far", "number": n})
+		var e apiErrBody
+		decode(t, r.Body, &e)
+		if r.Status != 422 || e.Error.Fields["number"] != "Use a number of 1,000,000,000 or less." {
+			t.Fatalf("%d: %d %s", n, r.Status, r.Body)
+		}
+	}
+	c.Agent = "bot"
+	r = c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Mine", "number": 500})
+	var e apiErrBody
+	decode(t, r.Body, &e)
+	if r.Status != 422 || e.Error.Fields["number"] != "Only the owner chooses a ticket's number." {
+		t.Fatalf("agent: %d %s", r.Status, r.Body)
+	}
+	if r := c.API("POST", "/api/v1/projects/VAQ/tickets", tok, map[string]any{"title": "Numbered next"}); r.Status != 201 {
+		t.Fatalf("agent without number: %d %s", r.Status, r.Body)
 	}
 }
