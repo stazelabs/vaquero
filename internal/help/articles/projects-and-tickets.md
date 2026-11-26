@@ -21,11 +21,13 @@ A ticket has a title (up to 200 characters), a description in markdown, a status
 - **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
 - **Comments** are markdown. You can edit or delete your own.
 
-Every change is recorded in the ticket's history and on the Activity page.
+Every change is recorded in the ticket's history and on the Activity page, except that reordering a card within its column shows only in the ticket's history.
 
 ## History
 
 A ticket's page ends with its history, newest first. When the description changes, "Show changes" under that line opens the edit as a line diff: removed lines marked `-`, added lines `+`, with long unchanged stretches folded. Descriptions longer than 64 KB on either side are noted as too long to show, and edits made before Vaquero 0.1.5 show the line only. The Activity page shows the line without the diff.
+
+Dragging a card up or down its column is recorded too. Several drags in a row by the same person, with nothing else between them, read as one line, such as "reordered VAQ-4 in Todo 3 times".
 
 ## Links
 

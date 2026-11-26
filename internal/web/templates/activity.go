@@ -17,6 +17,29 @@ type EventView struct {
 	// Reader is the key of the ticket whose page shows the line, so a link
 	// event reads from that ticket's side; "" on the activity feed.
 	Reader string
+
+	// ActorID tells actors apart when FoldReorders compares lines.
+	ActorID string
+	// Times is how many reorders a folded line stands for (0 or 1: one).
+	Times int
+}
+
+// FoldReorders folds each run of consecutive ticket.reordered lines by the
+// same actor, with no other line between them, into its newest line,
+// counted in Times. Any other event, a status change included, ends a run.
+func FoldReorders(evs []EventView) []EventView {
+	var out []EventView
+	for _, e := range evs {
+		if n := len(out); n > 0 && e.Kind == core.EvTicketReordered {
+			last := &out[n-1]
+			if last.Kind == core.EvTicketReordered && last.ActorID == e.ActorID {
+				last.Times = max(last.Times, 1) + 1
+				continue
+			}
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // side is how a ticket is named for the reader: "this ticket" on its own page.
@@ -87,6 +110,9 @@ func EventSentence(e EventView) string {
 	case core.EvTicketUpdated:
 		return ticketUpdated(e)
 	case core.EvTicketReordered:
+		if e.Times > 1 {
+			return fmt.Sprintf("reordered %s in %s %d times", e.TicketKey, s("status"), e.Times)
+		}
 		return fmt.Sprintf("reordered %s in %s", e.TicketKey, s("status"))
 	case core.EvCommentCreated:
 		return "commented on " + e.TicketKey

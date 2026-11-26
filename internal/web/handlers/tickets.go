@@ -354,9 +354,10 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey,
 			TicketKey:   core.TicketKey{Project: e.ProjectKey, Number: e.TicketNumber}.String(),
 			TicketTitle: e.TicketTitle, Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
-			Reader: v.Key,
+			Reader: v.Key, ActorID: e.ActorID,
 		})
 	}
+	v.Events = templates.FoldReorders(v.Events)
 	return v, nil
 }
 

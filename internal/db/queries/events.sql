@@ -3,12 +3,15 @@ INSERT INTO events (at, actor_id, kind, project_id, ticket_id, payload)
 VALUES (?, ?, ?, ?, ?, ?) RETURNING seq;
 
 -- name: ListEvents :many
+-- The activity feed, newest first. Reorders within a column are left out
+-- (they are still events, and still advance the sequence).
 SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?;
 
@@ -38,24 +41,27 @@ SELECT count(*) FROM events;
 SELECT CAST(coalesce(max(seq), 0) AS INTEGER) FROM events;
 
 -- name: ListEventsAfter :many
--- Events after a sequence number, oldest first, for clients that poll.
+-- Events after a sequence number, oldest first, for clients that poll;
+-- reorders left out, as on the activity feed.
 SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.seq > ?
+WHERE e.seq > ? AND e.kind <> 'ticket.reordered'
 ORDER BY e.seq
 LIMIT ?;
 
 -- name: ListEventsNewest :many
--- The newest events, newest first (callers reverse them).
+-- The newest events, newest first (callers reverse them); reorders left
+-- out, as on the activity feed.
 SELECT e.*, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title
 FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?;

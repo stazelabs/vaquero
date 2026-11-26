@@ -56,6 +56,7 @@ FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?
 `
@@ -74,6 +75,8 @@ type ListEventsRow struct {
 	TicketTitle  string
 }
 
+// The activity feed, newest first. Reorders within a column are left out
+// (they are still events, and still advance the sequence).
 func (q *Queries) ListEvents(ctx context.Context, limit int64) ([]ListEventsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listEvents, limit)
 	if err != nil {
@@ -116,7 +119,7 @@ FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
-WHERE e.seq > ?
+WHERE e.seq > ? AND e.kind <> 'ticket.reordered'
 ORDER BY e.seq
 LIMIT ?
 `
@@ -140,7 +143,8 @@ type ListEventsAfterRow struct {
 	TicketTitle  string
 }
 
-// Events after a sequence number, oldest first, for clients that poll.
+// Events after a sequence number, oldest first, for clients that poll;
+// reorders left out, as on the activity feed.
 func (q *Queries) ListEventsAfter(ctx context.Context, arg ListEventsAfterParams) ([]ListEventsAfterRow, error) {
 	rows, err := q.db.QueryContext(ctx, listEventsAfter, arg.Seq, arg.Limit)
 	if err != nil {
@@ -183,6 +187,7 @@ FROM events e
 JOIN actors a ON a.id = e.actor_id
 LEFT JOIN projects p ON p.id = e.project_id
 LEFT JOIN tickets t ON t.id = e.ticket_id
+WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?
 `
@@ -201,7 +206,8 @@ type ListEventsNewestRow struct {
 	TicketTitle  string
 }
 
-// The newest events, newest first (callers reverse them).
+// The newest events, newest first (callers reverse them); reorders left
+// out, as on the activity feed.
 func (q *Queries) ListEventsNewest(ctx context.Context, limit int64) ([]ListEventsNewestRow, error) {
 	rows, err := q.db.QueryContext(ctx, listEventsNewest, limit)
 	if err != nil {

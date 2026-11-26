@@ -33,7 +33,7 @@ Give each agent you run its own `--agent` name, so their claims and comments sta
 | `get_ticket` | One ticket with its description, tags, sub-tickets, links, comments, attachments, claim and version: `key` |
 | `ready_tickets` | Tickets ready to be worked on, most urgent first: optionally `project`, `limit` |
 | `search` | Find tickets by words: `query` |
-| `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few |
+| `recent_activity` | Changes, oldest first: `after` a sequence number, or the `newest` few; reorders within a column are left out |
 | `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags` |
 | `update_ticket` | `key` and any fields to change, plus `add_tags`, `remove_tags` and `version` |
 | `move_ticket` | `key`, `status` |
