@@ -261,8 +261,13 @@ func TestEventTicketsBackfill(t *testing.T) {
 	}
 	for rows.Next() {
 		var r string
-		rows.Scan(&r)
+		if err := rows.Scan(&r); err != nil {
+			t.Fatal(err)
+		}
 		want[r] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	rows.Close()
 	if len(want) == 0 {
@@ -275,8 +280,13 @@ func TestEventTicketsBackfill(t *testing.T) {
 	}
 	for rows.Next() {
 		var r string
-		rows.Scan(&r)
+		if err := rows.Scan(&r); err != nil {
+			t.Fatal(err)
+		}
 		got[r] = true
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	rows.Close()
 	for r := range want {
@@ -296,7 +306,9 @@ func TestEventTicketsBackfill(t *testing.T) {
 		t.Fatal(err)
 	}
 	var n int
-	d.QueryRow(`SELECT count(*) FROM event_tickets`).Scan(&n)
+	if err := d.QueryRow(`SELECT count(*) FROM event_tickets`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
 	if n != len(got) {
 		t.Fatalf("%d rows after a second run, want %d", n, len(got))
 	}

@@ -160,6 +160,7 @@ func (c *Core) emit(ctx context.Context, q *gen.Queries, actorID, kind, projectI
 	if err != nil {
 		return fmt.Errorf("append event: %w", err)
 	}
+	// Most payloads have no ticket_ids; skip the insert for them.
 	if bytes.Contains(body, []byte(`"ticket_ids"`)) {
 		if err := q.AddEventTickets(ctx, seq); err != nil {
 			return fmt.Errorf("event tickets: %w", err)

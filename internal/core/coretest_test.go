@@ -37,7 +37,7 @@ func eventCount(t *testing.T, d dbtest.DB) int64 {
 
 // trackerTables are every table only core writes.
 var trackerTables = []string{"api_tokens", "actors", "projects", "statuses", "milestones", "tickets", "tags", "ticket_tags", "comments", "ticket_links", "attachments", "events",
-	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "project_icons", "ticket_old_keys", "project_links", "ticket_refs"}
+	"plans", "plan_revisions", "decisions", "decision_tickets", "approvals", "project_icons", "ticket_old_keys", "project_links", "ticket_refs", "event_tickets"}
 
 // snapshot is the row count and a content hash of every tracker table, so
 // any insert, update or delete shows, whatever it does to lengths.
@@ -45,7 +45,11 @@ func snapshot(t *testing.T, d dbtest.DB) map[string]int64 {
 	t.Helper()
 	out := map[string]int64{}
 	for _, tbl := range trackerTables {
-		rows, err := d.R.Query(`SELECT * FROM ` + tbl + ` ORDER BY rowid`)
+		order := "rowid"
+		if tbl == "event_tickets" { // WITHOUT ROWID
+			order = "ticket_id, seq"
+		}
+		rows, err := d.R.Query(`SELECT * FROM ` + tbl + ` ORDER BY ` + order)
 		if err != nil {
 			t.Fatal(err)
 		}

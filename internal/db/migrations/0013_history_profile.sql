@@ -14,6 +14,9 @@ CREATE TABLE event_tickets (
     ticket_id TEXT NOT NULL,
     PRIMARY KEY (ticket_id, seq)
 ) WITHOUT ROWID;
+-- By seq too: deleting an event checks for rows here, and a project delete
+-- removes its events' rows by seq.
+CREATE INDEX event_tickets_seq ON event_tickets (seq);
 
 -- The backfill below also runs after an import (db.BackfillEventTickets),
 -- which reads it from this file between the two markers. It adds only
