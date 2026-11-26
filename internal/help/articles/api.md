@@ -39,6 +39,7 @@ Every change records where it came from, as the caller reports it, in the event'
 | `GET /api/v1/projects/{key}` | One project, with `workflow` (whether the [agent workflow](/help/agent-workflow) is on) and `tier_map`, the [tier map](/help/agent-workflow#the-tier-map) in use: the project's own, else the default |
 | `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
+| `GET /api/v1/projects/{key}/tags` | The tags its tickets carry, by name, each with its `ticket_count` (this project's tickets only) |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `tier` and `model` (left out when unset), `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
 | `GET /api/v1/tickets/{ticket}/attachments` | The ticket's files, oldest first |
@@ -67,6 +68,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
 | `POST /api/v1/projects/{key}/statuses/{name}/move` | `{"before"}` or `{"after"}`: another status's name; the status moves there in one step. Answers with the status and its new `position` |
 | `DELETE /api/v1/projects/{key}/statuses/{name}` | Nothing; a status no ticket uses, and not the last of its category. Answers `204` |
+| `PATCH /api/v1/projects/{key}/tags/{name}` | `{"name", "merge"}`: renames the tag on this project's tickets (other projects keep it). A name another of the project's tags has is a merge, refused with `409` naming that tag in `message` and in `current` unless you send `"merge": true`. Answers with the tag the tickets now carry |
+| `DELETE /api/v1/projects/{key}/tags/{name}` | Nothing; takes the tag off every ticket in the project. Answers `204` |
 | `POST /api/v1/projects/{key}/milestones` | `{"name", "description", "due_on"}`; only `name` is required, and `due_on` looks like `2026-12-31`. Answers `201` with the milestone |
 | `PATCH /api/v1/projects/{key}/milestones/{name}` | Any of `{"name", "description", "due_on"}`; `"due_on": ""` clears the date. Answers with the milestone |
 | `POST /api/v1/projects/{key}/milestones/{name}/close` | Nothing; closes the milestone and answers with it |
@@ -87,7 +90,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/tokens` | `{"name"}`; the answer holds the token, shown this once |
 | `POST /api/v1/tokens/{prefix}/revoke` | Nothing; revokes the token with that prefix |
 
-Statuses and milestones are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
+Statuses, milestones and tags are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
 
 A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"milestone"`, `"parent"`) to clear one; `"tags"` replaces the whole list, while `add_tags` and `remove_tags` change it one tag at a time.
 

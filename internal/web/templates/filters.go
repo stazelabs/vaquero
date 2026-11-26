@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -33,6 +34,19 @@ type MenuItem struct {
 }
 
 func (b FilterBar) href(f board.Filter) string { return FilterHref(b.Base, f) }
+
+// MissingTag is the tag filter's name when no tag of the project matches
+// it (in any case or normalisation), such as a saved link from before a
+// rename; "" when there is no tag filter or one matches.
+func (b FilterBar) MissingTag() string {
+	if b.Filter.Tag == "" || slices.ContainsFunc(b.Tags, func(t string) bool { return core.SameTag(t, b.Filter.Tag) }) {
+		return ""
+	}
+	return b.Filter.Tag
+}
+
+// clearTag is the page without the tag filter, keeping the others.
+func (b FilterBar) clearTag() string { return b.href(b.Filter.With("tag", "")) }
 
 // toggle is a quick chip: a link to the filter with key switched.
 func (b FilterBar) toggle(label, key string, on bool) Chip {

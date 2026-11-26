@@ -33,6 +33,9 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero status rename KEY NAME NEW` | Rename a status |
 | `vaquero status move KEY NAME --before S \| --after S` | Move a status next to another, in one step |
 | `vaquero status delete KEY NAME` | Delete a status no ticket uses; each category keeps at least one |
+| `vaquero tags KEY` | The tags a project's tickets carry, with how many of its tickets carry each |
+| `vaquero tag rename KEY NAME NEW [--merge]` | Rename a tag on the project's tickets; a name another of its tags has is refused (exit 3) unless `--merge`, which merges the two |
+| `vaquero tag delete KEY NAME` | Take a tag off every ticket in the project |
 | `vaquero milestones KEY` | A project's milestones with their due dates, done and total tickets, and whether each is open |
 | `vaquero milestone add KEY NAME [--description TEXT] [--due DATE]` | Add a milestone; dates look like 2026-12-31, and `-` as the description reads it from standard input |
 | `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT] [--due DATE]` | Change only what is given; `--due ""` clears the date, and `-` as the description reads it from standard input |

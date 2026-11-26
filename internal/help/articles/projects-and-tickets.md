@@ -40,7 +40,7 @@ A ticket has a title (up to 200 characters), a description in markdown, a status
 - **Sub-tickets** are tickets whose parent is another ticket in the same project. A ticket can't become its own ancestor.
 - **Comments** are markdown. You can edit or delete your own.
 
-Every change is recorded in the ticket's history and on the Activity page, with two exceptions: reordering a card within its column shows only in the ticket's history, and renaming, merging or deleting a tag in project settings shows on the Activity page only.
+Every change is recorded in the ticket's history and on the Activity page, with one exception: reordering a card within its column shows only in the ticket's history. Renaming, merging or deleting a tag is one line on the Activity page and one in the history of each ticket it changed (a tag change from an older Vaquero that didn't record its tickets shows on the Activity page only).
 
 ## Tags
 
@@ -50,7 +50,7 @@ Tags match whatever their case: `UI`, `ui` and `Ui` are one tag, which keeps the
 - **Merge** by renaming a tag to a name the project already has. Vaquero asks first, then tags those tickets with the other tag; a ticket that had both keeps one.
 - **Delete** a tag to take it off every ticket in the project, after a confirmation. Its tickets stay as they are otherwise.
 
-Each of these is one line on the Activity page, and it raises the version of every ticket it changes, so an edit form opened before it asks you to look again rather than putting the old tag back.
+The same changes can be made with `vaquero tag` or [the API](/help/api#writing). Each of these is one line on the Activity page and one in each changed ticket's history, and it raises the version of every ticket it changes, so an edit form opened before it asks you to look again rather than putting the old tag back.
 
 ## History
 

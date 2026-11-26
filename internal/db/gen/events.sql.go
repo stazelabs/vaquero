@@ -259,6 +259,11 @@ FROM (
     UNION ALL
     SELECT l.seq FROM events l
     WHERE l.kind IN ('link.created', 'link.deleted') AND json_extract(l.payload, '$.to_id') = ?1
+    UNION ALL
+    SELECT g.seq FROM events g
+    WHERE g.kind IN ('tag.renamed', 'tag.merged', 'tag.deleted')
+      AND g.project_id = (SELECT tp.project_id FROM tickets tp WHERE tp.id = ?1)
+      AND EXISTS (SELECT 1 FROM json_each(g.payload, '$.ticket_ids') j WHERE j.value = ?1)
 ) m
 JOIN events e ON e.seq = m.seq
 JOIN actors a ON a.id = e.actor_id
@@ -282,10 +287,12 @@ type ListTicketEventsRow struct {
 	TicketTitle  string
 }
 
-// A ticket's history: its own events, and link events that name it as the
-// "to" side by id (a link is one event, recorded on the "from" ticket).
-// Two indexed lookups (events_ticket, events_link_to), never a scan; a
-// link never names its own ticket, so no event comes twice.
+// A ticket's history: its own events, link events that name it as the
+// "to" side by id (a link is one event, recorded on the "from" ticket),
+// and its project's tag events whose payload.ticket_ids lists it (a tag
+// change is one project event). Three indexed lookups (events_ticket,
+// events_link_to, events_tag), never a scan of events; a link never names
+// its own ticket and a tag event names no ticket, so no event comes twice.
 func (q *Queries) ListTicketEvents(ctx context.Context, ticketID sql.NullString) ([]ListTicketEventsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTicketEvents, ticketID)
 	if err != nil {

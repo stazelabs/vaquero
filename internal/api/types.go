@@ -39,6 +39,13 @@ type Status struct {
 	TicketCount int64 `json:"ticket_count"`
 }
 
+// Tag is one of a project's tags: a tag is shared by every project, so
+// TicketCount counts only this project's tickets that carry it.
+type Tag struct {
+	Name        string `json:"name"`
+	TicketCount int64  `json:"ticket_count"`
+}
+
 type Milestone struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`

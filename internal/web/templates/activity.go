@@ -244,11 +244,22 @@ func EventSentence(e EventView) string {
 		return "revised the plan for " + e.TicketKey
 	case core.EvDecisionAsked, core.EvDecisionRuled, core.EvDecisionAnswered, core.EvDecisionWithdrawn:
 		return decisionSentence(e)
+	// A tag event is a project's; on a ticket's history (Reader set) it
+	// reads as what happened to that ticket's tag.
 	case core.EvTagRenamed:
+		if e.Reader != "" {
+			return fmt.Sprintf("renamed tag %s → %s", s("from"), s("to"))
+		}
 		return fmt.Sprintf("renamed tag %s to %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagMerged:
+		if e.Reader != "" {
+			return fmt.Sprintf("merged tag %s into %s", s("from"), s("to"))
+		}
 		return fmt.Sprintf("merged tag %s into %s in %s (%s)", s("from"), s("to"), e.ProjectKey, tagTickets(e.Payload))
 	case core.EvTagDeleted:
+		if e.Reader != "" {
+			return "deleted tag " + s("name")
+		}
 		return fmt.Sprintf("deleted tag %s from %s (%s)", s("name"), e.ProjectKey, tagTickets(e.Payload))
 	}
 	return "made a change"
