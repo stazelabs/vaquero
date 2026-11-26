@@ -51,6 +51,29 @@ func (q *Queries) CountEvents(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const getTicketEvent = `-- name: GetTicketEvent :one
+SELECT seq, kind, payload FROM events WHERE seq = ? AND ticket_id = ?
+`
+
+type GetTicketEventParams struct {
+	Seq      int64
+	TicketID sql.NullString
+}
+
+type GetTicketEventRow struct {
+	Seq     int64
+	Kind    string
+	Payload string
+}
+
+// One event recorded on a ticket, for the history's "Show changes".
+func (q *Queries) GetTicketEvent(ctx context.Context, arg GetTicketEventParams) (GetTicketEventRow, error) {
+	row := q.db.QueryRowContext(ctx, getTicketEvent, arg.Seq, arg.TicketID)
+	var i GetTicketEventRow
+	err := row.Scan(&i.Seq, &i.Kind, &i.Payload)
+	return i, err
+}
+
 const listEvents = `-- name: ListEvents :many
 SELECT e.seq, e.at, e.actor_id, e.kind, e.project_id, e.ticket_id, e.payload, e.meta, a.name AS actor_name, coalesce(p.key, '') AS project_key,
        coalesce(t.number, 0) AS ticket_number, coalesce(t.title, '') AS ticket_title,

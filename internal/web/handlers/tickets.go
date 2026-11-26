@@ -416,7 +416,7 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 			Actor: e.ActorName, Kind: e.Kind, ProjectKey: e.ProjectKey,
 			TicketKey:   core.TicketKey{Project: e.TicketProjectKey, Number: e.TicketNumber}.String(),
 			TicketTitle: e.TicketTitle, Payload: templates.ParsePayload(e.Payload), Ago: timefmt.Ago(at, now, nil),
-			Reader: v.Key, ActorID: e.ActorID,
+			Reader: v.Key, ActorID: e.ActorID, Seq: e.Seq,
 		})
 	}
 	if err := resolveLinkTargets(ctx, d, v.Events); err != nil {
@@ -424,6 +424,48 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	}
 	v.Events = templates.FoldReorders(v.Events)
 	return v, nil
+}
+
+// TicketChanges is a description edit's diff, the fragment a history
+// line's "Show changes" reads when first opened (VAQ-143): the page itself
+// never diffs. The event must be one of this ticket's description edits;
+// any other answers as a stale page does.
+func TicketChanges(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		t, _, ok := ticketFromURL(w, r, d)
+		if !ok {
+			return
+		}
+		key := "/t/" + chi.URLParam(r, "ticket")
+		gone := func() {
+			const msg = "Those changes are no longer in this ticket's history."
+			if r.Header.Get("HX-Request") == "true" {
+				refreshWith(w, msg)
+				return
+			}
+			redirectWithFlash(w, r, flash.Error, msg, key)
+		}
+		seq, err := strconv.ParseInt(chi.URLParam(r, "seq"), 10, 64)
+		if err != nil {
+			gone()
+			return
+		}
+		ev, err := d.R.GetTicketEvent(r.Context(), gen.GetTicketEventParams{Seq: seq, TicketID: sql.NullString{String: t.ID, Valid: true}})
+		if errors.Is(err, sql.ErrNoRows) {
+			gone()
+			return
+		}
+		if err != nil {
+			serverError(w, r, d, err)
+			return
+		}
+		diff, ok := templates.BodyChangesOf(ev.Kind, templates.ParsePayload(ev.Payload))
+		if !ok {
+			gone()
+			return
+		}
+		render(w, r, d, http.StatusOK, templates.BodyChanges(diff))
+	}
 }
 
 // planView is the ticket's plan for its page, nil when it has none.

@@ -13,6 +13,9 @@ import (
 type EventView struct {
 	Actor, Kind, ProjectKey, TicketKey, TicketTitle, Ago string
 	Payload                                              map[string]any
+	// Seq is the event's sequence number (the history's "Show changes"
+	// reads its diff by it).
+	Seq int64
 
 	// Reader is the key of the ticket whose page shows the line, so a link
 	// event reads from that ticket's side; "" on the activity feed.

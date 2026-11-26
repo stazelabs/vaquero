@@ -96,3 +96,7 @@ LEFT JOIN projects tp ON tp.id = t.project_id
 WHERE e.kind <> 'ticket.reordered'
 ORDER BY e.seq DESC
 LIMIT ?;
+
+-- name: GetTicketEvent :one
+-- One event recorded on a ticket, for the history's "Show changes".
+SELECT seq, kind, payload FROM events WHERE seq = ? AND ticket_id = ?;

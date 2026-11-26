@@ -131,6 +131,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.With(fs).Post("/links", handlers.LinkCreate(d))
 			r.Post("/links/{id}/delete", handlers.LinkDelete(d))
 			r.Get("/link-targets", handlers.LinkTargets(d))
+			r.Get("/changes/{seq}", handlers.TicketChanges(d))
 			r.Post("/attachments", handlers.AttachmentUpload(d))
 			r.Post("/attachments/{id}/delete", handlers.AttachmentDelete(d))
 		})

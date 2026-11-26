@@ -518,19 +518,27 @@ templ EventLine(e EventView) {
 			@sentenceParts(EventParts(e))
 		</span>
 		<span class="text-xs text-muted">· { e.Ago }</span>
-		if d := bodyChanges(e); d.Show {
-			<details class="w-full pl-6">
+		if bodyChanges(e).Show {
+			<details class="w-full pl-6" hx-get={ changesHref(e) } hx-trigger="toggle once" hx-target="find [data-changes]" hx-swap="innerHTML">
 				<summary class="cursor-pointer text-xs text-muted hover:text-accent">Show changes</summary>
-				if d.TooLong {
-					<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
-				} else {
-					<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
-						for _, l := range d.Lines {
-							<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
-						}
-					</pre>
-				}
+				<div data-changes>
+					<p class="mt-1 text-xs text-muted">Loading changes…</p>
+				</div>
 			</details>
 		}
 	</li>
+}
+
+// BodyChanges is a description edit's diff, read into its history line's
+// "Show changes" when that is first opened.
+templ BodyChanges(d bodyDiff) {
+	if d.TooLong {
+		<p class="mt-1 text-xs text-muted">The description is too long to show.</p>
+	} else {
+		<pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-words rounded border border-line bg-paper-alt p-2 font-mono text-xs">
+			for _, l := range d.Lines {
+				<span class={ diffLineClass(l.Op) }>{ diffMark(l.Op) }<span class={ diffTextClass(l.Op) }>{ l.Text }</span></span>
+			}
+		</pre>
+	}
 }

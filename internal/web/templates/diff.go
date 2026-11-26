@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -140,12 +141,15 @@ func foldUnchanged(ls []DiffLine) []DiffLine {
 
 // bodyDiff is a description edit's stored change, for the ticket history:
 // Show is false for any other event and for events from before the text
-// was kept.
+// was kept. Lines is filled only by BodyChangesOf, the "Show changes"
+// fragment: the page itself never diffs (VAQ-143).
 type bodyDiff struct {
 	Show, TooLong bool
 	Lines         []DiffLine
 }
 
+// bodyChanges says whether a history line has changes to show, without
+// diffing them.
 func bodyChanges(e EventView) bodyDiff {
 	if e.Kind != core.EvTicketUpdated {
 		return bodyDiff{}
@@ -153,12 +157,27 @@ func bodyChanges(e EventView) bodyDiff {
 	if long, _ := e.Payload["body_too_long"].(bool); long {
 		return bodyDiff{Show: true, TooLong: true}
 	}
-	before, ok1 := e.Payload["body_before"].(string)
-	after, ok2 := e.Payload["body_after"].(string)
-	if !ok1 || !ok2 {
-		return bodyDiff{}
+	_, ok1 := e.Payload["body_before"].(string)
+	_, ok2 := e.Payload["body_after"].(string)
+	return bodyDiff{Show: ok1 && ok2}
+}
+
+// BodyChangesOf is an event's description diff for the "Show changes"
+// fragment; ok is false when the event has none to show.
+func BodyChangesOf(kind string, payload map[string]any) (d bodyDiff, ok bool) {
+	d = bodyChanges(EventView{Kind: kind, Payload: payload})
+	if !d.Show {
+		return d, false
 	}
-	return bodyDiff{Show: true, Lines: LineDiff(before, after)}
+	if !d.TooLong {
+		d.Lines = LineDiff(payload["body_before"].(string), payload["body_after"].(string))
+	}
+	return d, true
+}
+
+// changesHref is where a history line's "Show changes" reads its diff.
+func changesHref(e EventView) string {
+	return "/t/" + e.Reader + "/changes/" + strconv.FormatInt(e.Seq, 10)
 }
 
 // diffLineClass marks a diff line by what happened to it, by more than
