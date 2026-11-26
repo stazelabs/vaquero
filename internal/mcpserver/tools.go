@@ -94,11 +94,11 @@ type (
 	bulkItemArgs struct {
 		Key       string     `json:"key" jsonschema:"The ticket's key, such as VAQ-12. A key may appear in more than one item."`
 		Version   int64      `json:"version,omitempty" jsonschema:"The version you read: if the ticket changed since, nothing in the item runs. Needs an update."`
-		Claim     *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket: {} for 15 minutes."`
+		Claim     *claimArgs `json:"claim,omitempty" jsonschema:"Claim the ticket: {} for 15 minutes. Not with heartbeat."`
 		Heartbeat *claimArgs `json:"heartbeat,omitempty" jsonschema:"Renew your claim from now, without changing the version: {} for 15 minutes."`
 		Update    *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
 		Comment   *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
-		Move      string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column."`
+		Move      string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column; its own status changes nothing."`
 		Release   bool       `json:"release,omitempty" jsonschema:"Give up your claim last; already done if an earlier action finished the ticket."`
 	}
 

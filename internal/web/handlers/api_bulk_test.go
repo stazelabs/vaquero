@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -418,5 +419,83 @@ func TestMCPBulkUpdateMatchesTheAPI(t *testing.T) {
 	}
 	if res, text := mcpCall(t, cs, "bulk_update", map[string]any{"items": []any{}}); !res.IsError || text != "Send at least one item." {
 		t.Fatalf("empty: %v %q", res.IsError, text)
+	}
+}
+
+// A claim ended outside the item (released elsewhere, or lapsed) between
+// the item's start and its release gets the normal release, refused: only
+// the item's own update or move ending it counts as released.
+func TestAPIBulkReleaseAfterAClaimEndedElsewhere(t *testing.T) {
+	e, tok := bulkEnv(t)
+	c := e.Client()
+	c.Agent = "builder"
+	if r := c.API("POST", "/api/v1/tickets/VAQ-1/claim", tok, nil); r.Status != 200 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	builder, err := e.Deps.Core.EnsureAgent(bg, e.Deps.Actor.ID, "builder")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handlers.OnBulkStep(t, 0, "release", func(context.CancelFunc) {
+		if _, err := e.Deps.Core.Release(bg, builder.ID, mustTicketID(t, e, 1)); err != nil {
+			t.Error(err)
+		}
+	})
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Stopping.", "release": true})
+	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Message != "VAQ-1 isn't claimed." {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// A request that ends in the middle of an item reports that item and the
+// rest as cancelled, with what didn't run in skipped.
+func TestAPIBulkCancelledMidItem(t *testing.T) {
+	e, tok := bulkEnv(t)
+	c := e.Client()
+	handlers.OnBulkStep(t, 0, "move", func(cancel context.CancelFunc) { cancel() })
+	before := events(t, e)
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Runs.", "move": "Done", "release": true},
+		map[string]any{"key": "VAQ-2", "comment": "Doesn't."})
+	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Code != "cancelled" || strings.Join(got.Skipped, ",") != "move,release" || got.Status != "" {
+		t.Fatalf("item 1: %+v", got)
+	}
+	if got := out.Items[1]; got.OK || got.Error == nil || got.Error.Code != "cancelled" || strings.Join(got.Skipped, ",") != "comment" {
+		t.Fatalf("item 2: %+v", got)
+	}
+	if after := events(t, e); after != before+1 {
+		t.Fatalf("events %d → %d, want 1 more", before, after)
+	}
+	var tk struct{ Status string }
+	decode(t, c.API("GET", "/api/v1/tickets/VAQ-1", tok, nil).Body, &tk)
+	if tk.Status != "Todo" {
+		t.Fatalf("%+v", tk)
+	}
+}
+
+// A bulk move to the status the ticket already has changes nothing, so a
+// retried sweep doesn't reshuffle the column.
+func TestAPIBulkMoveToSameStatusIsANoOp(t *testing.T) {
+	e, tok := bulkEnv(t)
+	c := e.Client()
+	before := events(t, e)
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "move": "todo"}, map[string]any{"key": "VAQ-2", "move": "In review"},
+		map[string]any{"key": "VAQ-2", "move": "In review"})
+	for i, got := range out.Items {
+		if !got.OK || got.Version != []int64{1, 2, 2}[i] {
+			t.Fatalf("item %d: %+v", i+1, got)
+		}
+	}
+	if after := events(t, e); after != before+1 {
+		t.Fatalf("events %d → %d, want 1 more", before, after)
+	}
+}
+
+// Claim and heartbeat in one item is refused whole.
+func TestAPIBulkClaimAndHeartbeatRefused(t *testing.T) {
+	e, tok := bulkEnv(t)
+	r := e.Client().API("POST", "/api/v1/tickets/bulk", tok, map[string]any{"items": []any{
+		map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "heartbeat": map[string]any{}}}})
+	if r.Status != 422 || !strings.Contains(r.Body, `"items[0].heartbeat": "Item 1 can claim or renew, not both."`) {
+		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 }

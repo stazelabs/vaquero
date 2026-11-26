@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -45,17 +44,22 @@ func AfterSeqRead(t testing.TB, fn func()) {
 	t.Cleanup(func() { readEventSeq = saved })
 }
 
+// OnBulkStep runs fn before bulk item i's action (action "" for the item
+// itself), with the call's cancel; tests that call it must not run in
+// parallel.
+func OnBulkStep(t testing.TB, i int, action string, fn func(cancel context.CancelFunc)) {
+	t.Helper()
+	saved := bulkStep
+	bulkStep = func(n int, a string, cancel context.CancelFunc) {
+		if n == i && a == action {
+			fn(cancel)
+		}
+	}
+	t.Cleanup(func() { bulkStep = saved })
+}
+
 // CancelBulkAt ends a bulk call's request just before its item i runs.
 func CancelBulkAt(t testing.TB, i int) {
 	t.Helper()
-	saved := bulkStep
-	bulkStep = func(r *http.Request, n int) *http.Request {
-		if n == i {
-			ctx, cancel := context.WithCancel(r.Context())
-			cancel()
-			return r.WithContext(ctx)
-		}
-		return r
-	}
-	t.Cleanup(func() { bulkStep = saved })
+	OnBulkStep(t, i, "", func(cancel context.CancelFunc) { cancel() })
 }

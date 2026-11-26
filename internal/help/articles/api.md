@@ -56,7 +56,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
 | `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags"}`; only `title` is required |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
-| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
+| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
 | `PATCH /api/v1/comments/{id}` | `{"body"}`; your own comments only |
@@ -98,15 +98,15 @@ Agents take work from the ready queue and hold it with a claim that expires unle
       {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "release": true}
     ]}
 
-- An item names a ticket by `key` and any of `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column) and `release` (`true`).
+- An item names a ticket by `key` and any of `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
 - An item's actions run in that order: claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
 - An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim in the same item changes the version, which is allowed for: send the version you read.
-- `heartbeat` renews your claim from now without changing the version, as its endpoint does. A `release` after an action in the same item that ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds.
+- `heartbeat` renews your claim from now without changing the version, as its endpoint does. A `release` after the same item's update or move ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds; a claim that ended any other way (it lapsed, or was released elsewhere) gets the normal release, which refuses.
 - Items stand alone and run in request order. One refused item never stops the others, and the same key may appear in more than one item.
 - Each action is the same change its own endpoint makes, recorded in the ticket's history the same way.
 - At most 100 items, within the 1 MiB body limit.
 
-A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move`.
+A call that can't run as sent is `422` and changes nothing, with `fields` naming each problem (`items`, `items[0].key` and so on): no items, more than 100, an item with no `key`, an item with nothing to do, an item with both `claim` and `heartbeat` (it can claim or renew, not both), a `version` with no `update`, a `version` inside `update` (put it on the item), or a blank `move`.
 
 The answer is `200` with one result per item, in request order:
 
@@ -117,7 +117,7 @@ The answer is `200` with one result per item, in request order:
        "skipped": ["move", "release"]}
     ]}
 
-`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), each item not run has the code `cancelled` and nothing in it was changed.
+`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), the item it ended in and each item after it have the code `cancelled`, with the actions that didn't run in `skipped`; actions before those ran.
 
 ## Errors
 
@@ -127,7 +127,7 @@ Every refusal has the same shape:
 
 | Status | Code | Meaning |
 |---|---|---|
-| 200 | `cancelled` | Only in a bulk result: the request ended before that item ran |
+| — (in a bulk result only) | `cancelled` | The request ended before that item finished |
 | 400 | `bad_request` | The body isn't one JSON object of known fields |
 | 401 | `unauthorized` | No valid token |
 | 403 | `forbidden` | Only the owner may do this (an export) |

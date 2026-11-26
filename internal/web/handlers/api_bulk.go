@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -74,6 +75,9 @@ func checkBulk(items []bulkItem) map[string]string {
 		if it.Update != nil && it.Update.Version != 0 {
 			fields[at+".update.version"] = fmt.Sprintf("Put item %d's version on the item, not in its update.", n)
 		}
+		if it.Claim != nil && it.Heartbeat != nil {
+			fields[at+".heartbeat"] = fmt.Sprintf("Item %d can claim or renew, not both.", n)
+		}
 		if it.Move != nil && strings.TrimSpace(*it.Move) == "" {
 			fields[at+".move"] = fmt.Sprintf("Name the status to move item %d to.", n)
 		}
@@ -91,8 +95,9 @@ func checkBulk(items []bulkItem) map[string]string {
 // the rest of that item. A key may appear more than once; its items run in
 // order. A call that can't run as sent (no items, more than 100, an item
 // with no key or nothing to do) is a 422 and runs nothing. When the
-// request ends early (the client left, the server is stopping), the items
-// not yet run are reported as cancelled.
+// request ends early (the client left, the server is stopping), the item
+// it ends in and those not yet run are reported as cancelled, with the
+// actions that didn't run in skipped.
 func APITicketsBulk(d Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
@@ -106,30 +111,57 @@ func APITicketsBulk(d Deps) http.HandlerFunc {
 			api.WriteFailure(w, invalidFields(fields, "Some items can't be run as sent."))
 			return
 		}
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		r = r.WithContext(ctx)
 		out := api.BulkAnswer{Items: make([]api.BulkResult, len(in.Items))}
+		ran := 0
 		for i, it := range in.Items {
-			r = bulkStep(r, i)
-			if err := r.Context().Err(); err != nil {
-				d.Logger.WarnContext(r.Context(), "api bulk cancelled", "err", err, "left", len(in.Items)-i,
-					"request_id", middleware.GetRequestID(r.Context()))
-				for j, rest := range in.Items[i:] {
-					out.Items[i+j] = api.BulkResult{Key: strings.TrimSpace(rest.Key), Skipped: rest.actions(),
-						Error: api.Fail(http.StatusServiceUnavailable, "cancelled", "The request ended before this item ran; nothing in it was changed.")}
-				}
+			bulkStep(i, "", cancel)
+			if ctx.Err() != nil {
 				break
 			}
-			out.Items[i] = runBulkItem(r, d, it)
+			out.Items[i] = runBulkItem(r, d, i, it, cancel)
+			ran = i + 1
+			if ctx.Err() != nil {
+				break
+			}
+		}
+		for j := ran; j < len(in.Items) && ctx.Err() != nil; j++ {
+			out.Items[j] = api.BulkResult{Key: strings.TrimSpace(in.Items[j].Key), Skipped: in.Items[j].actions(), Error: bulkCancelled()}
+		}
+		if n := countCancelled(out.Items); n > 0 {
+			d.Logger.WarnContext(ctx, "api bulk cancelled", "err", ctx.Err(), "items", n,
+				"request_id", middleware.GetRequestID(ctx))
 		}
 		api.WriteJSON(w, http.StatusOK, out)
 	}
 }
 
-// bulkStep is the request item i runs with (a test hook: it can end the
-// request between items).
-var bulkStep = func(r *http.Request, _ int) *http.Request { return r }
+// bulkStep runs before item i and before each of its actions (action ""
+// for the item itself). It is a test hook: it can end the request with
+// cancel, or change the ticket from outside, at that point.
+var bulkStep = func(_ int, _ string, _ context.CancelFunc) {}
 
-// runBulkItem runs one item's actions and reports how it went.
-func runBulkItem(r *http.Request, d Deps, it bulkItem) api.BulkResult {
+// countCancelled is how many results the request's end cut short.
+func countCancelled(results []api.BulkResult) int {
+	n := 0
+	for _, res := range results {
+		if res.Error != nil && res.Error.Code == "cancelled" {
+			n++
+		}
+	}
+	return n
+}
+
+// bulkCancelled is the result's error for an item the request ended in or
+// before: the actions in skipped didn't run.
+func bulkCancelled() *api.Failure {
+	return api.Fail(http.StatusServiceUnavailable, "cancelled", "The request ended before this item finished; the actions in skipped didn't run.")
+}
+
+// runBulkItem runs item i's actions and reports how it went.
+func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.CancelFunc) api.BulkResult {
 	ctx := r.Context()
 	todo := it.actions()
 	res := api.BulkResult{Key: strings.TrimSpace(it.Key)}
@@ -153,6 +185,10 @@ func runBulkItem(r *http.Request, d Deps, it bulkItem) api.BulkResult {
 	if errors.Is(err, core.ErrNotFound) {
 		return fail(api.NotFound("No ticket "+k.String()+"."), nil, todo)
 	}
+	if err != nil && ctx.Err() != nil {
+		res.Error, res.Skipped = bulkCancelled(), todo
+		return res
+	}
 	if err != nil {
 		return fail(api.Internal(), err, todo)
 	}
@@ -163,9 +199,12 @@ func runBulkItem(r *http.Request, d Deps, it bulkItem) api.BulkResult {
 	}
 	by := apiActor(r).ID
 	// held: the caller holds a live claim on the ticket, from before the
-	// item or from its claim, so a release after an action that ended the
-	// claim (a finishing move, a reassignment) has nothing left to do.
+	// item or from its claim. ended: this item's update or move ended that
+	// claim (a finishing move, a reassignment), so its release has nothing
+	// left to do. A claim ended any other way gets the normal release.
 	held := t.ClaimedBy.Valid && t.ClaimedBy.String == by && t.ClaimExpiresAt.String > timefmt.Format(d.Now())
+	ended := false
+	cur := t
 	// The update checks the version again, atomically. A claim first bumps
 	// it by one, so the update checks the claim's version, provided the
 	// claim found the ticket at the caller's version (another writer may
@@ -173,13 +212,21 @@ func runBulkItem(r *http.Request, d Deps, it bulkItem) api.BulkResult {
 	version := it.Version
 	var failed *api.Failure
 	var cause error
-	for i, act := range todo {
+	// after notes a ticket an update or move returned.
+	after := func(nt gen.Ticket) {
+		cur = nt
+		if held && !nt.ClaimedBy.Valid {
+			ended = true
+		}
+	}
+	for a, act := range todo {
+		bulkStep(i, act, cancel)
+		var nt gen.Ticket
 		switch act {
 		case "claim":
-			var nt gen.Ticket
 			nt, err = d.Core.Claim(ctx, by, t.ID, time.Duration(it.Claim.LeaseMinutes)*time.Minute)
 			if err == nil {
-				held = true
+				cur, held = nt, true
 				if version != 0 && nt.Version == version+1 {
 					version = nt.Version
 				}
@@ -190,34 +237,44 @@ func runBulkItem(r *http.Request, d Deps, it bulkItem) api.BulkResult {
 			n := &names{ctx: ctx, d: d, p: p, fields: map[string]string{}}
 			pt := it.Update.patch(n)
 			if failed, cause = n.failure(), n.err; failed == nil {
-				_, err = d.Core.PatchTicket(ctx, by, t.ID, pt, version)
+				if nt, err = d.Core.PatchTicket(ctx, by, t.ID, pt, version); err == nil {
+					after(nt)
+				}
 			}
 		case "comment":
 			_, err = d.Core.AddComment(ctx, by, t.ID, *it.Comment)
 		case "move":
 			n := &names{ctx: ctx, d: d, p: p, fields: map[string]string{}}
 			status := n.status(*it.Move)
-			if failed, cause = n.failure(), n.err; failed == nil {
-				_, err = d.Core.MoveTicket(ctx, by, t.ID, status, "", "")
-			}
-		case "release":
-			if held {
-				var now gen.Ticket
-				if now, err = d.R.GetTicket(ctx, t.ID); err == nil && !now.ClaimedBy.Valid {
-					break // an earlier action ended the claim: released already
+			// A move to the status the ticket has is nothing to do: no
+			// reorder, so a retried sweep leaves the columns alone.
+			if failed, cause = n.failure(), n.err; failed == nil && status != cur.StatusID {
+				if nt, err = d.Core.MoveTicket(ctx, by, t.ID, status, "", ""); err == nil {
+					after(nt)
 				}
 			}
-			if err == nil {
+		case "release":
+			if !held || !ended {
 				_, err = d.Core.Release(ctx, by, t.ID)
 			}
+		}
+		if (err != nil || failed != nil) && ctx.Err() != nil {
+			res.Error, res.Skipped = bulkCancelled(), todo[a:]
+			return res
 		}
 		if err != nil {
 			failed, cause = api.FromCore(err, nil), err
 		}
 		if failed != nil {
-			fail(failed, cause, todo[i+1:])
+			fail(failed, cause, todo[a+1:])
 			break
 		}
+	}
+	if ctx.Err() != nil {
+		// The request ended after the item's last action: it ran, but the
+		// ticket isn't read again.
+		res.OK = res.Error == nil
+		return res
 	}
 	// The ticket as the item left it.
 	b, err := ticketBrief(r, d, t, p)
