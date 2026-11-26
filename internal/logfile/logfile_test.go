@@ -111,3 +111,48 @@ func TestWriterRedirectsDescriptors(t *testing.T) {
 		t.Fatalf(".1 holds %q", b)
 	}
 }
+
+// PathOf names the file an open descriptor writes to, as a server finds
+// the log a service manager opened for its standard error.
+func TestPathOf(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "service.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	got, err := logfile.PathOf(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err1 := os.Stat(got)
+	b, err2 := os.Stat(path)
+	if err1 != nil || err2 != nil || !os.SameFile(a, b) {
+		t.Fatalf("PathOf = %q for %q: %v %v", got, path, err1, err2)
+	}
+}
+
+// VAQ-121: when the new file can't be opened after the rename, the log
+// moves back, so writes don't keep going to vaquero.log.1.
+func TestWriterMovesBackWhenReopenFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "vaquero.log")
+	w, err := logfile.Open(path, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	w.Write([]byte("0123456789"))
+	restore := logfile.FailOpen()
+	w.Write([]byte("after\n")) // the rotation fails
+	restore()
+	if b, _ := os.ReadFile(path); string(b) != "0123456789after\n" {
+		t.Fatalf("vaquero.log holds %q", b)
+	}
+	if _, err := os.Stat(path + ".1"); !os.IsNotExist(err) {
+		t.Fatalf(".1 is there: %v", err)
+	}
+	w.Write([]byte("next\n")) // rotates now
+	if b, _ := os.ReadFile(path); string(b) != "next\n" {
+		t.Fatalf("vaquero.log holds %q", b)
+	}
+}

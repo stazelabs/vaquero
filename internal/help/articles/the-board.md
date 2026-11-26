@@ -6,7 +6,7 @@ order: 2
 ---
 ## Columns and rails
 
-The board shows a project's tickets by status. Todo, in progress and in review statuses are full columns. Backlog and cancelled statuses are narrow rails at the edges: click one to open it. Done columns show the last seven days; the "older" link at the bottom opens the list view on done tickets, the older ones included.
+The board shows a project's tickets by status. Todo, in progress and in review statuses are full columns. Backlog and cancelled statuses are narrow rails at the edges: click one to open it. On a narrow screen an open rail lies over the columns instead of pushing them aside; close it with its close button, by clicking the rail again, or with esc. Done columns show the last seven days; the "older" link at the bottom opens the list view on done tickets, the older ones included.
 
 ## Ready tickets
 
@@ -14,7 +14,7 @@ A card marked **Ready**, with an accent edge, is a ticket someone could start no
 
 ## Filters
 
-The chips under the project name narrow the board: Mine (assigned to you), Agents (assigned to agents), a tag, or a priority. Click a milestone in the side panel to show only its tickets, or "No milestone" for tickets without one. Filters live in the address, so you can bookmark or share a filtered board. Clear filters puts everything back.
+The chips under the project name narrow the board: Mine (assigned to you), Agents (assigned to agents), a tag, or a priority. Click a milestone in the side panel to show only its tickets, or "No milestone" for tickets without one. On a narrower screen the panel is a Milestones disclosure above the board, with the same links. Filters live in the address, so you can bookmark or share a filtered board. Clear filters puts everything back.
 
 ## Moving cards
 

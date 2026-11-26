@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"strings"
 )
 
 const addTicketTag = `-- name: AddTicketTag :exec
@@ -74,6 +75,53 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	for rows.Next() {
 		var i Tag
 		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTagsForTickets = `-- name: ListTagsForTickets :many
+SELECT tt.ticket_id, g.name FROM ticket_tags tt
+JOIN tags g ON g.id = tt.tag_id
+WHERE tt.ticket_id IN (/*SLICE:ticket_ids*/?)
+ORDER BY tt.ticket_id, g.name
+`
+
+type ListTagsForTicketsRow struct {
+	TicketID string
+	Name     string
+}
+
+// Every (ticket, tag) pair for the given tickets, in one read (a ticket's
+// sub-tickets in the API's answer).
+func (q *Queries) ListTagsForTickets(ctx context.Context, ticketIds []string) ([]ListTagsForTicketsRow, error) {
+	query := listTagsForTickets
+	var queryParams []interface{}
+	if len(ticketIds) > 0 {
+		for _, v := range ticketIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ticket_ids*/?", strings.Repeat(",?", len(ticketIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ticket_ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTagsForTicketsRow{}
+	for rows.Next() {
+		var i ListTagsForTicketsRow
+		if err := rows.Scan(&i.TicketID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

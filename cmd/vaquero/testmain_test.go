@@ -13,7 +13,11 @@ import (
 
 // TestMain lets the test binary stand in for `vaquero` when the CLI starts
 // a local server: with VQ_TEST_AS_VAQUERO set it runs the real command.
+//
+// No test asks this machine's real service manager (launchctl, systemctl)
+// about the owner's own service: every probe fails unless a test fakes it.
 func TestMain(m *testing.M) {
+	serviceProbe = noManager
 	if os.Getenv("VQ_TEST_AS_VAQUERO") == "1" {
 		// A stand-in server runs in its own session, as `vaquero serve`
 		// does, so nothing stops it when its test run is killed and skips
@@ -32,6 +36,11 @@ func TestMain(m *testing.M) {
 		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 	}
 	os.Exit(m.Run())
+}
+
+// noManager is a service manager that isn't there: every question fails.
+func noManager(string, ...string) ([]byte, error) {
+	return nil, errors.New("no service manager in tests")
 }
 
 // stopWithOwner sends this process SIGTERM once owner has exited, so serve

@@ -53,7 +53,7 @@ func TestCreateProjectRefusesBadOrTakenKey(t *testing.T) {
 }
 
 func TestDeleteStatusRules(t *testing.T) {
-	c, _, f := newFixture(t)
+	c, d, f := newFixture(t)
 	fieldErr(t, c.DeleteStatus(bg, f.Owner.ID, f.T1.StatusID), "status", "Move this status's tickets first.")
 	var done string
 	for _, s := range f.Statuses {
@@ -65,6 +65,12 @@ func TestDeleteStatusRules(t *testing.T) {
 	if err := c.DeleteStatus(bg, f.Owner.ID, f.Statuses[len(f.Statuses)-1].ID); err != nil {
 		t.Fatal(err)
 	}
+	// Positions close up: deleting Todo's spare leaves 1 to 6.
+	spare, _ := c.CreateStatus(bg, f.Owner.ID, f.Project.ID, "Spare", "todo")
+	if err := c.DeleteStatus(bg, f.Owner.ID, spare.ID); err != nil {
+		t.Fatal(err)
+	}
+	sameOrder(t, statusOrder(t, d, f.Project.ID), "Backlog", "Todo", "In progress", "In review", "Done", "Cancelled")
 }
 
 func TestMoveStatusSwaps(t *testing.T) {

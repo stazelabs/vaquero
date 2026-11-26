@@ -259,10 +259,12 @@ window.vqDragging = false;
   }
 })();
 
-// A board refresh replaces #board: rails that were open stay open and the
-// columns keep their sideways scroll.
+// A board refresh replaces #board: rails that were open stay open, so does
+// the milestones disclosure (below lg), and the columns keep their sideways
+// scroll.
 (function () {
   var openRails = null;
+  var openMilestones = false;
   var scroll = 0;
   document.body.addEventListener("htmx:beforeSwap", function (ev) {
     var target = ev.detail && ev.detail.target;
@@ -272,6 +274,7 @@ window.vqDragging = false;
     openRails = Array.prototype.map.call(target.querySelectorAll("details[data-rail][open]"), function (d) {
       return d.dataset.rail;
     });
+    openMilestones = !!target.querySelector("details[data-milestones][open]");
     var cols = target.querySelector("[data-board-scroll]");
     scroll = cols ? cols.scrollLeft : 0;
   });
@@ -286,6 +289,10 @@ window.vqDragging = false;
         d.open = true;
       }
     });
+    var ms = board.querySelector("details[data-milestones]");
+    if (ms && openMilestones) {
+      ms.open = true;
+    }
     var cols = board.querySelector("[data-board-scroll]");
     if (cols) {
       cols.scrollLeft = scroll;
@@ -409,6 +416,55 @@ window.vqDragging = false;
     refocus = "";
     if (link && (document.activeElement === document.body || !document.activeElement)) {
       link.focus({ preventScroll: true });
+    }
+  });
+})();
+
+// Rails below md: an open rail's cards overlay the columns (see the rail
+// template), so one is open at a time, and its close control or Escape
+// closes it and puts focus back on its strip. From md rails open in place
+// and these do nothing.
+(function () {
+  var narrow = window.matchMedia("not all and (min-width: 48rem)");
+  function closeRail(d) {
+    d.open = false;
+    var s = d.querySelector("summary");
+    if (s) {
+      s.focus({ preventScroll: true });
+    }
+  }
+  document.addEventListener("click", function (ev) {
+    var btn = ev.target.closest ? ev.target.closest("[data-rail-close]") : null;
+    var d = btn ? btn.closest("details[data-rail]") : null;
+    if (d) {
+      ev.preventDefault();
+      closeRail(d);
+    }
+  });
+  // toggle doesn't bubble: listen in the capture phase.
+  document.addEventListener("toggle", function (ev) {
+    var d = ev.target;
+    if (!narrow.matches || !d.matches || !d.matches("details[data-rail]") || !d.open) {
+      return;
+    }
+    document.querySelectorAll("details[data-rail][open]").forEach(function (o) {
+      if (o !== d) {
+        o.open = false;
+      }
+    });
+  }, true);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape" || !narrow.matches || ev.defaultPrevented) {
+      return;
+    }
+    var dialog = document.getElementById("vq-shortcuts");
+    if (dialog && dialog.open) {
+      return; // the dialog closes itself
+    }
+    var open = document.querySelector("details[data-rail][open]");
+    if (open) {
+      ev.preventDefault();
+      closeRail(open);
     }
   });
 })();

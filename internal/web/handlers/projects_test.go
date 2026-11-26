@@ -342,3 +342,40 @@ func TestSettingsFieldIDsUnique(t *testing.T) {
 		seen[m[1]] = true
 	}
 }
+
+// VAQ-19: the settings form edits a milestone's description too.
+func TestMilestoneSettingsEditDescription(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	m, err := e.Deps.Core.CreateMilestone(bg, e.Deps.Actor.ID, p.ID, core.MilestoneInput{Name: "Launch", Description: "The first cut."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := c.Get("/p/VAQ/settings")
+	contains(t, page.Body, `id="m-desc-`+m.ID+`"`, `name="description"`, "The first cut.</textarea>")
+
+	seq := seqNow(t, e)
+	r := c.Post("/p/VAQ/milestones/"+m.ID, url.Values{"name": {"Launch"}, "description": {"Board and list."}, "due_on": {""}})
+	if r.Status != 303 {
+		t.Fatalf("%d", r.Status)
+	}
+	contains(t, c.Follow(r).Body, "Milestone saved.", "Board and list.</textarea>")
+	if got, _ := e.Deps.R.GetMilestone(bg, m.ID); got.Description != "Board and list." {
+		t.Fatalf("%q", got.Description)
+	}
+	oneEvent(t, e, seq, "milestone.updated", "Owner")
+
+	// A refused save keeps the typed description.
+	r = c.Post("/p/VAQ/milestones/"+m.ID, url.Values{"name": {"Launch"}, "description": {"Typed, not saved."}, "due_on": {"soon"}})
+	if r.Status != 422 {
+		t.Fatalf("%d", r.Status)
+	}
+	contains(t, r.Body, "Typed, not saved.</textarea>")
+
+	// A form without the field (a page from before it) keeps the description.
+	c.Post("/p/VAQ/milestones/"+m.ID, url.Values{"name": {"Launch 1"}, "due_on": {""}})
+	if got, _ := e.Deps.R.GetMilestone(bg, m.ID); got.Name != "Launch 1" || got.Description != "Board and list." {
+		t.Fatalf("%+v", got)
+	}
+}

@@ -70,6 +70,20 @@ func milestoneHref(b board.Board, id string) string {
 
 func maxOne(n int64) int64 { return max(n, 1) }
 
+// milestoneFilterName names the milestone the board is filtered to ("No
+// milestone" for none), or "" when it isn't filtered by one.
+func milestoneFilterName(b board.Board) string {
+	if b.Filter.Milestone == "none" {
+		return "No milestone"
+	}
+	for _, m := range b.Milestones {
+		if m.ID == b.Filter.Milestone {
+			return m.Name
+		}
+	}
+	return ""
+}
+
 func listEmpty(cols []board.Column) bool {
 	for _, c := range cols {
 		if len(c.Cards) > 0 {
@@ -92,3 +106,15 @@ func claimUntil(stamp string) string {
 // showAssignee reports whether a card shows its assignee apart from its
 // claim: the claimant is usually the assignee, and shows once.
 func showAssignee(k board.Card) bool { return k.Assignee != "" && k.Assignee != k.ClaimedBy }
+
+// railPanelClass is an open rail's cards. From md they sit in the rail;
+// below md they overlay the columns beside the rail's strip, toward the
+// board's middle: right of a backlog rail, left of a cancelled one.
+func railPanelClass(category string) string {
+	edge := "max-md:left-full max-md:ml-1"
+	if category == "cancelled" {
+		edge = "max-md:right-full max-md:mr-1"
+	}
+	return "px-2 pb-2 max-md:absolute max-md:top-0 max-md:z-20 max-md:w-64 max-md:max-w-[calc(100vw-5rem)] " +
+		"max-md:rounded-md max-md:border max-md:border-line max-md:bg-paper-alt max-md:pt-2 max-md:shadow-lg " + edge
+}

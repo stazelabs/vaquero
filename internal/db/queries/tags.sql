@@ -22,3 +22,11 @@ INSERT INTO ticket_tags (ticket_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING
 
 -- name: RemoveTicketTag :exec
 DELETE FROM ticket_tags WHERE ticket_id = ? AND tag_id = ?;
+
+-- name: ListTagsForTickets :many
+-- Every (ticket, tag) pair for the given tickets, in one read (a ticket's
+-- sub-tickets in the API's answer).
+SELECT tt.ticket_id, g.name FROM ticket_tags tt
+JOIN tags g ON g.id = tt.tag_id
+WHERE tt.ticket_id IN (sqlc.slice('ticket_ids'))
+ORDER BY tt.ticket_id, g.name;

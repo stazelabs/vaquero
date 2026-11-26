@@ -61,6 +61,8 @@ func TestCLISubcommandsDocumented(t *testing.T) {
 		{"cli_cmds.go", "cmdTicket", "ticket"},
 		{"cli_cmds.go", "cmdToken", "token"},
 		{"cli_cmds.go", "cmdProfile", "profile"},
+		{"cli_statuses.go", "cmdStatus", "status"},
+		{"cli_milestones.go", "cmdMilestone", "milestone"},
 	} {
 		src := sourceOf(t, c.file)
 		i := strings.Index(src, "\nfunc "+c.fn+"(")
@@ -114,8 +116,13 @@ func TestCLIFlagsDocumented(t *testing.T) {
 		for _, m := range flagRe.FindAllStringSubmatch(sourceOf(t, f), -1) {
 			name := m[1] + m[2]
 			seen++
-			if !strings.Contains(a.Markdown, "--"+name) {
-				t.Errorf("%s: --%s isn't in the cli article", f, name)
+			// A one-letter flag is written with one dash (-n, -f).
+			spelled := "--" + name
+			if len(name) == 1 {
+				spelled = "-" + name
+			}
+			if !regexp.MustCompile(regexp.QuoteMeta(spelled) + `\b`).MatchString(a.Markdown) {
+				t.Errorf("%s: %s isn't in the cli article", f, spelled)
 			}
 		}
 	}

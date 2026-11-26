@@ -16,7 +16,7 @@ import (
 type fixture struct {
 	Owner     gen.Actor
 	Project   gen.Project
-	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo)
+	Statuses  []gen.Status // VAQ's, by position; the last is the empty "Extra" (todo), moved there
 	T1, T2    gen.Ticket
 	Milestone gen.Milestone
 	Other     gen.Project
@@ -41,8 +41,11 @@ func newFixture(t *testing.T) (*core.Core, dbtest.DB, fixture) {
 	var err error
 	f.Project, err = c.CreateProject(ctx, owner.ID, core.ProjectInput{Key: "VAQ", Name: "Vaquero"})
 	must(err)
-	_, err = c.CreateStatus(ctx, owner.ID, f.Project.ID, "Extra", "todo")
+	extra, err := c.CreateStatus(ctx, owner.ID, f.Project.ID, "Extra", "todo")
 	must(err)
+	for range 4 { // from after Todo to the end, past In progress … Cancelled
+		must(c.MoveStatus(ctx, owner.ID, extra.ID, +1))
+	}
 	f.Statuses, err = d.RQ.ListStatuses(ctx, f.Project.ID)
 	must(err)
 	f.T1, err = c.CreateTicket(ctx, owner.ID, f.Project.ID, core.TicketInput{Title: "First", Tags: []string{"bug"}})
@@ -115,6 +118,22 @@ func init() {
 		coreOp{"MoveStatus",
 			func(c *core.Core, f fixture) error { return c.MoveStatus(bg, f.Owner.ID, f.Statuses[0].ID, +1) },
 			func(c *core.Core, f fixture) error { return c.MoveStatus(bg, f.Owner.ID, f.Statuses[0].ID, -1) }},
+		coreOp{"CreateStatusAt",
+			func(c *core.Core, f fixture) error {
+				_, err := c.CreateStatusAt(bg, f.Owner.ID, f.Project.ID, "Blocked", "in_progress", core.StatusPlace{Before: f.Statuses[0].ID})
+				return err
+			},
+			func(c *core.Core, f fixture) error {
+				_, err := c.CreateStatusAt(bg, f.Owner.ID, f.Project.ID, "Blocked", "in_progress", core.StatusPlace{After: f.OtherTodo.ID})
+				return err
+			}},
+		coreOp{"MoveStatusTo",
+			func(c *core.Core, f fixture) error {
+				return c.MoveStatusTo(bg, f.Owner.ID, f.Statuses[len(f.Statuses)-1].ID, core.StatusPlace{After: f.Statuses[1].ID})
+			},
+			func(c *core.Core, f fixture) error {
+				return c.MoveStatusTo(bg, f.Owner.ID, f.Statuses[0].ID, core.StatusPlace{Before: f.Statuses[0].ID})
+			}},
 		coreOp{"DeleteStatus",
 			func(c *core.Core, f fixture) error {
 				return c.DeleteStatus(bg, f.Owner.ID, f.Statuses[len(f.Statuses)-1].ID)

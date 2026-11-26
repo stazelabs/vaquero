@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -30,53 +29,14 @@ func init() {
 // directory: longer than serve's 30-second drain.
 const stopWait = 40 * time.Second
 
-// Hooks for tests: the clock, and the operating system brew services is
-// looked up for.
-var (
-	localNow  = time.Now
-	serviceOS = runtime.GOOS
-)
+// localNow is the clock the local commands use; tests replace it.
+var localNow = time.Now
 
 // localConfig is the data directory and address `vaquero serve` would use
 // (config.Local: VQ_MODE, VQ_ADDR, VQ_DATA_DIR), for stop and backup; a bad
 // server-only setting doesn't stop them.
 func localConfig() (config.Config, error) {
 	return config.Local(os.Getenv)
-}
-
-// brewServiceFile is where brew services keeps Vaquero's launchd agent or
-// systemd unit.
-func brewServiceFile(home, goos string) string {
-	if goos == "darwin" {
-		return filepath.Join(home, "Library", "LaunchAgents", "homebrew.mxcl.vaquero.plist")
-	}
-	return filepath.Join(home, ".config", "systemd", "user", "homebrew.vaquero.service")
-}
-
-// brewService reports whether the server on dataDir is the one brew
-// services runs, which restarts it whenever it stops.
-func brewService(dataDir string) bool {
-	return brewManaged(serviceOS, dataDir, os.Getenv)
-}
-
-// brewManaged reports whether brew services runs Vaquero on dataDir: the
-// service file exists, and dataDir is the default data directory, the one
-// the formula's service uses (it sets no VQ_DATA_DIR). An instance with a
-// data directory of its own is never the service's, so stop and upgrades
-// treat it as any other.
-func brewManaged(goos, dataDir string, get func(string) string) bool {
-	home := get("HOME")
-	if home == "" {
-		return false
-	}
-	if _, err := os.Stat(brewServiceFile(home, goos)); err != nil {
-		return false
-	}
-	def, err := config.DefaultDataDir(goos, get)
-	if err != nil {
-		return false
-	}
-	return sameDir(dataDir, def)
 }
 
 // sameDir reports whether a and b name the same directory: the same file
@@ -99,8 +59,11 @@ type message string
 
 func (m message) Error() string { return string(m) }
 
-// errBrewServices is stop's answer when the service manager owns the server.
-var errBrewServices = message("Vaquero runs under brew services; run brew services stop vaquero.")
+// brewStopRefusal is stop's answer when the service manager owns the
+// server, naming the service it found.
+func brewStopRefusal(label string) error {
+	return message("Vaquero runs under brew services (" + label + "); run brew services stop vaquero.")
+}
 
 // stopLocal asks the server holding dataDir's lock to stop (SIGTERM, which
 // drains like Ctrl-C) and waits until it lets go. stopped is false when
@@ -154,8 +117,8 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	if err != nil {
 		return c.finish(err)
 	}
-	if brewService(cfg.DataDir) {
-		return c.finish(errBrewServices)
+	if label, ok := brewService(cfg.DataDir); ok {
+		return c.finish(brewStopRefusal(label))
 	}
 	stopped, err := stopLocal(ctx, cfg.DataDir, stopWait, 0)
 	if err != nil {
@@ -217,7 +180,7 @@ func backupList(c *cmd, dir string) error {
 func lockStopped(dataDir string) (release func(), err error) {
 	release, _, err = lockfile.AcquireRole(dataDir, lockfile.RoleMaintenance)
 	if errors.Is(err, lockfile.ErrLocked) {
-		if brewService(dataDir) {
+		if _, ok := brewService(dataDir); ok {
 			return nil, message("Stop vaquero first: brew services stop vaquero")
 		}
 		return nil, message("Stop vaquero first: vaquero stop")

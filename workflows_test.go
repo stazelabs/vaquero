@@ -3,6 +3,7 @@ package vaquero_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -163,6 +164,178 @@ func TestUnpinnedShapes(t *testing.T) {
 	} {
 		if got := unpinned(t, []byte(src)); len(got) != want {
 			t.Errorf("%q: got %v, want %d", src, got, want)
+		}
+	}
+}
+
+// fakeGH is a stand-in for the gh CLI on PATH: it logs each call to
+// $FAKE_GH_LOG and answers the tap's contents API as $FAKE_GH_MODE says:
+// "same" (the file's blob sha is $FAKE_GH_SHA), "other" (another sha),
+// "missing" (404) or "broken" (401).
+const fakeGH = `#!/bin/sh
+printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+if [ "$1" = api ] && [ "$3" = --jq ]; then
+  case "$FAKE_GH_MODE" in
+    same) echo "$FAKE_GH_SHA" ;;
+    other) echo 1111111111111111111111111111111111111111 ;;
+    missing) echo '{"message":"Not Found"}'; echo 'gh: Not Found (HTTP 404)' >&2; exit 1 ;;
+    *) echo 'gh: Bad credentials (HTTP 401)' >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+if [ "$1" = api ] && [ "$2" = --method ]; then
+  echo "Formula/vaquero.rb updated: https://example.invalid/commit"
+  exit 0
+fi
+echo "unexpected gh call: $*" >&2
+exit 2
+`
+
+// publishFormula runs scripts/publish-formula.sh for v0.1.2 (the formula
+// golden file's release) against fakeGH in mode, returning its exit code,
+// output and the gh calls it made.
+func publishFormula(t *testing.T, mode string) (int, string, []string) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(fakeGH), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sha, err := exec.Command("git", "hash-object", "scripts/formula/testdata/vaquero.rb.golden").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "gh.log")
+	cmd := exec.Command("scripts/publish-formula.sh", "v0.1.2", "scripts/formula/testdata/checksums.txt")
+	cmd.Env = append(os.Environ(),
+		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"FAKE_GH_LOG="+log, "FAKE_GH_MODE="+mode, "FAKE_GH_SHA="+strings.TrimSpace(string(sha)))
+	out, err := cmd.CombinedOutput()
+	code := 0
+	if ee, ok := err.(*exec.ExitError); ok {
+		code = ee.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(log)
+	return code, string(out), strings.Split(strings.TrimSpace(string(b)), "\n")
+}
+
+// The formula step, shared by the release and formula workflows: a tap
+// already holding this release's formula is left alone, a missing or other
+// one is written, and any other error stops it.
+func TestPublishFormula(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds scripts/formula")
+	}
+	path := "repos/stazelabs/homebrew-vaquero/contents/Formula/vaquero.rb"
+	code, out, calls := publishFormula(t, "same")
+	if code != 0 || !strings.Contains(out, "The tap already holds the v0.1.2 formula; nothing changed.") || len(calls) != 1 {
+		t.Errorf("same: %d %q %v", code, out, calls)
+	}
+	code, out, calls = publishFormula(t, "missing")
+	if code != 0 || !strings.Contains(out, "Formula/vaquero.rb updated") || len(calls) != 2 ||
+		!strings.HasPrefix(calls[1], "api --method PUT "+path+" -f message=vaquero v0.1.2 -f content=") || strings.Contains(calls[1], "sha=") {
+		t.Errorf("missing: %d %q %v", code, out, calls)
+	}
+	code, out, calls = publishFormula(t, "other")
+	if code != 0 || len(calls) != 2 || !strings.Contains(calls[1], "-f sha=1111111111111111111111111111111111111111") {
+		t.Errorf("other: %d %q %v", code, out, calls)
+	}
+	code, out, calls = publishFormula(t, "broken")
+	if code == 0 || !strings.Contains(out, "HTTP 401") || len(calls) != 1 {
+		t.Errorf("broken: %d %q %v", code, out, calls)
+	}
+}
+
+// Both workflows publish the formula through the one script, and the
+// formula workflow runs only by hand.
+func TestFormulaWorkflowsShareTheScript(t *testing.T) {
+	for _, f := range []string{".github/workflows/release.yml", ".github/workflows/formula.yml"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), "scripts/publish-formula.sh") || strings.Contains(string(b), "--method PUT") {
+			t.Errorf("%s doesn't publish through scripts/publish-formula.sh", f)
+		}
+	}
+	st, err := os.Stat("scripts/publish-formula.sh")
+	if err != nil || st.Mode()&0o111 == 0 {
+		t.Fatalf("scripts/publish-formula.sh isn't executable: %v", err)
+	}
+}
+
+// VAQ-74: with no pull request triggers, CONTRIBUTING.md is where a
+// contributor learns to run the gate locally and that a maintainer runs it
+// on the branch; the README links it.
+func TestContributingExplainsTheManualGate(t *testing.T) {
+	b, err := os.ReadFile("CONTRIBUTING.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"make ci", "ci workflow", "pull_request"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("CONTRIBUTING.md doesn't mention %q", want)
+		}
+	}
+	r, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(r), "(CONTRIBUTING.md)") {
+		t.Error("README.md doesn't link CONTRIBUTING.md")
+	}
+}
+
+// tagCheck is the run script of the "Tag is a release number" step in a
+// workflow.
+func tagCheck(t *testing.T, file string) (script, shell string) {
+	t.Helper()
+	b, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name  string `yaml:"name"`
+				Run   string `yaml:"run"`
+				Shell string `yaml:"shell"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range doc.Jobs {
+		for _, s := range j.Steps {
+			if s.Name == "Tag is a release number" {
+				return s.Run, s.Shell
+			}
+		}
+	}
+	t.Fatalf("%s has no tag check", file)
+	return "", ""
+}
+
+// The tag check takes only one line that is a release number: grep would
+// pass a multi-line input with one good line.
+func TestTagCheck(t *testing.T) {
+	for _, f := range []string{".github/workflows/release.yml", ".github/workflows/formula.yml"} {
+		script, shell := tagCheck(t, f)
+		if shell != "bash" {
+			t.Errorf("%s: the tag check runs in %q, not bash", f, shell)
+		}
+		for tag, want := range map[string]bool{
+			"v0.1.3": true, "v10.20.30": true,
+			"0.1.3": false, "v0.1": false, "v0.1.3-rc1": false, "v0.1.3\nv0.1.4": false, "x\nv0.1.3": false, "v0.1.3\n": false, "": false,
+		} {
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Env = append(os.Environ(), "TAG="+tag)
+			err := cmd.Run()
+			if (err == nil) != want {
+				t.Errorf("%s: tag %q: passed %v, want %v", f, tag, err == nil, want)
+			}
 		}
 	}
 }

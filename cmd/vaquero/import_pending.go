@@ -83,7 +83,7 @@ func cleanPending(ctx context.Context, cfg config.Config, store blobs.Store, cur
 		return fmt.Errorf("an interrupted import left files under %s/ in %s %s (%s); remove them by hand, then delete %s",
 			prefix, p.Backend, blobs.ResolveLocation(p.Location, cfg.DataDir), why, path)
 	}
-	if p.Backend != cfg.BlobBackend || p.Location != blobs.Location(cfg) {
+	if p.Backend != cfg.BlobBackend || !blobs.SameLocation(p.Location, cfg) {
 		return 0, byHand("not the storage configured now")
 	}
 	if store == nil {

@@ -220,3 +220,26 @@ func TestUnknownTagFilterShowsNothing(t *testing.T) {
 		t.Fatalf("list: %d cards", n)
 	}
 }
+
+// VAQ-126: a status added later sits with its category on the board.
+func TestBoardColumnsFollowStatusOrder(t *testing.T) {
+	e := newEnv(t)
+	for _, s := range [][2]string{{"Building", "in_progress"}, {"Needs decision", "backlog"}} {
+		if _, err := e.c.CreateStatus(ctx, e.owner.ID, e.p.ID, s[0], s[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b := e.load(t, any_())
+	got, want := names(b.Active), []string{"Todo", "In progress", "Building", "In review", "Done"}
+	if len(got) != len(want) {
+		t.Fatalf("active %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("active %v, want %v", got, want)
+		}
+	}
+	if rails := names(b.Rails); len(rails) != 3 || rails[0] != "Backlog" || rails[1] != "Needs decision" || rails[2] != "Cancelled" {
+		t.Fatalf("rails %v", rails)
+	}
+}

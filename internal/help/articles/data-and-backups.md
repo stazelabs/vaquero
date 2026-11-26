@@ -22,7 +22,7 @@ Set `VQ_DATA_DIR` to use another. The Admin page shows the one in use.
 | `vaquero.db` (with `-wal` and `-shm` beside it while running) | The database: every project, ticket, comment and change |
 | `vaquero.lock` | Held while a server runs, so two servers never share one directory |
 | `token` | The API token the command line uses on this machine; see [API tokens](/help/api-tokens) |
-| `vaquero.log` | The output of a server the command line started in the background; at 10 MB it moves to `vaquero.log.1`, replacing the one before |
+| `vaquero.log` | The output of a server the command line started in the background; at 10 MB it moves to `vaquero.log.1`, replacing the one before. `vaquero logs` prints its end. Under `brew services` the log is elsewhere; see [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `backups/` | Snapshots taken before a project is deleted, before an upgrade changes the database, and before a restore, an import or a compaction |
 
 Only one server can use a data directory at a time. A second one stops at once and names the process holding the lock.

@@ -20,12 +20,22 @@ Every command that talks to a server takes `--profile NAME`, `--agent NAME` and 
 | `vaquero backup compact` | Shrink the database to what it holds (deleted attachments leave space behind), saving it as a snapshot first; all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#compacting-the-database) |
 | `vaquero export FILE\|-` | Write all your data to a `.tar.gz`, or with `-` to standard output; the owner only. See [Your data and backups](/help/data-and-backups#exporting-everything) |
 | `vaquero import FILE` | Restore an export into an empty instance, all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#importing-an-export) |
+| `vaquero logs [-n 100] [-f] [--path]` | The last lines of the server's log (100 unless `-n`); `-f` keeps printing new lines, across the log's move to `.1` at 10 MB, until Ctrl-C; `--path` prints only where the log is. Reads `vaquero.log` in the data directory, or the service's log under `brew services`; needs no server. See [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero projects` | List projects with their open ticket counts |
 | `vaquero project create KEY NAME [--description TEXT]` | Create a project |
 | `vaquero project show KEY` | Show a project |
 | `vaquero project edit KEY [--name NAME] [--description TEXT]` | Change its name or description |
 | `vaquero project key KEY NEWKEY` | Change its key (links that use the old key stop working) |
+| `vaquero statuses KEY` | A project's statuses in board order, with each one's category and ticket count |
+| `vaquero status add KEY NAME --category C [--before S \| --after S]` | Add a status; without `--before` or `--after` it goes after the last status of its category. Categories are `backlog`, `todo`, `in progress`, `in review`, `done` and `cancelled` |
+| `vaquero status rename KEY NAME NEW` | Rename a status |
+| `vaquero status move KEY NAME --before S \| --after S` | Move a status next to another, in one step |
+| `vaquero status delete KEY NAME` | Delete a status no ticket uses; each category keeps at least one |
+| `vaquero milestones KEY` | A project's milestones with their due dates, done and total tickets, and whether each is open |
+| `vaquero milestone add KEY NAME [--description TEXT] [--due DATE]` | Add a milestone; dates look like 2026-12-31, and `-` as the description reads it from standard input |
+| `vaquero milestone edit KEY NAME [--name NEW] [--description TEXT] [--due DATE]` | Change only what is given; `--due ""` clears the date, and `-` as the description reads it from standard input |
+| `vaquero milestone close KEY NAME` / `reopen KEY NAME` | Close a milestone when it ships, or open it again |
 | `vaquero tickets KEY [--status S] [--tag T] [--priority P] [--milestone NAME] [--mine] [--agents] [--all] [--limit N]` | List tickets; done and cancelled are left out unless `--status` or `--all` |
 | `vaquero ticket show TICKET` | A ticket with its sub-tickets, links and comments |
 | `vaquero ticket new KEY TITLE [--body TEXT] [--status S] [--priority P] [--tag T]... [--parent TICKET] [--milestone NAME] [--assignee NAME]` | Create a ticket; prints its key |

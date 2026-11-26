@@ -126,56 +126,6 @@ func writeProject(w http.ResponseWriter, r *http.Request, d Deps, p gen.Project,
 	api.WriteJSON(w, status, projectDTO(p, open))
 }
 
-// APIStatuses is GET /api/v1/projects/{key}/statuses.
-func APIStatuses(d Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := apiProject(w, r, d)
-		if !ok {
-			return
-		}
-		ss, err := d.R.ListStatuses(r.Context(), p.ID)
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		out := make([]api.Status, len(ss))
-		for i, s := range ss {
-			out[i] = api.Status{Name: s.Name, Category: s.Category, Position: s.Position}
-		}
-		api.WriteJSON(w, http.StatusOK, out)
-	}
-}
-
-// APIMilestones is GET /api/v1/projects/{key}/milestones.
-func APIMilestones(d Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		p, ok := apiProject(w, r, d)
-		if !ok {
-			return
-		}
-		ms, err := d.R.ListMilestones(r.Context(), p.ID)
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		progress, err := d.R.ListMilestoneProgress(r.Context(), p.ID)
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		counts := map[string][2]int64{}
-		for _, m := range progress {
-			counts[m.ID] = [2]int64{m.Done, m.Total}
-		}
-		out := make([]api.Milestone, len(ms))
-		for i, m := range ms {
-			c := counts[m.ID]
-			out[i] = api.Milestone{Name: m.Name, Description: m.Description, DueOn: m.DueOn.String, Closed: m.ClosedAt.Valid, Done: c[0], Total: c[1]}
-		}
-		api.WriteJSON(w, http.StatusOK, out)
-	}
-}
-
 func summary(k board.Card, s gen.Status) api.TicketSummary {
 	tags := k.Tags
 	if tags == nil {
@@ -314,14 +264,24 @@ func ticketDTO(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (api.Ticket
 		return out, err
 	}
 	slices.SortFunc(subs, func(a, b gen.ListBoardTicketsRow) int { return cmp.Compare(a.Number, b.Number) })
-	for _, s := range subs {
-		subTags, err := d.R.ListTicketTags(ctx, s.ID)
+	subTags := map[string][]string{}
+	if len(subs) > 0 {
+		ids := make([]string, len(subs))
+		for i, s := range subs {
+			ids[i] = s.ID
+		}
+		pairs, err := d.R.ListTagsForTickets(ctx, ids)
 		if err != nil {
 			return out, err
 		}
-		names := make([]string, 0, len(subTags))
-		for _, g := range subTags {
-			names = append(names, g.Name)
+		for _, g := range pairs {
+			subTags[g.TicketID] = append(subTags[g.TicketID], g.Name)
+		}
+	}
+	for _, s := range subs {
+		names := subTags[s.ID]
+		if names == nil {
+			names = []string{}
 		}
 		out.SubTickets = append(out.SubTickets, api.TicketSummary{Key: ticketKey(p, s.Number), Title: s.Title, Status: s.StatusName,
 			Category: s.StatusCategory, Priority: s.Priority, Assignee: s.AssigneeName, Tags: names, Ready: s.Ready, Version: s.Version,

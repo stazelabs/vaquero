@@ -5,7 +5,7 @@ INSERT INTO statuses (id, project_id, name, category, position) VALUES (?, ?, ?,
 SELECT * FROM statuses WHERE id = ?;
 
 -- name: ListStatuses :many
-SELECT * FROM statuses WHERE project_id = ? ORDER BY position;
+SELECT * FROM statuses WHERE project_id = ? ORDER BY position, id;
 
 -- name: RenameStatus :exec
 UPDATE statuses SET name = ? WHERE id = ?;
@@ -22,5 +22,7 @@ SELECT count(*) FROM tickets WHERE status_id = ?;
 -- name: CountStatusesInCategory :one
 SELECT count(*) FROM statuses WHERE project_id = ? AND category = ?;
 
--- name: MaxStatusPosition :one
-SELECT CAST(coalesce(max(position), 0) AS INTEGER) FROM statuses WHERE project_id = ?;
+-- name: CountTicketsByStatus :many
+-- How many tickets each of a project's statuses has (statuses with none
+-- are left out).
+SELECT status_id, count(*) AS n FROM tickets WHERE project_id = ? GROUP BY status_id;

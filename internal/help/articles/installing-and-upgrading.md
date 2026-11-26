@@ -17,7 +17,18 @@ That is all: run any `vaquero` command and the server starts in the background. 
 
     brew services start vaquero
 
-`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again. The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual.
+`brew services stop vaquero` stops it; `vaquero stop` doesn't, because the service would only start it again, and says so. Vaquero counts the service as running when the service manager has it: on macOS, when launchd has `sh.brew.vaquero` (or the older `homebrew.mxcl.vaquero`) loaded, with or without `~/Library/LaunchAgents/sh.brew.vaquero.plist`, since after `brew services run vaquero` there is no file; on Linux, when `~/.config/systemd/user/sh.brew.vaquero.service` (or the older `homebrew.vaquero.service`) exists and `systemctl --user is-active` says it is active (when `systemctl --user` can't reach a user manager at all, no service is running). With the file there but the service not loaded (after `brew services stop --keep vaquero`, say), `vaquero stop` stops the server as usual, and the next command starts one outside brew services and says so; `vaquero stop`, then `brew services start vaquero`, hands it back. If the service is loaded but its server doesn't come back within 20 seconds, the command stops and says to run `brew services restart vaquero`, rather than start a second server that would take the service's port.
+
+If `vaquero stop` refuses while the service keeps failing to start (a server started outside brew services holds the port), run `brew services stop vaquero`, then `vaquero stop`, then `brew services start vaquero`.
+
+The service uses the default data directory; a Vaquero you run with its own `VQ_DATA_DIR` isn't the service's, so `vaquero stop` stops it and an upgrade restarts it as usual. On Linux the default comes from the systemd user manager's `XDG_DATA_HOME`, which can differ from your shell's.
+
+## The server's log
+
+    vaquero logs        # the last 100 lines
+    vaquero logs -f     # and every new line, until Ctrl-C
+
+A server the command line started writes its log to `vaquero.log` in the data directory. Under `brew services` it writes to Homebrew's log directory instead, `$(brew --prefix)/var/log/vaquero.log` (`/opt/homebrew/var/log/vaquero.log` on an Apple silicon Mac). Either way, at 10 MB the log moves to `vaquero.log.1`, replacing the one before, and a new one starts. `vaquero logs` reads whichever this Vaquero uses, with no server running; `vaquero logs --path` says which.
 
 ## Installing from a release archive
 

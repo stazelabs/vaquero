@@ -33,7 +33,7 @@ On this machine, a request made with your token can act as an agent by naming it
 | `GET /api/v1/me` | The actor the token belongs to |
 | `GET /api/v1/projects` | Every project, with `open_count` |
 | `GET /api/v1/projects/{key}` | One project |
-| `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category` |
+| `GET /api/v1/projects/{key}/statuses` | Its statuses in board order, each with its `category`, `position` and `ticket_count` |
 | `GET /api/v1/projects/{key}/milestones` | Its milestones, with `done` and `total` counts |
 | `GET /api/v1/projects/{key}/tickets` | Its tickets: filter with `status`, `open=1`, `tag`, `priority`, `mine=1`, `agents=1`, `milestone` (a name, or `none`), `assignee` (a name), `category` (`backlog`, `todo`, `in_progress`, `in_review`, `done` or `cancelled`); an unknown name or category is `422` |
 | `GET /api/v1/tickets/{ticket}` | One ticket with `body`, `sub_tickets` (each the same summary a ticket list gives), `links`, `comments` and `attachments` |
@@ -54,6 +54,14 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects` | `{"key", "name", "description"}` |
 | `PATCH /api/v1/projects/{key}` | `{"name"}` and/or `{"description"}` |
 | `POST /api/v1/projects/{key}/key` | `{"key"}`, the new key |
+| `POST /api/v1/projects/{key}/statuses` | `{"name", "category", "before", "after"}`: `before` or `after` names a status to put it next to; without one it goes after the last status of its category. Answers `201` with the status |
+| `PATCH /api/v1/projects/{key}/statuses/{name}` | `{"name"}`, the new name; a status's category never changes. Answers with the status |
+| `POST /api/v1/projects/{key}/statuses/{name}/move` | `{"before"}` or `{"after"}`: another status's name; the status moves there in one step. Answers with the status and its new `position` |
+| `DELETE /api/v1/projects/{key}/statuses/{name}` | Nothing; a status no ticket uses, and not the last of its category. Answers `204` |
+| `POST /api/v1/projects/{key}/milestones` | `{"name", "description", "due_on"}`; only `name` is required, and `due_on` looks like `2026-12-31`. Answers `201` with the milestone |
+| `PATCH /api/v1/projects/{key}/milestones/{name}` | Any of `{"name", "description", "due_on"}`; `"due_on": ""` clears the date. Answers with the milestone |
+| `POST /api/v1/projects/{key}/milestones/{name}/close` | Nothing; closes the milestone and answers with it |
+| `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
 | `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags"}`; only `title` is required |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
 | `POST /api/v1/tickets/bulk` | `{"items": [...]}`: claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
@@ -68,6 +76,8 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `GET /api/v1/tokens` | Every token, without its secret |
 | `POST /api/v1/tokens` | `{"name"}`; the answer holds the token, shown this once |
 | `POST /api/v1/tokens/{prefix}/revoke` | Nothing; revokes the token with that prefix |
+
+Statuses and milestones are named in the path, and statuses in `before` and `after`, in any case. A name in the path that matches nothing is `404`, like any other missing resource; a name in `before` or `after` that matches nothing is `422` naming the field. A status's `category` is one of `backlog`, `todo`, `in_progress`, `in_review`, `done` and `cancelled` (`in progress` works too). Each change is recorded in the history as yours, or the agent's when you act as one.
 
 A `PATCH` changes only the fields it sends. Send `"assignee": ""` (or `"milestone"`, `"parent"`) to clear one; `"tags"` replaces the whole list, while `add_tags` and `remove_tags` change it one tag at a time.
 
@@ -117,7 +127,7 @@ The answer is `200` with one result per item, in request order:
        "skipped": ["move", "release"]}
     ]}
 
-`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), the item it ended in and each item after it have the code `cancelled`, with the actions that didn't run in `skipped`; actions before those ran.
+`status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), an item whose actions all ran is `ok` and carries the ticket's `status` and `version`, even when the request ends right after it. Only the item the request was cut off in, and each item after it, have the code `cancelled`, with the actions that didn't run in `skipped`; the actions before those ran.
 
 ## Errors
 

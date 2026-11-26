@@ -25,6 +25,40 @@ func (q *Queries) CountStatusesInCategory(ctx context.Context, arg CountStatuses
 	return count, err
 }
 
+const countTicketsByStatus = `-- name: CountTicketsByStatus :many
+SELECT status_id, count(*) AS n FROM tickets WHERE project_id = ? GROUP BY status_id
+`
+
+type CountTicketsByStatusRow struct {
+	StatusID string
+	N        int64
+}
+
+// How many tickets each of a project's statuses has (statuses with none
+// are left out).
+func (q *Queries) CountTicketsByStatus(ctx context.Context, projectID string) ([]CountTicketsByStatusRow, error) {
+	rows, err := q.db.QueryContext(ctx, countTicketsByStatus, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountTicketsByStatusRow{}
+	for rows.Next() {
+		var i CountTicketsByStatusRow
+		if err := rows.Scan(&i.StatusID, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countTicketsInStatus = `-- name: CountTicketsInStatus :one
 SELECT count(*) FROM tickets WHERE status_id = ?
 `
@@ -94,7 +128,7 @@ func (q *Queries) GetStatus(ctx context.Context, id string) (Status, error) {
 }
 
 const listStatuses = `-- name: ListStatuses :many
-SELECT id, project_id, name, category, position FROM statuses WHERE project_id = ? ORDER BY position
+SELECT id, project_id, name, category, position FROM statuses WHERE project_id = ? ORDER BY position, id
 `
 
 func (q *Queries) ListStatuses(ctx context.Context, projectID string) ([]Status, error) {
@@ -124,17 +158,6 @@ func (q *Queries) ListStatuses(ctx context.Context, projectID string) ([]Status,
 		return nil, err
 	}
 	return items, nil
-}
-
-const maxStatusPosition = `-- name: MaxStatusPosition :one
-SELECT CAST(coalesce(max(position), 0) AS INTEGER) FROM statuses WHERE project_id = ?
-`
-
-func (q *Queries) MaxStatusPosition(ctx context.Context, projectID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, maxStatusPosition, projectID)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
 }
 
 const renameStatus = `-- name: RenameStatus :exec
