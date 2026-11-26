@@ -21,7 +21,7 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 	ctx := t.Context()
 	before := r.Refs()
 
-	if !slices.Equal(gitread.Allowed(), []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "fetch"}) {
+	if !slices.Equal(gitread.Allowed(), []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "fetch"}) {
 		t.Fatalf("allow-list %v", gitread.Allowed())
 	}
 	refused := [][]string{
@@ -82,6 +82,14 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		{"cat-file", "--textconv", "HEAD:a.md"},
 		{"show", "--textconv", "HEAD:a.md"},
 		{"show", "--ext-diff", "HEAD"},
+		// ls-tree runs only in Blobs' form.
+		{"ls-tree", "HEAD"},
+		{"ls-tree", "-r", "HEAD"},
+		{"ls-tree", "-z", "--full-tree", "--end-of-options", "HEAD", "--", "a.md"},
+		{"ls-tree", "-z", "--full-tree", "--end-of-options", r.Head(), "--", "../x"},
+		{"ls-tree", "-z", "--full-tree", "--end-of-options", r.Head(), "a.md"},
+		{"ls-tree", "-z", "--full-tree", "--end-of-options", r.Head(), "--"},
+		{"ls-tree", "--format=%(objectname)", "--full-tree", "--end-of-options", r.Head(), "--", "a.md"},
 		{"-c", "core.pager=x"},
 		{"--exec-path=/tmp"},
 		{""},
@@ -119,6 +127,7 @@ func TestGitreadCommandsAreReadOnly(t *testing.T) {
 		{"diff", "--no-ext-diff", "--no-textconv", "HEAD", "HEAD", "--", "a.md"},
 		{"diff", "--no-ext-diff", "--no-textconv", "--end-of-options", "HEAD..HEAD", "--"},
 		{"show", "--no-ext-diff", "--no-textconv", "--format=", "HEAD"},
+		{"ls-tree", "-z", "--full-tree", "--end-of-options", r.Head(), "--", "a.md"},
 	} {
 		if _, err := gitread.RunCommand(rs, ctx, r.Dir, args[0], args[1:]...); err != nil {
 			t.Errorf("git %q: %v", args, err)
@@ -147,7 +156,9 @@ func TestFetchIsTheOnlyNetwork(t *testing.T) {
 	g.Head(ctx)
 	g.Show(ctx, "main", "a.md")
 	g.Blob(ctx, "main", "a.md")
+	g.Blobs(ctx, c, []string{"a.md"})
 	g.Follow(ctx, "a.md", c)
+	g.FollowTo(ctx, "a.md", c, c)
 	g.PathLog(ctx, "a.md", "", 5)
 	g.Mentions(ctx, "VAQ-1", 5)
 	g.BranchCommits(ctx, "main", 5)

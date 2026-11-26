@@ -175,6 +175,53 @@ func (g *Repo) Blob(ctx context.Context, rev, path string) (string, error) {
 	return id, nil
 }
 
+// maxBlobs is how many paths one ls-tree reads.
+const maxBlobs = 200
+
+// Blobs is the blob id of each of paths at commit (a hash, as Head
+// answers) that is a file there, in as few commands as the paths allow
+// (one ls-tree per 200): a path that isn't a file at commit (absent, a
+// directory, a submodule) is left out.
+func (g *Repo) Blobs(ctx context.Context, commit string, paths []string) (map[string]string, error) {
+	if !isHash(commit) {
+		return nil, ErrInvalid
+	}
+	want := map[string]bool{}
+	var list []string
+	for _, p := range paths {
+		if !ValidPath(p) {
+			return nil, ErrInvalid
+		}
+		if !want[p] {
+			want[p] = true
+			list = append(list, p)
+		}
+	}
+	out := map[string]string{}
+	for len(list) > 0 {
+		n := min(len(list), maxBlobs)
+		args := append([]string{"-z", "--full-tree", "--end-of-options", commit, "--"}, list[:n]...)
+		list = list[n:]
+		raw, err := g.git(ctx, "ls-tree", args...)
+		if err != nil {
+			if exitCode(err) == 128 {
+				return nil, fmt.Errorf("%w: %s", ErrNoRev, commit)
+			}
+			return nil, err
+		}
+		// Records: "mode type id\tpath\0".
+		for rec := range strings.SplitSeq(strings.TrimSuffix(string(raw), "\x00"), "\x00") {
+			meta, path, ok := strings.Cut(rec, "\t")
+			f := strings.Fields(meta)
+			if !ok || len(f) != 3 || f[1] != "blob" || !want[path] || !isHash(f[2]) {
+				continue
+			}
+			out[path] = f[2]
+		}
+	}
+	return out, nil
+}
+
 // Show is path at rev. Past MaxShow the text is left out and TooLarge set.
 func (g *Repo) Show(ctx context.Context, rev, path string) (File, error) {
 	id, err := g.Blob(ctx, rev, path)
@@ -210,20 +257,44 @@ func (g *Repo) Show(ctx context.Context, rev, path string) (File, error) {
 // main's first-parent history since then are followed in order. gone is
 // true when main has no file there.
 func (g *Repo) Follow(ctx context.Context, path, since string) (current string, gone bool, err error) {
+	if current, err = g.follow(ctx, path, since, g.mainRef()); err != nil {
+		return "", false, err
+	}
+	if _, err := g.Blob(ctx, g.mainRef(), current); err != nil {
+		if errors.Is(err, ErrNoFile) {
+			return current, true, nil
+		}
+		return "", false, err
+	}
+	return current, false, nil
+}
+
+// FollowTo is where path, as it was at since, is at head (a commit hash
+// on main, as Head answers): Follow's renames, without reading main again
+// or whether the file is there, which Blobs answers for many paths at once.
+func (g *Repo) FollowTo(ctx context.Context, path, since, head string) (string, error) {
+	if !isHash(head) {
+		return "", ErrInvalid
+	}
+	return g.follow(ctx, path, since, head)
+}
+
+// follow is path's renames on tip's first-parent history since since.
+func (g *Repo) follow(ctx context.Context, path, since, tip string) (string, error) {
 	if !ValidPath(path) || !ValidRev(since) {
-		return "", false, ErrInvalid
+		return "", ErrInvalid
 	}
 	from, err := g.commit(ctx, since)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
 	out, err := g.git(ctx, "log", "-z", "--reverse", "--first-parent", "--diff-merges=first-parent", "--format=",
 		"--name-status", "-M", "--diff-filter=RD", "--no-textconv", "--no-ext-diff", "--no-show-signature",
-		"--end-of-options", "^"+from, g.mainRef())
+		"--end-of-options", "^"+from, tip)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-	current = path
+	current := path
 	f := bytes.Split(bytes.TrimSuffix(out, []byte{0}), []byte{0})
 	for i := 0; i < len(f); {
 		status := string(f[i])
@@ -241,13 +312,7 @@ func (g *Repo) Follow(ctx context.Context, path, since string) (current string, 
 			i++
 		}
 	}
-	if _, err := g.Blob(ctx, g.mainRef(), current); err != nil {
-		if errors.Is(err, ErrNoFile) {
-			return current, true, nil
-		}
-		return "", false, err
-	}
-	return current, false, nil
+	return current, nil
 }
 
 // logFormat is a commit as the reads parse it: hash, short hash, subject,

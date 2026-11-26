@@ -21,7 +21,8 @@
 //
 // Only these subcommands run (Allowed): rev-parse, show, cat-file, log,
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
-// the list and get-url) and diff, which read; and fetch, which only Fetch
+// the list and get-url), ls-tree (only Blobs' one form: -z --full-tree, a
+// commit hash, then "--" and ValidPaths) and diff, which read; and fetch, which only Fetch
 // runs, with the two fixed reads of the user's credential helpers (git
 // config --system and --global -z --get-regexp for credential.helper and
 // credential.<url>.helper, never the repo's). diff, log and show run only
@@ -245,7 +246,7 @@ func Subcommand(args []string) string {
 }
 
 // allowed are the subcommands the runner runs; fetch only from Fetch.
-var allowed = []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "fetch"}
+var allowed = []string{"rev-parse", "show", "cat-file", "log", "merge-base", "tag", "rev-list", "for-each-ref", "remote", "diff", "ls-tree", "fetch"}
 
 // Allowed is the allow-list, in order.
 func Allowed() []string { return slices.Clone(allowed) }
@@ -306,6 +307,16 @@ func (r *Repos) check(ctx context.Context, dir string, args []string) error {
 		// Only listing: git tag NAME, -d, -a, -f and the rest write.
 		if len(rest) == 0 || rest[0] != "--list" {
 			return fmt.Errorf("%w: git tag without --list", ErrRefused)
+		}
+	case "ls-tree":
+		// Only Blobs' form: -z --full-tree --end-of-options HASH -- PATH...
+		if len(rest) < 6 || rest[0] != "-z" || rest[1] != "--full-tree" || rest[2] != "--end-of-options" || !isHash(rest[3]) || rest[4] != "--" {
+			return fmt.Errorf("%w: git ls-tree %q", ErrRefused, rest)
+		}
+		for _, p := range rest[5:] {
+			if !ValidPath(p) {
+				return fmt.Errorf("%w: git ls-tree path %q", ErrRefused, p)
+			}
 		}
 	case "remote":
 		// Only the list and get-url.

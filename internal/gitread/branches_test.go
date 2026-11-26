@@ -2,6 +2,7 @@ package gitread_test
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -80,5 +81,42 @@ func TestBranchesReadsOnlyWhatItNeeds(t *testing.T) {
 	}
 	if calls := rec.Calls(); len(calls) != 1 || !slices.ContainsFunc(calls[0], func(a string) bool { return strings.HasPrefix(a, "--count=") }) {
 		t.Fatalf("%v", calls)
+	}
+}
+
+// Blobs reads many files' blob ids in one ls-tree, leaving out what isn't
+// a file there.
+func TestBlobs(t *testing.T) {
+	r := gittest.Repo(t)
+	r.Write("docs/a.md", "a\n")
+	r.Write("docs/b c.md", "b\n")
+	r.Write("*.md", "star\n")
+	head := r.Commit("docs")
+	rs := gitread.New()
+	rec := gittest.Record(rs)
+	g, err := rs.Open(t.Context(), r.Dir, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Reset()
+	got, err := g.Blobs(t.Context(), head, []string{"docs/a.md", "docs/b c.md", "docs", "nope.md", "docs/a.md", "*.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{"docs/a.md": r.Git("rev-parse", "main:docs/a.md"), "docs/b c.md": r.Git("rev-parse", "main:docs/b c.md"), "*.md": r.Git("rev-parse", "main:*.md")}
+	if !maps.Equal(got, want) {
+		t.Fatalf("Blobs %v, want %v", got, want)
+	}
+	if n := len(rec.Calls()); n != 1 {
+		t.Fatalf("%d commands", n)
+	}
+	if _, err := g.Blobs(t.Context(), "main", []string{"a.md"}); !errors.Is(err, gitread.ErrInvalid) {
+		t.Fatalf("a branch name: %v", err)
+	}
+	if _, err := g.Blobs(t.Context(), head, []string{"../a.md"}); !errors.Is(err, gitread.ErrInvalid) {
+		t.Fatalf("a bad path: %v", err)
+	}
+	if _, err := g.Blobs(t.Context(), strings.Repeat("0", 40), []string{"a.md"}); !errors.Is(err, gitread.ErrNoRev) {
+		t.Fatalf("a missing commit: %v", err)
 	}
 }
