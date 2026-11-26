@@ -9,6 +9,12 @@ Run the full gate locally, on the branch you will push:
     make tools   # one time
     make ci      # generate, format, vet, lint, test, coverage floors
 
+For a change to the pages or to `app.js`, also run the browser tests:
+
+    make e2e     # keyboard shortcuts, board drags, dialogs, narrow screens, light and dark
+
+They drive the real pages in a headless Google Chrome (or Chromium) with a profile of their own, on temporary test servers; without Chrome installed they skip. The ci workflow runs them too, with Chrome required.
+
 `make ci` must pass, and `git status` must be clean afterwards: generated files (templ, sqlc, Tailwind, the third-party notices) are committed, so a change to their inputs includes the regenerated output. README.md has the rest of the setup, and CLAUDE.md the rules the code keeps.
 
 ## What happens to your pull request
