@@ -30,13 +30,14 @@ func TestExportImportKeepsMeta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var withMeta, empty int
-	var got string
+	// The seed records one change with provenance too; the import keeps
+	// every event's meta as exported.
+	var withMeta, empty, mine int
 	if err := loaded.R.QueryRow(`SELECT count(*) FILTER (WHERE meta <> '{}'), count(*) FILTER (WHERE meta = '{}'),
-		coalesce(max(meta) FILTER (WHERE meta <> '{}'), '') FROM events`).Scan(&withMeta, &empty, &got); err != nil {
+		count(*) FILTER (WHERE meta = ?) FROM events`, want).Scan(&withMeta, &empty, &mine); err != nil {
 		t.Fatal(err)
 	}
-	if withMeta != 1 || got != want || empty == 0 {
-		t.Fatalf("%d events with meta (%q), %d without", withMeta, got, empty)
+	if withMeta != 2 || mine != 1 || empty == 0 {
+		t.Fatalf("%d events with meta (%d this one), %d without", withMeta, mine, empty)
 	}
 }

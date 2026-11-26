@@ -2,9 +2,10 @@
 // can hold, through internal/core: projects, statuses, a milestone, tickets
 // with sub-tickets, tags (one renamed), a description edit, a reorder,
 // comments (one edited, one deleted), links, an agent with a claim, tokens
-// (one revoked), two attachments, a plan with two revisions, decisions (a
-// ruling, and a group plan approval answered by relay, with its approvals)
-// and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
+// (one revoked), two attachments, the agent workflow on with its own tier
+// map, a ticket with a tier and a model, a change with full provenance, a
+// plan with two revisions, decisions (a ruling, and a group plan approval
+// answered by relay, with its approvals) and an MCP log row. The upgrade fixture (scripts/fixture) and the export tests use it.
 package coreseed
 
 import (
@@ -98,7 +99,9 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	if err := c.DeleteComment(ctx, by, gone.ID); err != nil {
 		return err
 	}
-	if _, err := c.AddComment(ctx, by, lasso.ID, "Lasso first, then sort."); err != nil {
+	// A change with its provenance, every field set, as through the MCP bridge.
+	origin := core.WithOrigin(ctx, core.Origin{Surface: core.SurfaceMCP, Client: "vaquero-mcp/0.1.6", Harness: "claude-code/2.1.3", Model: "mid-model", Run: "run-1"})
+	if _, err := c.AddComment(origin, by, lasso.ID, "Lasso first, then sort."); err != nil {
 		return err
 	}
 	if _, err := c.AddLink(ctx, by, child.ID, "blocks", core.TicketKey{Project: "VAQ", Number: parent.Number}); err != nil {
@@ -128,6 +131,16 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 		}
 	}
 	if _, err := c.MoveTicket(ctx, by, child.ID, byCategory["todo"], "", parent.ID); err != nil {
+		return err
+	}
+	// The agent workflow on VAQ, with a tier map of its own, and a tier and
+	// a model on the install guide.
+	on, tierMap := true, `{"claude":{"design":"big-model","light":"small-model","standard":"mid-model","heavy":"big-model"}}`
+	if _, err := c.UpdateProject(ctx, by, vaq.ID, core.ProjectPatch{Workflow: &on, TierMap: &tierMap}); err != nil {
+		return err
+	}
+	tier, model := "light", "small-model-2"
+	if _, err := c.PatchTicket(ctx, by, child.ID, core.TicketPatch{Tier: &tier, Model: &model}, 0); err != nil {
 		return err
 	}
 	agent, err := c.EnsureAgent(ctx, by, "builder")
