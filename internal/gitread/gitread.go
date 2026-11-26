@@ -476,13 +476,15 @@ func (r *Repos) exec(ctx context.Context, _ string, args []string, env []string,
 	return buf, nil
 }
 
-// firstLine is the first non-empty line of s, cut to maxLine characters.
+// firstLine is the first non-empty line of s, cut to maxLine characters,
+// with the userinfo of any URL in it removed.
 func firstLine(s string) string {
 	for line := range strings.SplitSeq(s, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
+		line = scrubURLs(line) // before the cut, so no half a credential is left
 		if utf8.RuneCountInString(line) > maxLine {
 			line = string([]rune(line)[:maxLine])
 		}

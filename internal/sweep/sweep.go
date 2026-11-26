@@ -12,7 +12,8 @@
 // fetch_minutes above 0 has its remote fetched when its last fetch is that
 // old. It is off by default and the only thing here that uses the network.
 // A fetch runs apart from the tick, one at a time, so a slow remote never
-// delays the claims.
+// delays the claims. Stop cancels a running fetch and returns after git
+// has exited.
 package sweep
 
 import (
@@ -128,7 +129,7 @@ func (s *Sweeper) Fetch(ctx context.Context) int {
 		s.tried[key] = now
 		s.mu.Unlock()
 		ran++
-		if err := repo.Fetch(ctx); err != nil && ctx.Err() == nil {
+		if err := repo.FetchOwned(ctx); err != nil && ctx.Err() == nil {
 			s.Logger.WarnContext(ctx, "fetch", "project", p.Key, "err", err)
 		}
 	}
@@ -273,6 +274,7 @@ func (s *Sweeper) Stop() {
 		if s.cancel != nil {
 			s.cancel()
 			<-s.done
+			s.fetches.Wait()
 		}
 	})
 }

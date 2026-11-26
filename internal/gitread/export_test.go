@@ -18,3 +18,6 @@ func Prefix(r *Repos, dir string) []string { return r.prefix(dir, nil) }
 
 // HelperReads are the two fixed config reads Fetch runs.
 var HelperReads = helperReads
+
+// FirstLine is firstLine, for the scrub test.
+func FirstLine(s string) string { return firstLine(s) }

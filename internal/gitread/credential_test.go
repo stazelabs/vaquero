@@ -120,3 +120,40 @@ func TestFetchUsesOnlyTheUsersCredentialHelpers(t *testing.T) {
 		t.Fatalf("%d fetches", fetches)
 	}
 }
+
+// A credential in a remote's URL never reaches an error line, whatever the
+// scheme, wherever in the text it is, and however git words it.
+func TestErrorLinesLoseUserinfo(t *testing.T) {
+	const tok = "SENTINELTOKEN123"
+	for _, in := range []string{
+		"fatal: unable to access 'https://user:" + tok + "@example.com/o/r.git/': Could not resolve host",
+		"fatal: unable to access \"http://" + tok + "@example.com/r.git\": x",
+		"ssh: connect to ssh://git:" + tok + "@host:22/r.git failed",
+		"fatal: remote error: git://u:" + tok + "@host/r.git: refused",
+		"fatal: " + "https://a:" + tok + "@h/x and also ssh://" + tok + "@h2/y",
+		"error: https://u:p@ss:" + tok + "@h/x?y=1",
+	} {
+		got := gitread.FirstLine(in)
+		if strings.Contains(got, tok) || strings.Contains(got, "user:") {
+			t.Errorf("%q -> %q", in, got)
+		}
+		if !strings.Contains(got, "://") {
+			t.Errorf("lost the URL: %q -> %q", in, got)
+		}
+	}
+	if got := gitread.FirstLine("fatal: '/srv/r.git' does not appear to be a git repository"); !strings.Contains(got, "/srv/r.git") {
+		t.Errorf("%q", got)
+	}
+	// And through a real failing fetch.
+	r := gittest.Repo(t)
+	r.WriteCommit("a", "1", "one")
+	r.Git("remote", "add", "origin", "https://user:"+tok+"@127.0.0.1:1/x.git")
+	_, g := open(t, r)
+	err := g.Fetch(t.Context())
+	if err == nil || strings.Contains(err.Error(), tok) {
+		t.Fatalf("%v", err)
+	}
+	if f, ok := g.LastFetchError(); !ok || strings.Contains(f.Line, tok) {
+		t.Fatalf("%+v", f)
+	}
+}

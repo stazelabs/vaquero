@@ -2,6 +2,8 @@ package handlers_test
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 	"sync"
@@ -156,5 +158,39 @@ func TestFetchWritesNoEvent(t *testing.T) {
 	c.Post("/p/VAQ/repo/fetch", url.Values{})
 	if after := eventCount(t, e); after != before {
 		t.Fatalf("events %d -> %d", before, after)
+	}
+}
+
+// A token written into the remote's URL appears on no surface.
+func TestFetchFailureHidesTheRemotesCredential(t *testing.T) {
+	const tok = "SENTINELTOKEN123"
+	e, c, tok2 := apiWorld(t)
+	repo := gittest.Repo(t)
+	repo.WriteCommit("README.md", "# Readme\n", "first")
+	repo.Git("remote", "add", "origin", "https://user:"+tok+"@127.0.0.1:1/x.git")
+	setRepo(t, e, repo.Dir)
+	var logs strings.Builder
+	e.Deps.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	e.Rebuild()
+
+	r := c.API("POST", "/api/v1/projects/VAQ/repo/fetch", tok2, nil)
+	if r.Status != 200 || !strings.Contains(r.Body, `"error"`) || strings.Contains(r.Body, tok) {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	for _, path := range []string{"/api/v1/projects/VAQ/repo/status", "/api/v1/projects/VAQ"} {
+		if b := c.API("GET", path, tok2, nil).Body; strings.Contains(b, tok) {
+			t.Errorf("%s shows the token", path)
+		}
+	}
+	post := c.Post("/p/VAQ/repo/fetch", url.Values{})
+	if strings.Contains(post.Body, tok) || strings.Contains(fmt.Sprint(post.Header), tok) {
+		t.Error("the toast carries the token")
+	}
+	page := c.Follow(post)
+	if strings.Contains(page.Body, tok) || !strings.Contains(page.Body, "Last fetch failed") {
+		t.Errorf("settings page: %d", page.Status)
+	}
+	if strings.Contains(c.Get("/p/VAQ/settings").Body, tok) || strings.Contains(logs.String(), tok) {
+		t.Error("the token is on the page or in the log")
 	}
 }

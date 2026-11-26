@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -431,5 +432,36 @@ func TestSweepFailedFetchWaitsForTheInterval(t *testing.T) {
 	}
 	if f, ok := g.LastFetchError(); !ok || f.Line == "" {
 		t.Fatalf("%+v %v", f, ok)
+	}
+}
+
+// Stop ends a fetch in flight and returns only after git has exited.
+func TestStopWaitsForARunningFetch(t *testing.T) {
+	e := newFetchEnv(t)
+	e.project(t, "VAQ", clone(t), 5)
+	started := make(chan struct{})
+	var exited atomic.Bool
+	e.c.Git.Wrap(func(next gitread.RunFunc) gitread.RunFunc {
+		return func(ctx context.Context, dir string, args, env []string, limit int) ([]byte, error) {
+			if gitread.Subcommand(args) != "fetch" {
+				return next(ctx, dir, args, env, limit)
+			}
+			close(started)
+			<-ctx.Done() // git running until it is told to stop
+			time.Sleep(100 * time.Millisecond)
+			exited.Store(true)
+			return nil, ctx.Err()
+		}
+	})
+	e.s.Interval = 5 * time.Millisecond
+	e.s.Start()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no fetch started")
+	}
+	e.s.Stop()
+	if !exited.Load() {
+		t.Fatal("Stop returned with git still running")
 	}
 }

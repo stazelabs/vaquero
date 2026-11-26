@@ -40,6 +40,21 @@ import (
 // finish for the others. A failure is kept for LastFetchError. ErrNoRemote
 // when the repo has none.
 func (g *Repo) Fetch(ctx context.Context) error {
+	return g.fetchShared(context.WithoutCancel(ctx), ctx, false)
+}
+
+// FetchOwned is Fetch for a caller that owns the fetch's lifetime (the
+// sweeper): the fetch it starts runs under owner and is killed when owner
+// ends, and the call returns only after git has exited. A fetch someone
+// else started is waited for only until owner ends.
+func (g *Repo) FetchOwned(owner context.Context) error {
+	return g.fetchShared(owner, owner, true)
+}
+
+// fetchShared joins the repo's running fetch or starts one under run.
+// Callers wait on wait; with owned, one that started the fetch waits for
+// it to finish whatever wait says.
+func (g *Repo) fetchShared(run, wait context.Context, owned bool) error {
 	if g.Remote == "" {
 		return ErrNoRemote
 	}
@@ -55,14 +70,18 @@ func (g *Repo) Fetch(ctx context.Context) error {
 		// The fetch belongs to no one caller: it runs under a context of
 		// its own, so a request that gives up doesn't fail it for the
 		// others, and each caller stops waiting on its own context.
-		go g.runFetch(context.WithoutCancel(ctx), key, f)
+		go g.runFetch(run, key, f)
 	}
 	r.mu.Unlock()
+	if owned && !running {
+		<-f.done
+		return f.err
+	}
 	select {
 	case <-f.done:
 		return f.err
-	case <-ctx.Done():
-		return ctx.Err()
+	case <-wait.Done():
+		return wait.Err()
 	}
 }
 
@@ -78,7 +97,7 @@ func (g *Repo) runFetch(ctx context.Context, key string, f *flight) {
 	if err == nil {
 		r.fetched[key] = true
 		delete(r.failed, key)
-	} else {
+	} else if !errors.Is(ctx.Err(), context.Canceled) { // an owner that stopped isn't a failed remote
 		r.failed[key] = FetchFailure{Line: failureLine(err), At: time.Now().UTC()}
 	}
 	r.mu.Unlock()
@@ -94,7 +113,7 @@ func failureLine(err error) string {
 	if errors.As(err, &ge) && ge.Line != "" {
 		line = ge.Line
 	}
-	line, _, _ = strings.Cut(line, "\n")
+	line, _, _ = strings.Cut(scrubURLs(line), "\n")
 	if r := []rune(line); len(r) > 200 {
 		line = string(r[:200])
 	}
