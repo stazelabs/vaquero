@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -65,6 +66,24 @@ func brewStopRefusal(label string) error {
 	return message("Vaquero runs under brew services (" + label + "); run brew services stop vaquero.")
 }
 
+// outsideService reports the pid of the server holding dataDir's lock when
+// it isn't the one the service manager runs as label (VAQ-130: started
+// outside brew services, it holds the port while the service fails to
+// start). ok is false when nothing serves, when the holder is the
+// service's own server, or when the manager reports no pid for the label,
+// so the caller keeps the refusal. The service itself is never touched.
+func outsideService(dataDir, label string) (pid int, ok bool, err error) {
+	pid, role, running, err := lockfile.HolderRole(dataDir)
+	if err != nil || !running || role == lockfile.RoleMaintenance || pid <= 0 {
+		return 0, false, err
+	}
+	managed := servicePID(serviceOS, label, serviceProbe)
+	if managed == 0 || managed == pid {
+		return 0, false, nil
+	}
+	return pid, true, nil
+}
+
 // stopLocal asks the server holding dataDir's lock to stop (SIGTERM, which
 // drains like Ctrl-C) and waits until it lets go. stopped is false when
 // nothing was running. A different server taking the lock meanwhile (a
@@ -118,7 +137,18 @@ func cmdStop(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 		return c.finish(err)
 	}
 	if label, ok := brewService(cfg.DataDir); ok {
-		return c.finish(brewStopRefusal(label))
+		pid, ok, err := outsideService(cfg.DataDir, label)
+		if err != nil {
+			return c.finish(err)
+		}
+		if !ok {
+			return c.finish(brewStopRefusal(label))
+		}
+		if stopped, err := stopLocal(ctx, cfg.DataDir, stopWait, pid); err != nil || !stopped {
+			return c.finish(cmp.Or(err, brewStopRefusal(label)))
+		}
+		fmt.Fprintf(stdout, "Stopped a Vaquero started outside brew services (pid %d); the service can start now.\n", pid)
+		return exitOK
 	}
 	stopped, err := stopLocal(ctx, cfg.DataDir, stopWait, 0)
 	if err != nil {

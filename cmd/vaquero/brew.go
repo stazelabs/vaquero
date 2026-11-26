@@ -320,3 +320,53 @@ func serviceLoaded(goos, label string, ask probe) loaded {
 	}
 	return loadedNo
 }
+
+// servicePID is the process id the service manager runs label as, or 0
+// when it reports none (the service isn't running, between keep_alive
+// restarts say), gives no answer, or one that can't be read. launchd's
+// `launchctl print gui/{uid}/{label}` shows it as a top-level "pid = N"
+// line (a nested block's pid is someone else's); systemd's `systemctl
+// --user show -p MainPID {label}` prints MainPID=N, 0 when nothing runs.
+func servicePID(goos, label string, ask probe) int {
+	if goos == "darwin" {
+		out, err := ask("launchctl", "print", "gui/"+strconv.Itoa(os.Getuid())+"/"+label)
+		if err != nil {
+			return 0
+		}
+		depth := 0
+		sc := bufio.NewScanner(bytes.NewReader(out))
+		for sc.Scan() {
+			line := strings.TrimSpace(sc.Text())
+			if depth == 1 {
+				if v, ok := strings.CutPrefix(line, "pid = "); ok {
+					return positive(v)
+				}
+			}
+			switch {
+			case strings.HasSuffix(line, "{"):
+				depth++
+			case line == "}":
+				depth--
+			}
+		}
+		return 0
+	}
+	out, err := ask("systemctl", "--user", "show", "-p", "MainPID", label)
+	if err != nil {
+		return 0
+	}
+	v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "MainPID=")
+	if !ok {
+		return 0
+	}
+	return positive(v)
+}
+
+// positive reads v as a process id, 0 for anything else.
+func positive(v string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}

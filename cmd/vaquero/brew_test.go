@@ -408,3 +408,88 @@ func TestBrewManagedLinuxBusDown(t *testing.T) {
 		t.Errorf("another failure: %v", state)
 	}
 }
+
+// launchctl print shows a running agent's process as "pid = N"; systemctl
+// show prints MainPID=N, 0 when nothing runs. No pid line, an unreadable
+// one, or no answer is 0.
+func TestServicePID(t *testing.T) {
+	label := "sh.brew.vaquero"
+	show := "systemctl --user show -p MainPID " + label
+	for name, c := range map[string]struct {
+		goos string
+		m    *fakeManager
+		want int
+	}{
+		"launchd running":     {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "gui/501/sh.brew.vaquero = {\n\tactive count = 1\n\tstate = running\n\tpid = 4242\n\tprogram = /opt/homebrew/opt/vaquero/bin/vaquero\n}\n"}}, 4242},
+		"launchd no pid":      {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "gui/501/sh.brew.vaquero = {\n\tstate = not running\n\tlast exit code = 1\n}\n"}}, 0},
+		"launchd nested pid":  {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "x = {\n\tstate = not running\n\tendpoints = {\n\t\tpid = 77\n\t}\n}\n"}}, 0},
+		"launchd bad pid":     {"darwin", &fakeManager{ok: map[string]string{launchctlPrint(label): "\tpid = soon\n"}}, 0},
+		"launchd not loaded":  {"darwin", &fakeManager{}, 0},
+		"launchd no answer":   {"darwin", &fakeManager{unknown: true}, 0},
+		"systemd running":     {"linux", &fakeManager{ok: map[string]string{show: "MainPID=5151\n"}}, 5151},
+		"systemd not running": {"linux", &fakeManager{ok: map[string]string{show: "MainPID=0\n"}}, 0},
+		"systemd garbage":     {"linux", &fakeManager{ok: map[string]string{show: "MainPID=\n"}}, 0},
+		"systemd no answer":   {"linux", &fakeManager{unknown: true}, 0},
+	} {
+		if got := servicePID(c.goos, label, c.m.probe); got != c.want {
+			t.Errorf("%s: %d, want %d", name, got, c.want)
+		}
+	}
+}
+
+// launchdRunning is launchctl print for a loaded agent whose process is pid.
+func launchdRunning(pid int) string {
+	return "gui/501/sh.brew.vaquero = {\n\tstate = running\n\tpid = " + strconv.Itoa(pid) + "\n}\n"
+}
+
+// The service is loaded, but the server holding the lock isn't the one
+// launchd runs (one started outside brew services, VAQ-130): stop stops
+// it, says so, and leaves the service alone.
+func TestStopClearsAServerStartedOutsideBrewServices(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	other := pid + 100000
+	m := &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): launchdRunning(other)}}
+	useManager(t, m)
+	code, out, e := runCLI(t, "stop")
+	want := "Stopped a Vaquero started outside brew services (pid " + strconv.Itoa(pid) + "); the service can start now."
+	if code != 0 || strings.TrimSpace(out) != want {
+		t.Fatalf("%d %q %q", code, out, e)
+	}
+	if _, running, _ := lockfile.Holder(dataDir); running {
+		t.Fatal("server still holds the lock")
+	}
+	for _, c := range m.called() {
+		if !strings.HasPrefix(c, "launchctl print ") {
+			t.Fatalf("touched the service: %q", c)
+		}
+	}
+}
+
+// When the lock holder is the service's own server, stop still refuses.
+func TestStopRefusesTheServicesOwnServer(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	useManager(t, &fakeManager{ok: map[string]string{launchctlPrint("sh.brew.vaquero"): launchdRunning(pid)}})
+	code, _, e := runCLI(t, "stop")
+	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services (sh.brew.vaquero); run brew services stop vaquero.") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, running, _ := lockfile.Holder(dataDir); !running || now != pid {
+		t.Fatal("the service's server was stopped")
+	}
+}
+
+// When launchd reports no pid for the service, stop refuses as before,
+// even with a server holding the lock.
+func TestStopRefusesWhenTheServiceHasNoPID(t *testing.T) {
+	dataDir, _ := brewEnv(t)
+	pid := serverAt(t, dataDir, version.Version)
+	code, _, e := runCLI(t, "stop")
+	if code != 1 || !strings.Contains(e, "Vaquero runs under brew services (sh.brew.vaquero)") {
+		t.Fatalf("%d %q", code, e)
+	}
+	if now, running, _ := lockfile.Holder(dataDir); !running || now != pid {
+		t.Fatal("the server was stopped")
+	}
+}
