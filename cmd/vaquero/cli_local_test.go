@@ -22,6 +22,7 @@ func localEnv(t *testing.T) (dataDir, addr string) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Setenv("VAQUERO_SERVER", "")
 	t.Setenv("VAQUERO_PROFILE", "")
 	dataDir = filepath.Join(t.TempDir(), "data")
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")

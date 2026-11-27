@@ -9,7 +9,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/core"
 )
 
-// vaquero ticket move-to TICKET KEY moves the ticket and prints its new
+// vaquero ticket transfer TICKET KEY moves the ticket and prints its new
 // key; the old key keeps working; a stale --version is exit 3.
 func TestCLITicketMoveTo(t *testing.T) {
 	e := cliEnv(t)

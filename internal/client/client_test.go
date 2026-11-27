@@ -30,7 +30,18 @@ func TestMain(m *testing.M) {
 		time.Sleep(3 * time.Second)
 		os.Exit(0)
 	}
-	os.Exit(m.Run())
+	// No test reaches the owner's saved servers (config.json lives under
+	// HOME or XDG_CONFIG_HOME) or picks a server from the developer's shell.
+	if home, err := os.MkdirTemp("", "vq-test-home"); err == nil {
+		defer os.RemoveAll(home)
+		os.Setenv("HOME", home)
+		os.Setenv("XDG_CONFIG_HOME", home)
+	}
+	os.Unsetenv("VAQUERO_SERVER")
+	os.Unsetenv("VAQUERO_PROFILE")
+	code := m.Run()
+	os.RemoveAll(os.Getenv("HOME"))
+	os.Exit(code)
 }
 
 func TestDoDecodesAndErrors(t *testing.T) {
@@ -131,6 +142,7 @@ func TestResolveLocalIgnoresServerOnlySettings(t *testing.T) {
 }
 
 func TestResolveLocalReadsTokenFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "token"), []byte("vq_abc\n"), 0o600)
@@ -280,6 +292,7 @@ func TestSaveIgnoresStaleTmpMode(t *testing.T) {
 // VAQ-148: VQ_ADDR in {data dir}/vaquero.env moves where the CLI looks
 // for the local server; the environment still wins.
 func TestCLIFindsPortFromEnvFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "vaquero.env"), []byte("VQ_ADDR=127.0.0.1:9123\n"), 0o600); err != nil {

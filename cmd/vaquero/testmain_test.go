@@ -35,7 +35,18 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 	}
-	os.Exit(m.Run())
+	// No test reaches the owner's saved servers (config.json lives under
+	// HOME or XDG_CONFIG_HOME) or picks a server from the developer's shell.
+	if home, err := os.MkdirTemp("", "vq-test-home"); err == nil {
+		defer os.RemoveAll(home)
+		os.Setenv("HOME", home)
+		os.Setenv("XDG_CONFIG_HOME", home)
+	}
+	os.Unsetenv("VAQUERO_SERVER")
+	os.Unsetenv("VAQUERO_PROFILE")
+	code := m.Run()
+	os.RemoveAll(os.Getenv("HOME"))
+	os.Exit(code)
 }
 
 // noManager is a service manager that isn't there: every question fails.

@@ -105,7 +105,8 @@ func TestCLIAttachTooLarge(t *testing.T) {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("VAQUERO_PROFILE", "c")
+	t.Setenv("VAQUERO_SERVER", "c")
+	t.Setenv("VAQUERO_PROFILE", "")
 	big := filepath.Join(t.TempDir(), "big.bin")
 	f, err := os.Create(big)
 	if err != nil {

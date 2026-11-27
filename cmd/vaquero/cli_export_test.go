@@ -93,7 +93,8 @@ func TestCLIExportAtomic(t *testing.T) {
 			if err := cfg.Save(); err != nil {
 				t.Fatal(err)
 			}
-			t.Setenv("VAQUERO_PROFILE", "c")
+			t.Setenv("VAQUERO_SERVER", "c")
+			t.Setenv("VAQUERO_PROFILE", "")
 			dir := t.TempDir()
 			file := filepath.Join(dir, "out.tar.gz")
 			code, _, errOut := cli(t, "export", file)

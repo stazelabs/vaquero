@@ -17,7 +17,7 @@ import (
 )
 
 // cliEnv is a webtest server with project VAQ, and a saved profile "t"
-// pointing at it, selected through VAQUERO_PROFILE.
+// pointing at it, selected through VAQUERO_SERVER.
 func cliEnv(t *testing.T) *webtest.Env {
 	t.Helper()
 	e := webtest.New(t)
@@ -31,7 +31,8 @@ func cliEnv(t *testing.T) *webtest.Env {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("VAQUERO_PROFILE", "t")
+	t.Setenv("VAQUERO_SERVER", "t")
+	t.Setenv("VAQUERO_PROFILE", "")
 	return e
 }
 
@@ -141,7 +142,7 @@ func TestCLIProfileCommands(t *testing.T) {
 	}
 }
 
-// VAQ-61: profile add reads the token from standard input for "-", so it
+// VAQ-61: server new reads the token from standard input for "-", so it
 // stays out of the shell's history and the process list, and refuses a URL
 // that isn't an http or https server address.
 func TestCLIProfileAddTokenFromStdinAndURLCheck(t *testing.T) {
@@ -382,4 +383,12 @@ func TestCLITicketsMilestoneFilter(t *testing.T) {
 	if code, _, errOut := cli(t, "tickets", "VAQ", "--milestone", "Gamma"); code == 0 || !strings.Contains(errOut, "Gamma") {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
+}
+
+// VAQUERO_PROFILE still picks the server for one release (ruling R-Q9).
+func TestCLIServerEnvFallback(t *testing.T) {
+	cliEnv(t)
+	t.Setenv("VAQUERO_SERVER", "")
+	t.Setenv("VAQUERO_PROFILE", "t")
+	mustCLI(t, "projects")
 }
