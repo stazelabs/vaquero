@@ -325,17 +325,15 @@ func TestTicketPageDecisionCards(t *testing.T) {
 	lacks(t, page, "data-decision=", "Decisions")
 }
 
-// The cards are for any ticket, the workflow on or not.
+// Ruling W1: workflow off behaves exactly as before. The ticket page has
+// no decision cards and no decisions part at all, while the inbox still
+// lists the project's questions.
 func TestTicketPageDecisionCardsWorkflowOff(t *testing.T) {
 	e := webtest.New(t)
 	p := project(t, e)
 	tk := ticket(t, e, p, core.TicketInput{Title: "Plain"})
 	c := e.Client()
-	empty := c.Get("/t/VAQ-1").Body
-	lacks(t, empty, "data-decision=", "Decisions")
-	// The part stays for a decision asked later, and takes no space empty:
-	// no children at all, so :empty matches, and empty:hidden hides it.
-	contains(t, empty, `data-live class="empty:hidden"></div>`)
+	lacks(t, c.Get("/t/VAQ-1").Body, "ticket-decisions", "data-decision=")
 	q, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
 		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionQuestion, Question: "Which way?", Options: []core.Option{{Label: "Left"}},
 	})
@@ -343,6 +341,27 @@ func TestTicketPageDecisionCardsWorkflowOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := c.Get("/t/VAQ-1").Body
-	contains(t, page, `data-decision="`+q.ID+`"`, "Decisions")
-	lacks(t, page, "data-readiness")
+	lacks(t, page, "ticket-decisions", "data-decision=", "data-readiness")
+	contains(t, c.Get("/inbox").Body, `data-decision="`+q.ID+`"`)
+}
+
+// With the workflow on, the part is always there for a decision asked
+// later, and takes no space empty: no children at all, so :empty
+// matches, and empty:hidden hides it.
+func TestTicketPageDecisionsPartEmpty(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	workflowOn(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Plain"})
+	c := e.Client()
+	empty := c.Get("/t/VAQ-1").Body
+	lacks(t, empty, "data-decision=")
+	contains(t, empty, `id="ticket-decisions"`, `data-live class="empty:hidden"></div>`)
+	q, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
+		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionQuestion, Question: "Which way?", Options: []core.Option{{Label: "Left"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	contains(t, c.Get("/t/VAQ-1").Body, `data-decision="`+q.ID+`"`, "Decisions")
 }

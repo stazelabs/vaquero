@@ -419,8 +419,10 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	if v.Readiness, asked, err = readinessView(r, d, t, p, v.Status, v.Key); err != nil {
 		return v, err
 	}
-	if v.Decisions, err = ticketDecisionCards(ctx, d, t, asked, v.Key); err != nil {
-		return v, err
+	if p.Workflow == 1 { // ruling W1: no cards with the workflow off
+		if v.Decisions, err = ticketDecisionCards(ctx, d, t, asked, v.Key); err != nil {
+			return v, err
+		}
 	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))
 	if err != nil {

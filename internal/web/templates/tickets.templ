@@ -361,7 +361,9 @@ templ TicketPage(v TicketView) {
 						</button>
 					</div>
 				</section>
-				@ticketDecisions(v)
+				if v.Project.Workflow == 1 {
+					@ticketDecisions(v)
+				}
 				<section id="comments">
 					<h2 class={ h2IconClass }>
 						@Icon("comment")
@@ -525,7 +527,9 @@ templ LinkTargetOptions(opts []Option) {
 }
 
 // ticketDecisions is the open decisions naming the ticket, as the inbox's
-// cards with the ticket page as their back. The part is always there, so a
+// cards with the ticket page as their back, with the workflow on only
+// (ruling W1: a workflow-off ticket page is as before; the inbox still
+// lists its project's questions). The part is always there, so a
 // decision asked while the page is open can appear; it follows changes
 // like the readiness block, and answering a card refreshes both (the
 // card's HX-Trigger-After-Settle vq:refresh, through app.js's busy rule).
