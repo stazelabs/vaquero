@@ -15,6 +15,9 @@
 // answers it may send (400), an empty body (400), a body over the limit
 // (413) and a JSON-RPC batch (400, "Send one request at a time."). Every
 // tool recovers a panic into "Something went wrong.", logged.
+//
+// The server also offers the workflow prompts (internal/workflow) through
+// prompts/list and prompts/get; see addPrompts.
 package mcpserver
 
 import (
@@ -36,8 +39,9 @@ import (
 	"github.com/stazelabs/vaquero/internal/web/middleware"
 )
 
-// Instructions is what a client is told the server is for.
-const Instructions = "Vaquero is a ticket tracker shared by people and agents; tickets are named by key, like VAQ-12. " +
+// Instructions is what a client is told the server is for; its last
+// sentence names the workflow prompts.
+var Instructions = "Vaquero is a ticket tracker shared by people and agents; tickets are named by key, like VAQ-12. " +
 	"To take work, call ready_tickets, then claim_ticket on one: a claim assigns it to you and lasts for a lease (15 minutes unless you ask for up to 120). " +
 	"While you work, call heartbeat before the lease ends, record progress with create_comment and update_ticket, and move_ticket it when it is done. " +
 	"Call unclaim_ticket when you stop; a claim you stop renewing lapses and the ticket goes back to the queue. " +
@@ -45,7 +49,8 @@ const Instructions = "Vaquero is a ticket tracker shared by people and agents; t
 	"and view \"summary\" on a write answers with a short summary instead of the whole ticket. " +
 	"In a project with the agent workflow on, write a ticket's plan with save_plan, park questions and approvals for the owner with ask_decision, " +
 	"record the owner's answer with answer_decision only as relayed, quoting their words (run vaquero mcp with --agent NAME), " +
-	"and ready_tickets lists only tickets that pass readiness: a current plan approval."
+	"and ready_tickets lists only tickets that pass readiness: a current plan approval. " +
+	promptsLine()
 
 // Handler is POST /mcp. api serves /api/v1 without the token check (the
 // router's API routes); the request's actor, set by middleware.APIToken in
@@ -91,11 +96,12 @@ func Handler(apiRoutes http.Handler, logger *slog.Logger, calls CallLog, now fun
 		caller := &caller{api: apiRoutes, actor: actor, origin: core.OriginFrom(ctx), logger: logger.With("request_id", middleware.GetRequestID(ctx))}
 		s := mcp.NewServer(&mcp.Implementation{Name: "vaquero", Title: "Vaquero", Version: version.Version}, &mcp.ServerOptions{
 			Instructions: Instructions,
-			Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
+			Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}, Prompts: &mcp.PromptCapabilities{}},
 			SchemaCache:  cache,
 		})
 		s.AddReceivingMiddleware(logCalls(calls, logger, now, actor.ID, middleware.APITokenPrefix(ctx)))
 		addTools(s, caller)
+		addPrompts(s)
 		sdk.ServeHTTP(w, r.WithContext(context.WithValue(ctx, serverKey{}, s)))
 	})
 }

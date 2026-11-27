@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -11,11 +12,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/idgen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/workflow"
 )
 
 // CallLog keeps the MCP activity log (the mcp_calls table, read by
@@ -29,6 +32,8 @@ type CallLog interface {
 const (
 	OutcomeUnknownTool  = "unknown_tool"
 	OutcomeBadArguments = "bad_arguments"
+	// OutcomeUnknownPrompt is a prompts/get naming no shipped prompt.
+	OutcomeUnknownPrompt = "unknown_prompt"
 )
 
 const (
@@ -50,12 +55,33 @@ func noteCode(ctx context.Context, code string) {
 
 // logCalls records every tools/call: the tool, who called it, with which
 // token, a short summary of its arguments, how it ended and how long it
-// took. A failure to record is logged and never fails the call.
+// took. A prompts/get is recorded the same way, as tool "prompt:{name}".
+// A failure to record is logged and never fails the call.
 func logCalls(log CallLog, logger *slog.Logger, now func() time.Time, actorID, prefix string) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
-			call, ok := req.(*mcp.CallToolRequest)
-			if method != "tools/call" || !ok || log == nil {
+			if log == nil {
+				return next(ctx, method, req)
+			}
+			var tool, args string
+			known := false
+			switch r := req.(type) {
+			case *mcp.CallToolRequest:
+				if method != "tools/call" || r.Params == nil {
+					return next(ctx, method, req)
+				}
+				tool, args, known = r.Params.Name, Summary(r.Params.Arguments), slices.Contains(toolNames, r.Params.Name)
+			case *mcp.GetPromptRequest:
+				if method != "prompts/get" || r.Params == nil {
+					return next(ctx, method, req)
+				}
+				raw, _ := json.Marshal(r.Params.Arguments)
+				if len(r.Params.Arguments) == 0 {
+					raw = nil
+				}
+				_, known = workflow.Get(r.Params.Name)
+				tool, args = "prompt:"+r.Params.Name, Summary(raw)
+			default:
 				return next(ctx, method, req)
 			}
 			n := &note{}
@@ -65,8 +91,15 @@ func logCalls(log CallLog, logger *slog.Logger, now func() time.Time, actorID, p
 			switch {
 			case err != nil:
 				outcome, msg = "error", err.Error()
-				if !slices.Contains(toolNames, call.Params.Name) {
+				_, prompt := req.(*mcp.GetPromptRequest)
+				_, invalid := errors.AsType[*jsonrpc.Error](err)
+				switch {
+				case !known && prompt:
+					outcome = OutcomeUnknownPrompt
+				case !known:
 					outcome = OutcomeUnknownTool
+				case prompt && invalid:
+					outcome = OutcomeBadArguments
 				}
 			default:
 				if r, ok := res.(*mcp.CallToolResult); ok && r.IsError {
@@ -78,7 +111,7 @@ func logCalls(log CallLog, logger *slog.Logger, now func() time.Time, actorID, p
 			}
 			rec := gen.RecordMCPCallParams{
 				ID: idgen.New(), At: timefmt.Format(start), ActorID: sql.NullString{String: actorID, Valid: actorID != ""},
-				TokenPrefix: prefix, Tool: cut(call.Params.Name, maxValue), Args: Summary(call.Params.Arguments),
+				TokenPrefix: prefix, Tool: cut(tool, maxValue), Args: args,
 				Outcome: outcome, Message: cut(msg, maxMessage), DurationMs: now().Sub(start).Milliseconds(),
 			}
 			wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)

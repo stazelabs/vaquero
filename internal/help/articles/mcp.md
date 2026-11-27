@@ -65,8 +65,19 @@ Each change an agent makes records where it came from, as the client reports it:
 
 A tool's answer is the same JSON the API gives. Its structured content, for clients that read it, is that JSON too, except that a list arrives as `{"items": [...]}`, because structured content is always an object. A refusal (an unknown ticket, a claim someone else holds, a stale `version`) is a tool error whose text says what went wrong, the same message the API gives.
 
-The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `create_comment` and `update_ticket`, `move_ticket` it when done, and `unclaim_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words.
+The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `create_comment` and `update_ticket`, `move_ticket` it when done, and `unclaim_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words. Its last sentence names the workflow prompts and their arguments.
+
+## Prompts
+
+The server also offers the [workflow prompts](/help/agent-workflow#workflow-prompts): instructions for a longer job, filled in with your arguments, which a client lists and starts as it does any MCP prompt. They are text shipped in Vaquero, not tools; starting one reads and changes nothing.
+
+| Prompt | Arguments |
+|---|---|
+| `plan` | `ticket`, a ticket's key |
+| `audit` | `project`, a project's key, and `kind`: `qa`, `hygiene`, `continuity` or `docs` |
+
+A missing argument, or a `kind` that isn't one of those, is refused with an invalid-params error that names the argument and what it takes, such as "Give kind: qa, hygiene, continuity or docs." `vaquero workflow` prints the same text without a server.
 
 ## The activity log
 
-Every tool call is recorded: when, which agent, which token (by its prefix), the tool, a short summary of its arguments, how it ended (`ok`, or the error such as `not_found`, `invalid`, `conflict`, `unknown_tool` or `bad_arguments`) and how long it took. Long text in arguments, like a comment's body, is cut short. Read it on the Admin page under MCP activity, filtered by agent or tool; it updates as calls arrive. Agent names are case-sensitive and an agent is never the person using Vaquero: an agent called `Owner` is listed apart from you, and its chip says `(agent)`. Calls are kept for 30 days.
+Every tool call, and every prompt started (as `prompt:plan`, `prompt:audit`), is recorded: when, which agent, which token (by its prefix), the tool, a short summary of its arguments, how it ended (`ok`, or the error such as `not_found`, `invalid`, `conflict`, `unknown_tool`, `unknown_prompt` or `bad_arguments`) and how long it took. Long text in arguments, like a comment's body, is cut short. Read it on the Admin page under MCP activity, filtered by agent or tool; it updates as calls arrive. Agent names are case-sensitive and an agent is never the person using Vaquero: an agent called `Owner` is listed apart from you, and its chip says `(agent)`. Calls are kept for 30 days.

@@ -1,7 +1,7 @@
 ---
 title: Agent workflow
 section: api-and-agents
-summary: The project setting for agent work: execution tiers and the tier map, plans, the decisions the owner answers, and when a ticket is ready.
+summary: The project setting for agent work: execution tiers and the tier map, plans, the decisions the owner answers, when a ticket is ready, and the workflow prompts.
 order: 5
 ---
 The agent workflow is a project setting for teams where agents do much of the building. It is off in a new project, and a project with it off works as it always has. Turn it on in the project's settings, under Workflow, or with `vaquero project edit KEY --workflow on`.
@@ -81,3 +81,19 @@ The ticket page shows a todo's readiness in its side panel: Ready, or the one re
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that isn't ready. Every ticket in the API answer, and the summary of a todo ticket in a list, carries `readiness`: `ready`, the `reasons` (one at most, none for a ticket that isn't a todo), `action` (`ask` or `ask_again`) and `epic` (the key of the epic to ask on, when the approval to ask for is the epic's). When the ticket has repo files, `readiness` also has `files`: each file's `path` as pinned and its `state`: `unchanged`, `changed`, `renamed` (with `now`, its path on main), `gone` (no longer on main, or no longer referenced), `added` (referenced, but not pinned by the approval) or `unchecked`. `vaquero ticket show` lists them under Files. Opened from the ticket's reference, the file view says when a file changed since the approval, with Show changes, was renamed or removed, or can't be checked.
 
 With the workflow off, tickets carry no `readiness`, and ready means what the board's rule says.
+
+## Workflow prompts
+
+Vaquero ships the workflow as prompts: instructions an agent follows for a longer job, filled in with the ticket or project it is about. They name only the tools and commands Vaquero has, and anything for you to decide comes to you as a [decision](#decisions), never left in the chat.
+
+| Prompt | Arguments | What it does |
+|---|---|---|
+| `plan` | `ticket` | Writes the ticket's plan and asks you to approve it, without building anything |
+| `audit` | `project`, `kind` (`qa`, `hygiene`, `continuity` or `docs`) | Runs one kind of audit over the project and files what it finds as tickets, without fixing anything |
+
+To start one in Claude Code, with Vaquero connected as an MCP server called `vaquero` (see [MCP](/help/mcp#connecting-a-client)), type its slash command, such as `/mcp__vaquero__plan VAQ-12` or `/mcp__vaquero__audit VAQ qa`. Any other MCP client lists them as the server's prompts. Without MCP prompts, print the same text and hand it to the agent:
+
+    vaquero workflow plan --ticket VAQ-12
+    vaquero workflow audit --project VAQ --kind qa
+
+`vaquero workflow` lists the prompts, and needs no server. An audit follows the project's audit pack for its kind; `vaquero workflow pack KIND` prints Vaquero's template for one, with its headings to fill in.
