@@ -16,6 +16,7 @@
   --color-accent: oklch(0.55 0.13 45);      /* saddle rust: links, primary buttons */
   --color-danger: oklch(0.52 0.19 27);
   --color-warn: oklch(0.62 0.13 75);
+  --color-scrim: oklch(0.15 0.01 50);       /* dialog backdrop: near-black, doesn't invert */
   /* Project monogram tiles: 8 pairs, background and its lettering, picked
      by core.TileColor. Every pair has at least 6:1 contrast in light and
      7.5:1 in dark. Used only by templates.ProjectIcon. */
@@ -49,6 +50,7 @@
     --color-accent: oklch(0.72 0.12 50);
     --color-danger: oklch(0.68 0.17 27);
     --color-warn: oklch(0.78 0.12 80);
+    --color-scrim: oklch(0.15 0.01 50);     /* same as light: a scrim darkens in both themes */
     --color-tile-0: oklch(0.38 0.06 40);
     --color-tile-0-ink: oklch(0.92 0.035 40);
     --color-tile-1: oklch(0.38 0.06 75);
