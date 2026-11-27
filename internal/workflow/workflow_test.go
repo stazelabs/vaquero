@@ -84,7 +84,7 @@ func TestRenderArgs(t *testing.T) {
 
 	// A kind in another case is the kind.
 	out, err := Render(audit, map[string]string{"project": "VAQ", "kind": "QA"})
-	if err != nil || strings.Contains(out, "QA audit") || strings.Contains(out, "pack QA") || !strings.HasPrefix(out, "# Audit VAQ: qa\n") {
+	if lower, _ := Render(audit, map[string]string{"project": "VAQ", "kind": "qa"}); err != nil || out != lower {
 		t.Fatalf("case: %v %q", err, out)
 	}
 
@@ -317,6 +317,11 @@ func TestAuditSteps(t *testing.T) {
 		"`search`", "`list_tickets`", "`ask_decision`", "kind question", "`create_ticket`", "Backlog", "`audit-hygiene`",
 		"tier", "`file:line`", "own ticket", "never fixes", "subagent", "Never drive the browser from a subagent",
 		"`kill PID`", "new tab", "native alert", "2 or 3 attempts", "Never push", "`list_statuses`",
+		// Review round 1: qa never reaches the tracker; docs never edits code.
+		"new empty temporary data directory", "isn't the tracker's", "`VAQUERO_SERVER=local`", "never navigate to a Never target",
+		"confirm its host and port are the scratch server's", "only on the scratch data", "`<…>`",
+		"Never edit a source or test file, a doc comment in code included", "Never invent a feature, a ticket key or a date",
+		"stop and report the question's id",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the audit prompt lacks %q", want)
