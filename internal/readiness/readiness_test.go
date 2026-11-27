@@ -329,9 +329,31 @@ func TestWhichApprovalCounts(t *testing.T) {
 			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
 			return c, w.key(e)
 		}, ask},
+		// Ruling R-Q12: an ancestor with an answered plan approval naming
+		// it is where to look, plan or not. Made after that approval, the
+		// child isn't among the descendants it covered: ask on the epic.
 		{"no ancestor with a plan", func(w *world) (gen.Ticket, string) {
 			e := w.ticket(core.TicketInput{Title: "Board"})
 			w.approve(e)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			return c, w.key(e)
+		}, ask},
+		{"plan-less root approved: its child", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.ticket(core.TicketInput{Title: "Sorting", ParentID: c.ID})
+			w.approve(e)
+			return c, w.key(e)
+		}, func(string) want { return ready }},
+		{"plan-less root approved: its grandchild", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Sorting", ParentID: c.ID})
+			w.approve(e)
+			return g, w.key(e)
+		}, func(string) want { return ready }},
+		{"plan-less epic, no approval anywhere", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
 			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
 			return c, ""
 		}, ask},

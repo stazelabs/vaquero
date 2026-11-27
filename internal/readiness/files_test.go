@@ -194,6 +194,27 @@ func TestReadinessEpicFilesChanged(t *testing.T) {
 	expect(t, w.check(child))
 }
 
+// Ruling R-Q16: when the files that can't be checked are the epic's, and
+// only because the repo settings changed, the action is to ask again on
+// the epic.
+func TestReadinessEpicRepoChangedAsksAgainOnTheEpic(t *testing.T) {
+	w, _ := gitWorld(t)
+	e := w.ticket(core.TicketInput{Title: "Epic"})
+	w.plan(e, "1. Child.", 0)
+	w.ref(e, "docs/a.md")
+	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+	w.approve(e)
+	expect(t, w.check(c))
+	clone := gittest.Repo(t)
+	clone.WriteCommit("docs/a.md", "# A\n", "a")
+	w.p = w.repo(w.p, clone)
+	got := w.check(c)
+	expect(t, got, readiness.Unchecked(readiness.WhyRepoChanged))
+	if got.Action != readiness.ActionAskAgain || got.Epic != w.key(e) {
+		t.Fatalf("action %q epic %q, want ask again on %s", got.Action, got.Epic, w.key(e))
+	}
+}
+
 // Files that can't be checked never pass: no repo path, no checker, no git.
 func TestReadinessFilesUnchecked(t *testing.T) {
 	w, r := gitWorld(t)
@@ -207,6 +228,9 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	got := w.check(tk)
 	expect(t, got, readiness.Unchecked(readiness.WhyNoGit))
 	files(t, got, "docs/a.md unchecked")
+	if got.Action != "" {
+		t.Fatalf("no git: action %q, want none", got.Action)
+	}
 
 	// In a subtest, so PATH comes back for the repos made below.
 	t.Run("no git", func(t *testing.T) {
@@ -225,6 +249,11 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	got = w.check(tk)
 	expect(t, got, readiness.Unchecked(readiness.WhyRepoChanged))
 	files(t, got, "docs/a.md unchecked")
+	// Ruling R-Q16: a changed repo setting is the one why with an action:
+	// asking again pins the files from the repo as it is set now.
+	if got.Action != readiness.ActionAskAgain || got.Epic != "" {
+		t.Fatalf("repo changed: action %q epic %q, want ask again here", got.Action, got.Epic)
+	}
 	w.p = w.repo(w.p, r)
 	expect(t, w.check(tk))
 	r.Branch("trunk")

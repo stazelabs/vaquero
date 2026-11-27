@@ -139,7 +139,8 @@ type TicketSummary struct {
 // todo with a current plan approval. Reasons holds the one reason it
 // isn't, phrased as what to do; it is empty when Ready, and for a ticket
 // that isn't a todo. Action is "ask" or "ask_again" (a plan approval),
-// absent when ready or when its files can't be checked; Epic is the key of
+// absent when ready or when its files can't be checked for any reason but
+// a changed repo setting (then "ask_again"); Epic is the key of
 // the ancestor to ask on, absent when the ticket itself is. Files is how
 // the ticket's repo files stand against its approval's pins, by path;
 // absent when it has none.

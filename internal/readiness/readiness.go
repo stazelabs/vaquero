@@ -11,10 +11,11 @@
 // Which approval counts (approval(t)): when t has a plan of its own, or a
 // plan approval was answered naming t itself, the latest answered plan
 // approval naming t. Otherwise the latest answered plan approval of the
-// nearest ancestor with a plan, which must list t among the descendants it
-// covered (core's childPins: every descendant without a plan of its own,
-// reached through descendants without one). With no such ancestor, t's
-// own approval is asked for. A cancelled ticket between t and that
+// nearest ancestor with a plan or with an answered plan approval naming
+// it (ruling R-Q12), which must list t among the descendants it covered
+// (core's childPins: every descendant without a plan of its own, reached
+// through descendants without one). With no such ancestor, t's own
+// approval is asked for. A cancelled ticket between t and that
 // ancestor, or the ancestor itself cancelled, covers nothing; a done one
 // still covers. Only decisions of the ticket's own project count, and a
 // move to another project deletes the moved tickets' approvals (core), so
@@ -33,7 +34,9 @@
 //   - "Changed since approval: {what}. Ask again." (ask_again);
 //   - "Its epic changed since approval: {what}. Ask again." (ask_again,
 //     Epic set);
-//   - "Can't check its files: {why}." (no action: never a pass).
+//   - "Can't check its files: {why}." (never a pass; ask_again when {why}
+//     is that the repository settings changed, Epic set when the files are
+//     the epic's, else no action).
 //
 // {what} is the first that changed of: the description, the plan, its
 // parent, a file path.
@@ -98,7 +101,8 @@ const (
 // Readiness is one ticket's answer. Reasons is never nil and holds at most
 // one reason; a ready ticket has none, and neither does a ticket that
 // isn't a todo (not ready all the same). Action is what to do (ActionAsk
-// or ActionAskAgain; "" when ready, or when the files can't be checked),
+// or ActionAskAgain; "" when ready, or when the files can't be checked
+// for any reason but a changed repo setting),
 // and Epic the key of the ancestor to ask on, when that is where to ask
 // ("" for the ticket itself). Files is how the ticket's own repo files
 // stand against its approval's pins, by path (nil when it has none).
@@ -253,21 +257,24 @@ func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
 		return out.again(Changed(what), "")
 	}
 	if why := s.why[t.ID]; why != "" {
-		return out.unchecked(why)
+		return out.unchecked(why, "")
 	}
 	out.Ready = true
 	return out
 }
 
-// approver is the nearest ancestor of t with a plan, when the chain to it
-// was read and no ticket on it, the ancestor included, is cancelled.
+// approver is the nearest ancestor of t with a plan or an answered plan
+// approval naming it (ruling R-Q12: the own-route condition, applied to
+// ancestors), when the chain to it was read and no ticket on it, the
+// ancestor included, is cancelled.
 func (s state) approver(t gen.ListReadinessTicketsRow) (gen.ListReadinessTicketsRow, bool) {
 	for depth := 1; t.ParentID.Valid && depth <= MaxDepth; depth++ {
 		p, ok := s.tickets[t.ParentID.String]
 		if !ok || p.StatusCategory == "cancelled" {
 			return p, false
 		}
-		if _, plan := s.plans[p.ID]; plan {
+		_, plan := s.plans[p.ID]
+		if _, answered := s.latest[p.ID]; plan || answered {
 			return p, true
 		}
 		t = p
@@ -325,7 +332,7 @@ func (s state) covered(t, e gen.ListReadinessTicketsRow, out Readiness) Readines
 		return out.again(EpicChanged(what), epic)
 	}
 	if why := s.why[e.ID]; why != "" {
-		return out.unchecked(why)
+		return out.unchecked(why, epic)
 	}
 	out.Ready = true
 	return out
@@ -362,7 +369,13 @@ func (r Readiness) again(reason, epic string) Readiness {
 	return r
 }
 
-func (r Readiness) unchecked(why string) Readiness {
+// unchecked is "Can't check its files: {why}.", with no action but for a
+// changed repo setting, where asking again (on epic, when the files are
+// its) pins the files as the repo is set now (ruling R-Q16).
+func (r Readiness) unchecked(why, epic string) Readiness {
 	r.Reasons = []string{Unchecked(why)}
+	if why == WhyRepoChanged {
+		r.Action, r.Epic = ActionAskAgain, epic
+	}
 	return r
 }
