@@ -241,8 +241,9 @@ func TestWorkflowExistenceCheck(t *testing.T) {
 	}
 }
 
-// notTools are snake_case words the texts may backtick that aren't tools.
-var notTools = []string{}
+// notTools are snake_case words the texts may backtick that aren't
+// Vaquero's tools: the browser extension's, which the qa audit drives.
+var notTools = []string{"javascript_tool", "read_console_messages", "read_network_requests", "resize_window", "tabs_create_mcp"}
 
 // formerTools are MCP tool names that were renamed or dropped (from every
 // revision of tools.go's toolNames); a text naming one fails even when it

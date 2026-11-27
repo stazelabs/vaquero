@@ -89,11 +89,13 @@ Vaquero ships the workflow as prompts: instructions an agent follows for a longe
 | Prompt | Arguments | What it does |
 |---|---|---|
 | `plan` | `ticket` | Writes the ticket's plan and asks you to approve it, without building anything |
-| `audit` | `project`, `kind` (`qa`, `hygiene`, `continuity` or `docs`) | Runs one kind of audit over the project and files what it finds as tickets, without fixing anything |
+| `audit` | `project`, `kind` (`qa`, `hygiene`, `continuity` or `docs`) | Runs one kind of audit over the project and, once you say yes, files each finding as its own Backlog ticket tagged `audit-KIND`, without fixing anything; the docs audit corrects the documentation itself and files only what it can't fix |
 
 To start one in Claude Code, with Vaquero connected as an MCP server called `vaquero` (see [MCP](/help/mcp#connecting-a-client)), type its slash command, such as `/mcp__vaquero__plan VAQ-12` or `/mcp__vaquero__audit VAQ qa`. Any other MCP client lists them as the server's prompts. Without MCP prompts, print the same text and hand it to the agent:
 
     vaquero workflow plan --ticket VAQ-12
     vaquero workflow audit --project VAQ --kind qa
 
-`vaquero workflow` lists the prompts, and needs no server. An audit follows the project's audit pack for its kind; `vaquero workflow pack KIND` prints Vaquero's template for one, with its headings to fill in.
+`vaquero workflow` lists the prompts, and needs no server. An audit follows the project's audit pack for its kind, kept in the project's repository at `.vaquero/audits/KIND.md` (or `.claude/agent-workflow/audits/KIND.md`); without one it stops and says how to start one. `vaquero workflow pack KIND` prints Vaquero's template, with its headings to fill in:
+
+    vaquero workflow pack hygiene > .vaquero/audits/hygiene.md

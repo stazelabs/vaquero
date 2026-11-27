@@ -84,7 +84,7 @@ func TestRenderArgs(t *testing.T) {
 
 	// A kind in another case is the kind.
 	out, err := Render(audit, map[string]string{"project": "VAQ", "kind": "QA"})
-	if err != nil || strings.Contains(out, "QA") || !strings.Contains(out, "qa") {
+	if err != nil || strings.Contains(out, "QA audit") || strings.Contains(out, "pack QA") || !strings.HasPrefix(out, "# Audit VAQ: qa\n") {
 		t.Fatalf("case: %v %q", err, out)
 	}
 
@@ -240,6 +240,31 @@ func TestPlanSteps(t *testing.T) {
 	}
 }
 
+// R-R4: the audit prompt looks for the pack in .vaquero/audits first, then
+// in .claude/agent-workflow/audits (update-docs.md too for docs), and with
+// neither stops with the ruling's message, word for word.
+func TestAuditPackLookup(t *testing.T) {
+	audit, _ := Get("audit")
+	for _, kind := range Packs() {
+		out, err := Render(audit, map[string]string{"project": "VAQ", "kind": kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, fallback := "`.vaquero/audits/"+kind+".md`", "`.claude/agent-workflow/audits/"+kind+".md`"
+		i, j := strings.Index(out, first), strings.Index(out, fallback)
+		if i < 0 || j < 0 || i > j {
+			t.Errorf("%s: the pack paths, in order: %d %d", kind, i, j)
+		}
+		stop := `"No audit pack for ` + kind + `: run vaquero workflow pack ` + kind + ` > .vaquero/audits/` + kind + `.md and fill it in."`
+		if !strings.Contains(out, stop) {
+			t.Errorf("%s: no stop message %s", kind, stop)
+		}
+		if !strings.Contains(out, "`.claude/agent-workflow/audits/update-docs.md`") {
+			t.Errorf("%s: the docs pack's old name", kind)
+		}
+	}
+}
+
 // Each template has its kind's headings, required and optional, in the
 // order docs/audit-packs.md lists them, and MissingHeadings finds what a
 // pack lacks.
@@ -276,4 +301,51 @@ func TestPackTemplatesHaveHeadings(t *testing.T) {
 	if MissingHeadings("perf", pack) != nil {
 		t.Fatal("perf")
 	}
+}
+
+// Task 5: the audit prompt's method: pack, sweep, verify, dedupe, the
+// owner's yes as one question, then one Backlog ticket per finding tagged
+// audit-{kind} with a tier. It names every heading of every kind, so a
+// heading renamed in one place fails here.
+func TestAuditSteps(t *testing.T) {
+	audit, _ := Get("audit")
+	out, err := Render(audit, map[string]string{"project": "VAQ", "kind": "hygiene"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"`search`", "`list_tickets`", "`ask_decision`", "kind question", "`create_ticket`", "Backlog", "`audit-hygiene`",
+		"tier", "`file:line`", "own ticket", "never fixes", "subagent", "Never drive the browser from a subagent",
+		"`kill PID`", "new tab", "native alert", "2 or 3 attempts", "Never push", "`list_statuses`",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the audit prompt lacks %q", want)
+		}
+	}
+	for _, kind := range Packs() {
+		for _, h := range headings[kind] {
+			if !strings.Contains(out, "**"+h.name+"**") {
+				t.Errorf("the audit prompt doesn't name %s's **%s**", kind, h.name)
+			}
+		}
+	}
+	// In order: the pack, verify, duplicates, the owner's yes, then filing.
+	idx := func(s string) int { return strings.Index(out, s) }
+	if a, b, c, d, e := idx("## 1. Find the pack"), idx("## 4. Verify"), idx("## 5. Look for duplicates"), idx("## 6. Ask the owner"), idx("## 7. File"); a < 0 || a > b || b > c || c > d || d > e {
+		t.Errorf("out of order: %d %d %d %d %d", a, b, c, d, e)
+	}
+	for _, p := range append([]string{out}, packTexts()...) {
+		if strings.Contains(p, "!") {
+			t.Errorf("an exclamation point in %.40q", p)
+		}
+	}
+}
+
+func packTexts() []string {
+	var out []string
+	for _, k := range Packs() {
+		b, _ := Pack(k)
+		out = append(out, b)
+	}
+	return out
 }
