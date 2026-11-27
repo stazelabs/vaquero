@@ -948,3 +948,32 @@ document.addEventListener("toggle", function (ev) {
     input.value = "";
   });
 })();
+
+// A refused form re-renders its page with 422 at the top, so its message
+// can be off-screen (VAQ-209). On load the first invalid field in main is
+// scrolled to the middle and focused (without a second scroll); with none,
+// the first error alert in main (never the toast, which sits outside it)
+// is scrolled into view. A page with neither never scrolls.
+(function () {
+  function show() {
+    var main = document.querySelector("main");
+    if (!main) {
+      return;
+    }
+    var field = main.querySelector('[aria-invalid="true"]');
+    if (field) {
+      field.scrollIntoView({ block: "center" });
+      field.focus({ preventScroll: true });
+      return;
+    }
+    var alert = main.querySelector('[role="alert"]');
+    if (alert) {
+      alert.scrollIntoView({ block: "center" });
+    }
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", show);
+  } else {
+    show();
+  }
+})();
