@@ -130,6 +130,24 @@ func TestFileViewRefusesBadInput(t *testing.T) {
 	}
 }
 
+// VAQ-164: a tag with U+009B reaches neither the API nor the page.
+func TestTicketCommitsHostileTag(t *testing.T) {
+	_, c, tok, repo := gitWorld(t)
+	repo.WriteCommit("a.go", "one\n", "Start (VAQ-1)")
+	repo.Tag("v9\u009b2J")
+	r := c.API("GET", "/api/v1/tickets/vaq-1/commits", tok, nil)
+	var tc api.TicketCommits
+	decode(t, r.Body, &tc)
+	if tc.Released != "v92J" || strings.ContainsRune(r.Body, '\u009b') || strings.Contains(r.Body, `\u009b`) {
+		t.Fatalf("api: %q %s", tc.Released, r.Body)
+	}
+	frag := c.Get("/t/VAQ-1/commits").Body
+	contains(t, frag, "Released in v92J")
+	if strings.ContainsRune(frag, '\u009b') {
+		t.Fatalf("page: %s", frag)
+	}
+}
+
 func TestTicketCommits(t *testing.T) {
 	e, c, tok, repo := gitWorld(t)
 	repo.WriteCommit("a.go", "one\n", "Start the board (VAQ-1)")

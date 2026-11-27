@@ -93,3 +93,17 @@ func TestCLIFetch(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-164: a tag name with U+009B never reaches the terminal.
+func TestCLICommitsHostileTag(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Board")
+	r := gittest.Repo(t)
+	r.WriteCommit("a.md", "x\n", "Start (VAQ-1)")
+	r.Tag("v1\u009b2J")
+	mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir)
+	out := mustCLI(t, "commits", "VAQ-1")
+	if strings.ContainsRune(out, '\u009b') || !strings.Contains(out, "Released in v12J.") {
+		t.Fatalf("%q", out)
+	}
+}

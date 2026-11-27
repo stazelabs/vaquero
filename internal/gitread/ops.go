@@ -579,7 +579,10 @@ func (g *Repo) FirstTagContaining(ctx context.Context, commit string) (string, e
 		return "", err
 	}
 	first, _, _ := strings.Cut(string(out), "\n")
-	return strings.TrimSpace(first), nil
+	// Git allows U+009B and the other C1 controls in a tag name, and a tag is
+	// untrusted text: it reaches a terminal and a page, so it is cleaned here,
+	// as commit subjects are.
+	return oneLine(strings.TrimSpace(first)), nil
 }
 
 // Compare counts the commits local (a local branch) has that remoteRef (a

@@ -67,8 +67,9 @@ func fetchable(u string) bool {
 
 // scrubURLs removes the userinfo of every scheme://user:secret@host URL
 // in s, so a credential written into a remote never reaches an error line.
-// A URL runs to the next space or quote; the userinfo is everything up to
-// the last "@" in it, which may cut a little more than needed (never less).
+// A URL runs to the next white space (a quote or angle bracket in a
+// password doesn't end it); the userinfo is everything up to the last "@"
+// in it, which may cut a little more than needed (never less).
 func scrubURLs(s string) string {
 	var b strings.Builder
 	for {
@@ -78,7 +79,7 @@ func scrubURLs(s string) string {
 		}
 		b.WriteString(s[:i+3])
 		s = s[i+3:]
-		end := strings.IndexAny(s, " \t\r\n'\"`<>")
+		end := strings.IndexAny(s, " \t\r\n")
 		if end < 0 {
 			end = len(s)
 		}

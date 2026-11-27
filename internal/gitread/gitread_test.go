@@ -716,3 +716,39 @@ func TestErrorCarriesGitsFirstLine(t *testing.T) {
 		t.Fatalf("line %q in %q", ge.Line, err)
 	}
 }
+
+// VAQ-164: git allows U+009B (CSI to a terminal) in a tag name; no tag name
+// Vaquero returns carries a control character.
+func TestHostileTagName(t *testing.T) {
+	r := gittest.Repo(t)
+	c := r.WriteCommit("a.md", "x\n", "one")
+	r.Tag("v1\u009b2Jx\u0085")
+	_, g := open(t, r)
+	got, err := g.FirstTagContaining(t.Context(), c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	noControls(t, "FirstTagContaining", got)
+	if got != "v12Jx" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// VAQ-164: a password holding a quote is scrubbed whole.
+func TestScrubURLsThroughAQuote(t *testing.T) {
+	for _, in := range []string{
+		`fatal: unable to access 'https://user:pa"ss'word@host/o/r.git/': nope`,
+		`fatal: could not read https://user:pa"ss@host/o/r`,
+		`fatal: https://user:pa<ss>word@host/r`,
+	} {
+		got := gitread.FirstLine(in)
+		for _, leak := range []string{"user", "pa\"ss", "ss'word", "pa<", "word@"} {
+			if strings.Contains(got, leak) {
+				t.Errorf("%q leaked %q: %q", in, leak, got)
+			}
+		}
+		if !strings.Contains(got, "host") {
+			t.Errorf("%q lost the host: %q", in, got)
+		}
+	}
+}
