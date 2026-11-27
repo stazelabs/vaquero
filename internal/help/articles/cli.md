@@ -4,7 +4,7 @@ section: command-line
 summary: Every vaquero command, its exit codes, servers, and how scripts and agents should use it.
 order: 1
 ---
-The `vaquero` program is also the command line. Commands other than `serve`, `version`, `docs`, `workflow` and the ones below that need no server or a stopped one talk to a Vaquero server over [the API](/help/api). With the built-in `local` server they talk to the server on this machine, and start it in the background if it isn't running, saying once on standard error where it is (`Vaquero is running at http://127.0.0.1:7878.`).
+The `vaquero` program is also the command line. Most commands talk to a Vaquero server over [the API](/help/api); `serve`, `version`, `docs`, `workflow` and the few marked below don't. With the built-in `local` server they talk to the server on this machine, and start it in the background if it isn't running, saying once on standard error where it is (`Vaquero is running at http://127.0.0.1:7878.`).
 
 ## Commands
 
