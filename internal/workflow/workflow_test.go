@@ -413,3 +413,66 @@ func TestVaqueroAuditPacks(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-181, review round 1: in Vaquero's qa pack every command after Boot's
+// own block fails closed. A bare `vaquero` would be Homebrew's, writing to
+// the owner's tracker, so outside the preamble, Never targets and Limits
+// (which name commands only to forbid them) no code calls it: the scratch
+// binary is "${QA:?}/bin/vaquero", the directory and port are ${QA:?} and
+// ${PORT:?}, and every fenced block after the first opens by sourcing the
+// env file.
+func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".vaquero", "audits", "qa.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const source = ". /ABSOLUTE/REPO/tmp/qa/env || exit 1"
+	bare := regexp.MustCompile(`(^|[\s;&|(` + "`" + `"])vaquero\s`)
+	spans := regexp.MustCompile("`[^`\n]+`")
+	unguarded := regexp.MustCompile(`\$\{?(QA|PORT)\b`)
+	check := func(n int, code string) {
+		if bare.MatchString(code) {
+			t.Errorf("qa.md line %d runs a bare vaquero: %s", n, code)
+		}
+		rest := strings.NewReplacer("${QA:?}", "", "${PORT:?}", "").Replace(code)
+		if unguarded.MatchString(rest) {
+			t.Errorf("qa.md line %d uses QA or PORT without :?: %s", n, code)
+		}
+	}
+	section, fenced, blocks, firstLine := "", false, 0, false
+	exempt := func() bool { return section == "" || section == "Never targets" || section == "Limits" }
+	for i, line := range strings.Split(string(b), "\n") {
+		n := i + 1
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced = !fenced
+			if fenced {
+				blocks++
+				firstLine = true
+			}
+			continue
+		}
+		if fenced {
+			if firstLine && blocks > 1 && line != source {
+				t.Errorf("qa.md line %d: block %d doesn't open with %q", n, blocks, source)
+			}
+			firstLine = false
+			if blocks > 1 {
+				check(n, line)
+			}
+			continue
+		}
+		if name, ok := strings.CutPrefix(line, "## "); ok {
+			section = name
+			continue
+		}
+		if exempt() {
+			continue
+		}
+		for _, s := range spans.FindAllString(line, -1) {
+			check(n, strings.Trim(s, "`"))
+		}
+	}
+	if blocks < 4 {
+		t.Fatalf("found %d fenced blocks", blocks)
+	}
+}

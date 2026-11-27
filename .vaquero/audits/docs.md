@@ -6,7 +6,7 @@ Vaquero's own docs pack, read by the audit workflow prompt (`vaquero workflow au
 
 [CLAUDE.md](../../CLAUDE.md) in full, and [.claude/rules/copy-voice.md](../../.claude/rules/copy-voice.md). CLAUDE.md's package map, "Commands" and "Hard invariants" are the ground the documents are checked against, and copy-voice.md's Help articles section is the articles' contract.
 
-Both are frozen for this audit (owner ruling for Run R: they are the controller's to change). Drift found in them, a package missing from the map, a route or command named wrongly, is filed as a ticket naming the line and the fix, never edited.
+Both are frozen, as a standing rule: CLAUDE.md and `.claude/` are edited only by the controller of a run, never by an audit. Drift found in them, a package missing from the map, a route or command named wrongly, is filed as a ticket naming the line and the fix.
 
 ## Ground truth
 

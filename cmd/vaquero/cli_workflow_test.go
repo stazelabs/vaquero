@@ -209,8 +209,14 @@ func TestWorkflowTextsNameOnlyWhatExists(t *testing.T) {
 
 // VAQ-181: Vaquero's own audit packs (.vaquero/audits) name only commands
 // and routes that exist, and no former tool: the qa pack's boot and seed
-// steps run as written. Their other snake_case words are column and
-// setting names, not tools, so only those three kinds are checked.
+// steps run as written. The qa pack calls the scratch binary by its path,
+// "${QA:?}/bin/vaquero", read here as vaquero so those commands are checked.
+//
+// check reports every backticked snake_case word as "the MCP tool …" when
+// it isn't a tool; that is right for the prompts, which name tools, but
+// the packs backtick column, setting and payload names (fetch_minutes,
+// body_before, ticket_ids), so those misses are dropped here. A former
+// tool's name still fails ("the former MCP tool …").
 func TestAuditPacksNameOnlyWhatExists(t *testing.T) {
 	ex := existing(t)
 	commands := 0
@@ -219,7 +225,7 @@ func TestAuditPacksNameOnlyWhatExists(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		missing, counts := ex.check(string(b))
+		missing, counts := ex.check(strings.ReplaceAll(string(b), `"${QA:?}/bin/vaquero"`, "vaquero"))
 		for _, m := range missing {
 			if !strings.HasPrefix(m, "the MCP tool ") {
 				t.Errorf("the %s pack names %s, which doesn't exist", k, m)
