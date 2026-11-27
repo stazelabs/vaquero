@@ -414,13 +414,14 @@ func TestVaqueroAuditPacks(t *testing.T) {
 	}
 }
 
-// VAQ-181, review round 1: in Vaquero's qa pack every command after Boot's
-// own block fails closed. A bare `vaquero` would be Homebrew's, writing to
-// the owner's tracker, so outside the preamble, Never targets and Limits
-// (which name commands only to forbid them) no code calls it: the scratch
-// binary is "${QA:?}/bin/vaquero", the directory and port are ${QA:?} and
-// ${PORT:?}, and every fenced block after the first opens by sourcing the
-// env file.
+// VAQ-181, review rounds 1 and 2: in Vaquero's qa pack every command fails
+// closed. A bare `vaquero`, or another install's binary, would talk to the
+// owner's tracker, so no code in the pack calls one: the scratch binary is
+// "${QA:?}/bin/vaquero" (Boot's own block, which sets it up, uses
+// "$qa/bin/vaquero"), the directory and port are ${QA:?} and ${PORT:?},
+// every fenced block after Boot's opens by sourcing the env file, and the
+// tracker's :7878 appears nowhere. Only a sentence in Never targets or
+// Limits that forbids ("never", "out of bounds") may name such a command.
 func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", ".vaquero", "audits", "qa.md"))
 	if err != nil {
@@ -428,19 +429,33 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 	}
 	const source = ". /ABSOLUTE/REPO/tmp/qa/env || exit 1"
 	bare := regexp.MustCompile(`(^|[\s;&|(` + "`" + `"])vaquero\s`)
+	binary := regexp.MustCompile(`\S*bin/vaquero\b`)
 	spans := regexp.MustCompile("`[^`\n]+`")
 	unguarded := regexp.MustCompile(`\$\{?(QA|PORT)\b`)
+	clause := regexp.MustCompile(`\.\s|;\s`)
+	allowed := []string{"${QA:?}/bin/vaquero", "$qa/bin/vaquero", "bin/vaquero"}
 	check := func(n int, code string) {
 		if bare.MatchString(code) {
 			t.Errorf("qa.md line %d runs a bare vaquero: %s", n, code)
+		}
+		for _, m := range binary.FindAllString(code, -1) {
+			if !slices.Contains(allowed, strings.TrimLeft(m, `"'(`)) {
+				t.Errorf("qa.md line %d runs another vaquero, %s: %s", n, m, code)
+			}
+		}
+		if strings.Contains(code, ":7878") {
+			t.Errorf("qa.md line %d names the tracker's port: %s", n, code)
 		}
 		rest := strings.NewReplacer("${QA:?}", "", "${PORT:?}", "").Replace(code)
 		if unguarded.MatchString(rest) {
 			t.Errorf("qa.md line %d uses QA or PORT without :?: %s", n, code)
 		}
 	}
+	forbids := func(line string) bool {
+		l := strings.ToLower(line)
+		return strings.Contains(l, "never") || strings.Contains(l, "out of bounds")
+	}
 	section, fenced, blocks, firstLine := "", false, 0, false
-	exempt := func() bool { return section == "" || section == "Never targets" || section == "Limits" }
 	for i, line := range strings.Split(string(b), "\n") {
 		n := i + 1
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
@@ -456,20 +471,25 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 				t.Errorf("qa.md line %d: block %d doesn't open with %q", n, blocks, source)
 			}
 			firstLine = false
-			if blocks > 1 {
-				check(n, line)
-			}
+			check(n, line)
 			continue
 		}
 		if name, ok := strings.CutPrefix(line, "## "); ok {
 			section = name
-			continue
 		}
-		if exempt() {
-			continue
-		}
-		for _, s := range spans.FindAllString(line, -1) {
-			check(n, strings.Trim(s, "`"))
+		// The exemption is per sentence (". " and "; " end one), and only
+		// in Never targets and Limits, so a permitted command beside a
+		// forbidding sentence is still checked.
+		for _, sentence := range clause.Split(line, -1) {
+			if (section == "Never targets" || section == "Limits") && forbids(sentence) {
+				continue
+			}
+			if strings.Contains(sentence, ":7878") {
+				t.Errorf("qa.md line %d names the tracker's port: %s", n, sentence)
+			}
+			for _, s := range spans.FindAllString(sentence, -1) {
+				check(n, strings.Trim(s, "`"))
+			}
 		}
 	}
 	if blocks < 4 {

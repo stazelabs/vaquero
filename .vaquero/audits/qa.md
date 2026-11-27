@@ -1,6 +1,6 @@
 # Audit pack: qa
 
-Vaquero's own qa pack, read by the audit workflow prompt (`vaquero workflow audit --project VAQ --kind qa`). Two Vaquero servers are in play on this machine: the owner's tracker (the Homebrew install on port 7878, where findings are filed through the MCP tools) and the scratch server this audit boots from the branch under test. They run the same program, so a slip of one environment variable points a command at the owner's data. Every rule below exists to keep the two apart.
+Vaquero's own qa pack, read by the audit workflow prompt when its kind is qa. Two Vaquero servers are in play on this machine: the owner's tracker (the Homebrew install on port 7878, where findings are filed through the MCP tools) and the scratch server this audit boots from the branch under test. They run the same program, so a slip of one environment variable points a command at the owner's data. Every rule below exists to keep the two apart.
 
 ## Standards
 
@@ -19,7 +19,7 @@ A command whose output names any of these is a stop.
 - **The owner's data directory**: `~/Library/Application Support/vaquero` on macOS, `${XDG_DATA_HOME:-~/.local/share}/vaquero` on Linux, and everything in it (`vaquero.db`, `token`, `backups/`, `vaquero.env`, `vaquero.log`, `attachments/`).
 - **The owner's saved CLI servers**: `config.json` in the user config directory (`~/Library/Application Support/vaquero/config.json` on macOS, `~/.config/vaquero/config.json` on Linux). Never run `vaquero server new`, `vaquero server use` or `vaquero server delete`, and never pass `--server` with a saved server's name.
 - **The Homebrew service** (`brew services`, labels `sh.brew.vaquero`, `homebrew.mxcl.vaquero`, `homebrew.vaquero`) and its log, `$(brew --prefix)/var/log/vaquero.log`. Never run `brew` at all.
-- **The installed `vaquero`** (Homebrew's, on PATH as `/opt/homebrew/bin/vaquero` or similar) and any `vaquero` command run without the scratch environment: it resolves the saved profile, which is the tracker, and starts or restarts the owner's server.
+- **The installed `vaquero`**: never run Homebrew's (on PATH as `/opt/homebrew/bin/vaquero` or similar) or any `vaquero` command without the scratch environment, which resolves the saved profile (the tracker) and starts or restarts the owner's server.
 - **The developer's own server**: `make dev` on port 7879, its data `./data`, `.env.local`, `tmp/dev.log`. Never run `make dev` or `make db-reset`.
 - **Any git remote.** The scratch repository has none; never add one, never fetch.
 
@@ -60,7 +60,7 @@ echo "qa=$qa port=$port pid=$(cat "$repo/tmp/qa/pid")"
 
 Then check:
 
-- **Health:** `curl -fsS "http://127.0.0.1:${PORT:?}/healthz"` prints `ok` (`GET /healthz`, `handlers.Healthz`), and `tmp/qa/pid` holds one PID. If either fails, read `${QA:?}/serve.log` and stop.
+- **Health:** `curl -fsS "http://127.0.0.1:${PORT:?}/healthz"` prints `ok` (`GET /healthz`, `handlers.Healthz`), and `/ABSOLUTE/REPO/tmp/qa/pid` holds one PID. If either fails, read `${QA:?}/serve.log` and stop.
 - **Which server:** `"${QA:?}/bin/vaquero" version` prints `0.0.0-dev` and `"${QA:?}/bin/vaquero" logs --path` prints a path under the scratch directory. Anything naming port 7878 or the owner's data directory is a stop.
 - **Log:** `${QA:?}/serve.log`, slog text: `time=… level=INFO msg=request method=GET path=/p/QA status=200 dur_ms=3 request_id=…`. Requests to `/healthz` and `/static/` log at debug and don't appear. A server the CLI starts by itself (when the first one died) logs to `${QA:?}/data/vaquero.log` instead; check both.
 - **Sign in:** none. Local mode has no sign-in: the browser is the owner at `http://127.0.0.1:PORT/`, with the scratch port. The CLI reads the local token from the scratch data directory by itself; never print it.
@@ -108,12 +108,12 @@ Flow slices:
 |---|---|---|
 | A | Projects | `/` as cards and as list (`?view=cards`, `?view=list`, remembered), a card's quick settings (name, description, icon choices loaded when opened), New project (`/projects/new`) with a bad key and a good one, an archived project's row |
 | B | Focus | `/p/QA/`: Next, Waiting (with its reasons: blocked, claimed, open sub-tickets), In flight, Finished; the Mine and Agents chips, the Priority, Milestone and Tags menus, a `?tag=` naming no tag ("No tag X in this project."); the first-run steps on an empty project |
-| C | Board | `/p/QA/board`: drag a card between columns and within one (it persists after reload), the backlog and cancelled rails, the milestones panel, filters kept across the Focus, Board and List tabs; a change made by a scratch CLI command shows on the open board without a reload |
-| D | List | `/p/QA/list`: groups open and closed (kept across reloads), the Status menu, done and cancelled groups paged by 50 (seed more done tickets through the CLI to test it) |
-| E | Ticket | New ticket (`/p/QA/new`), the ticket page `/t/QA-1`: edit and save, a stale save (edit `QA-1` through the CLI between loading the form and saving: expect the conflict banner, not a lost edit), comments (add, edit, delete behind the confirm dialog), links (the folded Add link form, suggestions by number and by title words), sub-tickets, history with Show changes for a description edit, a claimed ticket's note, Move to another project behind the confirm dialog (move `QAX-1`, with its sub-ticket, into `QA`; never a ticket another slice names), attachments (upload through `"${QA:?}/bin/vaquero" attachment new QA-1 FILE`; the gallery and rows, open and delete) |
+| C | Board | `/p/QA/board`: drag a card between columns and within one (it persists after reload), the backlog and cancelled rails, the milestones panel, filters kept across the Focus, Board and List tabs; a change made by `"${QA:?}/bin/vaquero" ticket move QA-1 "In progress"` shows on the open board without a reload |
+| D | List | `/p/QA/list`: groups open and closed (kept across reloads), the Status menu, done and cancelled groups paged by 50 (seed 51 done tickets with `for i in $(seq 51); do "${QA:?}/bin/vaquero" ticket new QA "QA done $i" --status Done >/dev/null; done`) |
+| E | Ticket | New ticket (`/p/QA/new`), the ticket page `/t/QA-1`: edit and save, a stale save (run `"${QA:?}/bin/vaquero" ticket edit QA-1 --title "QA first ticket, edited"` between loading the form and saving: expect the conflict banner, not a lost edit), comments (add, edit, delete behind the confirm dialog), links (the folded Add link form, suggestions by number and by title words), sub-tickets, history with Show changes for a description edit, a claimed ticket's note, Move to another project behind the confirm dialog (move `QAX-1`, with its sub-ticket, into `QA`, not a ticket another slice names), attachments (upload through `"${QA:?}/bin/vaquero" attachment new QA-1 FILE`; the gallery and rows, open and delete) |
 | F | Project settings | `/p/QA/settings`: name and description, statuses (add, rename, up, down, delete; deleting one in use is refused), milestones (edit, close, reopen), tags (rename, rename onto another to see the merge button, delete), icon (monogram, a glyph), project links (depends on, relates, a loop refused), archive and restore. The key change behind the confirm dialog only on `QAX`, after slice E's move. Delete only a `QA-` project made for it |
 | G | Agent workflow | `QAW`: the workflow switch and tier map in settings (owner only), the triage statuses button, readiness on `/t/QAW-2` ("Ask for plan approval.") and Ask, the plan on `/t/QAW-1` with Show changes after a second `"${QA:?}/bin/vaquero" plan save`, the approval answer form and Ask again, and Focus's Waiting reasons with the workflow on |
-| H | Repository | `QAW` settings' Repository section (path, main branch, fetch minutes; never set a remote and never press Fetch now), `/p/QAW/files/docs/spec.md` with its heading anchor, the ticket's References and Commits sections, "Changed since approval" after an approved plan's file changes in a new commit |
+| H | Repository | `QAW` settings' Repository section (path, main branch, fetch minutes; no remote and no Fetch now, under Limits), `/p/QAW/files/docs/spec.md` with its heading anchor, the ticket's References and Commits sections, "Changed since approval" after an approved plan's file changes in a new commit (`printf 'More.\n' >> "${QA:?}/repo/docs/spec.md" && git -C "${QA:?}/repo" -c user.name=QA -c user.email=qa@example.invalid commit -qam "QA spec edit"`) |
 | I | Search and help | the header search box (`/` focuses it), `/search` with ticket, comment and help hits, `/help`, an article, its `.md` form, the Markdown help link under a description box |
 | J | Activity and profile | `/activity` (newest first, reorders folded), `/profile`: the display name (a name an agent has is refused), the avatar (upload with `"${QA:?}/bin/vaquero" me --avatar FILE`, then remove behind the confirm dialog) |
 | K | Admin | `/admin` (version, data directory, Storage section), `/admin/backups` (Snapshot now, then delete that snapshot), `/admin/tokens` (create a `QA-` token and revoke it), `/admin/mcp` |
@@ -146,7 +146,7 @@ And the Host check: `curl -s -o /dev/null -w '%{http_code}' -H 'Host: qa.example
 - **No offline maintenance**, even on scratch data: `vaquero import`, `vaquero backup restore`, `vaquero backup compact`, `vaquero attachment move` and `vaquero stop` are out of bounds (`stop` and the brew logic are a stop risk if an environment slips). Report those flows as untested.
 - **Tokens:** a token the Admin tokens page shows once is never read back from the page, copied or echoed; revoke it straight after.
 - **Destructive actions** (delete a project, delete a status, delete a snapshot, revoke a token) only on `QA-` data you made on the scratch server.
-- **No exports to the repository**: `vaquero export` writes only under the scratch directory.
+- **Exports stay in the scratch directory**: `"${QA:?}/bin/vaquero" export "${QA:?}/qa-export.tar.gz"`, so no export lands in the repository.
 - **File pickers** are the owner's: upload through the CLI instead.
 - Give a live change 5 seconds to arrive (the stream polls once a second) before calling it missing.
 
