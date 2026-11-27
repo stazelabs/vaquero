@@ -64,6 +64,7 @@ agents:
   decisions    list questions, rulings and approvals
   decision     show, ask, rule on, answer or withdraw a decision
   mcp          an MCP server on standard input and output, for agent clients
+  workflow     print a workflow prompt or an audit pack template (no server)
 
 setup:
   me           show or edit your profile: name and avatar

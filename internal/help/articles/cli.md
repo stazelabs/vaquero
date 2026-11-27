@@ -78,6 +78,9 @@ Every command that talks to a server takes `--server NAME`, `--agent NAME` and `
 | `vaquero decision answer ID [OPTION] [--text TEXT] [--note TEXT] [--words TEXT]` | Answer as the owner: an option by label, or `--text`. With `--agent`, the answer is relayed by that agent and needs `--words`, the owner's answer quoted. On a ruling, it overrules |
 | `vaquero decision withdraw ID` | Withdraw an open question or approval |
 | `vaquero mcp [--agent NAME] [--model ID]` | An MCP server on standard input and output, for agent clients that launch one; `--model` (or `VAQUERO_MODEL`) names the model the session runs, recorded with each change; see [MCP](/help/mcp) |
+| `vaquero workflow` | List the [workflow prompts](/help/agent-workflow#workflow-prompts) with their arguments; needs no server |
+| `vaquero workflow NAME [--ticket TICKET] [--project KEY] [--kind KIND]` | Print a workflow prompt with its arguments filled in, the same text an MCP client gets: `plan --ticket TICKET`, or `audit --project KEY --kind KIND`, where KIND is `qa`, `hygiene`, `continuity` or `docs`. A missing or wrong argument exits 2 naming it: "Give --kind: qa, hygiene, continuity or docs." Needs no server |
+| `vaquero workflow pack KIND` | Print an audit pack template, `qa`, `hygiene`, `continuity` or `docs`, to copy into a project and fill in; needs no server |
 | `vaquero token new NAME [--agent AGENT]` / `list` / `delete PREFIX` | API tokens; a new token is printed once. With `--agent` the token is made for that agent and acts as it (see [API tokens](/help/api-tokens#making-a-token)) |
 | `vaquero server new NAME URL TOKEN` / `list` / `use NAME` / `delete NAME` | Servers to talk to; `-` as the token reads it from standard input, keeping it out of your shell history |
 
