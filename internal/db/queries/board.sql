@@ -91,3 +91,36 @@ JOIN statuses s ON s.id = t.status_id
 LEFT JOIN actors ca ON ca.id = t.claimed_by
 WHERE t.assignee_id = ? AND p.archived_at IS NULL AND s.category NOT IN ('done', 'cancelled')
 ORDER BY p.name, p.key, CASE WHEN t.priority = 0 THEN 5 ELSE t.priority END, t.updated_at DESC, t.number;
+
+-- name: ListInboxReview :many
+-- The inbox's Review (ruling T-R5): every ticket in an in-review status of
+-- a workflow-on project not archived, the longest waiting first, with who
+-- last moved it (its newest status change, else who created or moved it
+-- to this project).
+SELECT t.id, t.number, t.title, t.priority, t.status_changed_at,
+       p.id AS project_id, p.key AS project_key, s.name AS status_name,
+       CAST(coalesce((SELECT coalesce(nullif(a.display_name, ''), a.name) FROM events e
+                 JOIN actors a ON a.id = e.actor_id
+                 WHERE e.ticket_id = t.id AND (e.kind IN ('ticket.created', 'ticket.moved')
+                   OR (e.kind = 'ticket.updated' AND json_extract(e.payload, '$.changes.status') IS NOT NULL))
+                 ORDER BY e.seq DESC LIMIT 1), '') AS TEXT) AS moved_by
+FROM tickets t
+JOIN projects p ON p.id = t.project_id
+JOIN statuses s ON s.id = t.status_id
+WHERE s.category = 'in_review' AND p.workflow = 1 AND p.archived_at IS NULL
+ORDER BY t.status_changed_at, p.key, t.number;
+
+-- name: ListRecentLapses :many
+-- The inbox's Check (ruling T-R5): claims that lapsed since the given
+-- instant (events_claim_lapsed) on tickets not done or cancelled, in
+-- projects not archived, oldest first.
+SELECT e.seq, e.at, coalesce(nullif(a.display_name, ''), a.name) AS agent_name,
+       t.id AS ticket_id, t.number, t.title, p.id AS project_id, p.key AS project_key
+FROM events e
+JOIN actors a ON a.id = e.actor_id
+JOIN tickets t ON t.id = e.ticket_id
+JOIN projects p ON p.id = t.project_id
+JOIN statuses s ON s.id = t.status_id
+WHERE e.kind = 'ticket.claim_lapsed' AND e.at >= sqlc.arg(since)
+  AND s.category NOT IN ('done', 'cancelled') AND p.archived_at IS NULL
+ORDER BY e.seq;

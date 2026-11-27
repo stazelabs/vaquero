@@ -16,8 +16,10 @@ import (
 )
 
 const (
-	// htmxConfig turns off the htmx features the CSP forbids.
-	htmxConfig   = `{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}`
+	// htmxConfig turns off the htmx features the CSP forbids, and settles a
+	// swap at once: new content is bound (hx-post and the rest) in the same
+	// task, so a click just after a live refresh never posts the page.
+	htmxConfig   = `{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false,"defaultSettleDelay":0}`
 	h1Class      = "text-lg font-semibold tracking-tight text-ink"
 	h2Class      = "text-base font-semibold text-ink"
 	btnBase      = "inline-flex h-8 items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 max-sm:h-10.5"
@@ -158,6 +160,9 @@ var shortcuts = [][2]string{
 	{"g l", "List"},
 	{"j / k", "Focus the next or previous card"},
 	{"enter", "Open the focused card"},
+	{"1–9", "In the inbox, choose an option"},
+	{"n", "In the inbox, add a note"},
+	{"o", "In the inbox, open the ticket"},
 	{"?", "This list"},
 	{"esc", "Close"},
 }

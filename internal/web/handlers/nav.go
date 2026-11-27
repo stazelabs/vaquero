@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
@@ -27,9 +26,11 @@ func Nav(d Deps) func(http.Handler) http.Handler {
 					n.Projects = append(n.Projects, templates.NavProject{Key: p.Key, Name: p.Name,
 						Icon: templates.ProjectIconView{ID: p.ID, Key: p.Key, Name: p.Name, Kind: p.IconKind, Glyph: p.IconGlyph}})
 				}
-				if n.InboxCount, err = inboxCount(ctx, d); err != nil {
-					d.Logger.WarnContext(ctx, "read sidebar", "err", err)
-					return templates.Nav{}, err
+				// A failed count keeps the projects and shows no count.
+				if c, err := d.R.CountInbox(ctx); err != nil {
+					d.Logger.WarnContext(ctx, "read inbox count", "err", err)
+				} else {
+					n.InboxCount = int(c)
 				}
 				return n, nil
 			}))
@@ -37,10 +38,6 @@ func Nav(d Deps) func(http.Handler) http.Handler {
 		})
 	}
 }
-
-// inboxCount is the sidebar's inbox count (ruling T-R6); the inbox fills
-// it in (VAQ-172).
-func inboxCount(context.Context, Deps) (int, error) { return 0, nil }
 
 // placeOf is the place path names: /p/{key} is the project's Focus,
 // /p/{key}/board, /list and /settings those views, any other page of a

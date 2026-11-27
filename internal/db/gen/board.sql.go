@@ -150,6 +150,70 @@ func (q *Queries) ListBoardTickets(ctx context.Context, arg ListBoardTicketsPara
 	return items, nil
 }
 
+const listInboxReview = `-- name: ListInboxReview :many
+SELECT t.id, t.number, t.title, t.priority, t.status_changed_at,
+       p.id AS project_id, p.key AS project_key, s.name AS status_name,
+       CAST(coalesce((SELECT coalesce(nullif(a.display_name, ''), a.name) FROM events e
+                 JOIN actors a ON a.id = e.actor_id
+                 WHERE e.ticket_id = t.id AND (e.kind IN ('ticket.created', 'ticket.moved')
+                   OR (e.kind = 'ticket.updated' AND json_extract(e.payload, '$.changes.status') IS NOT NULL))
+                 ORDER BY e.seq DESC LIMIT 1), '') AS TEXT) AS moved_by
+FROM tickets t
+JOIN projects p ON p.id = t.project_id
+JOIN statuses s ON s.id = t.status_id
+WHERE s.category = 'in_review' AND p.workflow = 1 AND p.archived_at IS NULL
+ORDER BY t.status_changed_at, p.key, t.number
+`
+
+type ListInboxReviewRow struct {
+	ID              string
+	Number          int64
+	Title           string
+	Priority        int64
+	StatusChangedAt string
+	ProjectID       string
+	ProjectKey      string
+	StatusName      string
+	MovedBy         string
+}
+
+// The inbox's Review (ruling T-R5): every ticket in an in-review status of
+// a workflow-on project not archived, the longest waiting first, with who
+// last moved it (its newest status change, else who created or moved it
+// to this project).
+func (q *Queries) ListInboxReview(ctx context.Context) ([]ListInboxReviewRow, error) {
+	rows, err := q.db.QueryContext(ctx, listInboxReview)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListInboxReviewRow{}
+	for rows.Next() {
+		var i ListInboxReviewRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Title,
+			&i.Priority,
+			&i.StatusChangedAt,
+			&i.ProjectID,
+			&i.ProjectKey,
+			&i.StatusName,
+			&i.MovedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMilestoneProgress = `-- name: ListMilestoneProgress :many
 SELECT m.id, m.name, m.due_on, m.closed_at,
        CAST(coalesce(sum(s.category = 'done'), 0) AS INTEGER) AS done,
@@ -342,6 +406,65 @@ func (q *Queries) ListParentsWithOpenSubTickets(ctx context.Context, projectID s
 			return nil, err
 		}
 		items = append(items, parent_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecentLapses = `-- name: ListRecentLapses :many
+SELECT e.seq, e.at, coalesce(nullif(a.display_name, ''), a.name) AS agent_name,
+       t.id AS ticket_id, t.number, t.title, p.id AS project_id, p.key AS project_key
+FROM events e
+JOIN actors a ON a.id = e.actor_id
+JOIN tickets t ON t.id = e.ticket_id
+JOIN projects p ON p.id = t.project_id
+JOIN statuses s ON s.id = t.status_id
+WHERE e.kind = 'ticket.claim_lapsed' AND e.at >= ?1
+  AND s.category NOT IN ('done', 'cancelled') AND p.archived_at IS NULL
+ORDER BY e.seq
+`
+
+type ListRecentLapsesRow struct {
+	Seq        int64
+	At         string
+	AgentName  string
+	TicketID   string
+	Number     int64
+	Title      string
+	ProjectID  string
+	ProjectKey string
+}
+
+// The inbox's Check (ruling T-R5): claims that lapsed since the given
+// instant (events_claim_lapsed) on tickets not done or cancelled, in
+// projects not archived, oldest first.
+func (q *Queries) ListRecentLapses(ctx context.Context, since string) ([]ListRecentLapsesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentLapses, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecentLapsesRow{}
+	for rows.Next() {
+		var i ListRecentLapsesRow
+		if err := rows.Scan(
+			&i.Seq,
+			&i.At,
+			&i.AgentName,
+			&i.TicketID,
+			&i.Number,
+			&i.Title,
+			&i.ProjectID,
+			&i.ProjectKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

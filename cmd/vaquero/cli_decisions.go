@@ -97,7 +97,7 @@ func cmdDecision(ctx context.Context, stdout, stderr io.Writer, args []string) i
 			if err := c.call(ctx, "GET", "/api/v1/decisions/"+url.PathEscape(pos[1]), nil, &d); err != nil {
 				return err
 			}
-			c.emit(d, func() { printDecision(c.stdout, d) })
+			c.emit(d, func() { printDecision(c.stdout, d, strings.TrimRight(c.client.BaseURL, "/")) })
 		case "withdraw":
 			if err := c.call(ctx, "POST", "/api/v1/decisions/"+url.PathEscape(pos[1])+"/withdraw", nil, &d); err != nil {
 				return err
@@ -175,8 +175,9 @@ func kindWords(d api.Decision) string {
 }
 
 // printDecision writes a decision for people: what was asked, the
-// options, and the answer with who gave it and how.
-func printDecision(w io.Writer, d api.Decision) {
+// options, the answer with who gave it and how, and, while it waits, where
+// to answer it in the web (the inbox, through /decisions/{id}).
+func printDecision(w io.Writer, d api.Decision, server string) {
 	state := strings.ToUpper(d.State[:1]) + d.State[1:]
 	fmt.Fprintf(w, "%s · %s · %s · %s\n", d.ID, strings.ToUpper(kindWords(d)[:1])+kindWords(d)[1:], state, d.Project)
 	if len(d.Tickets) > 0 {
@@ -236,5 +237,9 @@ func printDecision(w io.Writer, d api.Decision) {
 	}
 	for _, a := range d.Approvals {
 		fmt.Fprintf(w, "Approved %s at plan revision %d\n", a.Ticket, a.PlanRevision)
+	}
+	// An open question or approval: where the owner answers it (VAQ-172).
+	if d.State == "open" && d.Kind != "ruling" {
+		fmt.Fprintf(w, "\nAnswer in the web: %s/decisions/%s\n", server, d.ID)
 	}
 }

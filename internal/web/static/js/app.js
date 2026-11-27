@@ -215,8 +215,9 @@ window.vqDragging = false;
   // A live part is busy, and its refresh waits, while swapping it would
   // cost the owner something: a field in it has focus or holds unsent text
   // (a note being typed), a pointer is down in it (a click between press
-  // and release must land on the same button), or the confirm dialog is
-  // open (its form may be in the part). A busy part is flagged once
+  // and release must land on the same button), focus is in a refusal it
+  // shows (data-hold), or the confirm dialog is open (its form may be in
+  // the part). A busy part is flagged once
   // (data-vq-deferred), with no listener per skip; one document-level
   // check refreshes the flagged parts when they are no longer busy.
   var pointerIn = null;
@@ -230,6 +231,11 @@ window.vqDragging = false;
     }
     var active = document.activeElement;
     if (active && el.contains(active) && active.matches("input, textarea, select, [contenteditable]")) {
+      return true;
+    }
+    // A refusal shown in place (an inbox card) waits to be read: the part
+    // holds while focus is in it.
+    if (active && el.contains(active) && active.closest("[data-hold]")) {
       return true;
     }
     var fields = el.querySelectorAll("input, textarea");
@@ -275,6 +281,10 @@ window.vqDragging = false;
   if (confirmDialog) {
     confirmDialog.addEventListener("close", recheckSoon);
   }
+  // A write answered in place (an inbox card) asks for a refresh with
+  // HX-Trigger: vq:refresh, which goes through the same busy rule as the
+  // stream's, so a note typed elsewhere on the page waits.
+  document.body.addEventListener("vq:refresh", refresh);
   // MCP calls refresh only the parts that follow them (the MCP activity page).
   function refreshMCP() {
     document.querySelectorAll("[data-live-mcp]").forEach(function (el) {
@@ -384,6 +394,9 @@ window.vqDragging = false;
   var ok = dialog.querySelector("[data-confirm-ok]");
   var cancel = dialog.querySelector("[data-confirm-cancel]");
   var pending = null;
+  // Capture, and stop the submit there, so a form that posts with htmx
+  // (an inbox card's Withdraw) asks too: htmx's own listener on the form
+  // runs only for the confirmed submit.
   document.addEventListener("submit", function (ev) {
     var form = ev.target;
     if (!form.matches || !form.matches("form[data-confirm]")) {
@@ -394,6 +407,7 @@ window.vqDragging = false;
       return; // confirmed: let it post
     }
     ev.preventDefault();
+    ev.stopPropagation();
     var submitter = ev.submitter || null;
     pending = { form: form, submitter: submitter };
     message.textContent = form.dataset.confirm;
@@ -401,7 +415,7 @@ window.vqDragging = false;
     ok.textContent = label || "Confirm";
     dialog.showModal();
     cancel.focus();
-  });
+  }, true);
   cancel.addEventListener("click", function () { dialog.close(); });
   dialog.addEventListener("click", function (ev) {
     if (ev.target !== dialog) {
@@ -487,6 +501,13 @@ document.addEventListener("toggle", function (ev) {
   }
 }, true);
 
+// What a card's focus lands on: the card itself when it is marked
+// data-card-focus (an inbox card, whose first link is a ticket), else its
+// first link.
+window.vqFocusTarget = function (card) {
+  return card.matches("[data-card-focus]") ? card : card.querySelector("a");
+};
+
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
 // g f Focus, g b board, g l list, g i inbox, j/k next/previous card (enter
 // on its focused link opens it), ? shortcuts.
@@ -516,7 +537,8 @@ document.addEventListener("toggle", function (ev) {
       return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
     });
   }
-  // j and k move real focus to the next or previous card's link, starting
+  // j and k move real focus to the next or previous card's link (or the
+  // card itself, for one marked data-card-focus: an inbox card), starting
   // from the card that holds focus (after Tab or a click, too). The card
   // draws its ring while its link is focused (focus-within in its class).
   function focusCard(step) {
@@ -527,7 +549,7 @@ document.addEventListener("toggle", function (ev) {
     var active = document.activeElement;
     var at = active && active.closest ? list.indexOf(active.closest("[data-card]")) : -1;
     var next = at < 0 ? 0 : Math.max(0, Math.min(list.length - 1, at + step));
-    var link = list[next].querySelector("a");
+    var link = window.vqFocusTarget(list[next]);
     if (link) {
       link.focus({ preventScroll: true });
     }
@@ -617,7 +639,7 @@ document.addEventListener("toggle", function (ev) {
       return;
     }
     var card = document.querySelector('[data-card="' + refocus + '"]');
-    var link = card ? card.querySelector("a") : null;
+    var link = card ? window.vqFocusTarget(card) : null;
     refocus = "";
     if (link && (document.activeElement === document.body || !document.activeElement)) {
       link.focus({ preventScroll: true });
@@ -822,21 +844,24 @@ document.addEventListener("toggle", function (ev) {
   });
 })();
 
-// Focus: a live refresh replaces #focus, and the disclosures that were
-// open ("N more ready", "M waiting", a group's "N more") stay open.
+// Focus and the inbox: a live refresh replaces #focus or #inbox, and the
+// disclosures that were open ("N more ready", "M waiting", a group's "N
+// more"; a ruling, Show plan, Answered today) stay open.
 (function () {
   var keep = null;
+  var keepID = "";
   document.body.addEventListener("htmx:beforeSwap", function (ev) {
     var target = ev.detail && ev.detail.target;
-    if (!target || target.id !== "focus" || !ev.detail.shouldSwap) {
+    if (!target || (target.id !== "focus" && target.id !== "inbox") || !ev.detail.shouldSwap) {
       return;
     }
+    keepID = target.id;
     keep = Array.prototype.map.call(target.querySelectorAll("details[data-keep][open]"), function (d) {
       return d.dataset.keep;
     });
   });
   document.body.addEventListener("htmx:afterSwap", function () {
-    var focus = document.getElementById("focus");
+    var focus = document.getElementById(keepID);
     if (!focus || keep === null) {
       return;
     }
@@ -1182,5 +1207,157 @@ document.addEventListener("toggle", function (ev) {
     document.addEventListener("DOMContentLoaded", show);
   } else {
     show();
+  }
+})();
+
+// The inbox (VAQ-172). Its keys, only on [data-inbox] and never while
+// typing in a field (Review Focus 5): 1 to 9 choose the focused card's
+// option, n opens its note, o opens its first ticket (j and k are the
+// shortcuts' own). When a card leaves after an answer, focus goes to the
+// next card; a refused card comes back focused, so it holds (data-hold).
+// Dismiss hides a lapsed claim in this browser (vq:inbox-dismissed: event
+// seq to when it was dismissed, pruned after 24 hours, when Check has
+// dropped the lapse anyway).
+(function () {
+  if (!document.querySelector("[data-inbox]")) {
+    return;
+  }
+  function typing(el) {
+    return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
+  }
+  function focusedCard() {
+    var a = document.activeElement;
+    var card = a && a.closest ? a.closest("[data-decision]") : null;
+    return card && card.closest("[data-inbox]") ? card : null;
+  }
+  function visibleCards() {
+    return Array.prototype.slice.call(document.querySelectorAll("[data-inbox] [data-card]")).filter(function (el) {
+      return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
+    });
+  }
+  document.addEventListener("keydown", function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || typing(ev.target) || document.querySelector("dialog[open]")) {
+      return;
+    }
+    var card = focusedCard();
+    if (!card) {
+      return;
+    }
+    var k = ev.key;
+    if (k >= "1" && k <= "9") {
+      var b = card.querySelector('[data-option="' + k + '"]');
+      if (b) {
+        b.click();
+      }
+    } else if (k === "n") {
+      var note = card.querySelector("details[data-note]");
+      if (note) {
+        note.open = true;
+        var box = note.querySelector("textarea");
+        if (box) {
+          box.focus();
+        }
+      }
+    } else if (k === "o") {
+      var link = card.querySelector("[data-ticket-link]");
+      if (link) {
+        window.location.href = link.href;
+      }
+    } else {
+      return;
+    }
+    ev.preventDefault();
+  });
+  // A card answered away: focus the one after it, else the one before.
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    var target = ev.detail && ev.detail.target;
+    if (!target || !target.matches || !target.matches("[data-decision]") || !ev.detail.shouldSwap) {
+      return;
+    }
+    if ((ev.detail.xhr.responseText || "").trim() !== "") {
+      // Refused: the card again, with why; focus it so it holds.
+      var id = target.id;
+      setTimeout(function () {
+        var again = document.getElementById(id);
+        if (again) {
+          again.focus({ preventScroll: true });
+        }
+      }, 0);
+      return;
+    }
+    var list = visibleCards();
+    var at = list.indexOf(target);
+    var next = list[at + 1] || list[at - 1] || null;
+    setTimeout(function () {
+      if (next && next.isConnected) {
+        window.vqFocusTarget(next).focus({ preventScroll: true });
+        next.scrollIntoView({ block: "nearest" });
+      }
+    }, 0);
+  });
+
+  var key = "vq:inbox-dismissed";
+  var day = 24 * 60 * 60 * 1000;
+  function load() {
+    try {
+      var all = JSON.parse(window.localStorage.getItem(key) || "{}") || {};
+      var kept = {};
+      Object.keys(all).forEach(function (seq) {
+        if (Date.now() - all[seq] < day) {
+          kept[seq] = all[seq];
+        }
+      });
+      return kept;
+    } catch (e) {
+      return {};
+    }
+  }
+  function save(d) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(d));
+    } catch (e) {
+      // the row still hides for this page
+    }
+  }
+  function apply() {
+    var d = load();
+    save(d); // pruned
+    document.querySelectorAll('[data-inbox-group="check"]').forEach(function (group) {
+      var shown = 0;
+      group.querySelectorAll("[data-lapse]").forEach(function (row) {
+        row.hidden = !!d[row.dataset.lapse];
+        if (!row.hidden) {
+          shown++;
+        }
+        var b = row.querySelector("[data-dismiss]");
+        if (b) {
+          b.hidden = false;
+        }
+      });
+      group.hidden = shown === 0;
+      var count = group.querySelector("[data-group-count]");
+      if (count) {
+        count.textContent = String(shown);
+      }
+    });
+  }
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("[data-inbox] [data-dismiss]") : null;
+    if (!b) {
+      return;
+    }
+    var row = b.closest("[data-lapse]");
+    var d = load();
+    d[row.dataset.lapse] = Date.now();
+    save(d);
+    apply();
+  });
+  apply();
+  document.body.addEventListener("htmx:afterSettle", apply);
+  // /decisions/{id} lands here at the card: give it the keyboard focus.
+  var m = /^#decision-([0-9A-Za-z]+)$/.exec(window.location.hash);
+  var card = m ? document.getElementById("decision-" + m[1]) : null;
+  if (card) {
+    card.focus({ preventScroll: true });
   }
 })();

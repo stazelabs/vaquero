@@ -183,6 +183,20 @@ func (c *navCountingDB) QueryContext(ctx context.Context, q string, args ...any)
 	return c.DBTX.QueryContext(ctx, q, args...)
 }
 
+func (c *navCountingDB) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row {
+	if c.match(q) {
+		c.mu.Lock()
+		c.n++
+		c.mu.Unlock()
+		if c.fail {
+			done, cancel := context.WithCancel(ctx)
+			cancel() // a row that fails as a failed read would
+			return c.DBTX.QueryRowContext(done, q, args...)
+		}
+	}
+	return c.DBTX.QueryRowContext(ctx, q, args...)
+}
+
 func (c *navCountingDB) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()

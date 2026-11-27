@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -262,22 +261,9 @@ func DecisionAnswer(d Deps) http.HandlerFunc {
 // approvalFailed answers a refused ask or answer as an error toast on the
 // page the form came from.
 func approvalFailed(w http.ResponseWriter, r *http.Request, d Deps, err error, back string) {
-	var inv *core.Invalid
-	switch {
-	case errors.As(err, &inv):
-		keys := make([]string, 0, len(inv.Fields))
-		for k := range inv.Fields {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		msgs := make([]string, len(keys))
-		for i, k := range keys {
-			msgs[i] = inv.Fields[k]
-		}
-		redirectWithFlash(w, r, flash.Error, strings.Join(msgs, " "), back)
-	case errors.Is(err, core.ErrNotFound):
-		redirectWithFlash(w, r, flash.Error, "That no longer exists.", back)
-	default:
-		serverError(w, r, d, err)
+	if msg, ok := refusal(err); ok {
+		redirectWithFlash(w, r, flash.Error, msg, back)
+		return
 	}
+	serverError(w, r, d, err)
 }

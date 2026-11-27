@@ -96,6 +96,22 @@ func (q *Queries) AnswerDecision(ctx context.Context, arg AnswerDecisionParams) 
 	return err
 }
 
+const countInbox = `-- name: CountInbox :one
+SELECT (SELECT count(*) FROM decisions d JOIN projects p ON p.id = d.project_id
+        WHERE d.state = 'open' AND d.kind IN ('question', 'approval') AND p.archived_at IS NULL)
+     + (SELECT count(*) FROM tickets t JOIN projects p ON p.id = t.project_id JOIN statuses s ON s.id = t.status_id
+        WHERE s.category = 'in_review' AND p.workflow = 1 AND p.archived_at IS NULL) AS n
+`
+
+// The sidebar's count (ruling T-R6): the open questions and approvals,
+// plus Review's tickets.
+func (q *Queries) CountInbox(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countInbox)
+	var n int64
+	err := row.Scan(&n)
+	return n, err
+}
+
 const countOpenDecisionsNaming = `-- name: CountOpenDecisionsNaming :one
 SELECT count(DISTINCT d.id) FROM decisions d
 JOIN decision_tickets dt ON dt.decision_id = d.id
@@ -260,6 +276,120 @@ func (q *Queries) GetDecision(ctx context.Context, id string) (Decision, error) 
 	return i, err
 }
 
+const listAgentRulings = `-- name: ListAgentRulings :many
+SELECT d.id, d.project_id, d.run_id, d.kind, d.subject, d.question, d.options, d.recommendation, d.why, d.state, d.answer, d.answer_note, d.answered_by, d.answered_at, d.relayed_by, d.relayed_words, d.asked_by, d.asked_at, d.recommended FROM decisions d
+JOIN projects p ON p.id = d.project_id
+JOIN actors a ON a.id = d.asked_by
+WHERE d.kind = 'ruling' AND a.kind = 'agent' AND d.answered_by = d.asked_by
+  AND d.asked_at >= ?1 AND p.archived_at IS NULL
+ORDER BY d.asked_at, d.id
+`
+
+// Rulings agents made (ruling T-R5): asked by an agent since the given
+// instant and not overruled (still answered by who made them), oldest
+// first.
+func (q *Queries) ListAgentRulings(ctx context.Context, since string) ([]Decision, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentRulings, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Decision{}
+	for rows.Next() {
+		var i Decision
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.RunID,
+			&i.Kind,
+			&i.Subject,
+			&i.Question,
+			&i.Options,
+			&i.Recommendation,
+			&i.Why,
+			&i.State,
+			&i.Answer,
+			&i.AnswerNote,
+			&i.AnsweredBy,
+			&i.AnsweredAt,
+			&i.RelayedBy,
+			&i.RelayedWords,
+			&i.AskedBy,
+			&i.AskedAt,
+			&i.Recommended,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAnsweredSince = `-- name: ListAnsweredSince :many
+SELECT d.id, d.project_id, d.run_id, d.kind, d.subject, d.question, d.options, d.recommendation, d.why, d.state, d.answer, d.answer_note, d.answered_by, d.answered_at, d.relayed_by, d.relayed_words, d.asked_by, d.asked_at, d.recommended FROM decisions d
+JOIN projects p ON p.id = d.project_id
+WHERE d.state = 'answered' AND d.answered_by = ?1 AND d.answered_at >= ?2
+  AND NOT (d.kind = 'ruling' AND d.asked_by = d.answered_by) AND p.archived_at IS NULL
+ORDER BY d.answered_at DESC, d.id DESC
+`
+
+type ListAnsweredSinceParams struct {
+	Owner sql.NullString
+	Since sql.NullString
+}
+
+// Answered today: what the owner answered since the given instant,
+// newest first; a ruling the owner made is its maker's call, not an
+// answer, and is left out.
+func (q *Queries) ListAnsweredSince(ctx context.Context, arg ListAnsweredSinceParams) ([]Decision, error) {
+	rows, err := q.db.QueryContext(ctx, listAnsweredSince, arg.Owner, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Decision{}
+	for rows.Next() {
+		var i Decision
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.RunID,
+			&i.Kind,
+			&i.Subject,
+			&i.Question,
+			&i.Options,
+			&i.Recommendation,
+			&i.Why,
+			&i.State,
+			&i.Answer,
+			&i.AnswerNote,
+			&i.AnsweredBy,
+			&i.AnsweredAt,
+			&i.RelayedBy,
+			&i.RelayedWords,
+			&i.AskedBy,
+			&i.AskedAt,
+			&i.Recommended,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listApprovalsCovering = `-- name: ListApprovalsCovering :many
 SELECT a.id, a.pins FROM approvals a
 WHERE EXISTS (
@@ -392,7 +522,7 @@ func (q *Queries) ListDecisionTicketIDs(ctx context.Context, decisionID string) 
 }
 
 const listDecisionTicketKeys = `-- name: ListDecisionTicketKeys :many
-SELECT dt.decision_id, p.key AS project_key, t.number
+SELECT dt.decision_id, p.key AS project_key, t.number, t.title
 FROM decision_tickets dt
 JOIN tickets t ON t.id = dt.ticket_id
 JOIN projects p ON p.id = t.project_id
@@ -404,6 +534,7 @@ type ListDecisionTicketKeysRow struct {
 	DecisionID string
 	ProjectKey string
 	Number     int64
+	Title      string
 }
 
 // The tickets each given decision names, by key, in ticket number order:
@@ -427,7 +558,12 @@ func (q *Queries) ListDecisionTicketKeys(ctx context.Context, ids []string) ([]L
 	items := []ListDecisionTicketKeysRow{}
 	for rows.Next() {
 		var i ListDecisionTicketKeysRow
-		if err := rows.Scan(&i.DecisionID, &i.ProjectKey, &i.Number); err != nil {
+		if err := rows.Scan(
+			&i.DecisionID,
+			&i.ProjectKey,
+			&i.Number,
+			&i.Title,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -620,6 +756,59 @@ func (q *Queries) ListDecisionsAsked(ctx context.Context, ids []string) ([]ListD
 			&i.Children,
 			&i.ProjectKey,
 			&i.Number,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listInboxDecisions = `-- name: ListInboxDecisions :many
+
+SELECT d.id, d.project_id, d.run_id, d.kind, d.subject, d.question, d.options, d.recommendation, d.why, d.state, d.answer, d.answer_note, d.answered_by, d.answered_at, d.relayed_by, d.relayed_words, d.asked_by, d.asked_at, d.recommended FROM decisions d
+JOIN projects p ON p.id = d.project_id
+WHERE d.state = 'open' AND d.kind IN ('question', 'approval') AND p.archived_at IS NULL
+ORDER BY d.asked_at, d.id
+`
+
+// The inbox (VAQ-172). Each reads only projects not archived.
+// Decide: the open questions and approvals, oldest first.
+func (q *Queries) ListInboxDecisions(ctx context.Context) ([]Decision, error) {
+	rows, err := q.db.QueryContext(ctx, listInboxDecisions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Decision{}
+	for rows.Next() {
+		var i Decision
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.RunID,
+			&i.Kind,
+			&i.Subject,
+			&i.Question,
+			&i.Options,
+			&i.Recommendation,
+			&i.Why,
+			&i.State,
+			&i.Answer,
+			&i.AnswerNote,
+			&i.AnsweredBy,
+			&i.AnsweredAt,
+			&i.RelayedBy,
+			&i.RelayedWords,
+			&i.AskedBy,
+			&i.AskedAt,
+			&i.Recommended,
 		); err != nil {
 			return nil, err
 		}

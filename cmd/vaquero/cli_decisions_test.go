@@ -99,3 +99,18 @@ func TestCLIDecisionShowsWhatApprovingCovers(t *testing.T) {
 		}
 	}
 }
+
+// An open question or approval ends with where to answer it in the web;
+// an answered one doesn't.
+func TestCLIDecisionShowLinksTheInbox(t *testing.T) {
+	e := cliEnv(t)
+	id := strings.TrimSpace(mustCLI(t, "decision", "ask", "VAQ", "Which way?", "--option", "Left", "--option", "Right"))
+	show := mustCLI(t, "decision", "show", id)
+	if want := "\nAnswer in the web: " + e.Server.URL + "/decisions/" + id + "\n"; !strings.HasSuffix(show, want) {
+		t.Fatalf("show doesn't end with %q:\n%s", want, show)
+	}
+	mustCLI(t, "decision", "answer", id, "Left")
+	if show = mustCLI(t, "decision", "show", id); strings.Contains(show, "Answer in the web") {
+		t.Fatalf("an answered decision links the inbox:\n%s", show)
+	}
+}

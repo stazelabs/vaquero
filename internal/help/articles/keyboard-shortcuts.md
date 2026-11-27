@@ -15,8 +15,11 @@ order: 5
 | `g f` | Focus |
 | `g b` | Board |
 | `g l` | List |
-| `j / k` | Focus the next or previous card in Focus, on the board or in the list |
+| `j / k` | Focus the next or previous card in Focus, on the board, in the list or in the inbox |
 | `enter` | Open the focused card |
+| `1–9` | In the inbox, choose that option of the focused card |
+| `n` | In the inbox, open the focused card's note |
+| `o` | In the inbox, open the focused card's ticket |
 | `?` | Show these shortcuts |
 | `esc` | Close a dialog or a filter menu; on a narrow screen, close an open rail |
 
