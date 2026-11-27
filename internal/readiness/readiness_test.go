@@ -462,6 +462,35 @@ func TestApprovalCurrent(t *testing.T) {
 			w.parent(g, e.ID)
 			return g, w.key(e)
 		}, func(epic string) want { return again(readiness.Changed(readiness.WhatParent), epic) }},
+		{"covered parent between edited", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.edit(c, core.TicketPatch{Body: new("Child, rewritten.")})
+			return g, w.key(e)
+		}, func(epic string) want { return again(readiness.EpicChanged("VAQ-2's description"), epic) }},
+		{"covered parent between re-parented within the epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Children.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			d := w.ticket(core.TicketInput{Title: "Other child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.parent(c, d.ID)
+			return g, w.key(e)
+		}, func(epic string) want { return again(readiness.EpicChanged("VAQ-2's parent"), epic) }},
+		{"covered sibling elsewhere edited", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Children.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			d := w.ticket(core.TicketInput{Title: "Other child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.edit(d, core.TicketPatch{Body: new("Rewritten.")})
+			return g, w.key(e)
+		}, func(string) want { return ready }},
 		{"epic edited", func(w *world) (gen.Ticket, string) {
 			e := w.ticket(core.TicketInput{Title: "Board"})
 			w.plan(e, "1. Columns.", 0)

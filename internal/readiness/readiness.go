@@ -275,7 +275,9 @@ func (s state) approver(t gen.ListReadinessTicketsRow) (gen.ListReadinessTickets
 	return t, false
 }
 
-// covered is t's readiness on its epic e's approval, which must list t.
+// covered is t's readiness on its epic e's approval, which must list t,
+// and every ticket between them, each as pinned. approver read the whole
+// chain from t up to e, so the walk reads nothing.
 func (s state) covered(t, e gen.ListReadinessTicketsRow, out Readiness) Readiness {
 	epic := core.TicketKey{Project: e.ProjectKey, Number: e.Number}.String()
 	if len(out.Files) > 0 {
@@ -299,6 +301,25 @@ func (s state) covered(t, e gen.ListReadinessTicketsRow, out Readiness) Readines
 		return out.again(Changed(WhatDescription), epic)
 	case parent != t.ParentID.String:
 		return out.again(Changed(WhatParent), epic)
+	}
+	// Every covered ticket between t and e must be as pinned too (R-Q4:
+	// only this chain, not covered tickets elsewhere under e).
+	for m := s.tickets[t.ParentID.String]; m.ID != e.ID; m = s.tickets[m.ParentID.String] {
+		key := core.TicketKey{Project: m.ProjectKey, Number: m.Number}.String()
+		j := slices.IndexFunc(a.pins.Children, func(c core.PinnedChild) bool { return c.ID == m.ID })
+		if j < 0 {
+			return out.ask(epic) // not among the descendants it was asked about
+		}
+		mp := a.pins.Children[j]
+		if mp.Parent == "" {
+			mp.Parent = e.ID
+		}
+		switch {
+		case mp.RequirementHash != core.RequirementHash(m.Title, m.Body):
+			return out.again(EpicChanged(key+"'s description"), epic)
+		case mp.Parent != m.ParentID.String:
+			return out.again(EpicChanged(key+"'s parent"), epic)
+		}
 	}
 	if what := s.stale(e, a); what != "" {
 		return out.again(EpicChanged(what), epic)

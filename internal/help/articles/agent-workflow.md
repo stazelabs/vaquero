@@ -63,7 +63,7 @@ An answered approval is final. To take one back, ask for a new plan approval and
 
 With the workflow on, a ticket is ready when it is a todo the board calls ready (unassigned and unclaimed, nothing open blocking it, no open sub-tickets; see [the ready queue](/help/agents-and-claims#the-ready-queue)) and its plan is approved. The tier doesn't gate it: a ticket with none counts as standard.
 
-A ticket's approval is its own when it has a plan, or when a plan approval was asked naming it. Otherwise it is the approval of its nearest epic with a plan, which covers the sub-tickets, and theirs, that the epic had when it was asked, each as it was then; a sub-ticket with a plan of its own isn't covered and needs its own approval. A cancelled epic covers nothing; a done one still does. A sub-ticket with repo-path references of its own needs its own approval too.
+A ticket's approval is its own when it has a plan, or when a plan approval naming it was answered. Otherwise it is the approval of its nearest epic with a plan, which covers the sub-tickets, and theirs, that the epic had when it was asked, each as it was then; a sub-ticket with a plan of its own isn't covered and needs its own approval. A cancelled epic covers nothing; a done one still does. A sub-ticket with repo-path references of its own needs its own approval too.
 
 An approval goes stale when anything it covered changes: the title or description, the plan, a referenced file on main, the ticket's epic, or a covered sub-ticket. Moving a ticket to another project clears its approvals, so it needs approving again there, and again if it comes back.
 
