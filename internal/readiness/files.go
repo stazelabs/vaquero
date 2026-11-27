@@ -3,6 +3,7 @@ package readiness
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -25,6 +26,10 @@ type FileState = core.FileState
 // is called once per project per CheckAll, never inside a transaction.
 type Files interface {
 	Check(ctx context.Context, project gen.Project, pins []core.FilePin) ([]FileState, error)
+	// Unavailable is why git can't be used at all (WhyNoGit, WhyOldGit or
+	// WhyGitVersion), or "" when it can; every pin is then unchecked for
+	// that reason.
+	Unavailable() string
 }
 
 // maxCached bounds the states NewFiles keeps for one repo's head; past it
@@ -57,9 +62,21 @@ type headCache struct {
 
 type pinKey struct{ path, commit, blob string }
 
-// Unavailable reports whether git can't be used at all, so every pin is
-// unchecked for that reason.
-func (g *gitFiles) Unavailable() bool { return g.repos == nil || !g.repos.Available() }
+// Unavailable is why git can't be used at all, "" when it can.
+func (g *gitFiles) Unavailable() string {
+	if g.repos == nil {
+		return WhyNoGit
+	}
+	switch err := g.repos.Problem(); {
+	case err == nil:
+		return ""
+	case errors.Is(err, gitread.ErrVersionUnreadable):
+		return WhyGitVersion
+	case errors.Is(err, gitread.ErrOldGit):
+		return WhyOldGit
+	}
+	return WhyNoGit
+}
 
 func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin) ([]FileState, error) {
 	out := unchecked(pins)
@@ -131,7 +148,7 @@ func unchecked(pins []core.FilePin) []FileState {
 // (a pin whose reference was removed is gone) and each repo-path
 // reference not pinned (added); otherwise its repo-path references, all
 // added. why is, for a ticket with a pin left unchecked, why (WhyNoGit,
-// WhyNoRepo, WhyRepoChanged or WhyUnreadable). One read of every
+// WhyOldGit, WhyGitVersion, WhyNoRepo, WhyRepoChanged or WhyUnreadable). One read of every
 // reference, then one Check per project with anything pinned.
 func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[string]gen.ListReadinessTicketsRow, latest map[string]answer, every []string) (map[string][]FileState, map[string]string, error) {
 	rows, err := q.ListReadinessRefs(ctx, every)
@@ -221,8 +238,8 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 			return nil, nil, err
 		}
 		unreadable := WhyUnreadable
-		if u, ok := files.(interface{ Unavailable() bool }); ok && u.Unavailable() {
-			unreadable = WhyNoGit
+		if why := files.Unavailable(); why != "" {
+			unreadable = why
 		}
 		for k, sl := range at {
 			if k < len(got) {

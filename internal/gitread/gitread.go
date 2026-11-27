@@ -270,6 +270,20 @@ func (r *Repos) atLeast(v [2]int) bool {
 // Available reports whether git was found and is MinVersion or later.
 func (r *Repos) Available() bool { return r.git != "" && r.atLeast(MinVersion) }
 
+// Problem is why git can't be used: ErrNoGit, ErrVersionUnreadable or
+// ErrOldGit; nil when Available.
+func (r *Repos) Problem() error {
+	switch {
+	case r.git == "":
+		return ErrNoGit
+	case r.versionUnreadable():
+		return ErrVersionUnreadable
+	case !r.Available():
+		return ErrOldGit
+	}
+	return nil
+}
+
 // Missing is why repository features are off, as a sentence: "Git isn't
 // installed.", "Couldn't read git's version." or "Git 2.31 or later is
 // needed."; "" when Available.

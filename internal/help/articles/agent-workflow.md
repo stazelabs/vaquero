@@ -74,7 +74,7 @@ A ticket that isn't ready says why, as what to do:
 - Its epic changed since approval: {what}. Ask again.
 - Can't check its files: {why}.
 
-{what} is the description, the plan, its parent, or a file's path; {why} is that git isn't installed, no repository is set, the repository settings changed since approval, or the repository can't be read. A ticket whose files can't be checked is never ready; when that is because the repository settings changed, asking again pins the files from the repository as it is set now.
+{what} is the description, the plan, its parent, or a file's path; {why} is that git isn't installed, git 2.31 or later is needed, git's version couldn't be read, no repository is set, the repository settings changed since approval, or the repository can't be read. A ticket whose files can't be checked is never ready; when that is because the repository settings changed, asking again pins the files from the repository as it is set now.
 
 The ticket page shows a todo's readiness in its side panel: Ready, or the one reason. Where the reason is to ask for approval, or to ask again, an Ask for approval button asks a plan approval of the ticket (or of its epic, when that is where to ask); the open approval then shows on the page with a button for each option and a note, and the owner answers it there. A ticket's own open plan approval shows whatever its status. When the ticket or anything the approval covers changes while it waits, Approve is refused; Ask again withdraws the waiting approval and asks a new one about the ticket as it is now. The inbox will take this over.
 

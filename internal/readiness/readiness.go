@@ -87,6 +87,8 @@ const (
 // Why files can't be checked.
 const (
 	WhyNoGit       = "git isn't installed"
+	WhyOldGit      = "git 2.31 or later is needed"
+	WhyGitVersion  = "git's version couldn't be read"
 	WhyNoRepo      = "no repository is set"
 	WhyRepoChanged = "the repository settings changed since approval"
 	WhyUnreadable  = "the repository can't be read"

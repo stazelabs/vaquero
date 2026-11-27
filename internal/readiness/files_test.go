@@ -239,6 +239,16 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 		expect(t, w.check(tk), readiness.Unchecked(readiness.WhyNoGit))
 	})
 
+	// VAQ-191: an old git and an unreadable version each say so.
+	t.Run("old git", func(t *testing.T) {
+		w.files = readiness.NewFiles(gitread.NewWithVersion("git version 2.20.0"))
+		expect(t, w.check(tk), readiness.Unchecked(readiness.WhyOldGit))
+	})
+	t.Run("unreadable version", func(t *testing.T) {
+		w.files = readiness.NewFiles(gitread.NewWithVersion(""))
+		expect(t, w.check(tk), readiness.Unchecked(readiness.WhyGitVersion))
+	})
+
 	w.files = keep
 	// Ruling M3: a pin holds only against the repo and main branch it was
 	// taken from. Another clone with the same content is unchecked, and so
