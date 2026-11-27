@@ -239,3 +239,41 @@ func TestPlanSteps(t *testing.T) {
 		t.Error("an exclamation point")
 	}
 }
+
+// Each template has its kind's headings, required and optional, in the
+// order docs/audit-packs.md lists them, and MissingHeadings finds what a
+// pack lacks.
+func TestPackTemplatesHaveHeadings(t *testing.T) {
+	for _, kind := range Packs() {
+		b, _ := Pack(kind)
+		if m := MissingHeadings(kind, b); len(m) != 0 {
+			t.Errorf("%s template lacks %v", kind, m)
+		}
+		var want []string
+		for _, h := range headings[kind] {
+			want = append(want, h.name)
+		}
+		if got := packHeadings(b); !slices.Equal(got, want) {
+			t.Errorf("%s template headings %v, want %v", kind, got, want)
+		}
+		if len(RequiredHeadings(kind)) == 0 || !slices.Contains(RequiredHeadings(kind), "Standards") {
+			t.Errorf("%s: required %v", kind, RequiredHeadings(kind))
+		}
+	}
+	if !slices.Equal(RequiredHeadings("docs"), []string{"Standards", "Ground truth", "Surfaces", "Frozen", "Partitions", "Voice", "Verify"}) {
+		t.Errorf("docs: %v", RequiredHeadings("docs"))
+	}
+	if slices.Contains(RequiredHeadings("hygiene"), "Verification notes") || RequiredHeadings("perf") != nil {
+		t.Error("an optional heading is required, or perf has headings")
+	}
+	// A heading counts only as a whole "## " line.
+	pack := "# Pack\n\n## Standards\n\nText ## Boot\n### Never targets\n##Limits\n## Code map \n"
+	got := MissingHeadings("qa", pack)
+	if slices.Contains(got, "Standards") || slices.Contains(got, "Code map") || !slices.Contains(got, "Boot") ||
+		!slices.Contains(got, "Never targets") || !slices.Contains(got, "Limits") {
+		t.Fatalf("missing: %v", got)
+	}
+	if MissingHeadings("perf", pack) != nil {
+		t.Fatal("perf")
+	}
+}

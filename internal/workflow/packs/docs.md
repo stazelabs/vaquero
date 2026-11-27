@@ -1,17 +1,38 @@
-# Docs audit pack
+# Audit pack: docs
+
+Read by the audit workflow prompt (`vaquero workflow audit --project KEY --kind docs`). Save it in the project's repository as `.vaquero/audits/docs.md` and fill in each section. Keep the headings as they are: the prompt finds each section by its heading.
 
 ## Standards
 
-Where the documentation lives and the rules it follows.
+<The document that is the conventions contract. A docs audit corrects its statements of fact; it never invents, relaxes or deletes a rule.>
 
-## Pre-pass
+## Ground truth
 
-The paths that are frozen, and the checks to run after a change.
+<The commands that list the structural facts the documents claim: packages, routes, migrations, workflows, make targets.>
 
-## Dimensions
+## Surfaces
 
-The documentation surfaces to compare with the code, one per heading.
+| Surface | Treatment |
+|---|---|
+| README.md | In scope: status claims, run commands, links |
 
-## Known non-findings
+## Frozen
 
-What looks wrong but isn't, so it isn't filed.
+- <The paths never edited: dated specs and plans, generated files.>
+
+## Partitions
+
+1. <Area one: its files>
+2. <Area two: its files>
+
+## Voice
+
+<The copy rules to fix in passing.>
+
+## Extra rules
+
+<Optional. Rules with a higher bar for particular surfaces, such as help articles: their shape, required sections, link rules, and the tests that pin them.>
+
+## Verify
+
+<The check to run for a change to documentation only, and for a change under a source tree; the generated output a docs edit may move.>

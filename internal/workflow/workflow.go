@@ -292,6 +292,62 @@ func Packs() []string { return slices.Clone(packKinds) }
 // Pack is the template for kind, as written.
 func Pack(kind string) (string, bool) { b, ok := packs[kind]; return b, ok }
 
+// heading is one of a pack's ## sections; an optional one may be absent.
+type heading struct {
+	name     string
+	optional bool
+}
+
+// headings are each kind's pack sections, in order: the stazelabs
+// docs/audit-packs.md headings (R-R4), the docs kind taking update-docs'.
+// The audit prompt finds a section by its exact heading.
+var headings = map[string][]heading{
+	"qa": {{name: "Standards"}, {name: "Never targets"}, {name: "Boot"}, {name: "Areas"}, {name: "Limits"},
+		{name: "Triage"}, {name: "Code map"}, {name: "Cleanup"}, {name: "Known non-findings"}},
+	"hygiene": {{name: "Standards"}, {name: "Pre-pass"}, {name: "Dimensions"}, {name: "Search surface"},
+		{name: "Known non-findings"}, {name: "Verification notes", optional: true}},
+	"continuity": {{name: "Standards"}, {name: "Dimensions"}, {name: "Methods"}, {name: "Search surface"},
+		{name: "Known non-findings"}},
+	"docs": {{name: "Standards"}, {name: "Ground truth"}, {name: "Surfaces"}, {name: "Frozen"}, {name: "Partitions"},
+		{name: "Voice"}, {name: "Extra rules", optional: true}, {name: "Verify"}},
+}
+
+// RequiredHeadings is the ## headings a pack of kind must have, in order,
+// without the optional ones; nil for a kind that isn't one.
+func RequiredHeadings(kind string) []string {
+	var out []string
+	for _, h := range headings[kind] {
+		if !h.optional {
+			out = append(out, h.name)
+		}
+	}
+	return out
+}
+
+// MissingHeadings is the required headings a pack of kind lacks: each
+// must be a whole "## Name" line (trailing spaces aside).
+func MissingHeadings(kind, pack string) []string {
+	have := packHeadings(pack)
+	var out []string
+	for _, h := range RequiredHeadings(kind) {
+		if !slices.Contains(have, h) {
+			out = append(out, h)
+		}
+	}
+	return out
+}
+
+// packHeadings is a pack's ## headings, in order.
+func packHeadings(pack string) []string {
+	var out []string
+	for line := range strings.SplitSeq(pack, "\n") {
+		if name, ok := strings.CutPrefix(strings.TrimRight(line, " \t\r"), "## "); ok {
+			out = append(out, strings.TrimSpace(name))
+		}
+	}
+	return out
+}
+
 // Render is p's body with each {{name}} replaced by its argument's value:
 // control characters and line breaks turned to spaces, trimmed, cut at
 // MaxValue characters, so a value is plain text on one line. A required
