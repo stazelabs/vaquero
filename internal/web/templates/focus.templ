@@ -39,6 +39,11 @@ templ FocusSection(fo board.Focus) {
 		data-live
 		class="mt-6 grid gap-4 md:grid-cols-3"
 	>
+		if fo.NoTickets {
+			<div data-first-run class="md:col-span-3">
+				@firstSteps("empty", "No tickets yet. Create the first one, or connect an agent to add them.", "/p/"+fo.Project.Key+"/new", "New ticket")
+			</div>
+		}
 		<section data-lane="next" aria-labelledby="lane-next" class={ laneClass }>
 			<h2 id="lane-next" class={ laneHeading }>
 				@Icon("ready")

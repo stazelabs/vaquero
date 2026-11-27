@@ -190,7 +190,7 @@ templ ProjectListPage(v ProjectsView) {
 			</div>
 		</div>
 		if len(v.Projects) == 0 && len(v.Archived) == 0 {
-			@emptyState("new-project", "No projects yet. Create one to start tracking tickets.")
+			@firstSteps("new-project", "No projects yet. Create a project, then add its first ticket.", "/projects/new", "New project")
 		}
 		if len(v.Projects) > 0 {
 			if v.View == ViewList {
@@ -461,7 +461,7 @@ templ ProjectNewPage(f ProjectForm) {
 		<h1 class={ h1Class }>New project</h1>
 		<form method="post" action="/projects" class="mt-6 max-w-lg space-y-4">
 			@TextInput(InputProps{Name: "key", Label: "Key", Value: f.Key, Required: true, Placeholder: "VAQ", Error: f.Errors["key"]})
-			<p class="-mt-2 text-xs text-muted">2 to 10 capital letters or digits. Ticket keys start with it, like VAQ-12. It can't be changed later.</p>
+			<p class="-mt-2 text-xs text-muted">2 to 10 capital letters or digits. Ticket keys start with it, like VAQ-12. It can be changed in the project's settings, but links and commit references that use the old key stop working.</p>
 			@TextInput(InputProps{Name: "name", Label: "Name", Value: f.Name, Required: true, Error: f.Errors["name"]})
 			@TextArea(InputProps{Name: "description", Label: "Description", Value: f.Description, Rows: 4, Error: f.Errors["description"]})
 			<div class="flex items-center gap-4">

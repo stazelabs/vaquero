@@ -13,7 +13,34 @@ Vaquero is one program, `vaquero`, for macOS and Linux, on Intel or ARM.
 
 The first line adds the Stazelabs tap (once per machine), so every later Homebrew command can say plain `vaquero`. `brew install stazelabs/vaquero/vaquero` does both in one step.
 
-That is all: run any `vaquero` command and the server starts in the background. To have it start when you log in, and come back if it stops, let Homebrew run it as a service:
+After that, run any `vaquero` command and the server starts in the background. It says where it is, once:
+
+    Vaquero is running at http://127.0.0.1:7878.
+
+## Opening Vaquero
+
+    vaquero open
+
+opens the web pages in your browser: the projects page, or a project's Focus page with `vaquero open VAQ`, or a ticket with `vaquero open VAQ-12`. When no browser can be opened, the command prints the address to open yourself. A new instance shows the projects page with no projects, and the step to take.
+
+## Your first ticket
+
+Create a project from the projects page (New project), giving it a short key such as `VAQ`, then add a ticket from its Focus page. Or from a terminal:
+
+    vaquero project new VAQ Vaquero
+    vaquero ticket new VAQ "Try Vaquero"
+
+## Connecting an agent
+
+An agent works through MCP. For an agent harness that launches MCP servers as commands, give it one line, with a name of its own:
+
+    claude mcp add vaquero -- vaquero mcp --agent NAME
+
+Its tickets, comments and claims are then recorded under that name. [MCP](/help/mcp) has the other harnesses, and [Agents and claims](/help/agents-and-claims) how agents take work.
+
+## Running as a service
+
+To have the server start when you log in, and come back if it stops, let Homebrew run it as a service:
 
     brew services start vaquero
 

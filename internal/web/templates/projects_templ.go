@@ -288,7 +288,7 @@ func ProjectListPage(v ProjectsView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(v.Projects) == 0 && len(v.Archived) == 0 {
-				templ_7745c5c3_Err = emptyState("new-project", "No projects yet. Create one to start tracking tickets.").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = firstSteps("new-project", "No projects yet. Create a project, then add its first ticket.", "/projects/new", "New project").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1808,7 +1808,7 @@ func ProjectNewPage(f ProjectForm) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "<p class=\"-mt-2 text-xs text-muted\">2 to 10 capital letters or digits. Ticket keys start with it, like VAQ-12. It can't be changed later.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "<p class=\"-mt-2 text-xs text-muted\">2 to 10 capital letters or digits. Ticket keys start with it, like VAQ-12. It can be changed in the project's settings, but links and commit references that use the old key stop working.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

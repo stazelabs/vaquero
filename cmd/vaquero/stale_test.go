@@ -33,7 +33,7 @@ func serverAt(t *testing.T, dataDir, v string) int {
 	// Started directly, as a service manager would (the CLI under brew
 	// services leaves starting to it).
 	exe, _ := os.Executable()
-	if err := client.EnsureLocal(t.Context(), exe, "http://"+os.Getenv("VQ_ADDR"), dataDir, 30*time.Second); err != nil {
+	if _, err := client.EnsureLocal(t.Context(), exe, "http://"+os.Getenv("VQ_ADDR"), dataDir, 30*time.Second); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	pid, running, _ := lockfile.Holder(dataDir)
@@ -151,7 +151,7 @@ func TestStaleRestartUnderBrewServices(t *testing.T) {
 			if pid, running, _ := lockfile.Holder(dataDir); !running || pid != before {
 				time.Sleep(300 * time.Millisecond)
 				exe, _ := os.Executable()
-				_ = client.EnsureLocal(ctx, exe, "http://"+addr, dataDir, 5*time.Second)
+				_, _ = client.EnsureLocal(ctx, exe, "http://"+addr, dataDir, 5*time.Second)
 				return
 			}
 			time.Sleep(20 * time.Millisecond)

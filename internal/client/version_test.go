@@ -68,7 +68,7 @@ func TestEnsureLocalReportsAStoppedServerAtOnce(t *testing.T) {
 	addr := ln.Addr().String()
 	ln.Close()
 	start := time.Now()
-	err := EnsureLocal(t.Context(), "/usr/bin/false", "http://"+addr, t.TempDir(), 30*time.Second)
+	_, err := EnsureLocal(t.Context(), "/usr/bin/false", "http://"+addr, t.TempDir(), 30*time.Second)
 	if err == nil || !strings.Contains(err.Error(), "stopped while starting") {
 		t.Fatalf("%v", err)
 	}

@@ -66,6 +66,8 @@ type cmd struct {
 	// outsideTold: the note that the server runs outside brew services
 	// was printed; it too shows once a run.
 	outsideTold bool
+	// runningTold: "Vaquero is running at ..." was printed; once a run.
+	runningTold bool
 	// printCurrent prints a conflict's current object; nil prints it as a
 	// ticket.
 	printCurrent func(current json.RawMessage)
@@ -227,7 +229,10 @@ func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) erro
 	}
 	label, state := brewServiceState(p.DataDir)
 	if state == brewRunning {
+		// The command waited for the service to bring the server up, so
+		// it says where it is, as for a server it started itself.
 		if client.WaitUp(ctx, p.URL, brewRestartWait) == nil {
+			c.tellRunning(p.URL)
 			return nil
 		}
 		if label, state = brewServiceState(p.DataDir); state == brewRunning {
@@ -235,12 +240,12 @@ func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) erro
 		}
 	}
 	if state != brewStopped {
-		return client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
+		return c.ensureLocal(ctx, exe, p)
 	}
 	if client.WaitUp(ctx, p.URL, 0) == nil {
 		return nil
 	}
-	if err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait); err != nil {
+	if err := c.ensureLocal(ctx, exe, p); err != nil {
 		return err
 	}
 	if !c.outsideTold {
@@ -248,6 +253,26 @@ func (c *cmd) startLocal(ctx context.Context, exe string, p client.Profile) erro
 		fmt.Fprintf(c.stderr, "vaquero: the brew service (%s) isn't loaded, so this server runs outside brew services; to hand it back, run vaquero stop, then brew services start vaquero\n", label)
 	}
 	return nil
+}
+
+// ensureLocal is client.EnsureLocal, telling where the server is when this
+// command started it.
+func (c *cmd) ensureLocal(ctx context.Context, exe string, p client.Profile) error {
+	started, err := client.EnsureLocal(ctx, exe, p.URL, p.DataDir, startWait)
+	if started && err == nil {
+		c.tellRunning(p.URL)
+	}
+	return err
+}
+
+// tellRunning says, once a run and on standard error, where the server a
+// command just started (or waited for) answers.
+func (c *cmd) tellRunning(url string) {
+	if c.runningTold {
+		return
+	}
+	c.runningTold = true
+	fmt.Fprintf(c.stderr, "Vaquero is running at %s.\n", strings.TrimRight(url, "/"))
 }
 
 // call sends one API request; after it, an outdated CLI says so.

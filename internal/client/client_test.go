@@ -156,8 +156,8 @@ func TestResolveLocalReadsTokenFile(t *testing.T) {
 func TestEnsureLocalAlreadyUp(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, "ok") }))
 	defer srv.Close()
-	if err := client.EnsureLocal(context.Background(), "/no/such/exe", srv.URL, t.TempDir(), time.Second); err != nil {
-		t.Fatal(err)
+	if started, err := client.EnsureLocal(context.Background(), "/no/such/exe", srv.URL, t.TempDir(), time.Second); err != nil || started {
+		t.Fatal(started, err)
 	}
 }
 
@@ -178,7 +178,7 @@ func TestEnsureLocalPortTakenByOther(t *testing.T) {
 		}
 	}()
 	start := time.Now()
-	err = client.EnsureLocal(context.Background(), "/no/such/exe", "http://"+ln.Addr().String(), t.TempDir(), 2*time.Second)
+	_, err = client.EnsureLocal(context.Background(), "/no/such/exe", "http://"+ln.Addr().String(), t.TempDir(), 2*time.Second)
 	if err == nil || !strings.Contains(err.Error(), ln.Addr().String()) {
 		t.Fatalf("%v", err)
 	}
@@ -199,8 +199,8 @@ func TestEnsureLocalStarts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "vaquero.log"), full, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.EnsureLocal(context.Background(), exe, "http://"+addr, dir, 5*time.Second); err != nil {
-		t.Fatal(err)
+	if started, err := client.EnsureLocal(context.Background(), exe, "http://"+addr, dir, 5*time.Second); err != nil || !started {
+		t.Fatal(started, err)
 	}
 	if st, err := os.Stat(filepath.Join(dir, "vaquero.log")); err != nil || st.Size() >= logfile.Max {
 		t.Fatalf("log not rotated: %v", err)
@@ -215,7 +215,7 @@ func TestEnsureLocalReportsFailedStart(t *testing.T) {
 	addr := ln.Addr().String()
 	ln.Close()
 	dir := t.TempDir()
-	err := client.EnsureLocal(context.Background(), "/usr/bin/false", "http://"+addr, dir, 3*time.Second)
+	_, err := client.EnsureLocal(context.Background(), "/usr/bin/false", "http://"+addr, dir, 3*time.Second)
 	if err == nil || !strings.Contains(err.Error(), filepath.Join(dir, "vaquero.log")) {
 		t.Fatalf("%v", err)
 	}

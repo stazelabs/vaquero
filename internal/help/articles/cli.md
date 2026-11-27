@@ -4,7 +4,7 @@ section: command-line
 summary: Every vaquero command, its exit codes, servers, and how scripts and agents should use it.
 order: 1
 ---
-The `vaquero` program is also the command line. Commands other than `serve`, `version` and `docs` talk to a Vaquero server over [the API](/help/api). With the built-in `local` server they talk to the server on this machine, and start it in the background if it isn't running.
+The `vaquero` program is also the command line. Commands other than `serve`, `version` and `docs` talk to a Vaquero server over [the API](/help/api). With the built-in `local` server they talk to the server on this machine, and start it in the background if it isn't running, saying once on standard error where it is (`Vaquero is running at http://127.0.0.1:7878.`).
 
 ## Commands
 
@@ -22,6 +22,7 @@ Every command that talks to a server takes `--server NAME`, `--agent NAME` and `
 | `vaquero import FILE` | Restore an export into an empty instance, all or nothing; stop the server first. See [Your data and backups](/help/data-and-backups#importing-an-export) |
 | `vaquero import linear FILE.csv [--project KEY]` | Make tickets from Linear's issue export, keeping team keys and issue numbers, into a new or empty project. See [Importing from Linear](/help/data-and-backups#importing-from-linear) |
 | `vaquero logs [-n 100] [-f] [--path]` | The last lines of the server's log (100 unless `-n`); `-f` keeps printing new lines, across the log's move to `.1` at 10 MB, until Ctrl-C; `--path` prints only where the log is. Reads `vaquero.log` in the data directory, or the service's log under `brew services`; needs no server. See [Installing and upgrading](/help/installing-and-upgrading#the-servers-log) |
+| `vaquero open [KEY\|TICKET]` | Open the web pages in your browser: the projects page, a project's Focus page (`vaquero open VAQ`) or a ticket's page (`vaquero open VAQ-12`); starts the server like any command; prints the address when no browser can be opened. With `--server NAME` it opens that server's address |
 | `vaquero docs [TOPIC]` | List these help articles, or print one as markdown; needs no server |
 | `vaquero me [--name NAME] [--avatar FILE \| --remove-avatar]` | Show your [profile](/help/your-profile), or change it: `--name` sets the display name (empty shows Owner again), `--avatar` uploads a PNG, JPEG or WebP image of up to 256 KB, `--remove-avatar` goes back to your initials. Only you, not an agent, change it |
 | `vaquero projects` | List projects with their open ticket counts |
@@ -77,7 +78,7 @@ Every command that talks to a server takes `--server NAME`, `--agent NAME` and `
 | `vaquero decision answer ID [OPTION] [--text TEXT] [--note TEXT] [--words TEXT]` | Answer as the owner: an option by label, or `--text`. With `--agent`, the answer is relayed by that agent and needs `--words`, the owner's answer quoted. On a ruling, it overrules |
 | `vaquero decision withdraw ID` | Withdraw an open question or approval |
 | `vaquero mcp [--agent NAME] [--model ID]` | An MCP server on standard input and output, for agent clients that launch one; `--model` (or `VAQUERO_MODEL`) names the model the session runs, recorded with each change; see [MCP](/help/mcp) |
-| `vaquero token new NAME` / `list` / `delete PREFIX` | API tokens; a new token is printed once |
+| `vaquero token new NAME [--agent AGENT]` / `list` / `delete PREFIX` | API tokens; a new token is printed once. With `--agent` the token is made for that agent and acts as it (see [API tokens](/help/api-tokens#making-a-token)) |
 | `vaquero server new NAME URL TOKEN` / `list` / `use NAME` / `delete NAME` | Servers to talk to; `-` as the token reads it from standard input, keeping it out of your shell history |
 
 Priorities are `none`, `urgent`, `high`, `medium` and `low`. Statuses, assignees and milestones are given by name, in any case.

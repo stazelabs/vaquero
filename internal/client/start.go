@@ -63,7 +63,9 @@ func probe(ctx context.Context, url string) probeResult {
 // A listener that hasn't answered yet may be vaquero still migrating, so
 // it is given until wait. It never hangs: something else on the address,
 // or no answer in time, is a plain error naming the address or the log.
-func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Duration) error {
+// started is true when this call started a server (a server already
+// answering gives false), so the caller can say where it is.
+func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Duration) (started bool, err error) {
 	addr := strings.TrimPrefix(strings.TrimPrefix(url, "http://"), "https://")
 	foreign := fmt.Errorf("something other than vaquero is using %s; stop it, or set VQ_ADDR to another address", addr)
 	deadline := time.Now().Add(wait)
@@ -80,12 +82,12 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	}
 	switch first {
 	case probeUp:
-		return nil
+		return false, nil
 	case probeOther, probeSilent:
-		return foreign
+		return false, foreign
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return err
+		return false, err
 	}
 	logPath := filepath.Join(dataDir, "vaquero.log")
 	// One old log is kept: the server rotates it as it writes, and a log
@@ -93,7 +95,7 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	_ = logfile.Rotate(logPath, logfile.Max)
 	logf, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return err
+		return false, err
 	}
 	cmd := exec.Command(exe, "serve")
 	cmd.Env = append(os.Environ(), "VQ_DATA_DIR="+dataDir, "VQ_ADDR="+addr)
@@ -102,7 +104,7 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	err = cmd.Start()
 	logf.Close()
 	if err != nil {
-		return fmt.Errorf("couldn't start vaquero: %w", err)
+		return false, fmt.Errorf("couldn't start vaquero: %w", err)
 	}
 	exited := make(chan struct{})
 	go func() { _ = cmd.Wait(); close(exited) }()
@@ -114,25 +116,25 @@ func EnsureLocal(ctx context.Context, exe, url, dataDir string, wait time.Durati
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		case <-exited:
 			// Usually another CLI's server won the address; keep probing.
 			stopped, exited = true, nil
 		case <-timer.C:
 			if stopped {
-				return fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
+				return false, fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
 			}
-			return fmt.Errorf("vaquero didn't start on %s within %v; see %s", addr, wait, logPath)
+			return false, fmt.Errorf("vaquero didn't start on %s within %v; see %s", addr, wait, logPath)
 		case <-tick.C:
 			switch probe(ctx, url) {
 			case probeUp:
-				return nil
+				return true, nil
 			case probeRefused:
 				// Ours stopped and nothing took the address: no server is
 				// coming (one that lost a race exits because the winner
 				// already listens).
 				if stopped {
-					return fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
+					return false, fmt.Errorf("vaquero stopped while starting on %s; see %s", addr, logPath)
 				}
 			}
 		}

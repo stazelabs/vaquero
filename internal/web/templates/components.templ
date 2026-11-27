@@ -113,3 +113,29 @@ templ emptyStateLink(icon, text, href, label string) {
 		<a href={ templ.SafeURL(href) } class={ btnLink }>{ label }</a>
 	</div>
 }
+
+// connectAgent is the one line that connects an agent, in a code block to
+// copy, with a link to the other ways in.
+templ connectAgent() {
+	<div data-connect-agent class="w-full max-w-lg text-left">
+		<p class="text-center">To connect an agent harness, run this once for each agent, with its own name:</p>
+		<pre class="mt-2 whitespace-pre-wrap break-words rounded-md border border-line bg-paper px-3 py-2 font-mono text-xs text-ink"><code>claude mcp add vaquero -- vaquero mcp --agent NAME</code></pre>
+		<p class="mt-2 text-center">
+			For other harnesses, see <a href="/help/mcp" class="underline hover:text-accent">the MCP article</a>.
+		</p>
+	</div>
+}
+
+// firstSteps is emptyState with a next step and the line that connects an
+// agent: for an instance or a project with nothing in it yet.
+templ firstSteps(icon, text, href, label string) {
+	<div class="mt-8 flex flex-col items-center gap-3 rounded-lg border border-dashed border-line px-6 py-10 text-center text-sm text-muted">
+		@IconClass(icon, "h-8 w-8 shrink-0 opacity-70")
+		<p>{ text }</p>
+		<a href={ templ.SafeURL(href) } class={ btnPrimary + " gap-1.5" }>
+			@Icon("plus")
+			{ label }
+		</a>
+		@connectAgent()
+	</div>
+}

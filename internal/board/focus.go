@@ -45,6 +45,9 @@ type Focus struct {
 	NeedsDecision bool
 	// Tags is every tag on the project's tickets, as Board.Tags.
 	Tags []string
+	// NoTickets says the project has no tickets at all (no filter hides
+	// any), which Focus answers with the next steps.
+	NoTickets bool
 }
 
 // Waiting is a todo ticket that isn't ready, and why: "Blocked by KEY",
@@ -78,7 +81,12 @@ func LoadFocus(ctx context.Context, q *gen.Queries, files readiness.Files, p gen
 	if err != nil {
 		return Focus{}, err
 	}
-	fo := Focus{Project: p, Filter: f, Tags: tags}
+	fo := Focus{Project: p, Filter: f, Tags: tags, NoTickets: !f.Active()}
+	for _, c := range cols {
+		if len(c.Cards) > 0 {
+			fo.NoTickets = false
+		}
+	}
 	var next, mine, waiting, finished []Card
 	if f.Mine {
 		all := f

@@ -71,6 +71,7 @@ setup:
   server       new, list, use or delete servers to talk to
 
 help:
+  open         open the web pages in your browser (vaquero open [KEY|TICKET])
   docs         list the help articles, or print one (vaquero docs cli)
 
 Commands that talk to a server take --server NAME, --agent NAME and --json.
