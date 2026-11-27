@@ -117,12 +117,16 @@ func refTarget(f fields, target string, p gen.Project) string {
 	return target
 }
 
-// RemoveRef deletes a reference.
-func (c *Core) RemoveRef(ctx context.Context, by, refID string) error {
+// RemoveRef deletes ticketID's reference refID. A reference of another
+// ticket is ErrNotFound, as an id that doesn't exist is (VAQ-167).
+func (c *Core) RemoveRef(ctx context.Context, by, ticketID, refID string) error {
 	return c.tx(ctx, func(q *gen.Queries) error {
 		ref, err := q.GetTicketRef(ctx, refID)
 		if err != nil {
 			return notFound(err, "get reference")
+		}
+		if ref.TicketID != ticketID {
+			return ErrNotFound
 		}
 		t, err := q.GetTicket(ctx, ref.TicketID)
 		if err != nil {

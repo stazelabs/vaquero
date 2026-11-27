@@ -725,12 +725,7 @@ func RefDelete(d Deps) http.HandlerFunc {
 			return
 		}
 		to := "/t/" + ticketKey(p, t.Number)
-		x, err := d.R.GetTicketRef(r.Context(), chi.URLParam(r, "id"))
-		if err != nil || x.TicketID != t.ID {
-			redirectWithFlash(w, r, flash.Error, "That reference no longer exists.", to)
-			return
-		}
-		if err := d.Core.RemoveRef(r.Context(), d.Actor.ID, x.ID); err != nil {
+		if err := d.Core.RemoveRef(r.Context(), d.Actor.ID, t.ID, chi.URLParam(r, "id")); err != nil {
 			if errors.Is(err, core.ErrNotFound) {
 				redirectWithFlash(w, r, flash.Error, "That reference no longer exists.", to)
 				return

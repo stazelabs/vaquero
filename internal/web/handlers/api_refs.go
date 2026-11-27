@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"errors"
 	"net/http"
 
@@ -51,16 +50,7 @@ func APIRefDelete(d Deps) http.HandlerFunc {
 			return
 		}
 		id := chi.URLParam(r, "id")
-		x, err := d.R.GetTicketRef(r.Context(), id)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && x.TicketID != t.ID {
-			api.WriteFailure(w, api.NotFound("No such reference."))
-			return
-		}
-		if err != nil {
-			apiFail(w, r, d, api.Internal(), err)
-			return
-		}
-		if err := d.Core.RemoveRef(r.Context(), apiActor(r).ID, id); err != nil {
+		if err := d.Core.RemoveRef(r.Context(), apiActor(r).ID, t.ID, id); err != nil {
 			if errors.Is(err, core.ErrNotFound) {
 				api.WriteFailure(w, api.NotFound("No such reference."))
 				return

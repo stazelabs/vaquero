@@ -143,7 +143,7 @@ func TestReadinessRefAddedAfterApproval(t *testing.T) {
 	got := w.check(tk)
 	expect(t, got, readiness.Changed("docs/b.md"))
 	files(t, got, "docs/a.md unchanged", "docs/b.md added")
-	if err := w.c.RemoveRef(bg, w.owner.ID, b.ID); err != nil {
+	if err := w.c.RemoveRef(bg, w.owner.ID, tk.ID, b.ID); err != nil {
 		t.Fatal(err)
 	}
 	expect(t, w.check(tk))
@@ -152,7 +152,7 @@ func TestReadinessRefAddedAfterApproval(t *testing.T) {
 	other := w.ticket(core.TicketInput{Title: "Other", Tier: "light"})
 	a := w.ref(other, "docs/a.md")
 	w.approve(other)
-	if err := w.c.RemoveRef(bg, w.owner.ID, a.ID); err != nil {
+	if err := w.c.RemoveRef(bg, w.owner.ID, other.ID, a.ID); err != nil {
 		t.Fatal(err)
 	}
 	got = w.check(other)

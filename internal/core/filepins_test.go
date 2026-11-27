@@ -156,7 +156,7 @@ func TestAnswerRefusesFileChangedSinceAsked(t *testing.T) {
 	if _, err := c.AnswerDecision(bg, f.Owner.ID, q2.ID, core.Answer{Option: "Approve"}); err != nil {
 		t.Fatalf("a second reference to a pinned file: %v", err)
 	}
-	if err := c.RemoveRef(bg, f.Owner.ID, ref.ID); err != nil {
+	if err := c.RemoveRef(bg, f.Owner.ID, f.T1.ID, ref.ID); err != nil {
 		t.Fatal(err)
 	}
 	q3, err := c.AskDecision(bg, f.Owner.ID, planApproval(f, f.T1.ID))

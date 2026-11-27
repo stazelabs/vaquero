@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -25,9 +26,9 @@ func init() {
 				if _, err := c.DB.Exec(`INSERT INTO ticket_refs (id, ticket_id, kind, target, created_by, created_at) VALUES ('ref1', ?, 'spec', 'https://example.com/spec', ?, '2026-11-20T12:00:00Z')`, f.T1.ID, f.Owner.ID); err != nil {
 					return err
 				}
-				return c.RemoveRef(bg, f.Owner.ID, "ref1")
+				return c.RemoveRef(bg, f.Owner.ID, f.T1.ID, "ref1")
 			},
-			func(c *core.Core, f fixture) error { return c.RemoveRef(bg, f.Owner.ID, "nope") }},
+			func(c *core.Core, f fixture) error { return c.RemoveRef(bg, f.Owner.ID, f.T1.ID, "nope") }},
 	)
 	// The row is deleted, then the event refuses.
 	lateFail["RemoveRef"] = func(c *core.Core, f fixture, snap func()) error {
@@ -36,7 +37,7 @@ func init() {
 			return err
 		}
 		snap()
-		return c.RemoveRef(bg, f.Owner.ID, r.ID)
+		return c.RemoveRef(bg, f.Owner.ID, f.T1.ID, r.ID)
 	}
 }
 
@@ -110,11 +111,23 @@ func TestAddRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	before = lastEventSeq(t, c)
-	if err := c.RemoveRef(bg, f.Owner.ID, id); err != nil || lastEventSeq(t, c) != before+1 {
+	if err := c.RemoveRef(bg, f.Owner.ID, f.T1.ID, id); err != nil || lastEventSeq(t, c) != before+1 {
 		t.Fatalf("remove: %v", err)
 	}
 	if p := lastPayload(t, c); p["ref_id"] != id {
 		t.Fatalf("payload %v", p)
+	}
+	// VAQ-167: another ticket's reference is not found, and nothing is written.
+	other, err := c.AddRef(bg, f.Owner.ID, f.T1.ID, core.RefInput{Kind: "spec", Target: "https://example.com/other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before = lastEventSeq(t, c)
+	if err := c.RemoveRef(bg, f.Owner.ID, f.T2.ID, other.ID); !errors.Is(err, core.ErrNotFound) || lastEventSeq(t, c) != before {
+		t.Fatalf("another ticket's reference: %v", err)
+	}
+	if err := c.RemoveRef(bg, f.Owner.ID, f.T1.ID, other.ID); err != nil {
+		t.Fatal(err)
 	}
 }
 
