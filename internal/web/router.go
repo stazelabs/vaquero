@@ -152,6 +152,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 			r.Get("/commits", handlers.TicketCommits(d))
 			r.Get("/changes/{seq}", handlers.TicketChanges(d))
 			r.Post("/approval/ask", handlers.ApprovalAsk(d))
+			r.Post("/approval/ask-again", handlers.ApprovalAskAgain(d))
 			r.Post("/attachments", handlers.AttachmentUpload(d))
 			r.Post("/attachments/{id}/delete", handlers.AttachmentDelete(d))
 		})

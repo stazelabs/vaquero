@@ -6,6 +6,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
+	"github.com/stazelabs/vaquero/internal/gitread/gittest"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -44,7 +45,7 @@ func TestTicketPageShowsReadinessAndAsks(t *testing.T) {
 	if n := openApprovals(t, e); n != 1 || r.Status != 303 {
 		t.Fatalf("%d open approvals, status %d", n, r.Status)
 	}
-	contains(t, c.Follow(r).Body, "already waiting")
+	contains(t, c.Follow(r).Body, "already waiting; answer it below, or use Ask again.")
 }
 
 func TestAnswerApprovalMakesTicketReady(t *testing.T) {
@@ -136,4 +137,91 @@ func openApprovalID(t *testing.T, e *webtest.Env) string {
 		t.Fatal(err)
 	}
 	return id
+}
+
+// Ruling R-Q14: an open approval asked before the ticket changed can't be
+// approved; Ask again withdraws it and asks a new one, which approves.
+func TestAskAgainReplacesAStaleOpenApproval(t *testing.T) {
+	e, c, tk := approvalWorld(t)
+	c.Post("/t/VAQ-1/approval/ask", nil)
+	old := openApprovalID(t, e)
+	body := "Now with rails."
+	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+		t.Fatal(err)
+	}
+	r := c.Post("/decisions/"+old+"/answer", url.Values{"option": {"Approve"}, "ticket": {"VAQ-1"}})
+	page := c.Follow(r).Body
+	contains(t, page, "changed since this was asked; ask again. Use Ask again.", "data-approval",
+		`action="/t/VAQ-1/approval/ask-again"`, "Ask again")
+	lacks(t, page, `action="/t/VAQ-1/approval/ask"`)
+
+	r = c.Post("/t/VAQ-1/approval/ask-again", nil)
+	if r.Status != 303 || r.Location != "/t/VAQ-1" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	contains(t, c.Follow(r).Body, "Asked again for approval of the plan for VAQ-1.", "data-approval")
+	if n := openApprovals(t, e); n != 1 {
+		t.Fatalf("%d open approvals", n)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'withdrawn'`, old); n != 1 {
+		t.Fatal("the stale approval wasn't withdrawn")
+	}
+	id := openApprovalID(t, e)
+	r = c.Post("/decisions/"+id+"/answer", url.Values{"option": {"Approve"}, "ticket": {"VAQ-1"}})
+	page = c.Follow(r).Body
+	contains(t, page, "Answered", "Ready")
+	lacks(t, page, "data-approval")
+
+	// With nothing waiting, Ask again says so and asks nothing.
+	r = c.Post("/t/VAQ-1/approval/ask-again", nil)
+	contains(t, c.Follow(r).Body, "No plan approval for VAQ-1 is waiting.")
+	if n := openApprovals(t, e); n != 0 {
+		t.Fatalf("%d open approvals", n)
+	}
+}
+
+// Ruling R-Q15: a ticket's own open plan approval shows whatever its
+// status; the Ready line, the reason and the Ask button are for todos.
+func TestOpenApprovalShowsOnABacklogTicket(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	workflowOn(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Later", StatusID: statusID(t, e, "Backlog")})
+	c := e.Client()
+	lacks(t, c.Get("/t/VAQ-1").Body, "data-readiness", "data-approval")
+	if _, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
+		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionApproval, Subject: "plan", Question: "Approve the plan for VAQ-1?",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	page := c.Get("/t/VAQ-1").Body
+	contains(t, page, "data-approval", "Approve the plan for VAQ-1?", `value="Approve"`, `action="/t/VAQ-1/approval/ask-again"`)
+	lacks(t, page, "Ask for plan approval.", `action="/t/VAQ-1/approval/ask"`, ">Ready<")
+	// Asking from the page is for todos alone: readiness says nothing to ask.
+	r := c.Post("/t/VAQ-1/approval/ask", nil)
+	contains(t, c.Follow(r).Body, "VAQ-1 has nothing to ask for.")
+	if n := openApprovals(t, e); n != 1 {
+		t.Fatalf("%d open approvals", n)
+	}
+}
+
+// Ruling R-Q16: files that can't be checked because the repo settings
+// changed offer Ask again on the page.
+func TestRepoChangedOffersAsk(t *testing.T) {
+	e, c, tk := approvalWorld(t)
+	r := gittest.Repo(t)
+	r.WriteCommit("docs/a.md", "# A\n", "a")
+	setRepo(t, e, r.Dir)
+	if _, err := e.Deps.Core.AddRef(bg, e.Deps.Actor.ID, tk.ID, core.RefInput{Kind: "spec", Target: "docs/a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	approvePlan(t, e, tk.ID)
+	contains(t, c.Get("/t/VAQ-1").Body, "Ready")
+	clone := gittest.Repo(t)
+	clone.WriteCommit("docs/a.md", "# A\n", "a")
+	setRepo(t, e, clone.Dir)
+	page := c.Get("/t/VAQ-1").Body
+	contains(t, page, "Can&#39;t check its files: the repository settings changed since approval.", `action="/t/VAQ-1/approval/ask"`)
+	resp := c.Post("/t/VAQ-1/approval/ask", nil)
+	contains(t, c.Follow(resp).Body, "Asked for approval of the plan for VAQ-1.")
 }

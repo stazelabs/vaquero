@@ -93,19 +93,20 @@ type TicketView struct {
 	// its own), by key; none hides the move form.
 	MoveTargets []Option
 	// Readiness is the side panel's readiness block: nil unless the
-	// project's workflow is on and the ticket a todo.
+	// project's workflow is on and the ticket a todo or has an open plan
+	// approval.
 	Readiness *ReadinessView
 }
 
-// ReadinessView is whether a todo is ready, or the one reason it isn't.
-// Ask shows the ask button, for the ticket AskKey (its epic's key when the
-// approval to ask for is the epic's); Open is the plan approval waiting for
-// the owner's answer.
+// ReadinessView is whether a todo is ready, or the one reason it isn't
+// (Todo set), and the plan approval waiting for the owner's answer (Open,
+// whatever the status). Ask shows the ask button while nothing is open;
+// Open shows its answer form and Ask again.
 type ReadinessView struct {
+	Todo   bool
 	Ready  bool
 	Reason string
 	Ask    bool
-	AskKey string
 	Open   *ApprovalView
 }
 
@@ -521,10 +522,13 @@ templ LinkTargetOptions(opts []Option) {
 	}
 }
 
-// iconField is a side-panel field whose value has a glyph.
 templ readinessBlock(key string, r *ReadinessView) {
 	<div data-readiness>
-		<p class={ labelClass }>Readiness</p>
+		if r.Todo {
+			<p class={ labelClass }>Readiness</p>
+		} else {
+			<p class={ labelClass }>Plan approval</p>
+		}
 		if r.Ready {
 			<p class="flex items-center gap-1.5 text-ink">
 				<span class={ categoryTint("done") }>
@@ -551,6 +555,9 @@ templ readinessBlock(key string, r *ReadinessView) {
 					}
 				</div>
 			</form>
+			<form method="post" action={ templ.SafeURL("/t/" + key + "/approval/ask-again") } data-ask-again class="mt-2">
+				<button type="submit" class={ btnSecondary }>Ask again</button>
+			</form>
 		}
 	</div>
 }
@@ -562,6 +569,7 @@ func approvalBtn(i int) string {
 	return btnSecondary
 }
 
+// iconField is a side-panel field whose value has a glyph.
 templ iconField(label, value, icon, tint string) {
 	<div>
 		<p class={ labelClass }>{ label }</p>

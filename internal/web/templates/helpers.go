@@ -261,7 +261,9 @@ func removeImageNote(kind string) string {
 	return " Uploading it again brings it back."
 }
 
-// readyIcon is the mark beside "Ready": the done category's.
+// doneCategory names a category, not an icon; the literal passed to
+// CategoryIcon would read as an icon name to TestEveryIconNameKnown.
 const doneCategory = "done"
 
+// readyIcon is the mark beside "Ready": the done category's.
 func readyIcon() string { return CategoryIcon(doneCategory) }

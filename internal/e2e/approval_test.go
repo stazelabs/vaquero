@@ -12,7 +12,8 @@ import (
 )
 
 // VAQ-160: a todo with the workflow on says what it needs, asks for plan
-// approval, is approved from the page and reads Ready, at phone and desktop
+// approval, is asked again after an edit makes the waiting approval stale,
+// is approved from the page and reads Ready (on the board too), at phone and desktop
 // widths, light and dark, with no sideways scroll.
 func TestE2EAskAndApprove(t *testing.T) {
 	for _, w := range []int64{375, 1280} {
@@ -33,11 +34,24 @@ func TestE2EAskAndApprove(t *testing.T) {
 				p.goTo("/t/APP-1")
 				p.until(`document.querySelector("[data-readiness]").textContent.includes("Ask for plan approval.")`)
 				p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-approval]")`)
+				// Ruling R-Q14: edited while the approval waits, Approve is
+				// refused, and Ask again replaces it with one that approves.
+				body := "The plan, with rails."
+				if _, err := env.Deps.Core.PatchTicket(ctx, env.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+					t.Fatal(err)
+				}
+				p.goTo("/t/APP-1")
+				p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
+					`document.body.textContent.includes("Use Ask again.") && !!document.querySelector("[data-approval]")`)
+				p.reloaded(func() { p.click(`[data-ask-again] button[type=submit]`) },
+					`document.body.textContent.includes("Asked again for approval") && !!document.querySelector("[data-approval]")`)
 				p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
 					`!document.querySelector("[data-approval]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
 				if sw := eval[int64](p, `document.documentElement.scrollWidth`); sw > w {
 					t.Fatalf("the page is %d px wide at %d px", sw, w)
 				}
+				p.goTo("/p/APP/board")
+				p.until(`!!document.querySelector('[data-card="APP-1"][data-ready]')`)
 			})
 		}
 	}
