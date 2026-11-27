@@ -494,11 +494,13 @@ func linkWords(l api.Link) string {
 
 func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS | transfer TICKET KEY [--version N] | link TICKET blocks|relates|duplicates OTHER | unlink TICKET OTHER"
-	switch {
-	case len(args) > 0 && args[0] == "link":
-		return cmdTicketLink(ctx, stdout, stderr, args[1:])
-	case len(args) > 0 && args[0] == "unlink":
-		return cmdTicketUnlink(ctx, stdout, stderr, args[1:])
+	// link and unlink have their own flag sets; the other verbs read
+	// theirs below, from anywhere among the arguments.
+	switch verb, rest := splitVerb(args, "title", "body", "status", "priority", "parent", "milestone", "assignee", "tag", "add-tag", "remove-tag", "version", "tier", "model"); verb {
+	case "link":
+		return cmdTicketLink(ctx, stdout, stderr, rest)
+	case "unlink":
+		return cmdTicketUnlink(ctx, stdout, stderr, rest)
 	}
 	c := newCmd(stdout, stderr, usage)
 	title := c.fs.String("title", "", "title")

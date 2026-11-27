@@ -111,6 +111,30 @@ func (c *cmd) parse(args []string, min, max int) ([]string, error) {
 	return pos, nil
 }
 
+// splitVerb finds a noun's sub-verb after leading flags (VAQ-192: flags may
+// come before or after, so the verb isn't always args[0]). It skips flags,
+// and the value of --server, --agent and any flag in valued that isn't
+// written --flag=value, and returns the verb with args minus the verb; no
+// verb (the arguments end, or "--" comes first) is "" and args as given.
+func splitVerb(args []string, valued ...string) (string, []string) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return "", args
+		case !strings.HasPrefix(a, "-") || a == "-":
+			return a, slices.Concat(args[:i:i], args[i+1:])
+		case strings.Contains(a, "="):
+		default:
+			name := strings.TrimLeft(a, "-")
+			if name == "server" || name == "agent" || slices.Contains(valued, name) {
+				i++
+			}
+		}
+	}
+	return "", args
+}
+
 // set reports whether the flag called name was given.
 func (c *cmd) set(name string) bool {
 	found := false

@@ -31,17 +31,16 @@ type attachSource struct {
 // cmdAttachment is vaquero attachment new|list|delete|move.
 func cmdAttachment(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	const usage = "vaquero attachment new TICKET FILE... [--name NAME] | list TICKET | delete ID | move --to sqlite|dir|s3 [--delete-old]"
-	if len(args) > 0 {
-		switch args[0] {
-		case "new":
-			return cmdAttachNew(ctx, stdout, stderr, args[1:])
-		case "list":
-			return cmdAttachList(ctx, stdout, stderr, args[1:])
-		case "delete":
-			return cmdAttachDelete(ctx, stdout, stderr, args[1:])
-		case "move":
-			return cmdAttachmentsMove(ctx, stdout, stderr, args[1:])
-		}
+	verb, rest := splitVerb(args, "name", "to")
+	switch verb {
+	case "new":
+		return cmdAttachNew(ctx, stdout, stderr, rest)
+	case "list":
+		return cmdAttachList(ctx, stdout, stderr, rest)
+	case "delete":
+		return cmdAttachDelete(ctx, stdout, stderr, rest)
+	case "move":
+		return cmdAttachmentsMove(ctx, stdout, stderr, rest)
 	}
 	return newCmd(stdout, stderr, usage).finish(usageError{usage: usage})
 }
