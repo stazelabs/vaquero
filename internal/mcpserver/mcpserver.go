@@ -45,7 +45,7 @@ const Instructions = "Vaquero is a ticket tracker shared by people and agents; t
 	"and view \"summary\" on a write answers with a short summary instead of the whole ticket. " +
 	"In a project with the agent workflow on, write a ticket's plan with save_plan, park questions and approvals for the owner with ask_decision, " +
 	"record the owner's answer with answer_decision only as relayed, quoting their words (run vaquero mcp with --agent NAME), " +
-	"and ready_tickets lists only tickets that pass readiness: a tier and a current plan approval."
+	"and ready_tickets lists only tickets that pass readiness: a current plan approval."
 
 // Handler is POST /mcp. api serves /api/v1 without the token check (the
 // router's API routes); the request's actor, set by middleware.APIToken in

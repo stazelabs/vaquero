@@ -2,7 +2,9 @@ package core
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -33,10 +35,11 @@ var inOpenRun = func(context.Context, *gen.Queries, []string) (bool, error) { re
 // history stay with the ticket. A claim's earlier status is mapped like the
 // status, so a lapse returns the ticket to a status of its new project.
 //
-// The ticket's approvals stay in history but count only in the project
-// whose decision made them (readiness, N-R1): its project, key and parent
-// changed, so it needs approving again. Open decisions naming it stay in
-// the old project; the event counts them (open_decisions), and a plan
+// A move clears the approvals of every ticket it re-keys, and drops them
+// from the descendants any other approval covers (clearApprovals): each
+// needs approving again in its new project, and again if it comes back.
+// The decisions stay in the old project's history. Open decisions naming
+// it stay there too; the event counts them (open_decisions), and a plan
 // approval among them can no longer approve it (askedUnchanged).
 //
 // Refused: a sub-ticket on its own ("Move its parent, or detach it
@@ -104,6 +107,9 @@ func (c *Core) MoveTicketToProject(ctx context.Context, by, ticketID, targetID s
 		if err != nil {
 			return fmt.Errorf("count open decisions: %w", err)
 		}
+		if err := clearApprovals(ctx, q, ids); err != nil {
+			return err
+		}
 		now := timefmt.Format(c.Now())
 		payload := map[string]any{
 			"from": key, "from_project": from.Key, "from_project_id": from.ID, "to_project": to.Key,
@@ -166,6 +172,48 @@ func (c *Core) MoveTicketToProject(ctx context.Context, by, ticketID, targetID s
 		return c.emit(ctx, q, by, EvTicketMoved, to.ID, t.ID, payload)
 	})
 	return t, err
+}
+
+// clearApprovals deletes the approvals of the tickets ids, and takes them
+// out of the descendants other approvals cover, so no approval asked
+// before a move covers a ticket after it, even moved back. Part of the
+// move: no event of its own.
+func clearApprovals(ctx context.Context, q *gen.Queries, ids []string) error {
+	if err := q.DeleteTicketApprovals(ctx, ids); err != nil {
+		return fmt.Errorf("delete approvals: %w", err)
+	}
+	list, err := json.Marshal(ids)
+	if err != nil {
+		return fmt.Errorf("ticket ids: %w", err)
+	}
+	covering, err := q.ListApprovalsCovering(ctx, string(list))
+	if err != nil {
+		return fmt.Errorf("list approvals covering: %w", err)
+	}
+	for _, a := range covering {
+		var pins map[string]json.RawMessage // every field kept as it was
+		if err := json.Unmarshal([]byte(a.Pins), &pins); err != nil {
+			return fmt.Errorf("approval pins: %w", err)
+		}
+		var children []PinnedChild
+		if err := json.Unmarshal(pins["children"], &children); err != nil {
+			return fmt.Errorf("approval children: %w", err)
+		}
+		children = slices.DeleteFunc(children, func(c PinnedChild) bool { return slices.Contains(ids, c.ID) })
+		b, err := json.Marshal(children)
+		if err != nil {
+			return fmt.Errorf("approval children: %w", err)
+		}
+		pins["children"] = b
+		out, err := json.Marshal(pins)
+		if err != nil {
+			return fmt.Errorf("approval pins: %w", err)
+		}
+		if err := q.SetApprovalPins(ctx, gen.SetApprovalPinsParams{Pins: string(out), ID: a.ID}); err != nil {
+			return fmt.Errorf("set approval pins: %w", err)
+		}
+	}
+	return nil
 }
 
 // projectMap maps one project's statuses and milestones onto another's by

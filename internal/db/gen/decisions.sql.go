@@ -206,6 +206,27 @@ func (q *Queries) DeleteProjectDecisions(ctx context.Context, projectID string) 
 	return err
 }
 
+const deleteTicketApprovals = `-- name: DeleteTicketApprovals :exec
+DELETE FROM approvals WHERE ticket_id IN (/*SLICE:ids*/?)
+`
+
+// The approvals of the given tickets: a move to another project re-keys
+// them, and an approval never follows a ticket out of its project.
+func (q *Queries) DeleteTicketApprovals(ctx context.Context, ids []string) error {
+	query := deleteTicketApprovals
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
+	return err
+}
+
 const getDecision = `-- name: GetDecision :one
 SELECT id, project_id, run_id, kind, subject, question, options, recommendation, why, state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at FROM decisions WHERE id = ?
 `
@@ -234,6 +255,44 @@ func (q *Queries) GetDecision(ctx context.Context, id string) (Decision, error) 
 		&i.AskedAt,
 	)
 	return i, err
+}
+
+const listApprovalsCovering = `-- name: ListApprovalsCovering :many
+SELECT a.id, a.pins FROM approvals a
+WHERE EXISTS (
+    SELECT 1 FROM json_each(a.pins, '$.children') c
+    WHERE json_extract(c.value, '$.id') IN (SELECT value FROM json_each(?1)))
+ORDER BY a.id
+`
+
+type ListApprovalsCoveringRow struct {
+	ID   string
+	Pins string
+}
+
+// The approvals whose pinned descendants name any of the tickets in ids,
+// a JSON array of ticket ids.
+func (q *Queries) ListApprovalsCovering(ctx context.Context, ids interface{}) ([]ListApprovalsCoveringRow, error) {
+	rows, err := q.db.QueryContext(ctx, listApprovalsCovering, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListApprovalsCoveringRow{}
+	for rows.Next() {
+		var i ListApprovalsCoveringRow
+		if err := rows.Scan(&i.ID, &i.Pins); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDecisionApprovals = `-- name: ListDecisionApprovals :many
@@ -569,6 +628,20 @@ func (q *Queries) ListDecisionsAsked(ctx context.Context, ids []string) ([]ListD
 		return nil, err
 	}
 	return items, nil
+}
+
+const setApprovalPins = `-- name: SetApprovalPins :exec
+UPDATE approvals SET pins = ? WHERE id = ?
+`
+
+type SetApprovalPinsParams struct {
+	Pins string
+	ID   string
+}
+
+func (q *Queries) SetApprovalPins(ctx context.Context, arg SetApprovalPinsParams) error {
+	_, err := q.db.ExecContext(ctx, setApprovalPins, arg.Pins, arg.ID)
+	return err
 }
 
 const withdrawDecision = `-- name: WithdrawDecision :exec

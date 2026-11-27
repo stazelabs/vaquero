@@ -136,13 +136,18 @@ type TicketSummary struct {
 }
 
 // Readiness says whether a ticket passes the agent workflow's gate: a
-// todo, with a tier, and a current plan approval. Reasons lists what
-// fails, in a fixed order; it is empty when Ready. Files is how the
-// ticket's repo files stand against its approval's pins, by path; absent
-// when it has none.
+// todo with a current plan approval. Reasons holds the one reason it
+// isn't, phrased as what to do; it is empty when Ready, and for a ticket
+// that isn't a todo. Action is "ask" or "ask_again" (a plan approval),
+// absent when ready or when its files can't be checked; Epic is the key of
+// the ancestor to ask on, absent when the ticket itself is. Files is how
+// the ticket's repo files stand against its approval's pins, by path;
+// absent when it has none.
 type Readiness struct {
 	Ready   bool            `json:"ready"`
 	Reasons []string        `json:"reasons"`
+	Action  string          `json:"action,omitempty"`
+	Epic    string          `json:"epic,omitempty"`
 	Files   []ReadinessFile `json:"files,omitempty"`
 }
 

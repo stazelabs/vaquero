@@ -100,3 +100,20 @@ DELETE FROM decisions WHERE project_id = ?;
 SELECT count(DISTINCT d.id) FROM decisions d
 JOIN decision_tickets dt ON dt.decision_id = d.id
 WHERE d.state = 'open' AND dt.ticket_id IN (sqlc.slice('ids'));
+
+-- name: DeleteTicketApprovals :exec
+-- The approvals of the given tickets: a move to another project re-keys
+-- them, and an approval never follows a ticket out of its project.
+DELETE FROM approvals WHERE ticket_id IN (sqlc.slice('ids'));
+
+-- name: ListApprovalsCovering :many
+-- The approvals whose pinned descendants name any of the tickets in ids,
+-- a JSON array of ticket ids.
+SELECT a.id, a.pins FROM approvals a
+WHERE EXISTS (
+    SELECT 1 FROM json_each(a.pins, '$.children') c
+    WHERE json_extract(c.value, '$.id') IN (SELECT value FROM json_each(sqlc.arg(ids))))
+ORDER BY a.id;
+
+-- name: SetApprovalPins :exec
+UPDATE approvals SET pins = ? WHERE id = ?;

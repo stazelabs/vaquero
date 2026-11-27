@@ -209,7 +209,7 @@ func apiReadiness(r *readiness.Readiness) *api.Readiness {
 	if r == nil {
 		return nil
 	}
-	out := &api.Readiness{Ready: r.Ready, Reasons: r.Reasons}
+	out := &api.Readiness{Ready: r.Ready, Reasons: r.Reasons, Action: r.Action, Epic: r.Epic}
 	for _, f := range r.Files {
 		out.Files = append(out.Files, api.ReadinessFile{Path: f.Path, State: f.State, Now: f.Now})
 	}

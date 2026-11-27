@@ -58,7 +58,7 @@ A project's `icon` is `{"kind"}`: `monogram` (its two letters), `glyph` with `gl
 
 An attachment has `id`, `name`, `content_type`, `size`, `uploaded_by`, `created_at` and `url`, the address of its bytes on the server (put it after the server's address, or use `GET /api/v1/attachments/{id}`).
 
-A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets). In a project with the [agent workflow](/help/agent-workflow) on, it also has `tier`, and a todo ticket's has `readiness`, `{"ready", "reasons"}`, with `files` when it rests on pinned repo files; a ticket's own answer has `readiness` whatever its status. `ready` then needs both the board's rule and `readiness` (see [Readiness](/help/agent-workflow#readiness)).
+A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assignee`, `tags`, `ready` and `version`. `ready` means the same as on [the board](/help/the-board#ready-tickets). In a project with the [agent workflow](/help/agent-workflow) on, it also has `tier`, and a todo ticket's has `readiness`, `{"ready", "reasons", "action", "epic"}`, with `files` when it has repo files; a ticket's own answer has `readiness` whatever its status. `ready` then needs both the board's rule and `readiness` (see [Readiness](/help/agent-workflow#readiness)).
 
 ## Writing
 

@@ -422,12 +422,12 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	sum := func(s string) string { h := sha256.Sum256([]byte(s)); return hex.EncodeToString(h[:]) }
-	// Each pins its parent and its sub-tickets then (rulings L-R8, L-R11).
+	// Each pins its parent and the descendants it covers then.
 	for id, want := range map[string]struct {
 		hash, pins string
 		rev        int64
 	}{
-		f.T1.ID:  {sum("First\n"), `{"parent":"","children":[{"id":"` + child.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}],"files":[]}`, 2},
+		f.T1.ID:  {sum("First\n"), `{"parent":"","children":[{"id":"` + child.ID + `","parent":"` + f.T1.ID + `","requirement_hash":"` + sum("Café\nCafé menu.") + `"}],"files":[]}`, 2},
 		child.ID: {sum("Café\nCafé menu."), `{"parent":"` + f.T1.ID + `","children":[],"files":[]}`, 0},
 		f.T2.ID:  {sum("Second\n"), `{"parent":"","children":[],"files":[]}`, 0},
 	} {
@@ -445,7 +445,7 @@ func TestApprovalPinsRequirementHashAndPlanRevision(t *testing.T) {
 	}
 }
 
-// Ruling L-R7: an approval approves what was asked. A plan revised, or a
+// An approval approves what was asked. A plan revised, or a
 // requirement edited, between the ask and the answer refuses an Approve;
 // Request changes is still taken.
 func TestApproveRefusedWhenChangedSinceAsked(t *testing.T) {
@@ -488,7 +488,7 @@ func TestApproveRefusedWhenChangedSinceAsked(t *testing.T) {
 	}
 }
 
-// Ruling L-R9: the approval covers the children and parent asked about
+// The approval covers the descendants and parent asked about
 // too. A child added or edited, or the ticket moved to another parent,
 // between the ask and the answer refuses an Approve.
 func TestApproveRefusedWhenFamilyChangedSinceAsked(t *testing.T) {

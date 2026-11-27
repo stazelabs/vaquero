@@ -1,79 +1,42 @@
 // Package readiness decides whether a ticket passes the agent workflow's
-// gate, and why not. It is asked only about tickets whose project has the
-// workflow on; with it off, nothing here runs and the ready queue is the
-// board's rule alone.
+// gate, why not, and what to do about it. It is asked only about tickets
+// whose project has the workflow on; with it off, nothing here runs and the
+// ready queue is the board's rule alone.
 //
-// A ticket passes when:
-//   - its status is a todo;
-//   - it has a tier (a design ticket can pass: runs leave it out, the plan
-//     prompt works it);
-//   - it has a current plan approval.
+// The one rule: a ticket is ready when it is a todo the board would call
+// ready and its plan is approved. Readiness is asked of todos; any other
+// ticket is not ready, with no reason (the board already shows why). The
+// tier gates nothing: an empty tier counts as standard.
 //
-// The approval that counts for a ticket is the approval row written by the
-// latest answered plan approval naming it (decision_tickets). Answered
-// otherwise than Approve ("Request changes"), that decision wrote no row,
-// and the ticket's plan is not approved: a later answer takes back an
-// earlier approval. An approval is current when the ticket's
-// RequirementHash and its plan revision still match what it pinned.
+// Which approval counts (approval(t)): when t has a plan of its own, or a
+// plan approval was answered naming t itself, the latest answered plan
+// approval naming t. Otherwise the latest answered plan approval of the
+// nearest ancestor with a plan, which must list t among the descendants it
+// covered (core's childPins: every descendant without a plan of its own,
+// reached through descendants without one). With no such ancestor, t's
+// own approval is asked for. A cancelled ticket between t and that
+// ancestor, or the ancestor itself cancelled, covers nothing; a done one
+// still covers. Only decisions of the ticket's own project count, and a
+// move to another project deletes the moved tickets' approvals (core), so
+// a ticket moved away and back needs approving again.
 //
-// Which approvals a ticket needs:
-//   - a plan of its own: its own current approval, and nothing of its epic;
-//   - no plan of its own but an approval: its own requirement must match,
-//     and its parent's own approval must be current too, though it need not
-//     list the ticket: editing the epic makes it not ready, and with no
-//     approved epic the reason is "Epic's plan not approved.". Without a
-//     parent its own approval, pinning plan revision 0, is enough: a small
-//     ticket is approved without a plan;
-//   - neither: its parent's own current approval, which must list it among
-//     the sub-tickets the owner was asked about (ruling L-R8; else "Plan
-//     not approved."), with its requirement as pinned there (L-R9; else
-//     "Requirement changed since approval."). A sub-ticket made or moved
-//     under the epic later leans on no approval until the epic, or the
-//     sub-ticket, is approved; one rewritten since, or moved away, edited
-//     and moved back, is not ready.
+// The approval is current when it answered Approve and nothing it pinned
+// changed since: the ticket's requirement (title and description,
+// core.RequirementHash), its plan revision, its parent, and its repo files
+// (files.go); for a covered descendant also its own requirement and
+// parent as pinned. A covered descendant's own repo-path references were
+// never asked about, so it needs its own approval.
 //
-// An approval counts only if its decision was asked after the ticket last
-// arrived in its project (rulings N-R5 and N-R7: its newest
-// ticket_old_keys.moved_at, whatever its parents are now): a ticket moved
-// to another project and back, or carried there and back by its epic,
-// needs approving again, even once detached, and so does an epic a
-// sub-ticket leans on. Only decisions of the
-// ticket's own project count at all (N-R1).
+// One reason at most, as an action:
+//   - "Ask for plan approval." (Action ask; Epic names the ancestor to ask
+//     on, when it is one);
+//   - "Changed since approval: {what}. Ask again." (ask_again);
+//   - "Its epic changed since approval: {what}. Ask again." (ask_again,
+//     Epic set);
+//   - "Can't check its files: {why}." (no action: never a pass).
 //
-// An approval holds only under the parent it was asked under (its pins'
-// parent, L-R11): a ticket moved to another epic, out of one, or under one
-// from having none is not ready ("Epic's plan not approved."). Leaning is
-// recursive (L-R10): a parent with no plan of its own must lean on its
-// parent in turn, up to the first ancestor with a plan, and a broken link
-// further up gives that link's reason ("Epic's requirement changed since
-// approval.", "Epic's plan changed since approval.", "Epic's plan not
-// approved.").
-//
-// A cancelled ancestor in the chain a ticket leans on covers nothing
-// (VAQ-145): cancelling it withdrew its approval. The ticket leans no
-// further, and is judged as if it had no parent there (ruling P-R5): its
-// own approval counts, with its requirement as approved, but only one
-// asked after that ancestor was cancelled (its status_changed_at). An own
-// approval asked before was given leaning on the ancestor (L-R6), so
-// cancelling never by itself makes a ticket ready; until then it is
-// "Epic's plan not approved.". With more than one cancelled, leaning stops
-// at the nearest. A done ancestor still covers its open children (ruling
-// P-R2): its approved work finished, and what is left open is follow-up
-// under the same plan. A ticket with its own plan leans on nothing, so no
-// ancestor's state touches it.
-//
-// An approval pins the ticket's repo files (core.FilePin, P2-R2), and
-// holds while each one's content on main, renames followed, is what was
-// pinned (P2-R3) and the ticket's repo-path references name the same files
-// (P2-R4); else "Files changed since approval.", or for an epic leaned on
-// "Epic's files changed since approval.". A ticket leaning on its epic
-// with repo-path references of its own has them added: its epic's
-// approval wasn't asked about them. Files that can't be checked (no repo
-// path, no git, a read error) are "Files can't be checked.", never a pass.
-// Files (files.go) runs git outside any transaction: per project per
-// CheckAll, one Open and one read of main's head, then, for pins not
-// already compared at that head, two ls-trees and one history walk per
-// distinct pinned commit. A project with nothing pinned runs none.
+// {what} is the first that changed of: the description, the plan, its
+// parent, a file path.
 //
 // The board's conditions (unassigned, unclaimed, no open blocker or
 // sub-ticket) are not reasons here: the board query decides them, and the
@@ -90,31 +53,60 @@ import (
 	"github.com/stazelabs/vaquero/internal/db/gen"
 )
 
-// The reasons, as the API gives them, in the order they are listed.
+// The reasons. AskForApproval is given as it is; the others through
+// Changed, EpicChanged and Unchecked.
 const (
-	NotATodo               = "Not a todo."
-	NoTier                 = "No tier."
-	PlanNotApproved        = "Plan not approved."
-	EpicPlanNotApproved    = "Epic's plan not approved."
-	RequirementChanged     = "Requirement changed since approval."
-	PlanChanged            = "Plan changed since approval."
-	EpicRequirementChanged = "Epic's requirement changed since approval."
-	EpicPlanChanged        = "Epic's plan changed since approval."
-	FilesChanged           = "Files changed since approval."
-	EpicFilesChanged       = "Epic's files changed since approval."
-	FilesUnchecked         = "Files can't be checked."
+	AskForApproval = "Ask for plan approval."
 )
 
-// Reasons is every reason, in the order an answer lists them.
-var Reasons = []string{NotATodo, NoTier, PlanNotApproved, EpicPlanNotApproved, RequirementChanged, PlanChanged,
-	EpicRequirementChanged, EpicPlanChanged, FilesChanged, EpicFilesChanged, FilesUnchecked}
+// Changed is the reason for a ticket whose approval is stale: what changed
+// since (WhatDescription, WhatPlan, WhatParent or a file's path).
+func Changed(what string) string { return "Changed since approval: " + what + ". Ask again." }
 
-// Readiness is one ticket's answer. Reasons is never nil, and Ready is
-// true exactly when it is empty. Files is how the ticket's own repo files
+// EpicChanged is the reason for a ticket whose epic's approval is stale.
+func EpicChanged(what string) string {
+	return "Its epic changed since approval: " + what + ". Ask again."
+}
+
+// Unchecked is the reason for an approval whose files can't be checked.
+func Unchecked(why string) string { return "Can't check its files: " + why + "." }
+
+// Reasons is the four forms a reason takes.
+var Reasons = []string{AskForApproval, Changed("{what}"), EpicChanged("{what}"), Unchecked("{why}")}
+
+// What changed since an approval, besides a file's path.
+const (
+	WhatDescription = "the description"
+	WhatPlan        = "the plan"
+	WhatParent      = "its parent"
+)
+
+// Why files can't be checked.
+const (
+	WhyNoGit       = "git isn't installed"
+	WhyNoRepo      = "no repository is set"
+	WhyRepoChanged = "the repository settings changed since approval"
+	WhyUnreadable  = "the repository can't be read"
+)
+
+// The actions a reason asks for (Readiness.Action).
+const (
+	ActionAsk      = "ask"       // ask for a plan approval
+	ActionAskAgain = "ask_again" // ask for a plan approval again
+)
+
+// Readiness is one ticket's answer. Reasons is never nil and holds at most
+// one reason; a ready ticket has none, and neither does a ticket that
+// isn't a todo (not ready all the same). Action is what to do (ActionAsk
+// or ActionAskAgain; "" when ready, or when the files can't be checked),
+// and Epic the key of the ancestor to ask on, when that is where to ask
+// ("" for the ticket itself). Files is how the ticket's own repo files
 // stand against its approval's pins, by path (nil when it has none).
 type Readiness struct {
 	Ready   bool
 	Reasons []string
+	Action  string
+	Epic    string
 	Files   []FileState
 }
 
@@ -133,8 +125,8 @@ func Check(ctx context.Context, q *gen.Queries, files Files, t gen.Ticket) (Read
 }
 
 // MaxDepth bounds the ancestor chain CheckAll reads, one read a level. A
-// ticket whose chain goes deeper leans on nothing it can check, and is not
-// ready ("Epic's plan not approved."). Parents never loop (core refuses a
+// ticket whose nearest ancestor with a plan is deeper has none it can
+// check, and is asked about itself. Parents never loop (core refuses a
 // cycle), so the bound only caps the reads.
 const MaxDepth = 16
 
@@ -200,49 +192,25 @@ func CheckAll(ctx context.Context, q *gen.Queries, files Files, ids []string) (m
 	if err != nil {
 		return nil, fmt.Errorf("readiness approvals: %w", err)
 	}
-	arrived, err := arrivals(ctx, q, every)
-	if err != nil {
-		return nil, err
-	}
 	latest := map[string]answer{}
 	for _, a := range answerRows {
 		if _, seen := latest[a.TicketID]; seen { // latest answer first
 			continue
 		}
-		if a.AskedAt <= arrived[a.TicketID] {
-			continue // asked before the ticket last arrived in its project (N-R5)
-		}
-		an := answer{approved: a.Approved, hash: a.RequirementHash, rev: a.PlanRevision, askedAt: a.AskedAt}
+		an := answer{approved: a.Approved, hash: a.RequirementHash, rev: a.PlanRevision}
 		if a.Approved {
-			// Pins that don't parse cover no child, and hold under no
-			// parent but none.
+			// Pins that don't parse cover no descendant, and hold under
+			// no parent but none.
 			_ = json.Unmarshal([]byte(a.Pins), &an.pins)
 		}
 		latest[a.TicketID] = an
 	}
-	s := state{tickets: tickets, plans: plans, latest: latest, arrived: arrived}
-	if s.files, err = fileStates(ctx, q, files, tickets, latest, every); err != nil {
+	s := state{tickets: tickets, plans: plans, latest: latest}
+	if s.files, s.why, err = fileStates(ctx, q, files, tickets, latest, every); err != nil {
 		return nil, err
 	}
 	for _, r := range rows {
 		out[r.ID] = s.check(r)
-	}
-	return out, nil
-}
-
-// arrivals is when each ticket last arrived in its project, by id: its
-// newest ticket_old_keys.moved_at, written for every ticket a move
-// re-keyed (the one moved and each sub-ticket it carried), whatever its
-// parents are now (ruling N-R7). A ticket that never moved is absent (""
-// is before every instant). One read for all of them.
-func arrivals(ctx context.Context, q *gen.Queries, ids []string) (map[string]string, error) {
-	rows, err := q.ListTicketArrivals(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("readiness arrivals: %w", err)
-	}
-	out := make(map[string]string, len(rows))
-	for _, r := range rows {
-		out[r.TicketID] = r.ArrivedAt
 	}
 	return out, nil
 }
@@ -254,7 +222,6 @@ type answer struct {
 	hash     string
 	rev      int64
 	pins     core.ApprovalPins
-	askedAt  string // when its decision was asked
 }
 
 // state is what CheckAll read.
@@ -262,164 +229,119 @@ type state struct {
 	tickets map[string]gen.ListReadinessTicketsRow
 	plans   map[string]int64       // ticket id -> current plan revision
 	latest  map[string]answer      // ticket id -> latest answered plan approval
-	arrived map[string]string      // ticket id -> when it last arrived in its project
 	files   map[string][]FileState // ticket id -> its files against its latest approval
+	why     map[string]string      // ticket id -> why its pinned files can't be checked
 }
 
 func (s state) check(t gen.ListReadinessTicketsRow) Readiness {
-	found := map[string]bool{}
+	out := Readiness{Reasons: []string{}, Files: s.files[t.ID]}
 	if t.StatusCategory != "todo" {
-		found[NotATodo] = true
+		return out
 	}
-	if t.Tier == "" {
-		found[NoTier] = true
-	}
-	var files []FileState // its own, when its readiness rests on them
-	own, answered := s.latest[t.ID]
 	_, ownPlan := s.plans[t.ID]
-	hasParent := t.ParentID.Valid
-	if cancelled, ok := s.cancelledAbove(t); !ownPlan && ok {
-		// The chain it leans on reaches a cancelled ancestor (VAQ-145,
-		// ruling P-R5): it leans no further, and is judged as if it had no
-		// parent, on its own approval, which counts only if asked after
-		// that ancestor was cancelled.
-		files = s.files[t.ID]
-		markFiles(found, files, FilesChanged)
-		switch {
-		case !answered || !own.approved || own.askedAt <= cancelled:
-			found[EpicPlanNotApproved] = true
-		case own.pins.Parent != t.ParentID.String:
-			found[EpicPlanNotApproved] = true // moved since (L-R11)
-		default:
-			if own.hash != core.RequirementHash(t.Title, t.Body) {
-				found[RequirementChanged] = true
-			}
-			if own.rev != 0 {
-				found[PlanChanged] = true
-			}
+	if _, answered := s.latest[t.ID]; !ownPlan && !answered {
+		if a, ok := s.approver(t); ok {
+			return s.covered(t, a, out)
 		}
-	} else if ownPlan || answered || !hasParent {
-		// Its own approval counts.
-		if !answered || !own.approved {
-			found[PlanNotApproved] = true
-		} else {
-			if own.hash != core.RequirementHash(t.Title, t.Body) {
-				found[RequirementChanged] = true
-			}
-			if own.rev != s.plans[t.ID] {
-				found[PlanChanged] = true
-			}
-			files = s.files[t.ID]
-			markFiles(found, files, FilesChanged)
-			if own.pins.Parent != t.ParentID.String {
-				found[EpicPlanNotApproved] = true // moved since (L-R11)
-			} else if !ownPlan && hasParent {
-				// No plan of its own: its epic's approval must be current
-				// too, though it need not list it.
-				s.lean(t, 1, false, found, []string{t.ID})
-			}
-		}
-	} else {
-		// No plan and no approval of its own: its epic's approval, which
-		// must list it. Its own repo files were never asked about: each
-		// is added (P2-R4) until it is approved itself.
-		s.lean(t, 1, true, found, []string{t.ID})
-		files = s.files[t.ID]
-		markFiles(found, files, FilesChanged)
+		return out.ask("")
 	}
-	out := Readiness{Reasons: []string{}, Files: files}
-	for _, r := range Reasons {
-		if found[r] {
-			out.Reasons = append(out.Reasons, r)
-		}
+	own := s.latest[t.ID]
+	if !own.approved {
+		return out.ask("")
 	}
-	out.Ready = len(out.Reasons) == 0
+	if what := s.stale(t, own); what != "" {
+		return out.again(Changed(what), "")
+	}
+	if why := s.why[t.ID]; why != "" {
+		return out.unchecked(why)
+	}
+	out.Ready = true
 	return out
 }
 
-// cancelledAbove is when the nearest cancelled ancestor in the chain t
-// leans on was cancelled (its status_changed_at), if there is one: the
-// chain goes up from t's parent to the first ancestor with a plan of its
-// own, that one included, within the chain read (VAQ-145). A done ancestor
-// is no stop (ruling P-R2).
-func (s state) cancelledAbove(t gen.ListReadinessTicketsRow) (string, bool) {
+// approver is the nearest ancestor of t with a plan, when the chain to it
+// was read and no ticket on it, the ancestor included, is cancelled.
+func (s state) approver(t gen.ListReadinessTicketsRow) (gen.ListReadinessTicketsRow, bool) {
 	for depth := 1; t.ParentID.Valid && depth <= MaxDepth; depth++ {
 		p, ok := s.tickets[t.ParentID.String]
-		if !ok {
-			return "", false
-		}
-		if p.StatusCategory == "cancelled" {
-			return p.StatusChangedAt, true
+		if !ok || p.StatusCategory == "cancelled" {
+			return p, false
 		}
 		if _, plan := s.plans[p.ID]; plan {
-			return "", false
+			return p, true
 		}
 		t = p
 	}
-	return "", false
+	return t, false
 }
 
-// lean marks in found why t's lean on its parent fails (ruling L-R10).
-// The parent's own approval must be current: approved, its requirement and
-// plan revision as pinned, and still under the parent it was asked under.
-// With listed (t has no approval of its own) it must list t, with t's
-// requirement as pinned, and a failure at this first link reads as t's own
-// ("Plan not approved.", "Requirement changed since approval."). A parent
-// with no plan of its own leans on its parent in turn, up to the first
-// ancestor with a plan, each link failing with the epic's reasons.
-//
-// chain is the tickets from the one leaning up to t. The parent's approval
-// counts only if its decision was asked after every ticket in the chain,
-// and the parent, last arrived in its project (ruling N-R8): any of them
-// moving after the approval was asked voids it for the leaning ticket
-// ("Plan not approved."), whatever the parents were then. Each is one map
-// lookup; the chain is already loaded.
-//
-// lean never meets a cancelled ancestor: check stops the chain below one
-// first (cancelledAbove).
-func (s state) lean(t gen.ListReadinessTicketsRow, depth int, listed bool, found map[string]bool, chain []string) {
-	notApproved := EpicPlanNotApproved
-	if listed {
-		notApproved = PlanNotApproved
+// covered is t's readiness on its epic e's approval, which must list t.
+func (s state) covered(t, e gen.ListReadinessTicketsRow, out Readiness) Readiness {
+	epic := core.TicketKey{Project: e.ProjectKey, Number: e.Number}.String()
+	if len(out.Files) > 0 {
+		return out.ask("") // its own repo files need an approval of its own
 	}
-	p, ok := s.tickets[t.ParentID.String]
-	if !ok || depth > MaxDepth {
-		found[EpicPlanNotApproved] = true // beyond the chain read
-		return
+	a, ok := s.latest[e.ID]
+	if !ok || !a.approved {
+		return out.ask(epic)
 	}
-	a, answered := s.latest[p.ID]
-	if !answered || !a.approved {
-		found[notApproved] = true
-		return
+	i := slices.IndexFunc(a.pins.Children, func(c core.PinnedChild) bool { return c.ID == t.ID })
+	if i < 0 {
+		return out.ask(epic) // not among the descendants it was asked about
 	}
-	for _, id := range append(slices.Clone(chain), p.ID) {
-		if s.arrived[id] >= a.askedAt {
-			found[PlanNotApproved] = true // moved since it was asked (N-R8)
-			return
+	pin := a.pins.Children[i]
+	parent := pin.Parent
+	if parent == "" {
+		parent = e.ID // pinned before parents were: the epic's own sub-ticket
+	}
+	switch {
+	case pin.RequirementHash != core.RequirementHash(t.Title, t.Body):
+		return out.again(Changed(WhatDescription), epic)
+	case parent != t.ParentID.String:
+		return out.again(Changed(WhatParent), epic)
+	}
+	if what := s.stale(e, a); what != "" {
+		return out.again(EpicChanged(what), epic)
+	}
+	if why := s.why[e.ID]; why != "" {
+		return out.unchecked(why)
+	}
+	out.Ready = true
+	return out
+}
+
+// stale is the first thing approval a pinned of t that changed since: its
+// description, its plan, its parent, then a file's path; "" for none.
+func (s state) stale(t gen.ListReadinessTicketsRow, a answer) string {
+	switch {
+	case a.hash != core.RequirementHash(t.Title, t.Body):
+		return WhatDescription
+	case a.rev != s.plans[t.ID]:
+		return WhatPlan
+	case a.pins.Parent != t.ParentID.String:
+		return WhatParent
+	}
+	for _, f := range s.files[t.ID] {
+		switch f.State {
+		case core.FileUnchanged, core.FileRenamed, core.FileUnchecked:
+		default:
+			return f.Path
 		}
 	}
-	if listed {
-		i := slices.IndexFunc(a.pins.Children, func(c core.PinnedChild) bool { return c.ID == t.ID })
-		if i < 0 {
-			found[PlanNotApproved] = true // not among the children asked about (L-R8)
-			return
-		}
-		if a.pins.Children[i].RequirementHash != core.RequirementHash(t.Title, t.Body) {
-			found[RequirementChanged] = true // L-R9
-		}
-	}
-	if a.hash != core.RequirementHash(p.Title, p.Body) {
-		found[EpicRequirementChanged] = true
-	}
-	if a.rev != s.plans[p.ID] {
-		found[EpicPlanChanged] = true
-	}
-	markFiles(found, s.files[p.ID], EpicFilesChanged)
-	if a.pins.Parent != p.ParentID.String {
-		found[EpicPlanNotApproved] = true // the epic moved since (L-R11)
-		return
-	}
-	if _, plan := s.plans[p.ID]; !plan && p.ParentID.Valid {
-		s.lean(p, depth+1, false, found, append(slices.Clone(chain), p.ID))
-	}
+	return ""
+}
+
+func (r Readiness) ask(epic string) Readiness {
+	r.Reasons, r.Action, r.Epic = []string{AskForApproval}, ActionAsk, epic
+	return r
+}
+
+func (r Readiness) again(reason, epic string) Readiness {
+	r.Reasons, r.Action, r.Epic = []string{reason}, ActionAskAgain, epic
+	return r
+}
+
+func (r Readiness) unchecked(why string) Readiness {
+	r.Reasons = []string{Unchecked(why)}
+	return r
 }

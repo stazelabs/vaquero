@@ -1,6 +1,7 @@
 package readiness
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -55,6 +56,10 @@ type headCache struct {
 }
 
 type pinKey struct{ path, commit, blob string }
+
+// Unavailable reports whether git can't be used at all, so every pin is
+// unchecked for that reason.
+func (g *gitFiles) Unavailable() bool { return g.repos == nil || !g.repos.Available() }
 
 func (g *gitFiles) Check(ctx context.Context, p gen.Project, pins []core.FilePin) ([]FileState, error) {
 	out := unchecked(pins)
@@ -124,13 +129,14 @@ func unchecked(pins []core.FilePin) []FileState {
 // fileStates is, for each ticket CheckAll read, its repo files against
 // its latest answered plan approval: when that approved, each pin's state
 // (a pin whose reference was removed is gone) and each repo-path
-// reference not pinned (added, ruling P2-R4); otherwise its repo-path
-// references, all added. One read of every reference, then one Check per
-// project with anything pinned.
-func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[string]gen.ListReadinessTicketsRow, latest map[string]answer, every []string) (map[string][]FileState, error) {
+// reference not pinned (added); otherwise its repo-path references, all
+// added. why is, for a ticket with a pin left unchecked, why (WhyNoGit,
+// WhyNoRepo, WhyRepoChanged or WhyUnreadable). One read of every
+// reference, then one Check per project with anything pinned.
+func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[string]gen.ListReadinessTicketsRow, latest map[string]answer, every []string) (map[string][]FileState, map[string]string, error) {
 	rows, err := q.ListReadinessRefs(ctx, every)
 	if err != nil {
-		return nil, fmt.Errorf("readiness references: %w", err)
+		return nil, nil, fmt.Errorf("readiness references: %w", err)
 	}
 	refs := map[string][]gen.TicketRef{}
 	for _, r := range rows {
@@ -143,6 +149,7 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 	pinsOf := map[string][]core.FilePin{} // project id -> pins to check
 	slots := map[string][]slot{}
 	out := map[string][]FileState{}
+	why := map[string]string{}
 	for _, id := range every {
 		t := tickets[id]
 		now := core.RefPaths(refs[id])
@@ -175,11 +182,19 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 		projects = append(projects, id)
 	}
 	slices.Sort(projects)
-	// No checker: the pins stay unchecked.
+	if files == nil {
+		// No checker: the pins stay unchecked.
+		for _, p := range projects {
+			for _, sl := range slots[p] {
+				why[sl.ticket] = WhyNoGit
+			}
+		}
+		return sortStates(out), why, nil
+	}
 	var repos []gen.Project
-	if files != nil && len(projects) > 0 {
+	if len(projects) > 0 {
 		if repos, err = q.ListReadinessProjects(ctx, projects); err != nil {
-			return nil, fmt.Errorf("readiness projects: %w", err)
+			return nil, nil, fmt.Errorf("readiness projects: %w", err)
 		}
 	}
 	for _, p := range repos {
@@ -187,9 +202,15 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 		var pins []core.FilePin
 		var at []slot
 		for k, f := range pinsOf[p.ID] {
-			if core.PinMatches(f, p) {
+			sl := slots[p.ID][k]
+			switch {
+			case p.RepoPath == "":
+				why[sl.ticket] = cmp.Or(why[sl.ticket], WhyNoRepo)
+			case !core.PinMatches(f, p):
+				why[sl.ticket] = cmp.Or(why[sl.ticket], WhyRepoChanged)
+			default:
 				pins = append(pins, f)
-				at = append(at, slots[p.ID][k])
+				at = append(at, sl)
 			}
 		}
 		if len(pins) == 0 {
@@ -197,31 +218,28 @@ func fileStates(ctx context.Context, q *gen.Queries, files Files, tickets map[st
 		}
 		got, err := files.Check(ctx, p, pins)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
+		}
+		unreadable := WhyUnreadable
+		if u, ok := files.(interface{ Unavailable() bool }); ok && u.Unavailable() {
+			unreadable = WhyNoGit
 		}
 		for k, sl := range at {
 			if k < len(got) {
 				out[sl.ticket][sl.i] = got[k]
 			}
+			if out[sl.ticket][sl.i].State == core.FileUnchecked {
+				why[sl.ticket] = cmp.Or(why[sl.ticket], unreadable)
+			}
 		}
 	}
+	return sortStates(out), why, nil
+}
+
+// sortStates sorts each ticket's files by path.
+func sortStates(out map[string][]FileState) map[string][]FileState {
 	for id := range out {
 		slices.SortFunc(out[id], func(a, b FileState) int { return strings.Compare(a.Path, b.Path) })
 	}
-	return out, nil
-}
-
-// markFiles adds changed (FilesChanged or EpicFilesChanged) to found
-// when a file changed, was removed or was added, and FilesUnchecked when
-// one couldn't be checked.
-func markFiles(found map[string]bool, files []FileState, changed string) {
-	for _, f := range files {
-		switch f.State {
-		case core.FileUnchanged, core.FileRenamed:
-		case core.FileUnchecked:
-			found[FilesUnchecked] = true
-		default:
-			found[changed] = true
-		}
-	}
+	return out
 }

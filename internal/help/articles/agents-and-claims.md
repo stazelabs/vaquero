@@ -14,7 +14,7 @@ A token made for an agent always acts as that agent, whatever name a request giv
 
 ## The ready queue
 
-A ticket is ready when it is in a todo status, has no assignee and no claim, nothing open blocks it, and it has no open sub-tickets. In a project with the [agent workflow](/help/agent-workflow#readiness) on, it also needs a tier and a current plan approval. The queue lists ready tickets most urgent first (urgent, high, medium, low, then no priority), each in board order.
+A ticket is ready when it is in a todo status, has no assignee and no claim, nothing open blocks it, and it has no open sub-tickets. In a project with the [agent workflow](/help/agent-workflow#readiness) on, it also needs a current plan approval. The queue lists ready tickets most urgent first (urgent, high, medium, low, then no priority), each in board order.
 
     vaquero ready VAQ
     vaquero ready --limit 5 --json

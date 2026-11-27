@@ -292,7 +292,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return get("/decisions", q)
 		})
 	add(s, c, "ready_tickets", "List ready tickets", true,
-		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first. In a project with the agent workflow on, only tickets with a tier and a current plan approval, each with its tier and readiness.",
+		"Tickets ready to be worked on: in a todo status, unassigned, unclaimed, not blocked and with no open sub-tickets. Most urgent first. In a project with the agent workflow on, only tickets with a current plan approval, each with its tier and readiness.",
 		func(in readyArgs) request {
 			q := url.Values{}
 			set(q, "project", in.Project)

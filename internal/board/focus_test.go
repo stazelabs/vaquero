@@ -121,8 +121,8 @@ func TestFocusWaitingReasons(t *testing.T) {
 		t.Errorf("next %v", got)
 	}
 
-	// The workflow on: a ticket with no tier or approval waits with the
-	// workflow's reasons; a blocked one gives both.
+	// The workflow on: a ticket with no approval waits with the
+	// workflow's reason; a blocked one gives both.
 	on := true
 	if _, err := e.c.UpdateProject(ctx, e.owner.ID, e.p.ID, core.ProjectPatch{Workflow: &on}); err != nil {
 		t.Fatal(err)
@@ -134,10 +134,10 @@ func TestFocusWaitingReasons(t *testing.T) {
 	if len(fo.Next) != 0 {
 		t.Errorf("next with the workflow on and nothing approved: %v", keys(fo.Next))
 	}
-	if got := reasonOf(fo, "VAQ-1"); got != readiness.NoTier+" "+readiness.PlanNotApproved {
+	if got := reasonOf(fo, "VAQ-1"); got != readiness.AskForApproval {
 		t.Errorf("not approved: %q", got)
 	}
-	if got := reasonOf(fo, "VAQ-2"); !strings.HasPrefix(got, "Blocked by VAQ-1 · ") || !strings.Contains(got, readiness.PlanNotApproved) {
+	if got := reasonOf(fo, "VAQ-2"); !strings.HasPrefix(got, "Blocked by VAQ-1 · ") || !strings.Contains(got, readiness.AskForApproval) {
 		t.Errorf("blocked and not approved: %q", got)
 	}
 }

@@ -84,7 +84,7 @@ func TestReadinessFilesInTheAPI(t *testing.T) {
 	repo.WriteCommit("docs/a.md", "# A\n\nTwo.\n", "change a")
 	body := c.API("GET", "/api/v1/tickets/VAQ-4", tok, nil).Body
 	decode(t, body, &tk)
-	if r := tk.Readiness; r == nil || r.Ready || strings.Join(r.Reasons, " ") != "Files changed since approval." || r.Files[0].State != "changed" {
+	if r := tk.Readiness; r == nil || r.Ready || strings.Join(r.Reasons, " ") != "Changed since approval: docs/a.md. Ask again." || r.Action != "ask_again" || r.Files[0].State != "changed" {
 		t.Fatalf("readiness %+v", tk.Readiness)
 	}
 	var ready []api.TicketSummary
@@ -97,8 +97,9 @@ func TestReadinessFilesInTheAPI(t *testing.T) {
 	// Without git the files can't be checked, and it isn't ready either.
 	e.Deps.Git, e.Deps.Core.Git = nil, nil
 	e.Rebuild()
+	tk = api.Ticket{}
 	decode(t, c.API("GET", "/api/v1/tickets/VAQ-4", tok, nil).Body, &tk)
-	if r := tk.Readiness; r == nil || r.Ready || strings.Join(r.Reasons, " ") != "Files can't be checked." {
+	if r := tk.Readiness; r == nil || r.Ready || strings.Join(r.Reasons, " ") != "Can't check its files: git isn't installed." || r.Action != "" {
 		t.Fatalf("no git: %+v", tk.Readiness)
 	}
 }

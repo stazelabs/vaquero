@@ -314,39 +314,6 @@ func TestEventTicketsBackfill(t *testing.T) {
 	}
 }
 
-// Ruling N-R7: readiness reads when each ticket last arrived in its
-// project (ListTicketArrivals) through ticket_old_keys' index on ticket_id.
-func TestTicketArrivalsUsesIndex(t *testing.T) {
-	raw, err := os.ReadFile("queries/readiness.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, rest, ok := strings.Cut(string(raw), "-- name: ListTicketArrivals :many\n")
-	if !ok {
-		t.Fatal("no ListTicketArrivals")
-	}
-	q, _, _ := strings.Cut(rest, "-- name:")
-	q = strings.ReplaceAll(strings.TrimSpace(q), "sqlc.slice('ids')", "?1, ?2")
-	rows, err := dbtest.New(t).W.Query("EXPLAIN QUERY PLAN "+q, "a", "b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var plan []string
-	for rows.Next() {
-		var id, parent, notused int
-		var detail string
-		if err := rows.Scan(&id, &parent, &notused, &detail); err != nil {
-			t.Fatal(err)
-		}
-		plan = append(plan, detail)
-	}
-	all := strings.Join(plan, "\n")
-	if strings.Contains(all, "SCAN ticket_old_keys") || !strings.Contains(all, "ticket_old_keys_ticket") {
-		t.Fatalf("plan:\n%s", all)
-	}
-}
-
 // VAQ-147: the projects page finds each project's moves out through
 // events_moved_from, never a scan of events.
 func TestProjectStatsUsesMovedFromIndex(t *testing.T) {

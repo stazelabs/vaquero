@@ -61,16 +61,6 @@ func files(t *testing.T, got readiness.Readiness, want ...string) {
 	}
 }
 
-func TestReasonsOrder(t *testing.T) {
-	want := []string{"Not a todo.", "No tier.", "Plan not approved.", "Epic's plan not approved.",
-		"Requirement changed since approval.", "Plan changed since approval.",
-		"Epic's requirement changed since approval.", "Epic's plan changed since approval.",
-		"Files changed since approval.", "Epic's files changed since approval.", "Files can't be checked."}
-	if !slices.Equal(readiness.Reasons, want) {
-		t.Fatalf("Reasons %q", readiness.Reasons)
-	}
-}
-
 // P2-R3: a pinned file is judged by its content on main, renames followed.
 func TestReadinessFileChanged(t *testing.T) {
 	w, r := gitWorld(t)
@@ -83,7 +73,7 @@ func TestReadinessFileChanged(t *testing.T) {
 
 	r.WriteCommit("docs/a.md", "# A, changed\n", "change a")
 	got = w.check(tk)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/a.md"))
 	files(t, got, "docs/a.md changed")
 
 	// Changed back: the content is what was pinned, whatever the commits.
@@ -99,13 +89,13 @@ func TestReadinessFileChanged(t *testing.T) {
 
 	r.WriteCommit("docs/b.md", "# B\n", "change b")
 	got = w.check(tk)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/a.md"))
 	files(t, got, "docs/a.md changed docs/b.md")
 
 	r.Remove("docs/b.md")
 	r.Commit("remove")
 	got = w.check(tk)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/a.md"))
 	files(t, got, "docs/a.md gone")
 }
 
@@ -123,7 +113,7 @@ func TestReadinessRenamedAwayAndReplaced(t *testing.T) {
 	expect(t, w.check(tk))
 	r.WriteCommit("docs/a.md", "# Something else\n", "a new a")
 	got := w.check(tk)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/a.md"))
 	files(t, got, "docs/a.md changed")
 
 	other := w.ticket(core.TicketInput{Title: "Other", Tier: "light"})
@@ -134,7 +124,7 @@ func TestReadinessRenamedAwayAndReplaced(t *testing.T) {
 	r.Commit("rename c")
 	r.WriteCommit("docs/d.md", "# D\n", "edit d")
 	got = w.check(other)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/c.md"))
 	files(t, got, "docs/c.md changed docs/d.md")
 }
 
@@ -151,7 +141,7 @@ func TestReadinessRefAddedAfterApproval(t *testing.T) {
 	r.WriteCommit("docs/b.md", "# B\n", "b")
 	b := w.ref(tk, "docs/b.md")
 	got := w.check(tk)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/b.md"))
 	files(t, got, "docs/a.md unchanged", "docs/b.md added")
 	if err := w.c.RemoveRef(bg, w.owner.ID, b.ID); err != nil {
 		t.Fatal(err)
@@ -166,7 +156,7 @@ func TestReadinessRefAddedAfterApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	got = w.check(other)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.Changed("docs/a.md"))
 	files(t, got, "docs/a.md gone")
 
 	// A ticket approved with no references runs no git at all.
@@ -190,15 +180,15 @@ func TestReadinessEpicFilesChanged(t *testing.T) {
 	w.approve(epic)
 	expect(t, w.check(child))
 	r.WriteCommit("docs/a.md", "# A, changed\n", "change a")
-	expect(t, w.check(child), readiness.EpicFilesChanged)
-	expect(t, w.check(epic), readiness.FilesChanged)
+	expect(t, w.check(child), readiness.EpicChanged("docs/a.md"))
+	expect(t, w.check(epic), readiness.Changed("docs/a.md"))
 
 	// A leaning child's own repo references weren't asked about: it needs
 	// its own approval for them.
 	r.WriteCommit("docs/a.md", "# A\n", "back")
 	w.ref(child, "docs/a.md")
 	got := w.check(child)
-	expect(t, got, readiness.FilesChanged)
+	expect(t, got, readiness.AskForApproval)
 	files(t, got, "docs/a.md added")
 	w.approve(child)
 	expect(t, w.check(child))
@@ -215,14 +205,14 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	keep := w.files
 	w.files = nil
 	got := w.check(tk)
-	expect(t, got, readiness.FilesUnchecked)
+	expect(t, got, readiness.Unchecked(readiness.WhyNoGit))
 	files(t, got, "docs/a.md unchecked")
 
 	// In a subtest, so PATH comes back for the repos made below.
 	t.Run("no git", func(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 		w.files = readiness.NewFiles(gitread.New())
-		expect(t, w.check(tk), readiness.FilesUnchecked)
+		expect(t, w.check(tk), readiness.Unchecked(readiness.WhyNoGit))
 	})
 
 	w.files = keep
@@ -233,7 +223,7 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	clone.WriteCommit("docs/a.md", "# A\n", "a")
 	w.p = w.repo(w.p, clone)
 	got = w.check(tk)
-	expect(t, got, readiness.FilesUnchecked)
+	expect(t, got, readiness.Unchecked(readiness.WhyRepoChanged))
 	files(t, got, "docs/a.md unchecked")
 	w.p = w.repo(w.p, r)
 	expect(t, w.check(tk))
@@ -242,14 +232,14 @@ func TestReadinessFilesUnchecked(t *testing.T) {
 	if _, err := w.c.UpdateProject(bg, w.owner.ID, w.p.ID, core.ProjectPatch{MainBranch: &trunk}); err != nil {
 		t.Fatal(err)
 	}
-	expect(t, w.check(tk), readiness.FilesUnchecked)
+	expect(t, w.check(tk), readiness.Unchecked(readiness.WhyRepoChanged))
 
 	empty := ""
 	if _, err := w.c.UpdateProject(bg, w.owner.ID, w.p.ID, core.ProjectPatch{RepoPath: &empty}); err != nil {
 		t.Fatal(err)
 	}
 	got = w.check(tk)
-	expect(t, got, readiness.FilesUnchecked)
+	expect(t, got, readiness.Unchecked(readiness.WhyNoRepo))
 	files(t, got, "docs/a.md unchecked")
 }
 
@@ -375,10 +365,10 @@ func TestReadinessUncheckedIsCached(t *testing.T) {
 	r.Git("gc", "-q", "--prune=now")
 	rec := gittest.Record(w.c.Git)
 	got := w.check(tk)
-	expect(t, got, readiness.FilesUnchecked)
+	expect(t, got, readiness.Unchecked(readiness.WhyUnreadable))
 	files(t, got, "docs/a.md unchecked")
 	rec.Reset()
-	expect(t, w.check(tk), readiness.FilesUnchecked)
+	expect(t, w.check(tk), readiness.Unchecked(readiness.WhyUnreadable))
 	for _, sub := range []string{"log", "ls-tree"} {
 		if n := rec.Count(sub); n != 0 {
 			t.Fatalf("an unchecked pin ran %d %s again at the same head", n, sub)
@@ -412,7 +402,7 @@ func TestReadinessTransientFailureNotCached(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		expect(t, all[tk.ID], readiness.FilesUnchecked)
+		expect(t, all[tk.ID], readiness.Unchecked(readiness.WhyUnreadable))
 		all, err = readiness.CheckAll(bg, w.d.RQ, w.files, []string{tk.ID})
 		if err != nil {
 			t.Fatal(err)
@@ -456,7 +446,7 @@ func TestReadinessPartialCloneUnchecked(t *testing.T) {
 	before := packs()
 
 	got := w.check(tk)
-	expect(t, got, readiness.FilesUnchecked)
+	expect(t, got, readiness.Unchecked(readiness.WhyUnreadable))
 	files(t, got, "docs/a.md unchecked")
 	if after := packs(); after != before {
 		t.Fatalf("checking fetched objects:\n%s\n%s", before, after)
@@ -474,7 +464,7 @@ func TestReadinessRenameToControlCharacters(t *testing.T) {
 		r.Git("mv", "docs/a.md", name)
 		r.Commit("rename")
 		got := w.check(tk)
-		expect(t, got, readiness.FilesChanged)
+		expect(t, got, readiness.Changed("docs/a.md"))
 		files(t, got, "docs/a.md changed")
 	}
 }

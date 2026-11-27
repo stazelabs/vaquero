@@ -424,9 +424,14 @@ func printTicket(w io.Writer, t apiTicket) {
 		fmt.Fprintf(w, "Model: %s\n", t.Model)
 	}
 	if r := t.Readiness; r != nil { // the agent workflow is on
-		if r.Ready {
+		switch {
+		case r.Ready:
 			fmt.Fprintln(w, "Readiness: ready")
-		} else {
+		case len(r.Reasons) == 0: // not a todo
+			fmt.Fprintln(w, "Readiness: not ready")
+		case r.Epic != "":
+			fmt.Fprintf(w, "Readiness: not ready. %s (epic %s)\n", strings.Join(r.Reasons, " "), r.Epic)
+		default:
 			fmt.Fprintf(w, "Readiness: not ready. %s\n", strings.Join(r.Reasons, " "))
 		}
 		if len(r.Files) > 0 {

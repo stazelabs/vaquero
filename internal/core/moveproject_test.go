@@ -198,7 +198,7 @@ func TestMoveTicketToProjectTakesSubTickets(t *testing.T) {
 			t.Errorf("%s: %s %s-%d", key, tk.ID, p.Key, tk.Number)
 		}
 	}
-	// Every re-keyed ticket records when it moved (N-R7).
+	// Every re-keyed ticket records when it moved.
 	if n := count(t, d, `SELECT count(*) FROM ticket_old_keys WHERE moved_at = ?`, timefmt.Format(start)); n != 3 {
 		t.Fatalf("%d old keys with moved_at", n)
 	}

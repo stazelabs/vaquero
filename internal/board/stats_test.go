@@ -184,11 +184,11 @@ func TestProjectsStatsOneQuery(t *testing.T) {
 	if one != six {
 		t.Fatalf("%d queries for 2 projects, %d for 6", one, six)
 	}
-	// Three stats queries, then readiness's batch (five for tickets
-	// without parents: tickets, plans, approvals, moves for N-R5 and
-	// references for P2-R4), then every project link in one (VAQ-119).
-	if six > 9 {
-		t.Fatalf("%d queries, want at most 9", six)
+	// Three stats queries, then readiness's batch (four for tickets
+	// without parents: tickets, plans, approvals and references), then
+	// every project link in one (VAQ-119).
+	if six > 8 {
+		t.Fatalf("%d queries, want at most 8", six)
 	}
 }
 

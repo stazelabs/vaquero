@@ -278,10 +278,10 @@ func decisionEvent(ids []string) string {
 
 // createDecision writes d and its tickets. A plan approval pins, for each
 // ticket, what it asks about: the RequirementHash, the plan revision, the
-// parent, the sub-tickets with their RequirementHash and the repo files
+// parent, the descendants it covers (childPins) and the repo files
 // files read before the transaction (refused when the ticket's references
 // or the repo settings changed meanwhile), so the answer approves exactly
-// what was asked (rulings L-R7, L-R9 and P2-R2).
+// what was asked.
 func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets []string, files askedFiles) error {
 	if err := q.CreateDecision(ctx, gen.CreateDecisionParams(d)); err != nil {
 		return fmt.Errorf("create decision: %w", err)
@@ -319,7 +319,7 @@ func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets
 			}
 			row.RequirementHash = RequirementHash(t.Title, t.Body)
 			row.ParentID = t.ParentID.String
-			if row.Children, err = childPins(ctx, q, id); err != nil {
+			if row.Children, err = childPinsJSON(ctx, q, id); err != nil {
 				return err
 			}
 		}
@@ -330,18 +330,50 @@ func createDecision(ctx context.Context, q *gen.Queries, d gen.Decision, tickets
 	return nil
 }
 
-// childPins is ticketID's sub-tickets with their RequirementHash, by id, as
-// JSON: what a plan approval asks about and pins of them.
-func childPins(ctx context.Context, q *gen.Queries, ticketID string) (string, error) {
-	subs, err := q.ListSubTickets(ctx, sql.NullString{String: ticketID, Valid: true})
+// childPins is what a plan approval of ticketID asks about and pins of
+// its descendants: every one without a plan of its own reached through
+// descendants without one, at any depth, each with its parent and its
+// RequirementHash, sorted by id. A descendant with its own plan is left
+// out, and so is everything under it: it is approved on its own plan.
+func childPins(ctx context.Context, q *gen.Queries, ticketID string) ([]PinnedChild, error) {
+	subs, err := q.ListDescendants(ctx, sql.NullString{String: ticketID, Valid: true})
 	if err != nil {
-		return "", fmt.Errorf("list sub-tickets: %w", err)
+		return nil, fmt.Errorf("list sub-tickets: %w", err)
 	}
 	pins := []PinnedChild{}
-	for _, c := range subs {
-		pins = append(pins, PinnedChild{ID: c.ID, RequirementHash: RequirementHash(c.Title, c.Body)})
+	if len(subs) == 0 {
+		return pins, nil
+	}
+	ids := make([]string, len(subs))
+	for i, c := range subs {
+		ids[i] = c.ID
+	}
+	planned, err := q.ListPlanRevisionsForTickets(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list plans: %w", err)
+	}
+	hasPlan := map[string]bool{}
+	for _, p := range planned {
+		hasPlan[p.TicketID] = true
+	}
+	covered := map[string]bool{ticketID: true}
+	for _, c := range subs { // nearest first, so a parent comes before its sub-tickets
+		if !covered[c.ParentID.String] || hasPlan[c.ID] {
+			continue
+		}
+		covered[c.ID] = true
+		pins = append(pins, PinnedChild{ID: c.ID, Parent: c.ParentID.String, RequirementHash: RequirementHash(c.Title, c.Body)})
 	}
 	slices.SortFunc(pins, func(a, b PinnedChild) int { return strings.Compare(a.ID, b.ID) })
+	return pins, nil
+}
+
+// childPinsJSON is childPins as stored.
+func childPinsJSON(ctx context.Context, q *gen.Queries, ticketID string) (string, error) {
+	pins, err := childPins(ctx, q, ticketID)
+	if err != nil {
+		return "", err
+	}
 	b, err := json.Marshal(pins)
 	if err != nil {
 		return "", fmt.Errorf("child pins: %w", err)
@@ -349,12 +381,28 @@ func childPins(ctx context.Context, q *gen.Queries, ticketID string) (string, er
 	return string(b), nil
 }
 
+// sameChildren reports whether the descendants asked about (JSON, as
+// stored) are now's. An entry asked before parents were pinned names the
+// asked ticket's own sub-ticket, so its parent is ticketID.
+func sameChildren(asked string, now []PinnedChild, ticketID string) bool {
+	var was []PinnedChild
+	if err := json.Unmarshal([]byte(asked), &was); err != nil {
+		return false
+	}
+	for i := range was {
+		if was[i].Parent == "" {
+			was[i].Parent = ticketID
+		}
+	}
+	return slices.Equal(was, now)
+}
+
 // askedUnchanged is what plan approval d asked about for each ticket,
 // refusing an Approve when any of it changed since: the ticket's
-// requirement, its plan revision, its parent, its sub-tickets (one
-// added, removed, or with its requirement changed), its repo-path
-// references, or a pinned file's content on main (files, read before the
-// transaction; rulings P2-R3 and P2-R4).
+// requirement, its plan revision, its parent, the descendants it covers
+// (one added, removed, re-parented, given a plan of its own, or with its
+// requirement changed), its repo-path references, or a pinned file's
+// content on main (files, read before the transaction).
 func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision, proj gen.Project, files fileVerdict) ([]gen.ListDecisionTicketPinsRow, error) {
 	pins, err := q.ListDecisionTicketPins(ctx, d.ID)
 	if err != nil {
@@ -374,7 +422,7 @@ func askedUnchanged(ctx context.Context, q *gen.Queries, d gen.Decision, proj ge
 			return nil, err
 		}
 		if rev != p.PlanRevision || RequirementHash(p.Title, p.Body) != p.RequirementHash ||
-			p.CurrentParentID != p.ParentID || children != p.Children {
+			p.CurrentParentID != p.ParentID || !sameChildren(p.Children, children, p.TicketID) {
 			key := TicketKey{Project: p.ProjectKey, Number: p.Number}.String()
 			return nil, invalid("answer", "The plan or requirement for "+key+" changed since this was asked; ask again.")
 		}
@@ -592,13 +640,12 @@ func (c *Core) AnswerDecision(ctx context.Context, owner, decisionID string, a A
 	return d, nil
 }
 
-// ApprovalPins is an approval row's pins: the ticket's parent and its
-// sub-tickets as the owner was asked about them, the only children its
-// approval covers, each with its requirement then (rulings L-R8 and
-// L-R9), and its repo files (P2-R2).
+// ApprovalPins is an approval row's pins: the ticket's parent and the
+// descendants it covers (childPins) as the owner was asked about them,
+// each with its parent and requirement then, and its repo files.
 type ApprovalPins struct {
 	// Parent is the id of the ticket's parent when asked, "" for none: a
-	// ticket moved since leans on nothing it was approved under (L-R11).
+	// ticket moved to another parent since is not covered by it.
 	Parent   string        `json:"parent"`
 	Children []PinnedChild `json:"children"`
 	// Files are the ticket's repo-path references as asked, at main's
@@ -606,10 +653,14 @@ type ApprovalPins struct {
 	Files []FilePin `json:"files"`
 }
 
-// PinnedChild is a sub-ticket an approval covers, with its RequirementHash
-// as asked.
+// PinnedChild is a descendant an approval covers, with its parent and
+// RequirementHash as asked.
 type PinnedChild struct {
-	ID              string `json:"id"`
+	ID string `json:"id"`
+	// Parent is its parent when asked: the epic itself, or a descendant
+	// between. "" in approvals from before every descendant was pinned,
+	// when only the epic's own sub-tickets were, so it means the epic.
+	Parent          string `json:"parent,omitempty"`
 	RequirementHash string `json:"requirement_hash"`
 }
 

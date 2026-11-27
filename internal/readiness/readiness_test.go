@@ -2,6 +2,7 @@ package readiness_test
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -104,12 +105,14 @@ func (w *world) check(tk gen.Ticket) readiness.Readiness {
 	if err != nil {
 		w.t.Fatal(err)
 	}
-	if got := all[tk.ID]; got.Ready != one.Ready || !slices.Equal(got.Reasons, one.Reasons) || !slices.Equal(got.Files, one.Files) {
+	if got := all[tk.ID]; got.Ready != one.Ready || !slices.Equal(got.Reasons, one.Reasons) || !slices.Equal(got.Files, one.Files) ||
+		got.Action != one.Action || got.Epic != one.Epic {
 		w.t.Fatalf("Check %+v, CheckAll %+v", one, got)
 	}
 	return one
 }
 
+// expect checks got's reasons: none is ready.
 func expect(t *testing.T, got readiness.Readiness, reasons ...string) {
 	t.Helper()
 	if got.Ready != (len(reasons) == 0) || !slices.Equal(got.Reasons, reasons) || got.Reasons == nil {
@@ -117,187 +120,51 @@ func expect(t *testing.T, got readiness.Readiness, reasons ...string) {
 	}
 }
 
-func TestReadyWithApprovedPlanAndTier(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "standard"})
-	w.plan(tk, "1. Columns.", 0)
-	expect(t, w.check(tk), readiness.PlanNotApproved)
-	w.approve(tk)
-	expect(t, w.check(tk))
-	// A move, a claim and other changes outside the requirement keep it.
-	w.edit(tk, core.TicketPatch{Priority: new(int64(2)), Tags: []string{"ui"}, SetTags: true})
-	expect(t, w.check(tk))
-}
+// want is what a readiness answer should say: its one reason ("" for
+// ready), its action and the epic to ask on.
+type want struct{ reason, action, epic string }
 
-func TestNoTierNotReady(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Columns"})
-	w.plan(tk, "1. Columns.", 0)
-	w.approve(tk)
-	expect(t, w.check(tk), readiness.NoTier)
-	w.edit(tk, core.TicketPatch{Tier: new("design")})
-	expect(t, w.check(tk)) // a design ticket can be ready
-}
+var ready = want{}
 
-func TestNotATodoNotReady(t *testing.T) {
-	w := newWorld(t)
-	st, err := w.d.RQ.FirstStatusInCategory(bg, gen.FirstStatusInCategoryParams{ProjectID: w.p.ID, Category: "backlog"})
-	if err != nil {
-		t.Fatal(err)
+// ask is "Ask for plan approval.", on epic ("" for the ticket itself).
+func ask(epic string) want { return want{readiness.AskForApproval, readiness.ActionAsk, epic} }
+
+// again is reason with "ask again", on epic.
+func again(reason, epic string) want { return want{reason, readiness.ActionAskAgain, epic} }
+
+func (w *world) expect(tk gen.Ticket, x want) {
+	w.t.Helper()
+	got := w.check(tk)
+	var reasons []string
+	if x.reason != "" {
+		reasons = []string{x.reason}
 	}
-	tk := w.ticket(core.TicketInput{Title: "Columns", StatusID: st.ID})
-	// Every reason, in order.
-	expect(t, w.check(tk), readiness.NotATodo, readiness.NoTier, readiness.PlanNotApproved)
-}
-
-func TestEditedRequirementNotReady(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "light"})
-	w.plan(tk, "1. Columns.", 0)
-	w.approve(tk)
-	w.edit(tk, core.TicketPatch{Body: new("Show columns and rails.")})
-	expect(t, w.check(tk), readiness.RequirementChanged)
-	w.edit(tk, core.TicketPatch{Body: new("Show columns.")})
-	expect(t, w.check(tk)) // the requirement as approved again
-	w.edit(tk, core.TicketPatch{Title: new("Board columns")})
-	expect(t, w.check(tk), readiness.RequirementChanged)
-	w.approve(tk)
-	expect(t, w.check(tk))
-}
-
-func TestRevisedPlanNotReady(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Columns", Tier: "light"})
-	w.plan(tk, "1. Columns.", 0)
-	w.approve(tk)
-	w.plan(tk, "1. Columns.\n2. Rails.", 1)
-	expect(t, w.check(tk), readiness.PlanChanged)
-	w.edit(tk, core.TicketPatch{Body: new("Changed.")})
-	expect(t, w.check(tk), readiness.RequirementChanged, readiness.PlanChanged)
-}
-
-// Ruling L-R4: the latest answered plan approval counts, so "Request
-// changes" after an approval takes it back.
-func TestRequestChangesAfterApprovalNotReady(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Columns", Tier: "light"})
-	w.plan(tk, "1. Columns.", 0)
-	w.approve(tk)
-	expect(t, w.check(tk))
-	w.answer("Request changes", tk)
-	expect(t, w.check(tk), readiness.PlanNotApproved)
-	w.approve(tk)
-	expect(t, w.check(tk))
-}
-
-// Ruling L-R5, no plan and no approval of its own: the epic's approval
-// covers the child.
-func TestChildInheritsEpicApproval(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.\n2. Rails.", 0)
-	expect(t, w.check(child), readiness.PlanNotApproved)
-	w.approve(epic)
-	expect(t, w.check(child))
-	// The epic's approval pinned the child's requirement too (ruling L-R9).
-	w.edit(child, core.TicketPatch{Body: new("Columns, sorted.")})
-	expect(t, w.check(child), readiness.RequirementChanged)
-	w.approve(epic)
-	expect(t, w.check(child))
-	// The epic's latest answer counts for the child too.
-	w.answer("Request changes", epic)
-	expect(t, w.check(child), readiness.PlanNotApproved)
-}
-
-// Review Focus 4: editing the epic's requirement or plan makes every child
-// that leans on its approval not ready, with the epic's reason.
-func TestEditedEpicMakesChildrenNotReady(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	inherits := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	grouped := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.\n2. Rails.", 0)
-	w.approve(epic)          // inherits: no approval of its own
-	w.approve(epic, grouped) // grouped: approved with the epic, plan_revision 0
-	expect(t, w.check(inherits))
-	expect(t, w.check(grouped))
-
-	w.edit(epic, core.TicketPatch{Body: new("A board with rails.")})
-	expect(t, w.check(inherits), readiness.EpicRequirementChanged)
-	expect(t, w.check(grouped), readiness.EpicRequirementChanged)
-
-	w.approve(epic, grouped)
-	expect(t, w.check(inherits))
-	expect(t, w.check(grouped))
-
-	w.plan(epic, "1. Columns.\n2. Rails.\n3. Filters.", 1)
-	expect(t, w.check(inherits), readiness.EpicPlanChanged)
-	expect(t, w.check(grouped), readiness.EpicPlanChanged)
-
-	// Batched, every child gets its own answer.
-	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{inherits.ID, grouped.ID, epic.ID})
-	if err != nil {
-		t.Fatal(err)
+	if got.Ready != (x.reason == "") || !slices.Equal(got.Reasons, reasons) && !(len(reasons) == 0 && len(got.Reasons) == 0) ||
+		got.Reasons == nil || got.Action != x.action || got.Epic != x.epic {
+		w.t.Fatalf("%s: got %+v, want %+v", w.key(tk), got, x)
 	}
-	expect(t, all[inherits.ID], readiness.EpicPlanChanged)
-	expect(t, all[grouped.ID], readiness.EpicPlanChanged)
-	expect(t, all[epic.ID], readiness.NoTier, readiness.PlanChanged)
 }
 
-// Ruling L-R5, no plan but an approval of its own: its requirement must
-// match, and it still leans on the epic's own current approval.
-func TestChildOwnApprovalStillLeansOnEpic(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Rails.", 0)
-	w.approve(child)                                         // its own approval, the epic not yet approved
-	expect(t, w.check(child), readiness.EpicPlanNotApproved) // ruling L-R6
-	w.approve(epic)
-	expect(t, w.check(child))
-	w.edit(child, core.TicketPatch{Body: new("Rails, folded.")})
-	expect(t, w.check(child), readiness.RequirementChanged)
-	w.edit(epic, core.TicketPatch{Title: new("Board, again")})
-	expect(t, w.check(child), readiness.RequirementChanged, readiness.EpicRequirementChanged)
-	// Its own latest answer counts: a request for changes takes it back.
-	w.approve(epic)
-	w.approve(child)
-	expect(t, w.check(child))
-	w.answer("Request changes", child)
-	expect(t, w.check(child), readiness.PlanNotApproved)
+// key is tk's key in VAQ.
+func (w *world) key(tk gen.Ticket) string {
+	return core.TicketKey{Project: w.p.Key, Number: tk.Number}.String()
 }
 
-// Ruling L-R5, a plan of its own: its own approval counts, and the epic's
-// edits don't touch it.
-func TestChildOwnPlanTakesPrecedence(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.", 0)
-	w.approve(epic)
-	w.plan(child, "1. Sorted columns.", 0)
-	// Its own plan isn't approved, so the epic's approval doesn't cover it.
-	expect(t, w.check(child), readiness.PlanNotApproved)
-	w.approve(child)
-	expect(t, w.check(child))
-	w.edit(epic, core.TicketPatch{Body: new("A board with rails.")})
-	w.plan(epic, "1. Columns.\n2. Rails.", 1)
-	expect(t, w.check(child))
-	w.plan(child, "1. Sorted columns.\n2. Folded.", 1)
-	expect(t, w.check(child), readiness.PlanChanged)
-}
-
-// Ruling L-R5, no parent and no plan: a small ticket's own approval
-// (plan_revision 0) counts.
-func TestSmallTicketApprovedWithoutPlan(t *testing.T) {
-	w := newWorld(t)
-	tk := w.ticket(core.TicketInput{Title: "Typo", Tier: "light"})
-	expect(t, w.check(tk), readiness.PlanNotApproved)
-	w.approve(tk)
-	expect(t, w.check(tk))
-	w.plan(tk, "1. Fix it.", 0) // a plan written after: approve it
-	expect(t, w.check(tk), readiness.PlanChanged)
+func TestReasons(t *testing.T) {
+	forms := []string{"Ask for plan approval.", "Changed since approval: {what}. Ask again.",
+		"Its epic changed since approval: {what}. Ask again.", "Can't check its files: {why}."}
+	if !slices.Equal(readiness.Reasons, forms) {
+		t.Fatalf("Reasons %q", readiness.Reasons)
+	}
+	if got := readiness.Changed(readiness.WhatDescription); got != "Changed since approval: the description. Ask again." {
+		t.Fatal(got)
+	}
+	if got := readiness.EpicChanged(readiness.WhatParent); got != "Its epic changed since approval: its parent. Ask again." {
+		t.Fatal(got)
+	}
+	if got := readiness.Unchecked(readiness.WhyNoRepo); got != "Can't check its files: no repository is set." {
+		t.Fatal(got)
+	}
 }
 
 func TestCheckAllEmpty(t *testing.T) {
@@ -305,349 +172,6 @@ func TestCheckAllEmpty(t *testing.T) {
 	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, nil)
 	if err != nil || len(all) != 0 {
 		t.Fatalf("%v %v", all, err)
-	}
-}
-
-// Ruling L-R8: an epic's approval covers only the sub-tickets it had when
-// it was approved.
-func TestEpicApprovalCoversOnlyItsChildrenThen(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	present := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	moved := w.ticket(core.TicketInput{Title: "Rails", Tier: "light"})
-	w.plan(epic, "1. Columns.", 0)
-	w.approve(epic)
-	expect(t, w.check(present)) // present at approval: still covered
-
-	later := w.ticket(core.TicketInput{Title: "Filters", ParentID: epic.ID, Tier: "light"})
-	expect(t, w.check(later), readiness.PlanNotApproved)
-	w.edit(moved, core.TicketPatch{ParentID: new(epic.ID)})
-	expect(t, w.check(moved), readiness.PlanNotApproved)
-
-	// Approving the epic again takes them in.
-	w.approve(epic)
-	expect(t, w.check(later))
-	expect(t, w.check(moved))
-}
-
-// Ruling L-R9: a covered child moved away, edited and moved back is not
-// ready: its requirement is not the one the epic's approval pinned.
-func TestCoveredChildMovedAwayAndBackNotReady(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	other := w.ticket(core.TicketInput{Title: "Other"})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.", 0)
-	w.approve(epic)
-	expect(t, w.check(child))
-	w.edit(child, core.TicketPatch{ParentID: new(other.ID)})
-	w.edit(child, core.TicketPatch{Body: new("Columns, and more.")})
-	w.edit(child, core.TicketPatch{ParentID: new(epic.ID)})
-	expect(t, w.check(child), readiness.RequirementChanged)
-	// Moved back unchanged, it is covered again.
-	w.edit(child, core.TicketPatch{Body: new("")})
-	expect(t, w.check(child))
-}
-
-// Rulings L-R6 and L-R8: a sub-ticket whose own approval is current needs
-// its epic's approval to be current, but not to list it.
-func TestEpicPlanNotApproved(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	w.plan(epic, "1. Columns.", 0)
-
-	// The epic has no approval.
-	own := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.approve(own)
-	expect(t, w.check(own), readiness.EpicPlanNotApproved)
-
-	// The epic's approval came after the sub-ticket's, so it lists it, but
-	// it need not: the sub-ticket's own approval covers it.
-	w.approve(epic)
-	expect(t, w.check(own))
-	later := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
-	w.approve(later) // asked under the epic, which doesn't list it
-	expect(t, w.check(later))
-
-	// A request for changes on the epic leaves it with no current approval.
-	w.answer("Request changes", epic)
-	expect(t, w.check(own), readiness.EpicPlanNotApproved)
-	expect(t, w.check(later), readiness.EpicPlanNotApproved)
-}
-
-// Ruling L-R11: an approval holds only under the parent it was asked
-// under. A ticket moved to another epic, out of its epic, or under one
-// from having none is not ready.
-func TestReparentedTicketNotReady(t *testing.T) {
-	w := newWorld(t)
-	e1 := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	e2 := w.ticket(core.TicketInput{Title: "List", Body: "A list."})
-	c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e1.ID, Tier: "light"})
-	w.plan(e1, "1. Columns.", 0)
-	w.plan(e2, "1. Rows.", 0)
-	w.approve(e1, c)
-	w.approve(e2)
-	expect(t, w.check(c))
-	w.edit(c, core.TicketPatch{ParentID: new(e2.ID)})
-	expect(t, w.check(c), readiness.EpicPlanNotApproved)
-	w.edit(c, core.TicketPatch{ParentID: new("")})
-	expect(t, w.check(c), readiness.EpicPlanNotApproved)
-	w.edit(c, core.TicketPatch{ParentID: new(e1.ID)})
-	expect(t, w.check(c)) // back where it was asked: the approval holds
-
-	small := w.ticket(core.TicketInput{Title: "Typo", Tier: "light"})
-	w.approve(small)
-	expect(t, w.check(small))
-	w.edit(small, core.TicketPatch{ParentID: new(e1.ID)})
-	expect(t, w.check(small), readiness.EpicPlanNotApproved)
-}
-
-// Ruling L-R10: leaning is recursive, up to the first ancestor with a plan
-// of its own.
-func TestGrandchildLeansThroughItsParent(t *testing.T) {
-	w := newWorld(t)
-	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
-	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
-	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
-	w.plan(e, "1. Child.", 0)
-	w.approve(e, c)
-	expect(t, w.check(g)) // all current
-
-	w.plan(e, "1. Child.\n2. More.", 1)
-	expect(t, w.check(g), readiness.EpicPlanChanged)
-	w.approve(e, c)
-	expect(t, w.check(g))
-
-	w.edit(e, core.TicketPatch{Body: new("The epic, changed.")})
-	expect(t, w.check(g), readiness.EpicRequirementChanged)
-	w.approve(e, c)
-	expect(t, w.check(g))
-
-	// E's approval taken back: C leans on nothing.
-	w.answer("Request changes", e)
-	expect(t, w.check(g), readiness.EpicPlanNotApproved)
-
-	// Batched with its ancestors, every ticket gets its own answer.
-	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{g.ID, c.ID, e.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	expect(t, all[g.ID], readiness.EpicPlanNotApproved)
-	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
-	expect(t, all[e.ID], readiness.NoTier, readiness.PlanNotApproved)
-}
-
-// N-R1: a ticket moved to another project keeps its approvals in history,
-// but they no longer make it ready; its plan moves with it, and an approval
-// asked in the new project makes it ready again. Its sub-tickets, which
-// moved with it, lean on nothing until then.
-func TestMovedTicketNeedsApprovalAgain(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
-	w.plan(epic, "1. Columns.", 0)
-	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.approve(epic)
-	expect(t, w.check(epic))
-	expect(t, w.check(sub))
-	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	on := true
-	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, other.ID, 0); err != nil {
-		t.Fatal(err)
-	}
-	expect(t, w.check(epic), readiness.PlanNotApproved)
-	expect(t, w.check(sub), readiness.PlanNotApproved)
-	if n := count(t, w, `SELECT count(*) FROM approvals WHERE ticket_id = ?`, epic.ID); n != 1 {
-		t.Fatalf("approvals %d, want the old one kept", n)
-	}
-	if n := count(t, w, `SELECT count(*) FROM plans WHERE ticket_id = ?`, epic.ID); n != 1 {
-		t.Fatal("plan didn't move with it")
-	}
-	vaq := w.p
-	w.p = other
-	w.approve(epic)
-	expect(t, w.check(epic))
-	expect(t, w.check(sub))
-	// N-R5: back in VAQ, its VAQ approval from before it left doesn't
-	// count again; neither does OTH's.
-	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, vaq.ID, 0); err != nil {
-		t.Fatal(err)
-	}
-	expect(t, w.check(epic), readiness.PlanNotApproved)
-	expect(t, w.check(sub), readiness.PlanNotApproved)
-	w.p = vaq
-	w.approve(epic)
-	expect(t, w.check(epic))
-	expect(t, w.check(sub))
-}
-
-// N-R5: a sub-ticket with its own approval, carried to another project and
-// back by its epic, needs approving again too, and so does the epic it
-// leans on.
-func TestCarriedSubTicketNeedsApprovalAgain(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
-	w.plan(epic, "1. Columns.", 0)
-	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(sub, "1. One column.", 0)
-	w.approve(epic)
-	w.approve(sub)
-	expect(t, w.check(sub))
-	vaq := w.p
-	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, to := range []string{other.ID, vaq.ID} {
-		if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, epic.ID, to, 0); err != nil {
-			t.Fatal(err)
-		}
-	}
-	expect(t, w.check(epic), readiness.PlanNotApproved)
-	expect(t, w.check(sub), readiness.PlanNotApproved)
-	w.approve(sub)
-	expect(t, w.check(sub)) // its own plan: nothing of its epic
-	w.approve(epic)
-	expect(t, w.check(epic))
-}
-
-func count(t *testing.T, w *world, q string, args ...any) int {
-	t.Helper()
-	var n int
-	if err := w.d.R.QueryRow(q, args...).Scan(&n); err != nil {
-		t.Fatal(err)
-	}
-	return n
-}
-
-// N-R7, the review's probe: a ticket approved on its own, put under an
-// unapproved epic, carried to another project and back by it, then
-// detached, is not ready on its old approval. Every step after the
-// approval is an agent's.
-func TestDetachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
-	w := newWorld(t)
-	s := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns.", Tier: "light"})
-	w.approve(s)
-	expect(t, w.check(s))
-	r := w.ticket(core.TicketInput{Title: "Board", Tier: "standard"})
-	other, err := w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	on := true
-	if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
-		t.Fatal(err)
-	}
-	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
-	if err != nil {
-		t.Fatal(err)
-	}
-	under, none := r.ID, ""
-	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &under}, 0); err != nil {
-		t.Fatal(err)
-	}
-	for _, to := range []string{other.ID, w.p.ID} {
-		if _, err := w.c.MoveTicketToProject(bg, agent.ID, r.ID, to, 0); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := w.c.PatchTicket(bg, agent.ID, s.ID, core.TicketPatch{ParentID: &none}, 0); err != nil {
-		t.Fatal(err)
-	}
-	expect(t, w.check(s), readiness.PlanNotApproved)
-	w.approve(s)
-	expect(t, w.check(s))
-}
-
-// roundTrip moves tk to OTH (workflow on, made on first use) and back, as
-// actor.
-func (w *world) roundTrip(actor string, tk gen.Ticket) {
-	w.t.Helper()
-	other, err := w.d.RQ.GetProjectByKey(bg, "OTH")
-	if err != nil {
-		if other, err = w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
-			w.t.Fatal(err)
-		}
-		on := true
-		if _, err := w.c.UpdateProject(bg, w.owner.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
-			w.t.Fatal(err)
-		}
-	}
-	for _, to := range []string{other.ID, w.p.ID} {
-		if _, err := w.c.MoveTicketToProject(bg, actor, tk.ID, to, 0); err != nil {
-			w.t.Fatal(err)
-		}
-	}
-}
-
-func (w *world) parent(actor string, tk gen.Ticket, parentID string) {
-	w.t.Helper()
-	if _, err := w.c.PatchTicket(bg, actor, tk.ID, core.TicketPatch{ParentID: &parentID}, 0); err != nil {
-		w.t.Fatal(err)
-	}
-}
-
-// N-R8, the review's first probe: an approved epic lists X; an agent
-// detaches X, moves it out and back, and attaches it again. The epic's
-// approval was asked before X last arrived, so X doesn't lean on it.
-func TestReattachedAfterRoundTripNeedsApprovalAgain(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
-	w.plan(epic, "1. Columns.", 0)
-	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.approve(epic)
-	expect(t, w.check(x))
-	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.parent(agent.ID, x, "")
-	w.roundTrip(agent.ID, x)
-	w.parent(agent.ID, x, epic.ID)
-	expect(t, w.check(x), readiness.PlanNotApproved)
-	expect(t, w.check(epic))
-	w.approve(epic)
-	expect(t, w.check(x))
-}
-
-// N-R8, the second probe: F lists X; an agent puts X under R, carries it
-// out and back with R, and attaches it to F again. A grandchild leaning
-// through a plan-less X is covered by the same chain.
-func TestCarriedAndReattachedNeedsApprovalAgain(t *testing.T) {
-	w := newWorld(t)
-	f := w.ticket(core.TicketInput{Title: "Board", Body: "A board.", Tier: "standard"})
-	w.plan(f, "1. Columns.", 0)
-	x := w.ticket(core.TicketInput{Title: "Columns", ParentID: f.ID, Tier: "light"})
-	w.approve(f)
-	expect(t, w.check(x))
-	r := w.ticket(core.TicketInput{Title: "Other epic", Tier: "standard"})
-	agent, err := w.c.EnsureAgent(bg, w.owner.ID, "builder")
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.parent(agent.ID, x, r.ID)
-	w.roundTrip(agent.ID, r)
-	w.parent(agent.ID, x, f.ID)
-	expect(t, w.check(x), readiness.PlanNotApproved)
-	// Approved again, with a grandchild G leaning on X's own approval and,
-	// through X (no plan), on F's; then X goes out and back carrying G:
-	// G loses the lean too.
-	g := w.ticket(core.TicketInput{Title: "One column", ParentID: x.ID, Tier: "light"})
-	w.approve(f)
-	w.approve(x)
-	expect(t, w.check(x))
-	expect(t, w.check(g))
-	w.parent(agent.ID, x, "")
-	w.roundTrip(agent.ID, x) // carries g
-	w.parent(agent.ID, x, f.ID)
-	expect(t, w.check(x), readiness.PlanNotApproved)
-	if got := w.check(g); got.Ready {
-		t.Fatalf("grandchild ready: %+v", got)
 	}
 }
 
@@ -661,129 +185,461 @@ func (w *world) status(tk gen.Ticket, category string) {
 	w.edit(tk, core.TicketPatch{StatusID: &st.ID})
 }
 
-// VAQ-145, ruling P-R5: cancelling an epic withdraws the approval it gave
-// the children leaning on it. A child with no plan of its own is then
-// judged as if it had no parent: its own approval counts, but only one
-// asked after the epic was cancelled. Back in todo, the epic is leaned on
-// as before (L-R6).
-func TestCancelledEpicStopsCovering(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.", 0)
-	w.approve(epic)
-	expect(t, w.check(child))
-	w.status(epic, "cancelled")
-	expect(t, w.check(child), readiness.EpicPlanNotApproved)
-	// (b) Approved itself after the cancel, it stands alone.
-	w.approve(child)
-	expect(t, w.check(child))
-	w.edit(child, core.TicketPatch{Body: new("Columns, sorted.")})
-	expect(t, w.check(child), readiness.RequirementChanged)
-	w.edit(child, core.TicketPatch{Body: new("")})
-	expect(t, w.check(child))
-	// Edits to the cancelled epic don't touch it.
-	w.edit(epic, core.TicketPatch{Body: new("A board, changed.")})
-	expect(t, w.check(child))
-	// (d) Back in todo, the epic is leaned on again (L-R6): its edit since
-	// its approval shows.
-	w.status(epic, "todo")
-	expect(t, w.check(child), readiness.EpicRequirementChanged)
-	w.approve(epic)
-	expect(t, w.check(child))
-
-	// A ticket with its own approved plan leans on nothing.
-	own := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID, Tier: "light"})
-	w.plan(own, "1. Rails.", 0)
-	w.approve(own)
-	expect(t, w.check(own))
-	w.status(epic, "cancelled")
-	expect(t, w.check(own))
+func (w *world) parent(tk gen.Ticket, parentID string) {
+	w.t.Helper()
+	w.edit(tk, core.TicketPatch{ParentID: &parentID})
 }
 
-// P-R5 (a): an own approval asked before the cancel was given leaning on
-// the epic (L-R6), and doesn't count once the epic is cancelled: cancelling
-// never by itself makes a child ready.
-func TestCancelledEpicOwnApprovalBeforeCancel(t *testing.T) {
-	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
-	w.plan(epic, "1. Columns.", 0)
-	w.approve(child)
-	expect(t, w.check(child), readiness.EpicPlanNotApproved) // L-R6: the epic isn't approved
-	w.status(epic, "cancelled")
-	expect(t, w.check(child), readiness.EpicPlanNotApproved)
-	w.status(epic, "todo")
-	w.approve(epic)
-	expect(t, w.check(child))
-	w.status(epic, "cancelled")
-	expect(t, w.check(child), readiness.EpicPlanNotApproved)
-	// A request for changes after the cancel is no approval either.
-	w.answer("Request changes", child)
-	expect(t, w.check(child), readiness.EpicPlanNotApproved)
+// other is the project OTH, workflow on, made on first use.
+func (w *world) other() gen.Project {
+	w.t.Helper()
+	p, err := w.d.RQ.GetProjectByKey(bg, "OTH")
+	if err == nil {
+		return p
+	}
+	if p, err = w.c.CreateProject(bg, w.owner.ID, core.ProjectInput{Key: "OTH", Name: "Other"}); err != nil {
+		w.t.Fatal(err)
+	}
+	on := true
+	if p, err = w.c.UpdateProject(bg, w.owner.ID, p.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		w.t.Fatal(err)
+	}
+	return p
 }
 
-// P-R5 (c): the same through a cancelled grandparent in the leaning chain.
-// Where more than one is cancelled, leaning stops at the nearest, and the
-// child's approval must be asked after that one was cancelled.
-func TestCancelledGrandparentStopsCovering(t *testing.T) {
+func (w *world) moveTo(tk gen.Ticket, p gen.Project) {
+	w.t.Helper()
+	if _, err := w.c.MoveTicketToProject(bg, w.owner.ID, tk.ID, p.ID, 0); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// Ready is the board's ready and a current approval: the tier gates
+// nothing, and a ticket that isn't a todo is not ready, with no reason.
+func TestReadyRule(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(w *world) gen.Ticket
+		want  want
+	}{
+		{"approved plan", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns", Tier: "standard"})
+			w.plan(tk, "1. Columns.", 0)
+			w.approve(tk)
+			return tk
+		}, ready},
+		{"no tier", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.plan(tk, "1. Columns.", 0)
+			w.approve(tk)
+			return tk
+		}, ready},
+		{"design tier", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns", Tier: "design"})
+			w.approve(tk)
+			return tk
+		}, ready},
+		{"changes outside the requirement", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.approve(tk)
+			w.edit(tk, core.TicketPatch{Priority: new(int64(2)), Tags: []string{"ui"}, SetTags: true, Tier: new("heavy")})
+			return tk
+		}, ready},
+		{"nothing asked", func(w *world) gen.Ticket {
+			return w.ticket(core.TicketInput{Title: "Columns"})
+		}, ask("")},
+		{"plan not approved", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.plan(tk, "1. Columns.", 0)
+			return tk
+		}, ask("")},
+		{"backlog", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.status(tk, "backlog")
+			return tk
+		}, ready},
+		{"done, approved", func(w *world) gen.Ticket {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.approve(tk)
+			w.status(tk, "done")
+			return tk
+		}, ready},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorld(t)
+			tk := tc.setup(w)
+			got := w.check(tk)
+			cur, _ := w.d.RQ.GetTicket(bg, tk.ID)
+			if st, _ := w.d.RQ.GetStatus(bg, cur.StatusID); st.Category != "todo" {
+				if got.Ready || len(got.Reasons) != 0 || got.Action != "" || got.Epic != "" {
+					t.Fatalf("not a todo: %+v", got)
+				}
+				return
+			}
+			w.expect(tk, tc.want)
+		})
+	}
+}
+
+// Which approval counts: its own with a plan or an approval asked naming
+// it; else the nearest ancestor with a plan, which must list it.
+func TestWhichApprovalCounts(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(w *world) (gen.Ticket, string) // the ticket, and the epic's key when asking there
+		want  func(epic string) want
+	}{
+		{"own approval, no plan, no parent", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Typo"})
+			w.approve(tk)
+			return tk, ""
+		}, func(string) want { return ready }},
+		{"own approval under an unapproved epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Rails.", 0)
+			c := w.ticket(core.TicketInput{Title: "Rails", ParentID: e.ID})
+			w.approve(c)
+			return c, ""
+		}, func(string) want { return ready }},
+		{"covered by its epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			return c, w.key(e)
+		}, func(string) want { return ready }},
+		{"epic not approved", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			return c, w.key(e)
+		}, ask},
+		{"epic's changes requested", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.answer("Request changes", e)
+			return c, w.key(e)
+		}, ask},
+		{"made under the epic after its approval", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			w.approve(e)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			return c, w.key(e)
+		}, ask},
+		{"no ancestor with a plan", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.approve(e)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			return c, ""
+		}, ask},
+		{"own changes requested", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.answer("Request changes", c) // asked naming it: its own answer counts
+			return c, ""
+		}, ask},
+		// Review focus 1: a ticket with its own plan under an approved
+		// epic is not covered by the epic.
+		{"own plan under an approved epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.plan(c, "1. Sorted columns.", 0)
+			w.approve(e)
+			return c, ""
+		}, ask},
+		// Review focus 2: a grandchild with no plan is covered, with no
+		// approval on the parent between.
+		{"grandchild covered", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			return g, w.key(e)
+		}, func(string) want { return ready }},
+		{"grandchild under a planned child", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			w.plan(c, "1. Grandchild.", 0)
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			return g, w.key(c)
+		}, ask},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorld(t)
+			tk, epic := tc.setup(w)
+			w.expect(tk, tc.want(epic))
+		})
+	}
+}
+
+// Current: approved, and nothing it pinned changed since; a cancelled
+// ancestor covers nothing, a done one still does.
+func TestApprovalCurrent(t *testing.T) {
+	desc := readiness.Changed(readiness.WhatDescription)
+	for _, tc := range []struct {
+		name  string
+		setup func(w *world) (gen.Ticket, string)
+		want  func(epic string) want
+	}{
+		{"description edited", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns."})
+			w.approve(tk)
+			w.edit(tk, core.TicketPatch{Body: new("Show columns and rails.")})
+			return tk, ""
+		}, func(string) want { return again(desc, "") }},
+		{"title edited", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.approve(tk)
+			w.edit(tk, core.TicketPatch{Title: new("Board columns")})
+			return tk, ""
+		}, func(string) want { return again(desc, "") }},
+		{"description edited and back", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns."})
+			w.approve(tk)
+			w.edit(tk, core.TicketPatch{Body: new("Other.")})
+			w.edit(tk, core.TicketPatch{Body: new("Show columns.")})
+			return tk, ""
+		}, func(string) want { return ready }},
+		{"plan revised", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.plan(tk, "1. Columns.", 0)
+			w.approve(tk)
+			w.plan(tk, "1. Columns.\n2. Rails.", 1)
+			return tk, ""
+		}, func(string) want { return again(readiness.Changed(readiness.WhatPlan), "") }},
+		{"plan written after", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Typo"})
+			w.approve(tk)
+			w.plan(tk, "1. Fix it.", 0)
+			return tk, ""
+		}, func(string) want { return again(readiness.Changed(readiness.WhatPlan), "") }},
+		{"description named before the plan", func(w *world) (gen.Ticket, string) {
+			tk := w.ticket(core.TicketInput{Title: "Columns"})
+			w.plan(tk, "1. Columns.", 0)
+			w.approve(tk)
+			w.plan(tk, "1. Columns.\n2. Rails.", 1)
+			w.edit(tk, core.TicketPatch{Body: new("Changed.")})
+			return tk, ""
+		}, func(string) want { return again(desc, "") }},
+		{"moved to another parent", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			tk := w.ticket(core.TicketInput{Title: "Typo"})
+			w.approve(tk)
+			w.parent(tk, e.ID)
+			return tk, ""
+		}, func(string) want { return again(readiness.Changed(readiness.WhatParent), "") }},
+		{"moved back where it was asked", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			tk := w.ticket(core.TicketInput{Title: "Typo", ParentID: e.ID})
+			w.approve(tk)
+			w.parent(tk, "")
+			w.parent(tk, e.ID)
+			return tk, ""
+		}, func(string) want { return ready }},
+		{"covered descendant edited", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.edit(c, core.TicketPatch{Body: new("Columns, sorted.")})
+			return c, w.key(e)
+		}, func(epic string) want { return again(desc, epic) }},
+		{"covered grandchild re-parented within the epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.parent(g, e.ID)
+			return g, w.key(e)
+		}, func(epic string) want { return again(readiness.Changed(readiness.WhatParent), epic) }},
+		{"epic edited", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.edit(e, core.TicketPatch{Body: new("A board with rails.")})
+			return c, w.key(e)
+		}, func(epic string) want { return again(readiness.EpicChanged(readiness.WhatDescription), epic) }},
+		{"epic's plan revised, seen by a grandchild", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.plan(e, "1. Child.\n2. More.", 1)
+			return g, w.key(e)
+		}, func(epic string) want { return again(readiness.EpicChanged(readiness.WhatPlan), epic) }},
+		{"epic re-parented", func(w *world) (gen.Ticket, string) {
+			top := w.ticket(core.TicketInput{Title: "Top"})
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.parent(e, top.ID)
+			return c, w.key(e)
+		}, func(epic string) want { return again(readiness.EpicChanged(readiness.WhatParent), epic) }},
+		{"epic cancelled", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.status(e, "cancelled")
+			return c, ""
+		}, ask},
+		{"parent between cancelled", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.status(c, "cancelled")
+			return g, ""
+		}, ask},
+		{"cancelled epic, its own approval since", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.status(e, "cancelled")
+			w.approve(c)
+			return c, ""
+		}, func(string) want { return ready }},
+		{"cancelled epic back in todo", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Columns", ParentID: e.ID})
+			w.approve(e)
+			w.status(e, "cancelled")
+			w.status(e, "todo")
+			return c, w.key(e)
+		}, func(string) want { return ready }},
+		{"own plan under a cancelled epic", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Board"})
+			w.plan(e, "1. Columns.", 0)
+			c := w.ticket(core.TicketInput{Title: "Rails", ParentID: e.ID})
+			w.plan(c, "1. Rails.", 0)
+			w.approve(c)
+			w.status(e, "cancelled")
+			return c, ""
+		}, func(string) want { return ready }},
+		{"done epic still covers", func(w *world) (gen.Ticket, string) {
+			e := w.ticket(core.TicketInput{Title: "Epic"})
+			w.plan(e, "1. Child.", 0)
+			c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+			g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+			w.approve(e)
+			w.status(e, "done")
+			w.status(c, "done")
+			return g, ""
+		}, func(string) want { return ready }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorld(t)
+			tk, epic := tc.setup(w)
+			w.expect(tk, tc.want(epic))
+		})
+	}
+}
+
+// Batched, every ticket gets its own answer.
+func TestCheckAllAnswersEach(t *testing.T) {
 	w := newWorld(t)
-	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
-	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
-	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
+	e := w.ticket(core.TicketInput{Title: "Epic"})
 	w.plan(e, "1. Child.", 0)
-	w.approve(e, c)
-	w.approve(g) // its own, leaning on C and E (L-R6)
-	expect(t, w.check(g))
-	w.status(e, "cancelled")
-	expect(t, w.check(g), readiness.EpicPlanNotApproved)
+	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
+	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID})
+	w.approve(e)
+	w.plan(e, "1. Child.\n2. More.", 1)
 	all, err := readiness.CheckAll(bg, w.d.RQ, w.files, []string{g.ID, c.ID, e.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	expect(t, all[g.ID], readiness.EpicPlanNotApproved)
-	expect(t, all[c.ID], readiness.NoTier, readiness.EpicPlanNotApproved)
-	expect(t, all[e.ID], readiness.NotATodo, readiness.NoTier)
-	w.approve(g)
-	expect(t, w.check(g))
-	// C cancelled later is now the nearest: G's approval predates it.
-	w.status(c, "cancelled")
-	expect(t, w.check(g), readiness.EpicPlanNotApproved)
-	w.approve(g)
-	expect(t, w.check(g))
-	// (d) Both back in todo: G leans through C on E again.
-	w.status(c, "todo")
-	w.status(e, "todo")
-	expect(t, w.check(g))
-	w.edit(e, core.TicketPatch{Body: new("The epic, changed.")})
-	expect(t, w.check(g), readiness.EpicRequirementChanged)
-
-	// A grandparent outside the chain (the parent has its own approved
-	// plan) doesn't matter.
-	w.approve(e, c)
-	w.plan(c, "1. Grandchild.", 0)
-	w.approve(c)
-	expect(t, w.check(g))
-	w.status(e, "cancelled")
-	expect(t, w.check(g))
+	stale := readiness.EpicChanged(readiness.WhatPlan)
+	for id, x := range map[string]want{
+		g.ID: again(stale, w.key(e)),
+		c.ID: again(stale, w.key(e)),
+		e.ID: again(readiness.Changed(readiness.WhatPlan), ""),
+	} {
+		got := all[id]
+		if got.Ready || !slices.Equal(got.Reasons, []string{x.reason}) || got.Action != x.action || got.Epic != x.epic {
+			t.Errorf("%s: %+v, want %+v", id, got, x)
+		}
+	}
 }
 
-// P-R2: a done epic keeps covering its open children; only a cancelled
-// one stops.
-func TestDoneEpicStillCovers(t *testing.T) {
+// Review focus 3: a ticket moved to another project and back is not ready
+// until asked again; so are the sub-tickets it carried, and a sub-ticket
+// detached, moved out and back alone, and attached again.
+func TestMovedAndBackNeedsApprovalAgain(t *testing.T) {
 	w := newWorld(t)
-	epic := w.ticket(core.TicketInput{Title: "Board", Body: "A board."})
-	child := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID, Tier: "light"})
+	vaq := w.p
+	epic := w.ticket(core.TicketInput{Title: "Board"})
 	w.plan(epic, "1. Columns.", 0)
+	sub := w.ticket(core.TicketInput{Title: "Columns", ParentID: epic.ID})
+	x := w.ticket(core.TicketInput{Title: "Rails", ParentID: epic.ID})
 	w.approve(epic)
-	w.status(epic, "done")
-	expect(t, w.check(child))
-	e := w.ticket(core.TicketInput{Title: "Epic", Body: "The epic."})
-	c := w.ticket(core.TicketInput{Title: "Child", ParentID: e.ID})
-	g := w.ticket(core.TicketInput{Title: "Grandchild", ParentID: c.ID, Tier: "light"})
-	w.plan(e, "1. Child.", 0)
-	w.approve(e, c)
-	w.status(e, "done")
-	w.status(c, "done")
-	expect(t, w.check(g))
+	w.expect(epic, ready)
+	w.expect(sub, ready)
+	w.expect(x, ready)
+
+	w.moveTo(epic, w.other())
+	w.moveTo(epic, vaq)
+	epic, _ = w.d.RQ.GetTicket(bg, epic.ID)
+	w.expect(epic, ask(""))
+	w.expect(sub, ask(w.key(epic)))
+	w.approve(epic)
+	w.expect(epic, ready)
+	w.expect(sub, ready)
+
+	// x detached, out and back, and attached again: the epic's approval
+	// no longer covers it.
+	w.parent(x, "")
+	w.moveTo(x, w.other())
+	w.moveTo(x, vaq)
+	x, _ = w.d.RQ.GetTicket(bg, x.ID)
+	w.parent(x, epic.ID)
+	w.expect(x, ask(w.key(epic)))
+	w.expect(sub, ready)
+	w.approve(epic)
+	w.expect(x, ready)
+
+	// In the other project, an approval asked there counts there.
+	w.moveTo(epic, w.other())
+	w.p = w.other()
+	epic, _ = w.d.RQ.GetTicket(bg, epic.ID)
+	w.expect(epic, ask(""))
+	w.approve(epic)
+	w.expect(epic, ready)
+}
+
+// Review focus 4: an approval asked, then the description edited, then
+// Approve: refused; after asking again, accepted, and the ticket is ready.
+func TestEditedBetweenAskAndAnswer(t *testing.T) {
+	w := newWorld(t)
+	tk := w.ticket(core.TicketInput{Title: "Columns", Body: "Show columns."})
+	d, err := w.c.AskDecision(bg, w.owner.ID, core.DecisionInput{
+		ProjectID: w.p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionApproval, Subject: "plan", Question: "Approve?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.edit(tk, core.TicketPatch{Body: new("Show columns and rails.")})
+	_, err = w.c.AnswerDecision(bg, w.owner.ID, d.ID, core.Answer{Option: core.ApproveLabel})
+	var inv *core.Invalid
+	if !errors.As(err, &inv) || inv.Fields["answer"] != "The plan or requirement for VAQ-1 changed since this was asked; ask again." {
+		t.Fatalf("approve after an edit: %v", err)
+	}
+	w.expect(tk, ask(""))
+	w.approve(tk)
+	w.expect(tk, ready)
 }

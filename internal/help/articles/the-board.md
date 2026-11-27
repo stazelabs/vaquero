@@ -8,7 +8,7 @@ order: 2
 
 A project opens on Focus, which answers what's next and what just finished. It has three lanes, side by side on a wide screen and stacked on a phone:
 
-- **Next** shows the ready tickets (see [Ready tickets](#ready-tickets)), most urgent first (Urgent, High, Medium, Low, then no priority), and in board order within a priority. It shows five; "N more ready" opens the rest in place. "M waiting" lists the todo tickets that aren't ready, each with why: "Blocked by" the open ticket blocking it, "Has open sub-tickets", "Claimed by" or "Assigned to" someone, and with the [agent workflow](/help/agent-workflow#readiness) on, its readiness reasons, such as "Plan not approved." With Mine on, Next shows the todo tickets assigned to you first, then the ready ones. When nothing is ready the lane says "Nothing ready. Triage the backlog.", and names Needs decision when the project has that status.
+- **Next** shows the ready tickets (see [Ready tickets](#ready-tickets)), most urgent first (Urgent, High, Medium, Low, then no priority), and in board order within a priority. It shows five; "N more ready" opens the rest in place. "M waiting" lists the todo tickets that aren't ready, each with why: "Blocked by" the open ticket blocking it, "Has open sub-tickets", "Claimed by" or "Assigned to" someone, and with the [agent workflow](/help/agent-workflow#readiness) on, its readiness reasons, such as "Ask for plan approval." With Mine on, Next shows the todo tickets assigned to you first, then the ready ones. When nothing is ready the lane says "Nothing ready. Triage the backlog.", and names Needs decision when the project has that status.
 - **In flight** shows the in progress tickets, then the in review ones, eight to a status before "N more". Each card shows its claim, as on the board.
 - **Just finished** shows the tickets done in the last seven days, newest first, each with its day: "today", "yesterday", then the weekday. It shows eight before "N more this week"; "Older: in List" opens the list on done tickets.
 
@@ -20,7 +20,7 @@ The board shows a project's tickets by status. Todo, in progress and in review s
 
 ## Ready tickets
 
-A card marked **Ready**, with an accent edge, is a ticket someone could start now: it is in a todo status, nobody is assigned, no open ticket blocks it, and it has no open sub-tickets. With the [agent workflow](/help/agent-workflow#readiness) on, it also needs a tier and a current plan approval, and each card shows its tier.
+A card marked **Ready**, with an accent edge, is a ticket someone could start now: it is in a todo status, nobody is assigned, no open ticket blocks it, and it has no open sub-tickets. With the [agent workflow](/help/agent-workflow#readiness) on, it also needs a current plan approval, and each card shows its tier.
 
 ## Filters
 

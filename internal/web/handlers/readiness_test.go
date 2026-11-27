@@ -147,13 +147,13 @@ func TestReadyAPIFiltersWhenWorkflowOn(t *testing.T) {
 	var two api.Ticket
 	decode(t, c.API("GET", "/api/v1/tickets/VAQ-2", tok, nil).Body, &two)
 	if two.Ready || two.Readiness == nil || two.Readiness.Ready ||
-		!slices.Equal(two.Readiness.Reasons, []string{readiness.NoTier, readiness.PlanNotApproved}) {
+		!slices.Equal(two.Readiness.Reasons, []string{readiness.AskForApproval}) || two.Readiness.Action != readiness.ActionAsk {
 		t.Fatalf("%+v", two)
 	}
 	var one api.Ticket
 	decode(t, c.API("GET", "/api/v1/tickets/VAQ-1", tok, nil).Body, &one)
 	if one.Readiness == nil || len(one.SubTickets) != 1 || one.SubTickets[0].Ready || one.SubTickets[0].Readiness == nil ||
-		!slices.Equal(one.SubTickets[0].Readiness.Reasons, []string{readiness.NoTier, readiness.PlanNotApproved}) {
+		!slices.Equal(one.SubTickets[0].Readiness.Reasons, []string{readiness.AskForApproval}) {
 		t.Fatalf("%+v", one)
 	}
 	// The list's todo summaries carry it; the done ticket's doesn't.
