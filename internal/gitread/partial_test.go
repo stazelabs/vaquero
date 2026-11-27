@@ -234,3 +234,37 @@ func TestVersionReadRetried(t *testing.T) {
 		t.Fatalf("an answered version was read again")
 	}
 }
+
+// VAQ-193: a file that isn't there, in a full clone, costs no promisor
+// check beyond the first for the repo: the answer is kept per repo, so the
+// file view's 404 runs one git command, not two.
+func TestMissingFileInFullCloneRunsNoConfigRead(t *testing.T) {
+	r := gittest.Repo(t)
+	r.WriteCommit("docs/a.md", "a\n", "one")
+	rs := gitread.New()
+	rec := gittest.Record(rs)
+	g, err := rs.Open(t.Context(), r.Dir, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if _, err := g.Show(t.Context(), "main", "docs/nope.md"); !errors.Is(err, gitread.ErrNoFile) {
+			t.Fatalf("show: %v", err)
+		}
+	}
+	if n := rec.Count("config"); n > 1 {
+		t.Fatalf("%d config reads for 3 missing files", n)
+	}
+	// A second Open of the same repo doesn't ask again either.
+	g2, err := rs.Open(t.Context(), r.Dir, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := rec.Count("config")
+	if _, err := g2.Show(t.Context(), "main", "docs/nope.md"); !errors.Is(err, gitread.ErrNoFile) {
+		t.Fatalf("show: %v", err)
+	}
+	if rec.Count("config") != before {
+		t.Fatal("a reopened repo asked again")
+	}
+}

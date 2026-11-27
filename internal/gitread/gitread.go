@@ -29,7 +29,7 @@
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
 // the list and get-url), ls-tree (only Blobs' one form: -z --full-tree, a
 // commit hash, then "--" and ValidPaths), config (only Open's one
-// promisor read, under a git older than 2.44) and diff, which read; and fetch, which only Fetch
+// promisor read, under a git older than 2.44, and again after a missing file in a repo not yet asked about; the answer is kept per repo) and diff, which read; and fetch, which only Fetch
 // runs, with the two fixed reads of the user's credential helpers (git
 // config --system and --global -z --get-regexp for credential.helper and
 // credential.<url>.helper, never the repo's). diff, log and show run only
@@ -162,6 +162,7 @@ type Repos struct {
 	fetching map[string]*flight
 	fetched  map[string]bool // repo and remote fetched by this process
 	failed   map[string]FetchFailure
+	partial  map[string]bool // git dir -> its config makes it a partial clone (VAQ-193)
 }
 
 type flight struct {

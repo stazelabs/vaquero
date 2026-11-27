@@ -121,7 +121,32 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 // partialClone reports whether the repo's config makes it a partial clone
 // or names a promisor remote: extensions.partialclone, or any remote's
 // promisor (unless false) or partialclonefilter. Exit 1 is no match.
+//
+// The answer is kept per git directory for as long as the process runs
+// (a failed read is not kept): a repo turned into a partial clone meanwhile
+// is noticed at the next start.
 func (g *Repo) partialClone(ctx context.Context) (bool, error) {
+	r := g.repos
+	r.mu.Lock()
+	known, ok := r.partial[g.gitDir]
+	r.mu.Unlock()
+	if ok {
+		return known, nil
+	}
+	partial, err := g.readPartialClone(ctx)
+	if err != nil {
+		return false, err
+	}
+	r.mu.Lock()
+	if r.partial == nil {
+		r.partial = map[string]bool{}
+	}
+	r.partial[g.gitDir] = partial
+	r.mu.Unlock()
+	return partial, nil
+}
+
+func (g *Repo) readPartialClone(ctx context.Context) (bool, error) {
 	out, err := g.git(ctx, "config", promisorRead...)
 	if err != nil {
 		if exitCode(err) == 1 {
@@ -223,8 +248,10 @@ func (g *Repo) noFile(ctx context.Context, commit string) error {
 }
 
 // lacksTrees reports whether the repo is a partial clone that doesn't have
-// commit's root tree. It asks only after a read failed, so a full clone
-// never pays for it; an answer it can't get is no.
+// commit's root tree. It asks only after a read failed, and the config
+// read behind it (partialClone) is made once per repo and kept, so a full
+// clone pays one command in all, not one per missing file; an answer it
+// can't get is no.
 func (g *Repo) lacksTrees(ctx context.Context, commit string) bool {
 	if !isHash(commit) {
 		return false
