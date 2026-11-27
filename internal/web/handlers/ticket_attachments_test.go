@@ -85,7 +85,7 @@ func TestTicketPageListsImageOnce(t *testing.T) {
 	b2 := c2.Get("/t/VAQ-1").Body
 	s2 := b2[strings.Index(b2, `id="attachments"`):]
 	s2 = s2[:strings.Index(s2, "data-attach-well")]
-	if strings.Contains(s2, `class="mt-2 space-y-1"`) {
+	if strings.Contains(s2[strings.Index(s2, "data-gallery"):], "<ul") {
 		t.Error("images-only ticket has an empty rows list")
 	}
 }

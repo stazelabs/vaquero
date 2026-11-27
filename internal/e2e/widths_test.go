@@ -42,7 +42,7 @@ func widthFixture(t *testing.T) (*webtest.Env, *fixture) {
 	f.ticket("Someday_rename_internal/web/handlers/api_search_test.go_without_any_spaces", "Backlog")      // WEB-8
 	// A description holding a wide table (VAQ-203): it scrolls in its own box.
 	row := func(c string) string {
-		return "| " + strings.Repeat(c+"_long_cell_text ", 1) + strings.Repeat("| "+c+"_long_cell_text ", 5) + "|\n"
+		return strings.Repeat("| "+c+"_long_cell_text ", 6) + "|\n"
 	}
 	table := row("head") + "|---|---|---|---|---|---|\n" + row("alpha") + row("bravo")
 	f.ticket("Ticket with a wide table", "", func(in *core.TicketInput) { in.Body = table }) // WEB-9

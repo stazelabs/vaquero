@@ -321,7 +321,7 @@ templ TicketPage(v TicketView) {
 										<div class="flex items-center gap-2 text-xs text-muted">
 											<span>{ a.Size }</span>
 											if a.CanDelete {
-												<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") } data-confirm={ "Remove " + a.Name + "? It can't be undone." }>
+												<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") } data-confirm={ removeQuestion(a.Name) }>
 													<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
 												</form>
 											}
@@ -339,7 +339,7 @@ templ TicketPage(v TicketView) {
 										<a href={ templ.SafeURL(a.URL) } class="break-all text-accent hover:underline">{ a.Name }</a>
 										<span class="text-xs text-muted">{ a.Size } · { a.By } · { a.Ago }</span>
 										if a.CanDelete {
-											<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") } data-confirm={ "Remove " + a.Name + "? It can't be undone." }>
+											<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") } data-confirm={ removeQuestion(a.Name) }>
 												<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
 											</form>
 										}

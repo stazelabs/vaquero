@@ -17,7 +17,7 @@ func TestE2EDialogBackdropDarkensThePage(t *testing.T) {
 			p.goTo("/t/WEB-1")
 			p.click(deleteButton)
 			p.until(`document.getElementById("vq-confirm").open`)
-			got := eval[string](p, `(function () {
+			got := eval[[]float64](p, `(function () {
 				function rgba(css) {
 					var c = document.createElement("canvas");
 					c.width = c.height = 1;
@@ -34,11 +34,10 @@ func TestE2EDialogBackdropDarkensThePage(t *testing.T) {
 				var back = rgba(getComputedStyle(document.getElementById("vq-confirm"), "::backdrop").backgroundColor);
 				var a = back[3];
 				var seen = lum(page) * (1 - a) + lum(back) * a;
-				return JSON.stringify({ page: lum(page), seen: seen, alpha: a, ok: a > 0 && seen < lum(page) });
+				return [a > 0 && seen < lum(page) ? 1 : 0, lum(page), seen, a];
 			})()`)
-			t.Log(got)
-			if !eval[bool](p, `JSON.parse(`+"`"+got+"`"+`).ok`) {
-				t.Fatalf("the backdrop doesn't darken the page in %s mode: %s", scheme, got)
+			if got[0] != 1 {
+				t.Fatalf("the backdrop doesn't darken the page in %s mode: page luminance %.1f, seen %.1f, backdrop alpha %.2f", scheme, got[1], got[2], got[3])
 			}
 		})
 	}

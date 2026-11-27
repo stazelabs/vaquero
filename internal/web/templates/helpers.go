@@ -263,6 +263,11 @@ func moveQuestion(v TicketView) string {
 	return q
 }
 
+// removeQuestion is the confirm dialog's question before an attachment is removed.
+func removeQuestion(name string) string {
+	return "Remove " + name + "? It can't be undone."
+}
+
 // revokeQuestion is the confirm dialog's question before a token is revoked.
 func revokeQuestion(name string) string {
 	if name == "local" {
