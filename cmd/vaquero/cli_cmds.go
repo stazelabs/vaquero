@@ -434,6 +434,9 @@ func printTicket(w io.Writer, t apiTicket) {
 		default:
 			fmt.Fprintf(w, "Readiness: not ready. %s\n", strings.Join(r.Reasons, " "))
 		}
+		if r.Action != "" { // the ticket page has the Ask button
+			fmt.Fprintf(w, "Ask with: vaquero open %s\n", t.Key)
+		}
 		if len(r.Files) > 0 {
 			files := make([]string, len(r.Files))
 			for i, f := range r.Files {

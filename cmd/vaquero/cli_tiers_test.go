@@ -56,7 +56,7 @@ func TestCLIShowsReadiness(t *testing.T) {
 		t.Fatalf("workflow off: %q", out)
 	}
 	mustCLI(t, "project", "edit", "VAQ", "--workflow", "on")
-	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. Ask for plan approval.") {
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. Ask for plan approval.\nAsk with: vaquero open VAQ-1\n") {
 		t.Fatalf("%q", out)
 	}
 	if out := mustCLI(t, "ready", "VAQ"); !strings.Contains(out, "Nothing is ready.") {
@@ -111,7 +111,7 @@ func TestCLIShowsReadinessFiles(t *testing.T) {
 	r.Rename("docs/a.md", "docs/b.md")
 	r.Commit("rename")
 	r.WriteCommit("docs/b.md", "# B\n", "change")
-	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. Changed since approval: docs/a.md. Ask again.\nFiles: docs/a.md changed (now docs/b.md)\n") {
+	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: not ready. Changed since approval: docs/a.md. Ask again.\nAsk with: vaquero open VAQ-1\nFiles: docs/a.md changed (now docs/b.md)\n") {
 		t.Fatalf("%q", out)
 	}
 }
