@@ -93,7 +93,7 @@
   .prose-vq pre { @apply overflow-x-auto rounded-md bg-paper-alt p-3 font-mono text-xs; }
   .prose-vq pre code { @apply bg-transparent p-0; }
   .prose-vq blockquote { @apply border-l-2 border-line pl-3 text-ink/70; }
-  .prose-vq table { @apply border-collapse text-xs; }
+  .prose-vq table { @apply block max-w-full overflow-x-auto border-collapse text-xs; }
   .prose-vq th, .prose-vq td { @apply border border-line px-2 py-1 text-left align-top; }
 }
 

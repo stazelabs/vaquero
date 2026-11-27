@@ -40,6 +40,12 @@ func widthFixture(t *testing.T) (*webtest.Env, *fixture) {
 	// URL is: it wraps rather than widening the page (VAQ-140).
 	f.ticket("Check internal/e2e/widths_test.go::TestPhoneWidthNoSidewaysScroll_at_every_phone_width", "") // WEB-7
 	f.ticket("Someday_rename_internal/web/handlers/api_search_test.go_without_any_spaces", "Backlog")      // WEB-8
+	// A description holding a wide table (VAQ-203): it scrolls in its own box.
+	row := func(c string) string {
+		return "| " + strings.Repeat(c+"_long_cell_text ", 1) + strings.Repeat("| "+c+"_long_cell_text ", 5) + "|\n"
+	}
+	table := row("head") + "|---|---|---|---|---|---|\n" + row("alpha") + row("bravo")
+	f.ticket("Ticket with a wide table", "", func(in *core.TicketInput) { in.Body = table }) // WEB-9
 	return env, f
 }
 
@@ -324,7 +330,7 @@ func phoneWidth(t *testing.T, env, empty *webtest.Env, width int64) {
 		{env, []string{
 			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/board", "/p/WEB/board?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
 			"/t/WEB-3", "/t/WEB-7", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/search?q=check", "/activity",
-			"/help", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
+			"/t/WEB-9", "/help", "/help/cli", "/help/api", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
 		}},
 	} {
 		p := open(t, c.env, width, 800)
@@ -334,6 +340,12 @@ func phoneWidth(t *testing.T, env, empty *webtest.Env, width int64) {
 				t.Errorf("%s is %d px wide at %d px", path, w, width)
 			}
 		}
+	}
+	// The wide table scrolls inside its own box, not the page (VAQ-203).
+	tp := open(t, env, width, 800)
+	tp.goTo("/t/WEB-9")
+	if !eval[bool](tp, `(function () { var t = document.querySelector(".prose-vq table"); return !!t && t.scrollWidth > t.clientWidth; })()`) {
+		t.Errorf("the wide table doesn't scroll inside its own box at %d px", width)
 	}
 	// An open rail's cards overlay the columns, and fit too.
 	p := open(t, env, width, 800)
