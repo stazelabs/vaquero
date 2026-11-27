@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -234,5 +235,32 @@ func TestConfirmAttachmentRemove(t *testing.T) {
 	p.reloaded(func() { p.click("[data-confirm-ok]") }, `location.pathname === "/t/WEB-1" && !document.querySelector("#attachments form[data-confirm]")`)
 	if n := count(); n != 0 {
 		t.Fatalf("confirm left %d attachments", n)
+	}
+}
+
+// VAQ-212: a live refresh that arrives while the dialog is open waits, and
+// Confirm still removes the attachment.
+func TestConfirmSurvivesLiveRefresh(t *testing.T) {
+	env := webtest.New(t)
+	f := newProject(t, env, "WEB")
+	tk := f.ticket("Has a file", "")
+	if r := env.Client().Upload("/t/WEB-1/attachments", "notes.txt", "", []byte("words\n")); r.Status != 201 {
+		t.Fatalf("upload: %d %s", r.Status, r.Body)
+	}
+	p := open(t, env, 1280, 800)
+	p.goTo("/t/WEB-1")
+	p.click(deleteButton)
+	p.until(`document.getElementById("vq-confirm").open`)
+	eval[bool](p, `(window.vqAtt = document.getElementById("attachments"), true)`)
+	body := "Changed elsewhere."
+	if _, err := env.Deps.Core.PatchTicket(context.Background(), env.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: &body}, 0); err != nil {
+		t.Fatal(err)
+	}
+	// The change reached the page: the live part was swapped or is held.
+	p.until(`!window.vqAtt.isConnected || window.vqAtt.dataset.vqDeferred === "1"`)
+	p.reloaded(func() { p.click("[data-confirm-ok]") }, `location.pathname === "/t/WEB-1" && !document.querySelector("#attachments form[data-confirm]")`)
+	as, err := env.DB.RQ.ListTicketAttachments(context.Background(), tk.ID)
+	if err != nil || len(as) != 0 {
+		t.Fatalf("confirm left %d attachments (%v)", len(as), err)
 	}
 }

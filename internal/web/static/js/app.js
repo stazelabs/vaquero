@@ -204,21 +204,76 @@ window.vqDragging = false;
         pending = true;
         return;
       }
-      // A part holding a focused field (a note being typed) is left alone,
-      // and refreshed once when focus leaves it.
-      var active = document.activeElement;
-      if (active && el.contains(active) && active.matches("input, textarea, select, [contenteditable]")) {
-        el.addEventListener("focusout", function onOut(ev) {
-          if (ev.relatedTarget && el.contains(ev.relatedTarget)) {
-            return;
-          }
-          el.removeEventListener("focusout", onOut);
-          window.htmx.trigger(el, "vq:change");
-        });
+      if (busy(el)) {
+        el.dataset.vqDeferred = "1";
         return;
       }
+      delete el.dataset.vqDeferred;
       window.htmx.trigger(el, "vq:change");
     });
+  }
+  // A live part is busy, and its refresh waits, while swapping it would
+  // cost the owner something: a field in it has focus or holds unsent text
+  // (a note being typed), a pointer is down in it (a click between press
+  // and release must land on the same button), or the confirm dialog is
+  // open (its form may be in the part). A busy part is flagged once
+  // (data-vq-deferred), with no listener per skip; one document-level
+  // check refreshes the flagged parts when they are no longer busy.
+  var pointerIn = null;
+  function busy(el) {
+    var confirm = document.getElementById("vq-confirm");
+    if (confirm && confirm.open) {
+      return true;
+    }
+    if (pointerIn === el) {
+      return true;
+    }
+    var active = document.activeElement;
+    if (active && el.contains(active) && active.matches("input, textarea, select, [contenteditable]")) {
+      return true;
+    }
+    var fields = el.querySelectorAll("input, textarea");
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      if (f.type === "checkbox" || f.type === "radio") {
+        if (f.checked !== f.defaultChecked) {
+          return true;
+        }
+      } else if (f.type !== "hidden" && f.value !== f.defaultValue) {
+        return true;
+      }
+    }
+    return false;
+  }
+  function recheck() {
+    if (!document.hasFocus()) {
+      return;
+    }
+    document.querySelectorAll("[data-live][data-vq-deferred]").forEach(function (el) {
+      if (!busy(el)) {
+        delete el.dataset.vqDeferred;
+        window.htmx.trigger(el, "vq:change");
+      }
+    });
+  }
+  function recheckSoon() {
+    setTimeout(recheck, 0); // after focus has moved to its new element
+  }
+  document.addEventListener("focusout", recheckSoon);
+  document.addEventListener("input", recheckSoon);
+  window.addEventListener("focus", recheckSoon);
+  document.addEventListener("pointerdown", function (ev) {
+    pointerIn = ev.target.closest ? ev.target.closest("[data-live]") : null;
+  }, true);
+  ["pointerup", "pointercancel"].forEach(function (name) {
+    document.addEventListener(name, function () {
+      pointerIn = null;
+      recheckSoon();
+    }, true);
+  });
+  var confirmDialog = document.getElementById("vq-confirm");
+  if (confirmDialog) {
+    confirmDialog.addEventListener("close", recheckSoon);
   }
   // MCP calls refresh only the parts that follow them (the MCP activity page).
   function refreshMCP() {
@@ -375,10 +430,35 @@ window.vqDragging = false;
     var p = pending;
     pending = null;
     dialog.close();
-    if (!p || !p.form.isConnected) {
+    if (!p) {
       return;
     }
     var form = p.form;
+    var submitter = p.submitter;
+    if (!form.isConnected) {
+      // A live refresh swapped the form out: submit its replacement, found
+      // by its action, with the same button.
+      var action = form.getAttribute("action");
+      var again = action ? document.querySelector('form[data-confirm][action="' + CSS.escape(action) + '"]') : null;
+      if (!again) {
+        if (window.vqToast) {
+          window.vqToast("That item changed; try again.");
+        }
+        return;
+      }
+      form = again;
+      submitter = null;
+      if (p.submitter && p.submitter.name) {
+        var buttons = form.querySelectorAll("button[name], input[name]");
+        for (var i = 0; i < buttons.length; i++) {
+          if (buttons[i].name === p.submitter.name && buttons[i].value === p.submitter.value) {
+            submitter = buttons[i];
+          }
+        }
+      } else if (p.submitter) {
+        submitter = form.querySelector('button[type="submit"], button:not([type])');
+      }
+    }
     form.dataset.confirmed = "1";
     // requestSubmit fires submit at once, which clears the flag; when a
     // field fails validation no submit follows, so clear it anyway and the
@@ -386,8 +466,8 @@ window.vqDragging = false;
     setTimeout(function () {
       delete form.dataset.confirmed;
     }, 0);
-    if (p.submitter && p.submitter.form === form) {
-      form.requestSubmit(p.submitter);
+    if (submitter && submitter.form === form) {
+      form.requestSubmit(submitter);
     } else {
       form.requestSubmit();
     }
