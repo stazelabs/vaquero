@@ -267,8 +267,8 @@ func TestInboxAnswer(t *testing.T) {
 	d := planApproval(t, e, agent(t, e).ID, p, tk.ID)
 	c := e.Client()
 	r := c.PostHX("/inbox/"+d.ID+"/answer", url.Values{"option": {"Approve"}, "note": {"Looks right."}})
-	if r.Status != http.StatusOK || strings.TrimSpace(r.Body) != "" || r.Header.Get("HX-Trigger") != "vq:refresh" {
-		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("HX-Trigger"))
+	if r.Status != http.StatusOK || strings.TrimSpace(r.Body) != "" || !refreshesAfterSettle(r) {
+		t.Fatalf("%d %q %q %q", r.Status, r.Body, r.Header.Get("HX-Trigger"), r.Header.Get("HX-Trigger-After-Settle"))
 	}
 	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'answered' AND answer = 'Approve'
 		AND answered_by = ? AND relayed_by IS NULL AND answer_note = 'Looks right.'`, d.ID, e.Deps.Actor.ID); n != 1 {
@@ -306,7 +306,7 @@ func TestInboxAnswer(t *testing.T) {
 	// Withdraw, as the owner.
 	wd := ask(t, e, agent(t, e).ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Withdraw me?"})
 	contains(t, inboxCard(t, c.Get("/inbox").Body, wd.ID), "Withdraw", "data-confirm=")
-	if r = c.PostHX("/inbox/"+wd.ID+"/withdraw", nil); strings.TrimSpace(r.Body) != "" || r.Header.Get("HX-Trigger") != "vq:refresh" {
+	if r = c.PostHX("/inbox/"+wd.ID+"/withdraw", nil); strings.TrimSpace(r.Body) != "" || !refreshesAfterSettle(r) {
 		t.Fatalf("%q", r.Body)
 	}
 	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'withdrawn'`, wd.ID); n != 1 {
@@ -326,8 +326,8 @@ func TestInboxAnswerRefused(t *testing.T) {
 	savePlan(t, e, tk.ID, "A new plan.", 1)
 	c := e.Client()
 	r := c.PostHX("/inbox/"+d.ID+"/answer", url.Values{"option": {"Approve"}, "note": {"kept"}})
-	if r.Status != http.StatusOK || r.Header.Get("HX-Trigger") != "" {
-		t.Fatalf("%d %q", r.Status, r.Header.Get("HX-Trigger"))
+	if r.Status != http.StatusOK || r.Header.Get("HX-Trigger") != "" || r.Header.Get("HX-Trigger-After-Settle") != "" {
+		t.Fatalf("%d %q %q", r.Status, r.Header.Get("HX-Trigger"), r.Header.Get("HX-Trigger-After-Settle"))
 	}
 	contains(t, r.Body, `id="decision-`+d.ID+`"`, "The plan or requirement for VAQ-1 changed since this was asked; ask again.", "kept")
 	lacks(t, r.Body, "<html")
@@ -353,6 +353,41 @@ func TestInboxAnswerRefused(t *testing.T) {
 	if r = c.PostHX("/inbox/01JZZZZZZZZZZZZZZZZZZZZZZZ/answer", url.Values{"option": {"Yes"}}); r.Status != http.StatusOK || strings.TrimSpace(r.Body) != "" {
 		t.Fatalf("%d %q", r.Status, r.Body)
 	}
+}
+
+// refreshesAfterSettle is whether an answer asks for the page's refresh
+// once its card has gone (HX-Trigger-After-Settle, on the body), not
+// before the swap, when the card's own unsent note would hold it back.
+func refreshesAfterSettle(r *webtest.Response) bool {
+	return r.Header.Get("HX-Trigger") == "" && r.Header.Get("HX-Trigger-After-Settle") == `{"vq:refresh":{"target":"body"}}`
+}
+
+// The sidebar's count is its own live part: always there (empty at
+// zero, so it can appear), refreshed from /inbox/count.
+func TestInboxBadgeFragment(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	side := sidebar(t, c.Get("/my").Body)
+	contains(t, side, `id="vq-inbox-badge"`, `hx-get="/inbox/count"`, `hx-trigger="vq:change"`, "data-live")
+	r := c.Get("/inbox/count")
+	if r.Status != http.StatusOK {
+		t.Fatalf("%d", r.Status)
+	}
+	contains(t, r.Body, `id="vq-inbox-badge"`)
+	lacks(t, r.Body, "data-inbox-count", "<html")
+	ask(t, e, agent(t, e).ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "One?"})
+	contains(t, c.Get("/inbox/count").Body, `id="vq-inbox-badge"`, "data-inbox-count", ">1<")
+
+	// A failed count draws the part with no count.
+	e.Deps.R = gen.New(&navCountingDB{DBTX: e.DB.R, name: "CountInbox", fail: true})
+	e.Rebuild()
+	r = c.Get("/inbox/count")
+	if r.Status != http.StatusOK {
+		t.Fatalf("%d", r.Status)
+	}
+	contains(t, r.Body, `id="vq-inbox-badge"`)
+	lacks(t, r.Body, "data-inbox-count")
 }
 
 // Answered today shows how each answer came: direct or relayed.

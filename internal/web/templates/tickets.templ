@@ -528,7 +528,7 @@ templ LinkTargetOptions(opts []Option) {
 // cards with the ticket page as their back. The part is always there, so a
 // decision asked while the page is open can appear; it follows changes
 // like the readiness block, and answering a card refreshes both (the
-// card's HX-Trigger vq:refresh, through app.js's busy rule).
+// card's HX-Trigger-After-Settle vq:refresh, through app.js's busy rule).
 templ ticketDecisions(v TicketView) {
 	<div id="ticket-decisions" data-ticket-decisions hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#ticket-decisions" hx-swap="outerHTML" hx-disinherit="*" data-live class="empty:hidden">
 		if len(v.Decisions) > 0 {

@@ -371,8 +371,10 @@ func localBack(r *http.Request) string {
 // InboxAnswer is POST /inbox/{id}/answer: the owner's direct answer, an
 // option (or written text) with an optional note. With htmx a taken
 // answer is an empty card, which leaves the list, and the page's live
-// parts refresh (HX-Trigger vq:refresh, which app.js runs through its busy
-// rule, so a note typed in another card stays); a refusal is the card
+// parts refresh once it has gone (HX-Trigger-After-Settle vq:refresh on
+// the body, which app.js runs through its busy rule, so a note typed in
+// another card stays, and the answered card's own note holds nothing
+// back); a refusal is the card
 // again with core's sentence (Review Focus 2). Without htmx it returns to
 // back with a toast.
 func InboxAnswer(d Deps) http.HandlerFunc {
@@ -412,7 +414,7 @@ func cardDone(w http.ResponseWriter, r *http.Request, d Deps, err error, done, n
 		return
 	}
 	if !refused {
-		w.Header().Set("HX-Trigger", "vq:refresh")
+		w.Header().Set("HX-Trigger-After-Settle", afterAnswer)
 		emptyCard(w)
 		return
 	}
@@ -442,6 +444,26 @@ func cardDone(w http.ResponseWriter, r *http.Request, d Deps, err error, done, n
 	}
 	c.Error, c.Note = msg, note
 	renderPart(w, r, d, http.StatusOK, templates.DecisionCard(c))
+}
+
+// afterAnswer refreshes the page's live parts after a card's swap has
+// settled. The target is the body: the form that asked is gone by then.
+const afterAnswer = `{"vq:refresh":{"target":"body"}}`
+
+// InboxCount is GET /inbox/count: the sidebar's Inbox count, its own
+// live part (ruling T-R6's one query). A failed read draws it empty.
+func InboxCount(d Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		n, err := d.R.CountInbox(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				d.Logger.WarnContext(ctx, "read inbox count", "err", err)
+			}
+			n = 0
+		}
+		renderPart(w, r, d, http.StatusOK, templates.InboxBadge(int(n)))
+	}
 }
 
 // emptyCard answers a card that leaves the list.

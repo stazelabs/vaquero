@@ -34,9 +34,7 @@ templ sidebar() {
 		<ul class="shrink-0">
 			<li>
 				@navItem("/inbox", "inbox", "Inbox", place.View == "inbox") {
-					if nav.InboxCount > 0 {
-						<span data-inbox-count class="ml-auto rounded-sm bg-accent px-1.5 font-mono text-xs leading-4 font-semibold text-paper">{ strconv.Itoa(nav.InboxCount) }</span>
-					}
+					@InboxBadge(nav.InboxCount)
 				}
 			</li>
 			<li>
@@ -114,6 +112,18 @@ templ sidebar() {
 		</div>
 	</nav>
 	<div data-sidebar-backdrop hidden class="fixed inset-0 z-30 bg-scrim/40 md:hidden"></div>
+}
+
+// InboxBadge is the sidebar's Inbox count (ruling T-R6), its own live
+// part (GET /inbox/count), so an answer or a new question changes it
+// without a reload. It is always drawn, empty at zero (no children, so it
+// takes no space), so a count can appear.
+templ InboxBadge(n int) {
+	<span id="vq-inbox-badge" data-live hx-get="/inbox/count" hx-trigger="vq:change" hx-swap="outerHTML" class="ml-auto flex empty:hidden">
+		if n > 0 {
+			<span data-inbox-count class="rounded-sm bg-accent px-1.5 font-mono text-xs leading-4 font-semibold text-paper">{ strconv.Itoa(n) }</span>
+		}
+	</span>
 }
 
 // navItem is one sidebar row: a glyph, the label, then anything after it

@@ -308,8 +308,8 @@ func TestTicketPageDecisionCards(t *testing.T) {
 	// Answering from the page: the card leaves, the page's live parts
 	// refresh, and the readiness block reads Ready.
 	r := c.PostHX("/inbox/"+ap+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
-	if r.Status != 200 || strings.TrimSpace(r.Body) != "" || r.Header.Get("HX-Trigger") != "vq:refresh" {
-		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("HX-Trigger"))
+	if r.Status != 200 || strings.TrimSpace(r.Body) != "" || !refreshesAfterSettle(r) {
+		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("HX-Trigger-After-Settle"))
 	}
 	page = c.Get("/t/VAQ-1").Body
 	contains(t, page, "Ready", `data-decision="`+q.ID+`"`)

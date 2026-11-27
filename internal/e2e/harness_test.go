@@ -320,6 +320,13 @@ type recorder struct {
 	mu    sync.Mutex
 	count map[string]int
 	fail  atomic.Value // func(*http.Request) bool, or nil
+	hold  atomic.Value // *held, or nil
+}
+
+// held is a holdWhen: the requests it matches wait for release.
+type held struct {
+	match   func(*http.Request) bool
+	release chan struct{}
 }
 
 // recorders holds each env's one recorder: a second tab on the same env
@@ -358,6 +365,13 @@ func (r *recorder) serve(w http.ResponseWriter, req *http.Request, next http.Han
 		http.Error(w, "test failure", http.StatusInternalServerError)
 		return
 	}
+	if h, _ := r.hold.Load().(*held); h != nil && h.match(req) {
+		select {
+		case <-h.release:
+		case <-req.Context().Done():
+			return
+		}
+	}
 	next.ServeHTTP(w, req)
 }
 
@@ -370,6 +384,23 @@ func (r *recorder) requests(methodPath string) int {
 
 // failWhen makes matching requests answer 500 (nil stops it).
 func (r *recorder) failWhen(f func(*http.Request) bool) { r.fail.Store(f) }
+
+// holdWhen makes matching requests wait, before the server reads them,
+// until release is called (at the latest when the test ends). A held
+// request is counted as it arrives.
+func (r *recorder) holdWhen(t *testing.T, f func(*http.Request) bool) (release func()) {
+	h := &held{match: f, release: make(chan struct{})}
+	r.hold.Store(h)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			r.hold.Store((*held)(nil))
+			close(h.release)
+		})
+	}
+	t.Cleanup(release)
+	return release
+}
 
 // fixture is a project arranged through core, the way the pages make
 // changes.

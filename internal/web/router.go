@@ -93,6 +93,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Post("/profile/avatar/delete", handlers.ProfileAvatarRemove(d))
 		r.Get("/decisions/{id}", handlers.DecisionLink(d))
 		r.Get("/inbox", handlers.Inbox(d))
+		r.Get("/inbox/count", handlers.InboxCount(d))
 		r.Post("/inbox/{id}/answer", handlers.InboxAnswer(d))
 		r.Post("/inbox/{id}/withdraw", handlers.InboxWithdraw(d))
 		r.Get("/my", handlers.MyWork(d))

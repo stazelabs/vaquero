@@ -2593,7 +2593,7 @@ func LinkTargetOptions(opts []Option) templ.Component {
 // cards with the ticket page as their back. The part is always there, so a
 // decision asked while the page is open can appear; it follows changes
 // like the readiness block, and answering a card refreshes both (the
-// card's HX-Trigger vq:refresh, through app.js's busy rule).
+// card's HX-Trigger-After-Settle vq:refresh, through app.js's busy rule).
 func ticketDecisions(v TicketView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

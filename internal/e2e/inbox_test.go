@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -225,4 +226,83 @@ func TestTicketPageAnswersItsDecisions(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The answer races the inbox's refresh (the review's diagnosis of the
+// TestInbox flake): here the refresh lands while the answer is still on
+// its way, so the answered card is replaced by a copy before its own
+// answer comes back. Focus still goes to the next card once it leaves.
+func TestInboxFocusSurvivesARefresh(t *testing.T) {
+	env, qs, _ := inboxFixture(t)
+	p := open(t, env, 1280, 900)
+	p.goTo("/inbox")
+	p.until(`document.querySelectorAll("[data-inbox] [data-decision]").length === 4`)
+	answer := "/inbox/" + qs[0].ID + "/answer"
+	release := p.srv.holdWhen(t, func(r *http.Request) bool { return r.Method == "POST" && r.URL.Path == answer })
+	card := js(cardSel(qs[0].ID))
+	eval[bool](p, `(window.vqOld = document.querySelector(`+card+`), true)`)
+	p.click(cardSel(qs[0].ID) + ` button[value="Yes"]`)
+	p.until(`document.querySelector(` + card + ` + " form").classList.contains("htmx-request")`)
+	eval[bool](p, `(htmx.trigger(document.getElementById("inbox"), "vq:change"), true)`)
+	p.until(`!!document.querySelector(` + card + `) && document.querySelector(` + card + `) !== window.vqOld`)
+	release()
+	p.until(`!document.querySelector(` + card + `)`)
+	p.until(`document.activeElement === document.querySelector(` + js(cardSel(qs[1].ID)) + `)`)
+}
+
+// An answer sent with a note refreshes the inbox once its card has gone:
+// the note, unsent text while the card was there, holds nothing back, and
+// Answered today shows the answer with focus on the next card. The stream
+// is refused here, so the answer's own refresh is the only one.
+func TestInboxAnswerWithANoteRefreshes(t *testing.T) {
+	env, qs, _ := inboxFixture(t)
+	p := open(t, env, 1280, 900)
+	p.srv.failWhen(func(r *http.Request) bool { return r.URL.Path == "/events/stream" })
+	p.goTo("/inbox")
+	p.until(`document.querySelectorAll("[data-inbox] [data-decision]").length === 4`)
+	p.openDetails(cardSel(qs[0].ID) + " details[data-note]")
+	p.typeInto(cardSel(qs[0].ID)+` textarea[name="note"]`, "because")
+	p.click(cardSel(qs[0].ID) + ` button[value="Yes"]`)
+	p.until(`!document.querySelector(` + js(cardSel(qs[0].ID)) + `)`)
+	p.until(`(function () { var g = document.querySelector('[data-inbox-group="answered"]'); return !!g && g.textContent.indexOf("Answered today (1)") >= 0 && g.textContent.indexOf("Yes") >= 0; })()`)
+	p.until(`document.activeElement === document.querySelector(` + js(cardSel(qs[1].ID)) + `)`)
+	if d := decision(t, env, qs[0].ID); d.AnswerNote != "because" {
+		t.Fatalf("the note reads %q", d.AnswerNote)
+	}
+}
+
+// The sidebar's Inbox count follows changes: an answer drops it, a new
+// question raises it, and it leaves at zero and comes back.
+func TestInboxBadgeIsLive(t *testing.T) {
+	env, qs, ap := inboxFixture(t)
+	p := open(t, env, 1280, 900)
+	p.goTo("/inbox")
+	badge := `(document.querySelector("#vq-inbox-badge [data-inbox-count]") || {}).textContent`
+	p.until(badge + ` === "4"`)
+	p.click(cardSel(qs[0].ID) + ` button[value="Yes"]`)
+	p.until(badge + ` === "3"`)
+	ctx := context.Background()
+	if _, err := env.Deps.Core.AskDecision(ctx, env.Deps.Actor.ID, core.DecisionInput{ProjectID: ap.ProjectID, Kind: core.DecisionQuestion,
+		Question: "Another?", Options: []core.Option{{Label: "Yes"}}}); err != nil {
+		t.Fatal(err)
+	}
+	p.until(badge + ` === "4"`)
+	// On another page too, and down to none.
+	p.goTo("/my")
+	p.until(badge + ` === "4"`)
+	waiting, err := env.DB.RQ.ListInboxDecisions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range waiting {
+		if err := env.Deps.Core.WithdrawDecision(ctx, env.Deps.Actor.ID, d.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p.until(`!!document.getElementById("vq-inbox-badge") && !document.querySelector("#vq-inbox-badge [data-inbox-count]")`)
+	if _, err := env.Deps.Core.AskDecision(ctx, env.Deps.Actor.ID, core.DecisionInput{ProjectID: ap.ProjectID, Kind: core.DecisionQuestion,
+		Question: "Back again?"}); err != nil {
+		t.Fatal(err)
+	}
+	p.until(badge + ` === "1"`)
 }

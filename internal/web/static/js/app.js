@@ -281,9 +281,10 @@ window.vqDragging = false;
   if (confirmDialog) {
     confirmDialog.addEventListener("close", recheckSoon);
   }
-  // A write answered in place (an inbox card) asks for a refresh with
-  // HX-Trigger: vq:refresh, which goes through the same busy rule as the
-  // stream's, so a note typed elsewhere on the page waits.
+  // A write answered in place (a decision card) asks for a refresh with
+  // HX-Trigger-After-Settle vq:refresh on the body, once its card has
+  // gone, through the same busy rule as the stream's, so a note typed
+  // elsewhere on the page waits and the answered card's own note doesn't.
   document.body.addEventListener("vq:refresh", refresh);
   // MCP calls refresh only the parts that follow them (the MCP activity page).
   function refreshMCP() {
@@ -1210,14 +1211,90 @@ window.vqFocusTarget = function (card) {
   }
 })();
 
+// Decision cards (VAQ-172), on the inbox and the ticket page alike
+// ([data-decision]). When a card leaves after an answer, focus goes to the
+// next card, else the one before; a refused card comes back focused, so
+// it holds (data-hold). The answer can race a refresh of the part around
+// the card (the stream's, or the answer's own): the card may be replaced
+// by a copy before its answer comes back, or the next card by a new one
+// after. So the cards are remembered by id when the answer is sent, while
+// the card is in the page, and looked up again after each swap settles:
+// once the answered card is gone and nothing else has the focus, the next
+// card takes it.
+(function () {
+  if (!document.querySelector("[data-inbox], [data-ticket-decisions]")) {
+    return;
+  }
+  function shown(el) {
+    return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
+  }
+  var pending = null; // {answered, next} or {refused}: card ids, data-card values
+  document.addEventListener("htmx:beforeRequest", function (ev) {
+    var elt = ev.detail && ev.detail.elt;
+    var card = elt && elt.tagName === "FORM" && elt.closest ? elt.closest("[data-decision]") : null;
+    if (!card) {
+      return;
+    }
+    var box = card.closest("[data-inbox], [data-ticket-decisions]") || document;
+    var list = Array.prototype.slice.call(box.querySelectorAll("[data-card]")).filter(shown);
+    var at = list.indexOf(card);
+    var next = at < 0 ? null : list[at + 1] || list[at - 1] || null;
+    var mine = { answered: card.id, next: next ? next.dataset.card : "" };
+    pending = mine;
+    // afterRequest is sent to the form itself, which hears it even when
+    // a refresh has taken it out of the page.
+    elt.addEventListener("htmx:afterRequest", function done(e) {
+      elt.removeEventListener("htmx:afterRequest", done);
+      var xhr = e.detail && e.detail.xhr;
+      var refused = !e.detail.successful || (xhr && (xhr.responseText || "").trim() !== "");
+      if (refused && pending === mine) {
+        pending = { refused: mine.answered };
+      }
+    });
+  });
+  function settle() {
+    if (!pending) {
+      return;
+    }
+    if (pending.refused) {
+      var again = document.getElementById(pending.refused);
+      if (again && again.hasAttribute("data-hold")) {
+        pending = null;
+        again.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (document.getElementById(pending.answered)) {
+      return; // still shown: a refresh read before the answer
+    }
+    var p = pending;
+    pending = null;
+    var a = document.activeElement;
+    if (a && a !== document.body) {
+      return; // the owner has moved on
+    }
+    var next = p.next ? document.querySelector('[data-card="' + CSS.escape(p.next) + '"]') : null;
+    var target = next ? window.vqFocusTarget(next) : null;
+    if (target) {
+      target.focus({ preventScroll: true });
+      next.scrollIntoView({ block: "nearest" });
+    }
+  }
+  document.addEventListener("htmx:afterSettle", settle);
+  // An answer taken leaves an empty swap, which settles nothing; its
+  // HX-Trigger-After-Settle vq:refresh comes to the body then. Heard in
+  // the capture phase, before the refresh it asks for checks the busy
+  // rule, so the next card has the focus by then: a refused card it
+  // lands on holds (data-hold), and keeps its sentence.
+  document.addEventListener("vq:refresh", settle, true);
+})();
+
 // The inbox (VAQ-172). Its keys, only on [data-inbox] and never while
 // typing in a field (Review Focus 5): 1 to 9 choose the focused card's
 // option, n opens its note, o opens its first ticket (j and k are the
-// shortcuts' own). When a card leaves after an answer, focus goes to the
-// next card; a refused card comes back focused, so it holds (data-hold).
-// Dismiss hides a lapsed claim in this browser (vq:inbox-dismissed: event
-// seq to when it was dismissed, pruned after 24 hours, when Check has
-// dropped the lapse anyway).
+// shortcuts' own). Dismiss hides a lapsed claim in this browser
+// (vq:inbox-dismissed: event seq to when it was dismissed, pruned after
+// 24 hours, when Check has dropped the lapse anyway).
 (function () {
   if (!document.querySelector("[data-inbox]")) {
     return;
@@ -1229,11 +1306,6 @@ window.vqFocusTarget = function (card) {
     var a = document.activeElement;
     var card = a && a.closest ? a.closest("[data-decision]") : null;
     return card && card.closest("[data-inbox]") ? card : null;
-  }
-  function visibleCards() {
-    return Array.prototype.slice.call(document.querySelectorAll("[data-inbox] [data-card]")).filter(function (el) {
-      return el.checkVisibility ? el.checkVisibility() : el.getClientRects().length > 0;
-    });
   }
   document.addEventListener("keydown", function (ev) {
     if (ev.metaKey || ev.ctrlKey || ev.altKey || typing(ev.target) || document.querySelector("dialog[open]")) {
@@ -1267,33 +1339,6 @@ window.vqFocusTarget = function (card) {
       return;
     }
     ev.preventDefault();
-  });
-  // A card answered away: focus the one after it, else the one before.
-  document.body.addEventListener("htmx:beforeSwap", function (ev) {
-    var target = ev.detail && ev.detail.target;
-    if (!target || !target.matches || !target.matches("[data-decision]") || !ev.detail.shouldSwap) {
-      return;
-    }
-    if ((ev.detail.xhr.responseText || "").trim() !== "") {
-      // Refused: the card again, with why; focus it so it holds.
-      var id = target.id;
-      setTimeout(function () {
-        var again = document.getElementById(id);
-        if (again) {
-          again.focus({ preventScroll: true });
-        }
-      }, 0);
-      return;
-    }
-    var list = visibleCards();
-    var at = list.indexOf(target);
-    var next = list[at + 1] || list[at - 1] || null;
-    setTimeout(function () {
-      if (next && next.isConnected) {
-        window.vqFocusTarget(next).focus({ preventScroll: true });
-        next.scrollIntoView({ block: "nearest" });
-      }
-    }, 0);
   });
 
   var key = "vq:inbox-dismissed";
