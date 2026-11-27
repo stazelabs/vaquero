@@ -98,7 +98,7 @@
     "project": "folder",
     "projects": "folder-kanban",
     "ready": "zap",
-    "release": "lock-open",
+    "unclaim": "lock-open",
     "search": "search",
     "settings": "settings",
     "sub-tickets": "list-tree",

@@ -250,7 +250,7 @@ func EventSentence(e EventView) string {
 		}
 		return "claimed " + e.TicketKey
 	case core.EvTicketReleased:
-		return "released " + e.TicketKey
+		return "unclaimed " + e.TicketKey
 	case core.EvClaimLapsed:
 		if st := s("status"); st != "" {
 			return fmt.Sprintf("let the claim on %s lapse; it is back in %s", e.TicketKey, st)
@@ -460,7 +460,7 @@ var eventIcons = map[string]string{
 	core.EvLinkDeleted: "delete", core.EvRefRemoved: "delete", core.EvActorCreated: "person", core.EvActorUpdated: "person",
 	core.EvProjectLinked: "link", core.EvProjectUnlinked: "delete",
 	core.EvTagMerged: "merge", core.EvTagDeleted: "delete",
-	core.EvTicketClaimed: "claim", core.EvTicketReleased: "release", core.EvClaimLapsed: "lapsed",
+	core.EvTicketClaimed: "claim", core.EvTicketReleased: "unclaim", core.EvClaimLapsed: "lapsed",
 }
 
 // prefixIcons are the glyphs for each kind's first word.

@@ -86,6 +86,17 @@ func TestTagWording(t *testing.T) {
 	}
 }
 
+// VAQ-161: giving up a claim is "unclaim"; "release" means a version.
+func TestUnclaimWording(t *testing.T) {
+	e := EventView{Kind: core.EvTicketReleased, ProjectKey: "VAQ", TicketKey: "VAQ-12", Payload: map[string]any{}}
+	if got := EventSentence(e); got != "unclaimed VAQ-12" {
+		t.Errorf("got %q", got)
+	}
+	if got := EventIcon(core.EvTicketReleased); got != "unclaim" {
+		t.Errorf("icon %q", got)
+	}
+}
+
 func TestDecisionWording(t *testing.T) {
 	ev := func(kind string, p map[string]any, ticket string) EventView {
 		return EventView{Kind: kind, ProjectKey: "VAQ", TicketKey: ticket, Payload: p}
