@@ -195,3 +195,44 @@ func TestConfirmCancelThenDeleteBackToBack(t *testing.T) {
 		t.Fatalf("comment live %v, events %d → %d; want deleted with one event", f.commentLive(id), before, f.events())
 	}
 }
+
+// VAQ-212: an attachment's Remove asks first; Cancel leaves it, confirm
+// removes it.
+func TestConfirmAttachmentRemove(t *testing.T) {
+	env := webtest.New(t)
+	f := newProject(t, env, "WEB")
+	f.ticket("Has a file", "")
+	if r := env.Client().Upload("/t/WEB-1/attachments", "notes.txt", "", []byte("words\n")); r.Status != 201 {
+		t.Fatalf("upload: %d %s", r.Status, r.Body)
+	}
+	count := func() int {
+		as, err := env.DB.RQ.ListTicketAttachments(context.Background(), f.tickets[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(as)
+	}
+	p := open(t, env, 1280, 800)
+	p.goTo("/t/WEB-1")
+	p.recordSubmits()
+	eval[int](p, `(window.vqClosesAtAsk = window.vqCloses)`)
+	p.click(deleteButton)
+	p.until(`document.getElementById("vq-confirm").open || window.vqPosts > 0`)
+	if eval[int](p, `window.vqPosts`) > 0 {
+		t.Fatal("Remove posted without asking")
+	}
+	if msg := eval[string](p, `document.querySelector("[data-confirm-message]").textContent`); msg != "Remove notes.txt? It can't be undone." {
+		t.Fatalf("dialog asks %q", msg)
+	}
+	p.click("[data-confirm-cancel]")
+	p.until(`!document.getElementById("vq-confirm").open && window.vqCloses > window.vqClosesAtAsk`)
+	if n := count(); n != 1 || eval[int](p, `window.vqPosts`) != 0 {
+		t.Fatalf("Cancel left %d attachments", n)
+	}
+	p.click(deleteButton)
+	p.until(`document.getElementById("vq-confirm").open`)
+	p.reloaded(func() { p.click("[data-confirm-ok]") }, `location.pathname === "/t/WEB-1" && !document.querySelector("#attachments form[data-confirm]")`)
+	if n := count(); n != 0 {
+		t.Fatalf("confirm left %d attachments", n)
+	}
+}

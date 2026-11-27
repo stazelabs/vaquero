@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"hash/crc32"
+	"html"
 	"image"
 	"image/color"
 	"image/png"
@@ -495,5 +496,16 @@ func TestThumbOutOfTimeFallsBack(t *testing.T) {
 	}
 	if hasKey(t, e, thumbKeyOf(u.ID)) {
 		t.Fatal("a thumbnail was stored")
+	}
+}
+
+// VAQ-212: Remove asks first, for an image's tile and a file's row.
+func TestAttachmentRemoveAsksFirst(t *testing.T) {
+	_, c := attachEnv(t)
+	uploadOK(t, c.Upload("/t/VAQ-1/attachments", "notes.txt", "", []byte("words\n")))
+	uploadOK(t, c.Upload("/t/VAQ-1/attachments", "shot.png", "", realPNG(t, 300, 200)))
+	body := html.UnescapeString(c.Get("/t/VAQ-1").Body)
+	for _, name := range []string{"notes.txt", "shot.png"} {
+		contains(t, body, `data-confirm="Remove `+name+`? It can't be undone."`)
 	}
 }

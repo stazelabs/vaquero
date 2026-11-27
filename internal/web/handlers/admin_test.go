@@ -1,6 +1,7 @@
 package handlers_test
 
 import (
+	"html"
 	"net/url"
 	"regexp"
 	"strings"
@@ -67,4 +68,16 @@ func TestTokenCreatedPageReplacesHistory(t *testing.T) {
 	if strings.Contains(c.Get("/admin/tokens").Body, "data-replace-url") {
 		t.Fatal("the list page marks itself too")
 	}
+}
+
+// VAQ-212: Revoke asks first, with its own words for the local token.
+func TestTokenRevokeAsksFirst(t *testing.T) {
+	e := webtest.New(t)
+	c := e.Client()
+	c.Post("/admin/tokens", url.Values{"name": {"ci runner"}})
+	c.Post("/admin/tokens", url.Values{"name": {"local"}})
+	body := html.UnescapeString(c.Get("/admin/tokens").Body)
+	contains(t, body,
+		`data-confirm="Revoke ci runner? Anything using it stops working."`,
+		`data-confirm="Revoke local? The CLI gets a new token the next time it starts the server."`)
 }

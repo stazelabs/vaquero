@@ -263,6 +263,14 @@ func moveQuestion(v TicketView) string {
 	return q
 }
 
+// revokeQuestion is the confirm dialog's question before a token is revoked.
+func revokeQuestion(name string) string {
+	if name == "local" {
+		return "Revoke local? The CLI gets a new token the next time it starts the server."
+	}
+	return "Revoke " + name + "? Anything using it stops working."
+}
+
 // removeImageNote finishes the Remove image question: what the project
 // shows afterwards.
 func removeImageNote(kind string) string {

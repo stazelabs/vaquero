@@ -298,7 +298,7 @@ templ TokensPage(v TokensView) {
 							if t.RevokedAt.Valid {
 								Revoked
 							} else {
-								<form method="post" action={ templ.SafeURL("/admin/tokens/" + t.ID + "/revoke") }>
+								<form method="post" action={ templ.SafeURL("/admin/tokens/" + t.ID + "/revoke") } data-confirm={ revokeQuestion(t.Name) }>
 									<button type="submit" class="text-xs text-danger hover:underline" aria-label={ "Revoke " + t.Name }>Revoke</button>
 								</form>
 							}
