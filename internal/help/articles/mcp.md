@@ -49,6 +49,11 @@ Each change an agent makes records where it came from, as the client reports it:
 | `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted. The answer is recorded as relayed by the agent `vaquero mcp --agent NAME` (or `Vaquero-Agent`) names; without an agent, or without `words`, it is refused. An agent never answers as itself |
 | `list_decisions` | Decisions, newest first: optionally `project`, `state`, `kind`, `ticket` and `limit` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
+| `unlink_tickets` | Remove a link: `link_id`, the id `get_ticket` lists on each link; answers `{"ok": true}` |
+| `list_tags` | A project's tags with their ticket counts: `project` |
+| `list_statuses` | A project's statuses in order, with category and ticket count: `project` |
+| `get_me` | The actor the server sees you as: no arguments |
+| `list_commits` | The main-branch commits that mention a ticket, with the diffstat and release: `ticket`; needs the project's [repository](/help/repositories#reading-files-and-commits) |
 | `create_reference` | Point a ticket at a document ([references](/help/repositories#references)): `key`, `kind` (`requirement`, `design`, `plan`, `spec` or `other`), `target` (a repo path or an http or https URL), optionally `anchor` and `label`; answers with the reference and its `id` |
 | `delete_reference` | `key`, `id`; answers `{"ok": true}` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |

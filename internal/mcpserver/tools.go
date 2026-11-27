@@ -201,6 +201,18 @@ type (
 		At      string `json:"at,omitempty" jsonschema:"A branch, tag or commit hash to read it at. Leave it out for the main branch."`
 	}
 
+	projectArgs struct {
+		Project string `json:"project" jsonschema:"The project's key, such as VAQ."`
+	}
+
+	ticketArgs struct {
+		Ticket string `json:"ticket" jsonschema:"The ticket's key, such as VAQ-12."`
+	}
+
+	unlinkArgs struct {
+		LinkID string `json:"link_id" jsonschema:"The link's id, as get_ticket lists it."`
+	}
+
 	unclaimArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
@@ -209,9 +221,9 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_plan", "get_ticket",
-	"heartbeat", "link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
-	"search", "unclaim_ticket", "update_ticket",
+	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_me", "get_plan", "get_ticket",
+	"heartbeat", "link_tickets", "list_commits", "list_decisions", "list_projects", "list_statuses", "list_tags", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
+	"search", "unclaim_ticket", "unlink_tickets", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -280,6 +292,18 @@ func addTools(s *mcp.Server, c *caller) {
 			}
 			return get("/projects/"+url.PathEscape(in.Project)+"/files/"+(&url.URL{Path: in.Path}).EscapedPath(), q)
 		})
+	add(s, c, "list_tags", "List a project's tags", true,
+		"A project's tags, each with the number of tickets that carry it.",
+		func(in projectArgs) request { return get("/projects/"+url.PathEscape(in.Project)+"/tags", nil) })
+	add(s, c, "list_statuses", "List a project's statuses", true,
+		"A project's statuses in order, each with its category and the number of tickets in it.",
+		func(in projectArgs) request { return get("/projects/"+url.PathEscape(in.Project)+"/statuses", nil) })
+	add(s, c, "get_me", "Who am I", true,
+		"The actor the server sees you as: your name, kind and, for an agent, how it was named.",
+		func(noArgs) request { return get("/me", nil) })
+	add(s, c, "list_commits", "List a ticket's commits", true,
+		"The commits on the project's main branch that mention a ticket's key, newest first, with their diffstat and the release that first holds the newest. Needs the project's repository.",
+		func(in ticketArgs) request { return get(ticketPath(in.Ticket, "/commits"), nil) })
 	add(s, c, "list_decisions", "List decisions", true,
 		"Questions, rulings and approvals, newest first, each with its options, state, answer (direct from the owner or relayed), and for an approved plan the approvals it pinned.",
 		func(in listDecisionsArgs) request {
@@ -437,6 +461,9 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in linkArgs) request {
 			return post(ticketPath(in.Key, "/links"), map[string]string{"kind": in.Kind, "to": in.To})
 		})
+	add(s, c, "unlink_tickets", "Remove a link between tickets", false,
+		"Remove a link by its id, which get_ticket lists on each of its links. Answers {\"ok\": true}.",
+		func(in unlinkArgs) request { return del("/links/" + url.PathEscape(in.LinkID)) })
 	add(s, c, "create_reference", "Add a reference to a ticket", false,
 		"Point a ticket at the document that governs it: a repo path (in the project's repository; it needn't be on main yet) or an http or https URL, as a requirement, design, plan, spec or other. Answers with the reference and its id.",
 		func(in addRefArgs) request {

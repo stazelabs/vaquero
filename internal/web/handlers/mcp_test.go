@@ -62,9 +62,9 @@ func mcpCall(t *testing.T, cs *mcp.ClientSession, name string, args map[string]a
 }
 
 var frozenTools = []string{
-	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_plan", "get_ticket",
-	"heartbeat", "link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
-	"search", "unclaim_ticket", "update_ticket",
+	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_me", "get_plan", "get_ticket",
+	"heartbeat", "link_tickets", "list_commits", "list_decisions", "list_projects", "list_statuses", "list_tags", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
+	"search", "unclaim_ticket", "unlink_tickets", "update_ticket",
 }
 
 func TestMCPToolList(t *testing.T) {
@@ -318,4 +318,53 @@ func TestMCPReferences(t *testing.T) {
 	if res, _ := mcpCall(t, cs, "delete_reference", map[string]any{"key": "VAQ-1", "id": ref.ID}); !res.IsError {
 		t.Fatal("removed twice")
 	}
+}
+
+func TestMCPReadsAndUnlink(t *testing.T) {
+	e, tok := agentEnv(t)
+	cs := mcpConnect(t, e, tok, "builder")
+	if _, err := e.Deps.Core.CreateTicket(bg, e.Deps.Actor.ID, mustProjectID(t, e, "VAQ"), core.TicketInput{Title: "Second", Tags: []string{"ui"}}); err != nil {
+		t.Fatal(err)
+	}
+	if res, text := mcpCall(t, cs, "list_tags", map[string]any{"project": "VAQ"}); res.IsError || !strings.Contains(text, `"ui"`) {
+		t.Fatalf("list_tags: %s", text)
+	}
+	if res, text := mcpCall(t, cs, "list_statuses", map[string]any{"project": "VAQ"}); res.IsError || !strings.Contains(text, "Todo") {
+		t.Fatalf("list_statuses: %s", text)
+	}
+	if res, text := mcpCall(t, cs, "get_me", map[string]any{}); res.IsError || !strings.Contains(text, "builder") {
+		t.Fatalf("get_me: %s", text)
+	}
+	if res, text := mcpCall(t, cs, "list_commits", map[string]any{"ticket": "VAQ-1"}); !res.IsError || !strings.Contains(text, "No repository set") {
+		t.Fatalf("list_commits: %v %s", res.IsError, text)
+	}
+	if res, text := mcpCall(t, cs, "link_tickets", map[string]any{"key": "VAQ-1", "kind": "relates", "to": "VAQ-2"}); res.IsError {
+		t.Fatalf("link: %s", text)
+	}
+	_, text := mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-1"})
+	var tk struct{ Links []struct{ ID string } }
+	if err := json.Unmarshal([]byte(text), &tk); err != nil || len(tk.Links) != 1 || tk.Links[0].ID == "" {
+		t.Fatalf("links: %v %s", err, text)
+	}
+	if res, text := mcpCall(t, cs, "unlink_tickets", map[string]any{"link_id": tk.Links[0].ID}); res.IsError || !strings.Contains(text, `"ok"`) {
+		t.Fatalf("unlink: %s", text)
+	}
+	if res, _ := mcpCall(t, cs, "unlink_tickets", map[string]any{"link_id": tk.Links[0].ID}); !res.IsError {
+		t.Fatal("unlinked twice")
+	}
+}
+
+func mustProjectID(t *testing.T, e *webtest.Env, key string) string {
+	t.Helper()
+	ps, err := e.Deps.R.ListProjects(bg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range ps {
+		if p.Key == key {
+			return p.ID
+		}
+	}
+	t.Fatal("no project")
+	return ""
 }
