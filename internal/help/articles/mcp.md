@@ -53,7 +53,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `list_tags` | A project's tags with their ticket counts: `project` |
 | `list_statuses` | A project's statuses in order, with category and ticket count: `project` |
 | `get_me` | The actor the server sees you as: no arguments |
-| `list_commits` | The main-branch commits that mention a ticket, with the diffstat and release: `ticket`; needs the project's [repository](/help/repositories#reading-files-and-commits) |
+| `list_commits` | The main-branch commits that mention a ticket, with the diffstat and release: `key`; needs the project's [repository](/help/repositories#reading-files-and-commits) |
 | `create_reference` | Point a ticket at a document ([references](/help/repositories#references)): `key`, `kind` (`requirement`, `design`, `plan`, `spec` or `other`), `target` (a repo path or an http or https URL), optionally `anchor` and `label`; answers with the reference and its `id` |
 | `delete_reference` | `key`, `id`; answers `{"ok": true}` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |

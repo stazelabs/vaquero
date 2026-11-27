@@ -382,7 +382,7 @@ func Render(p Prompt, args map[string]string) (string, error) {
 // clean makes v one line of plain text, at most MaxValue characters.
 func clean(v string) string {
 	v = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == ' ' || r == ' ' || r == '\u0085' {
+		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' || r == '\u0085' {
 			return ' '
 		}
 		return r

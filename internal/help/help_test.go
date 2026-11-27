@@ -11,6 +11,7 @@ import (
 
 	"github.com/stazelabs/vaquero/internal/mcpserver"
 	"github.com/stazelabs/vaquero/internal/timefmt"
+	"github.com/stazelabs/vaquero/internal/workflow"
 )
 
 var firstArticles = []string{"welcome", "projects-and-tickets", "the-board", "editing-and-conflicts", "search",
@@ -143,6 +144,37 @@ func TestMCPToolsDocumented(t *testing.T) {
 	for _, name := range mcpserver.ToolNames() {
 		if !strings.Contains(a.Markdown, "| `"+name+"` |") {
 			t.Errorf("tool %s isn't in the mcp article", name)
+		}
+	}
+}
+
+// Run R, final review: the mcp and agent-workflow articles each have a
+// row for every workflow prompt, naming its arguments and their allowed
+// values, as TestMCPToolsDocumented holds the tools.
+func TestWorkflowPromptsDocumented(t *testing.T) {
+	for _, slug := range []string{"mcp", "agent-workflow"} {
+		a, ok := Get(slug)
+		if !ok {
+			t.Fatalf("no %s article", slug)
+		}
+		for _, p := range workflow.List() {
+			var row string
+			for line := range strings.SplitSeq(a.Markdown, "\n") {
+				if strings.HasPrefix(line, "| `"+p.Name+"` |") {
+					row = line
+				}
+			}
+			if row == "" {
+				t.Errorf("prompt %s isn't in the %s article", p.Name, slug)
+				continue
+			}
+			for _, arg := range p.Args {
+				for _, w := range append([]string{arg.Name}, arg.Values...) {
+					if !strings.Contains(row, "`"+w+"`") {
+						t.Errorf("the %s article's %s row lacks `%s`", slug, p.Name, w)
+					}
+				}
+			}
 		}
 	}
 }

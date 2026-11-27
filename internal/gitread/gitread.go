@@ -11,48 +11,48 @@
 // gpg.x509.program), the alternate refs command, cookie files, automatic gc
 // and maintenance, submodule recursion and every transport but file, http,
 // https and ssh; it also fixes what would change the output's shape
-// (column.ui, color.ui, diff.relative) (guardConfig, guardOptions). The environment is the server's without any
-// GIT_ variable or SSH_ASKPASS, plus GIT_TERMINAL_PROMPT=0,
-// GIT_OPTIONAL_LOCKS=0, GIT_PAGER=cat and LC_ALL=C; fetch alone adds
-// GIT_SSH_COMMAND="ssh -o BatchMode=yes", so a remote that wants a password
-// fails instead of waiting, and every other command GIT_NO_LAZY_FETCH=1, so
-// a read in a partial clone fails on a missing object instead of fetching
-// it from the promisor remote (git 2.44+; under an older git Open refuses
-// a partial clone, ErrPartialClone). New reads git version (the one
-// command run outside a repo besides Fetch's helper reads), again on the
-// next use when that failed; a git older than 2.31 (MinVersion) isn't used
-// (Available false, ErrOldGit). Standard input is empty. A command has
-// Timeout (Fetch: FetchTimeout), is killed with its process group when it
-// runs over, and its output is read up to MaxOutput (a file shown: MaxShow).
+// (column.ui, color.ui, diff.relative) (guardConfig, guardOptions). The
+// environment is the server's without any GIT_ variable or SSH_ASKPASS,
+// plus GIT_TERMINAL_PROMPT=0, GIT_OPTIONAL_LOCKS=0, GIT_PAGER=cat and
+// LC_ALL=C; fetch alone adds GIT_SSH_COMMAND="ssh -o BatchMode=yes", so a
+// remote that wants a password fails instead of waiting, and every other
+// command GIT_NO_LAZY_FETCH=1, so a read in a partial clone fails on a
+// missing object instead of fetching it from the promisor remote (git
+// 2.44+; under an older git Open refuses a partial clone, ErrPartialClone).
+// New reads git version (the one command run outside a repo besides Fetch's
+// helper reads), again on the next use when that failed; a git older than
+// 2.31 (MinVersion) isn't used (Available false, ErrOldGit). Standard input
+// is empty. A command has Timeout (Fetch: FetchTimeout), is killed with its
+// process group when it runs over, and its output is read up to MaxOutput
+// (a file shown: MaxShow).
 //
 // Only these subcommands run (Allowed): rev-parse, show, cat-file, log,
 // merge-base, tag (only with --list), rev-list, for-each-ref, remote (only
 // the list and get-url), ls-tree (only Blobs' one form: -z --full-tree, a
-// commit hash, then "--" and ValidPaths), config (only Open's one
-// promisor read, under a git older than 2.44, and again after a missing file in a repo not yet asked about; the answer is kept per repo) and diff, which read; and fetch, which only Fetch
-// runs, with the two fixed reads of the user's credential helpers (git
-// config --system and --global -z --get-regexp for credential.helper and
-// credential.<url>.helper, never the repo's). diff, log and show run only
-// with --no-ext-diff and
-// --no-textconv (both on by default in git, so a repo's diff.external or
-// textconv would run), and their positional arguments must be revisions,
-// with paths only after "--" and each a ValidPath (two paths outside the
-// work tree would turn diff into --no-index by itself). No option that
-// writes a file (--output), reads outside the repo (--no-index, anywhere;
-// -O and --orderfile on diff, log and show, with diff.orderFile pinned to
-// /dev/null) or applies a repo's drivers (--textconv, --filters,
-// --ext-diff) passes. The environment keeps GIT_CONFIG_GLOBAL,
-// GIT_CONFIG_SYSTEM and GIT_CONFIG_NOSYSTEM, which only say where the
-// user's own config is.
-// Fetch is the one
-// command that touches the network and the one that writes: remote-tracking
-// refs under refs/remotes/{remote}/ and the remote's tags under
-// refs/vaquero/remote-tags/{remote}/, never local branches, local tags or
-// the work tree.
+// commit hash, then "--" and ValidPaths), config (only the one promisor
+// read, made at Open under a git older than 2.44, or at the first missing
+// file, then kept per git dir for the process) and diff, which read; and
+// fetch, which only Fetch runs, with the two fixed reads of the user's
+// credential helpers (git config --system and --global -z --get-regexp for
+// credential.helper and credential.<url>.helper, never the repo's). diff,
+// log and show run only with --no-ext-diff and --no-textconv (both on by
+// default in git, so a repo's diff.external or textconv would run), and
+// their positional arguments must be revisions, with paths only after "--"
+// and each a ValidPath (two paths outside the work tree would turn diff
+// into --no-index by itself). No option that writes a file (--output),
+// reads outside the repo (--no-index, anywhere; -O and --orderfile on diff,
+// log and show, with diff.orderFile pinned to /dev/null) or applies a
+// repo's drivers (--textconv, --filters, --ext-diff) passes. The
+// environment keeps GIT_CONFIG_GLOBAL, GIT_CONFIG_SYSTEM and
+// GIT_CONFIG_NOSYSTEM, which only say where the user's own config is. Fetch
+// is the one command that touches the network and the one that writes:
+// remote-tracking refs under refs/remotes/{remote}/ and the remote's tags
+// under refs/vaquero/remote-tags/{remote}/, never local branches, local
+// tags or the work tree.
 //
-// Inputs are checked before they reach git (ValidPath, ValidRev); a
-// refused input is ErrInvalid. A failing command is an *Error carrying
-// git's first stderr line, cut to 200 characters.
+// Inputs are checked before they reach git (ValidPath, ValidRev); a refused
+// input is ErrInvalid. A failing command is an *Error carrying git's first
+// stderr line, cut to 200 characters.
 package gitread
 
 import (

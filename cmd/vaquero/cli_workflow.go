@@ -74,7 +74,7 @@ func cmdWorkflow(_ context.Context, stdout, stderr io.Writer, args []string) int
 		if err != nil {
 			return c.finish(err)
 		}
-		b, ok := workflow.Pack(pos[0])
+		b, ok := workflow.Pack(strings.ToLower(pos[0]))
 		if !ok {
 			fmt.Fprintf(stderr, "Give a pack kind: %s.\n", workflow.Allowed(workflow.Packs()))
 			return exitUsage

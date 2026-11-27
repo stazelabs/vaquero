@@ -335,8 +335,12 @@ func TestMCPReadsAndUnlink(t *testing.T) {
 	if res, text := mcpCall(t, cs, "get_me", map[string]any{}); res.IsError || !strings.Contains(text, "builder") {
 		t.Fatalf("get_me: %s", text)
 	}
-	if res, text := mcpCall(t, cs, "list_commits", map[string]any{"ticket": "VAQ-1"}); !res.IsError || !strings.Contains(text, "No repository set") {
+	if res, text := mcpCall(t, cs, "list_commits", map[string]any{"key": "VAQ-1"}); !res.IsError || !strings.Contains(text, "No repository set") {
 		t.Fatalf("list_commits: %v %s", res.IsError, text)
+	}
+	// Like every other ticket tool, it takes key, not ticket.
+	if res, text := mcpCall(t, cs, "list_commits", map[string]any{"ticket": "VAQ-1"}); !res.IsError || strings.Contains(text, "No repository set") {
+		t.Fatalf("list_commits with ticket: %v %s", res.IsError, text)
 	}
 	if res, text := mcpCall(t, cs, "link_tickets", map[string]any{"key": "VAQ-1", "kind": "relates", "to": "VAQ-2"}); res.IsError {
 		t.Fatalf("link: %s", text)

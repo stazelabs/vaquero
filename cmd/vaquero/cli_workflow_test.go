@@ -88,6 +88,10 @@ func TestWorkflowMatchesPromptsGet(t *testing.T) {
 		if got := mustCLI(t, "workflow", "pack", k); got != want {
 			t.Errorf("pack %s: %q", k, got)
 		}
+		// A kind in another case is the kind, as with --kind.
+		if got := mustCLI(t, "workflow", "pack", strings.ToUpper(k)); got != want {
+			t.Errorf("pack %s: %q", strings.ToUpper(k), got)
+		}
 	}
 	if entries, _ := os.ReadDir(data); len(entries) != 0 {
 		t.Fatalf("the data directory was touched: %v", entries)

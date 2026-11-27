@@ -205,10 +205,6 @@ type (
 		Project string `json:"project" jsonschema:"The project's key, such as VAQ."`
 	}
 
-	ticketArgs struct {
-		Ticket string `json:"ticket" jsonschema:"The ticket's key, such as VAQ-12."`
-	}
-
 	unlinkArgs struct {
 		LinkID string `json:"link_id" jsonschema:"The link's id, as get_ticket lists it."`
 	}
@@ -303,7 +299,7 @@ func addTools(s *mcp.Server, c *caller) {
 		func(noArgs) request { return get("/me", nil) })
 	add(s, c, "list_commits", "List a ticket's commits", true,
 		"The commits on the project's main branch that mention a ticket's key, newest first, with their diffstat and the release that first holds the newest. Needs the project's repository.",
-		func(in ticketArgs) request { return get(ticketPath(in.Ticket, "/commits"), nil) })
+		func(in keyArgs) request { return get(ticketPath(in.Key, "/commits"), nil) })
 	add(s, c, "list_decisions", "List decisions", true,
 		"Questions, rulings and approvals, newest first, each with its options, state, answer (direct from the owner or relayed), and for an approved plan the approvals it pinned.",
 		func(in listDecisionsArgs) request {
