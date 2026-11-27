@@ -29,11 +29,11 @@ Everything you record goes into Vaquero through its tools. Anything only the own
 
 ## 3. Settle what is open
 
-When the ticket turns on a choice that the ticket, its comments, its decisions and the authority don't settle, ask the owner with `ask_decision`: kind question, the project, tickets {{ticket}}, the options with their trade-offs, your recommendation first, and why it matters. Ask one decision per choice, and don't invent scope to avoid asking.
+When the ticket turns on a choice that the ticket, its comments, its decisions and the authority don't settle, ask the owner with `ask_decision`: kind question, the project, tickets {{ticket}}, the options with their trade-offs, the option you recommend and why in recommendation, and why the choice matters in why. Ask one decision per choice, and don't invent scope to avoid asking.
 
 A choice you can make yourself within the authority is a ruling: record it with `ask_decision`, kind ruling, with your answer and a one-line note, and name it in the plan. The owner can overrule it.
 
-Draft the rest of the plan meanwhile, marking what waits on each question. Don't ask for approval while a question the plan depends on is open: report the question's id and stop.
+Draft the rest of the plan meanwhile, marking what waits on each question. When a question the plan depends on is open, save what is settled with `save_plan` (step 7), then stop without asking for approval and report the question's id.
 
 ## 4. Write acceptance criteria if it has none
 
@@ -73,12 +73,12 @@ Save the whole text with `save_plan`, passing the revision you read (none for a 
 
 ## 8. Ask for approval, then stop
 
-Check `list_decisions` for an open plan approval on {{ticket}}. One you asked earlier is out of date once the plan or ticket changed: withdraw it with `vaquero decision withdraw ID` (the API's `POST /api/v1/decisions/{id}/withdraw`) before asking again.
+Check `list_decisions` for an open plan approval on {{ticket}}. One you asked earlier (its asked_by is your name, as `get_me` shows it) is out of date once the plan or ticket changed: withdraw it with `vaquero decision withdraw ID --agent NAME`, NAME being the one your `vaquero mcp --agent` uses (or set VAQUERO_AGENT), so the withdrawal is recorded as yours (the API's `POST /api/v1/decisions/{id}/withdraw`). Never withdraw one someone else asked; leave it and say so in your report.
 
 Ask with `ask_decision`: kind approval, subject plan, the project, tickets {{ticket}}, a one-line question, and why it matters. Leave the options out to offer Approve and Request changes. Asking is refused when a referenced repo file isn't on main yet; say so and stop.
 
-Then stop. This prompt never approves, never answers a decision (only the owner does, and `answer_decision` relays only the owner's own words), and never starts the work. Report:
+Then stop. This prompt never approves, never answers a decision (only the owner does), and never starts the work. Report:
 
 - the decision's id, and any questions still open;
 - the plan's revision and the tier, with its reason;
-- the ticket's readiness as `get_ticket` shows it now; it isn't ready until the owner approves.
+- with the project's agent workflow on, the ticket's readiness as `get_ticket` shows it now; it isn't ready until the owner approves.

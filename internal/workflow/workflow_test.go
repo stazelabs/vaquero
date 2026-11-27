@@ -214,7 +214,10 @@ func TestAllowedWords(t *testing.T) {
 // there are none, saves the plan and asks for its approval, and stops there:
 // it never approves, answers or starts the work.
 func TestPlanSteps(t *testing.T) {
-	plan, _ := Get("plan")
+	plan, ok := Get("plan")
+	if !ok {
+		t.Fatal("no plan")
+	}
 	out, err := Render(plan, map[string]string{"ticket": "VAQ-12"})
 	if err != nil {
 		t.Fatal(err)
