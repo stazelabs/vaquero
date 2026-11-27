@@ -7,30 +7,38 @@ import (
 	"testing"
 )
 
-// VAQ-163: Welcome describes the top bar the pages have. Every labelled
-// link in layout.templ's header is named in the article.
+// VAQ-163, VAQ-171: Welcome describes the sidebar the pages have. Every
+// labelled item in sidebar.templ (rows, the foot's buttons, the menu
+// button) is named in the article.
 func TestWelcomeNamesEveryTopBarLink(t *testing.T) {
-	src, err := os.ReadFile("../web/templates/layout.templ")
+	b, err := os.ReadFile("../web/templates/sidebar.templ")
 	if err != nil {
 		t.Fatal(err)
 	}
+	src := string(b)
 	a, _ := Get("welcome")
 	body := strings.ToLower(a.Markdown)
-	labels := regexp.MustCompile(`<span class="max-sm:sr-only">([A-Za-z ]+)</span>`).FindAllStringSubmatch(string(src), -1)
-	if len(labels) < 5 {
-		t.Fatalf("found %d top bar labels in layout.templ", len(labels))
-	}
-	for _, m := range labels {
-		if m[1] == "Vaquero" {
-			continue // the logo's name
+	var labels []string
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`@navItem\("[^"]+", "[^"]+", "([^"]+)"`),
+		regexp.MustCompile(`<(?:a|button) [^>]*aria-label="([^"]+)"`),
+		regexp.MustCompile(`<span class="truncate">([A-Za-z ]+)</span>`),
+	} {
+		for _, m := range re.FindAllStringSubmatch(src, -1) {
+			labels = append(labels, m[1])
 		}
-		if !strings.Contains(body, strings.ToLower(m[1])) {
-			t.Errorf("welcome doesn't name the top bar's %s", m[1])
+	}
+	if len(labels) < 8 {
+		t.Fatalf("found %d sidebar labels in sidebar.templ: %v", len(labels), labels)
+	}
+	for _, l := range labels {
+		if !strings.Contains(body, strings.ToLower(l)) {
+			t.Errorf("welcome doesn't name the sidebar's %s", l)
 		}
 	}
 	for _, want := range []string{"search", "keyboard shortcuts"} {
-		if !strings.Contains(body, want) || !strings.Contains(strings.ToLower(string(src)), want) {
-			t.Errorf("welcome or layout.templ lacks %q", want)
+		if !strings.Contains(body, want) || !strings.Contains(strings.ToLower(src), want) {
+			t.Errorf("welcome or sidebar.templ lacks %q", want)
 		}
 	}
 	if strings.Contains(body, "does everything the pages do") {

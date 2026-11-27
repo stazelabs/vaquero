@@ -1,0 +1,155 @@
+package templates
+
+import "strconv"
+
+// sidebar is every page's left column (VAQ-171): the wordmark, search,
+// Inbox, My work and Activity (ruling T-R1), the projects not archived
+// with the current one expanded to its views, All projects, then the foot.
+// From md it sits beside the page and scrolls on its own; below md it is a
+// drawer app.js opens from the top bar's menu button (data-open).
+templ sidebar() {
+	{{ place, nav := PlaceOf(ctx), NavOf(ctx) }}
+	<nav
+		id="vq-sidebar"
+		aria-label="Main"
+		data-sidebar
+		if place.Project != "" {
+			data-place-project={ place.Project }
+			data-place-view={ place.View }
+		}
+		class={ sidebarClass }
+	>
+		<a href="/" class="flex h-bar shrink-0 items-center gap-2 px-2 text-base font-semibold tracking-tight text-ink hover:text-accent">
+			@logo("h-6 w-6 shrink-0")
+			<span>Vaquero</span>
+		</a>
+		<form method="get" action="/search" role="search" class="relative mb-2 shrink-0">
+			<label for="vq-search" class="sr-only">Search tickets, comments and help</label>
+			<span class="pointer-events-none absolute inset-y-0 left-2 flex items-center text-muted">
+				@IconClass("search", "h-3.5 w-3.5")
+			</span>
+			<input id="vq-search" name="q" type="search" autocomplete="off" placeholder="Search" class={ inputBase + " h-chip pr-9 pl-7 text-xs" }/>
+			<kbd aria-hidden="true" class="pointer-events-none absolute inset-y-0 right-1.5 my-auto flex h-4 items-center rounded-sm border border-line px-1 font-mono text-xs text-muted">⌘K</kbd>
+		</form>
+		<ul class="shrink-0">
+			<li>
+				@navItem("/inbox", "inbox", "Inbox", place.View == "inbox") {
+					if nav.InboxCount > 0 {
+						<span data-inbox-count class="ml-auto rounded-sm bg-accent px-1.5 font-mono text-xs leading-4 font-semibold text-paper">{ strconv.Itoa(nav.InboxCount) }</span>
+					}
+				}
+			</li>
+			<li>
+				@navItem("/my", "my-work", "My work", place.View == "my")
+			</li>
+			<li>
+				@navItem("/activity", "activity", "Activity", place.View == "activity")
+			</li>
+		</ul>
+		<h2 class="mt-4 mb-1 shrink-0 px-2 text-xs font-semibold tracking-wider text-muted uppercase">Projects</h2>
+		<ul class="shrink-0">
+			for _, p := range nav.Projects {
+				<li>
+					<a
+						href={ templ.SafeURL("/p/" + p.Key) }
+						data-nav-project={ p.Key }
+						if p.Key == place.Project {
+							aria-current="page"
+						}
+						title={ p.Name }
+						class={ navProjectClass }
+					>
+						@ProjectIcon(p.Icon, "sm")
+						<span data-nav-name class="min-w-0 flex-1 truncate">{ p.Name }</span>
+					</a>
+					if p.Key == place.Project {
+						<ul
+							if !isProjectView(place.View) {
+								data-last-view
+							}
+						>
+							for _, v := range projectViews {
+								<li>
+									<a
+										href={ templ.SafeURL(projectViewPath(p.Key, v[0])) }
+										data-nav-view={ v[0] }
+										if markedView(place) == v[0] {
+											data-current
+										}
+										if place.View == v[0] {
+											aria-current="page"
+										}
+										class={ navItemClass + " pl-8" }
+									>
+										@IconClass(v[1], "h-3.5 w-3.5 shrink-0")
+										<span class="truncate">{ v[2] }</span>
+									</a>
+								</li>
+							}
+						</ul>
+					}
+				</li>
+			}
+			<li>
+				<a href="/" class={ navItemClass + " text-muted" }>
+					@IconClass("projects", "h-3.5 w-3.5 shrink-0")
+					<span class="truncate">All projects</span>
+				</a>
+			</li>
+		</ul>
+		<div class="mt-auto flex shrink-0 items-center gap-1 border-t border-line pt-2">
+			<a href="/profile" data-profile-link title={ OwnerView(ctx).Name } class={ navItemClass + " min-w-0 flex-1" }>
+				@Avatar(OwnerView(ctx), "sm")
+				<span class="truncate">{ OwnerView(ctx).Name }</span>
+			</a>
+			<a href="/help" aria-label="Help" title="Help" class={ navFootButton }>
+				@Icon("help")
+			</a>
+			<a href="/admin" aria-label="Admin" title="Admin" class={ navFootButton }>
+				@Icon("admin")
+			</a>
+			<button type="button" data-shortcuts-open aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)" class={ navFootButton }>
+				@Icon("keyboard")
+			</button>
+		</div>
+	</nav>
+	<div data-sidebar-backdrop hidden class="fixed inset-0 z-30 bg-scrim/40 md:hidden"></div>
+}
+
+// navItem is one sidebar row: a glyph, the label, then anything after it
+// (a count).
+templ navItem(href, icon, label string, current bool) {
+	<a
+		href={ templ.SafeURL(href) }
+		if current {
+			data-current
+			aria-current="page"
+		}
+		class={ navItemClass }
+	>
+		@IconClass(icon, "h-3.5 w-3.5 shrink-0")
+		<span class="truncate">{ label }</span>
+		{ children... }
+	</a>
+}
+
+// menuButton opens the sidebar as a drawer below md (app.js). Without
+// JavaScript it is a link to the projects page.
+templ menuButton() {
+	<a href="/" role="button" data-menu-button aria-label="Menu" aria-controls="vq-sidebar" aria-expanded="false" class="-ml-1 inline-flex h-chip w-chip shrink-0 items-center justify-center rounded-sm text-ink/80 hover:text-accent md:hidden">
+		@Icon("menu")
+	</a>
+}
+
+// topBar is the main column's 38 px bar: the menu button below md, then
+// bar, or the page's name when there is none.
+templ topBar(title string, bar templ.Component) {
+	<div data-top-bar class="flex h-bar shrink-0 items-center gap-2 border-b border-line px-4 md:px-6">
+		@menuButton()
+		if bar != nil {
+			@bar
+		} else {
+			<p class="min-w-0 truncate text-sm font-semibold text-ink">{ pageName(title) }</p>
+		}
+	</div>
+}

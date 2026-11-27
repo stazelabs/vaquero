@@ -4,7 +4,7 @@ section: using
 summary: Your display name and avatar, where they show, and how agents are told apart.
 order: 9
 ---
-Your profile holds the name and picture Vaquero shows for you. Open it from the avatar in the top bar, or go to `/profile`.
+Your profile holds the name and picture Vaquero shows for you. Open it from your avatar at the foot of the sidebar, or go to `/profile`.
 
 ## Your display name
 

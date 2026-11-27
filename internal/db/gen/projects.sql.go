@@ -269,6 +269,51 @@ func (q *Queries) ListBoardReadyTickets(ctx context.Context) ([]ListBoardReadyTi
 	return items, nil
 }
 
+const listNavProjects = `-- name: ListNavProjects :many
+SELECT id, key, name, icon_kind, icon_glyph
+FROM projects
+WHERE archived_at IS NULL
+ORDER BY name, key
+`
+
+type ListNavProjectsRow struct {
+	ID        string
+	Key       string
+	Name      string
+	IconKind  string
+	IconGlyph string
+}
+
+// The sidebar's projects (VAQ-171): every project not archived, by name.
+func (q *Queries) ListNavProjects(ctx context.Context) ([]ListNavProjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listNavProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListNavProjectsRow{}
+	for rows.Next() {
+		var i ListNavProjectsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Key,
+			&i.Name,
+			&i.IconKind,
+			&i.IconGlyph,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenMilestoneProgress = `-- name: ListOpenMilestoneProgress :many
 SELECT m.project_id, m.id, m.name, m.due_on,
        CAST(coalesce(sum(s.category = 'done'), 0) AS INTEGER) AS done,

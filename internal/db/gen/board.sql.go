@@ -202,6 +202,81 @@ func (q *Queries) ListMilestoneProgress(ctx context.Context, projectID string) (
 	return items, nil
 }
 
+const listMyWork = `-- name: ListMyWork :many
+SELECT t.id, t.number, t.title, t.priority, t.version,
+       p.id AS project_id, p.key AS project_key, p.name AS project_name, p.icon_kind, p.icon_glyph,
+       s.name AS status_name,
+       coalesce(nullif(ca.display_name, ''), ca.name, '') AS claimant_name, coalesce(ca.kind, '') AS claimant_kind,
+       coalesce(t.claim_expires_at, '') AS claim_expires_at,
+       coalesce(t.claimed_by, '') AS claimant_id
+FROM tickets t
+JOIN projects p ON p.id = t.project_id
+JOIN statuses s ON s.id = t.status_id
+LEFT JOIN actors ca ON ca.id = t.claimed_by
+WHERE t.assignee_id = ? AND p.archived_at IS NULL AND s.category NOT IN ('done', 'cancelled')
+ORDER BY p.name, p.key, CASE WHEN t.priority = 0 THEN 5 ELSE t.priority END, t.updated_at DESC, t.number
+`
+
+type ListMyWorkRow struct {
+	ID             string
+	Number         int64
+	Title          string
+	Priority       int64
+	Version        int64
+	ProjectID      string
+	ProjectKey     string
+	ProjectName    string
+	IconKind       string
+	IconGlyph      string
+	StatusName     string
+	ClaimantName   string
+	ClaimantKind   string
+	ClaimExpiresAt string
+	ClaimantID     string
+}
+
+// My work (VAQ-171, ruling T-R3): the actor's open tickets (not done, not
+// cancelled) in projects not archived, by project name, then priority
+// (urgent first, none last), then the newest change first.
+func (q *Queries) ListMyWork(ctx context.Context, assigneeID sql.NullString) ([]ListMyWorkRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMyWork, assigneeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMyWorkRow{}
+	for rows.Next() {
+		var i ListMyWorkRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Number,
+			&i.Title,
+			&i.Priority,
+			&i.Version,
+			&i.ProjectID,
+			&i.ProjectKey,
+			&i.ProjectName,
+			&i.IconKind,
+			&i.IconGlyph,
+			&i.StatusName,
+			&i.ClaimantName,
+			&i.ClaimantKind,
+			&i.ClaimExpiresAt,
+			&i.ClaimantID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenBlockers = `-- name: ListOpenBlockers :many
 SELECT l.to_id AS ticket_id, bp.key AS blocker_project, bt.number AS blocker_number
 FROM ticket_links l

@@ -118,6 +118,7 @@ type ApprovalView struct {
 
 // TicketFormPage is the form for a new ticket or an edit.
 templ TicketFormPage(f TicketForm) {
+	{{ setPlaceProject(ctx, f.Project.Key) }}
 	@Shell(formTitle(f)) {
 		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">
 			@ProjectIcon(IconOf(f.Project), "sm")
@@ -186,6 +187,8 @@ templ TicketFormPage(f TicketForm) {
 // TicketPage shows one ticket: its description and fields, sub-tickets,
 // links, the comment thread and its history.
 templ TicketPage(v TicketView) {
+	// The sidebar marks the ticket's project (ruling T-R2).
+	{{ setPlaceProject(ctx, v.Project.Key) }}
 	@Shell(v.Key + " " + v.Ticket.Title) {
 		<span hidden data-project={ v.Project.Key }></span>
 		<p data-breadcrumb class="flex items-center gap-2 font-mono text-sm text-muted">

@@ -28,6 +28,9 @@ func NewRouter(d handlers.Deps) http.Handler {
 		// Names and avatars, read on a page's first use (VAQ-149); before
 		// BodyLimit, so its themed 413 page shows the owner's face.
 		handlers.Faces(d),
+		// The sidebar's place, from the path, and its projects, read once
+		// on a page's first use (VAQ-171).
+		handlers.Nav(d),
 		// 1 MiB, except an upload route (middleware.IsUpload): MaxUpload
 		// for attachments, MaxIconUpload for project icons.
 		middleware.BodyLimit(middleware.MaxBody, handlers.TooLarge(d)),
@@ -89,6 +92,7 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.Post("/profile/avatar", handlers.ProfileAvatarSave(d))
 		r.Post("/profile/avatar/delete", handlers.ProfileAvatarRemove(d))
 		r.Post("/decisions/{id}/answer", handlers.DecisionAnswer(d))
+		r.Get("/my", handlers.MyWork(d))
 		r.Get("/activity", handlers.Activity(d))
 		r.Get("/search", handlers.Search(d))
 		r.Get("/about/licenses", handlers.Licenses(d))

@@ -33,17 +33,28 @@ func glyphNear(page, glyph, label string) bool {
 	return re.MatchString(page)
 }
 
+// The sidebar's rows carry their glyphs; the foot's icon-only links and
+// button carry theirs with a label (VAQ-171).
 func TestTopBarIcons(t *testing.T) {
-	page := html(t, Shell("x"))
-	for glyph, label := range map[string]string{"projects": "Projects", "activity": "Activity", "admin": "Admin", "help": "Help"} {
+	ctx := WithNav(context.Background(), Place{}, func() (Nav, error) { return Nav{}, nil })
+	var b bytes.Buffer
+	if err := Shell("x").Render(ctx, &b); err != nil {
+		t.Fatal(err)
+	}
+	page := b.String()
+	for glyph, label := range map[string]string{"inbox": "Inbox", "my-work": "My work", "activity": "Activity", "projects": "All projects"} {
 		if !glyphNear(page, glyph, label) {
-			t.Errorf("top bar: %s lacks the %s glyph", label, glyph)
+			t.Errorf("sidebar: %s lacks the %s glyph", label, glyph)
 		}
 	}
-	for _, g := range []string{"search", "keyboard"} {
-		if !strings.Contains(page, `data-icon="`+g+`"`) {
-			t.Errorf("top bar lacks %s", g)
+	for glyph, label := range map[string]string{"help": "Help", "admin": "Admin", "keyboard": "Keyboard shortcuts", "menu": "Menu"} {
+		re := regexp.MustCompile(`aria-label="` + label + `"[^>]*>\s*<svg[^>]*data-icon="` + glyph + `"`)
+		if !re.MatchString(page) {
+			t.Errorf("sidebar: %s lacks the %s glyph", label, glyph)
 		}
+	}
+	if !strings.Contains(page, `data-icon="search"`) {
+		t.Error("sidebar lacks search")
 	}
 }
 

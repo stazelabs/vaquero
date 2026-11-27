@@ -145,3 +145,10 @@ ORDER BY m.project_id, m.due_on IS NULL, m.due_on, m.name;
 -- name: ListProjectKeysByIDs :many
 -- The key of each given project, in one read (a page of decisions).
 SELECT id, key FROM projects WHERE id IN (sqlc.slice('ids'));
+
+-- name: ListNavProjects :many
+-- The sidebar's projects (VAQ-171): every project not archived, by name.
+SELECT id, key, name, icon_kind, icon_glyph
+FROM projects
+WHERE archived_at IS NULL
+ORDER BY name, key;

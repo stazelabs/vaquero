@@ -10,6 +10,8 @@ order: 5
 |---|---|
 | `c` | New ticket in the project you are looking at; elsewhere, new project |
 | `/` | Search |
+| `⌘K / Ctrl+K` | Search, even while you type in a field |
+| `g i` | Inbox |
 | `g f` | Focus |
 | `g b` | Board |
 | `g l` | List |
@@ -20,4 +22,4 @@ order: 5
 
 ## When they work
 
-Shortcuts are ignored while you type in a field, so typing a `c` in a comment never opens a new ticket. `g f`, `g b` and `g l` go to the Focus view, board and list of the project you are looking at (from any of its views or a ticket); elsewhere they go to the projects list. In a filter menu's search box, Enter picks the first tag still shown. Enter on a focused link or button does what that link or button does. `j` and `k` move the keyboard focus itself, so Tab carries on from the card they reached, and they start from whichever card has focus.
+Shortcuts are ignored while you type in a field, so typing a `c` in a comment never opens a new ticket; `⌘K` (`Ctrl+K` on Linux) is the one exception, and takes you to the search box from anywhere. On a narrow screen it opens the sidebar first. `g f`, `g b` and `g l` go to the Focus view, board and list of the project you are looking at (from any of its views or a ticket); elsewhere they go to the projects list. In a filter menu's search box, Enter picks the first tag still shown. Enter on a focused link or button does what that link or button does. `j` and `k` move the keyboard focus itself, so Tab carries on from the card they reached, and they start from whichever card has focus.

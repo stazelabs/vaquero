@@ -488,9 +488,10 @@ document.addEventListener("toggle", function (ev) {
 }, true);
 
 // Keyboard shortcuts (listed in the ? dialog): c new ticket, / search,
-// g f Focus, g b board, g l list, j/k next/previous card (enter on its
-// focused link opens it), ? shortcuts.
-// Ignored while typing in a field.
+// g f Focus, g b board, g l list, g i inbox, j/k next/previous card (enter
+// on its focused link opens it), ? shortcuts.
+// Ignored while typing in a field, except Cmd+K or Ctrl+K, which focuses
+// the search box from anywhere.
 (function () {
   var dialog = document.getElementById("vq-shortcuts");
   var opener = document.querySelector("[data-shortcuts-open]");
@@ -533,7 +534,24 @@ document.addEventListener("toggle", function (ev) {
     list[next].scrollIntoView({ block: "nearest", inline: "nearest" });
   }
   var pendingG = false;
+  function focusSearch() {
+    var box = document.getElementById("vq-search");
+    if (!box) {
+      return;
+    }
+    if (!box.checkVisibility || !box.checkVisibility()) {
+      document.dispatchEvent(new CustomEvent("vq:sidebar-open"));
+    }
+    box.focus();
+  }
   document.addEventListener("keydown", function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && !ev.altKey && !ev.shiftKey && (ev.key === "k" || ev.key === "K")) {
+      if (!document.querySelector("dialog[open]")) {
+        ev.preventDefault();
+        focusSearch();
+      }
+      return;
+    }
     if (ev.metaKey || ev.ctrlKey || ev.altKey || typing(ev.target)) {
       return;
     }
@@ -550,6 +568,8 @@ document.addEventListener("toggle", function (ev) {
         window.location.href = p ? "/p/" + p + "/board" : "/";
       } else if (k === "l") {
         window.location.href = p ? "/p/" + p + "/list" : "/";
+      } else if (k === "i") {
+        window.location.href = "/inbox";
       }
       ev.preventDefault();
       return;
@@ -563,10 +583,7 @@ document.addEventListener("toggle", function (ev) {
         window.location.href = p ? "/p/" + p + "/new" : "/projects/new";
         break;
       case "/":
-        var box = document.getElementById("vq-search");
-        if (box) {
-          box.focus();
-        }
+        focusSearch();
         break;
       case "j":
         focusCard(1);
@@ -604,6 +621,116 @@ document.addEventListener("toggle", function (ev) {
     refocus = "";
     if (link && (document.activeElement === document.body || !document.activeElement)) {
       link.focus({ preventScroll: true });
+    }
+  });
+})();
+
+// The sidebar (VAQ-171). From md it sits beside the page: the current
+// project is scrolled into view inside it. Below md it is a drawer: the
+// top bar's menu button opens it over a backdrop (data-open on the
+// sidebar, aria-expanded on the button); a link in it, Escape and the
+// backdrop close it. Without JavaScript the menu button is a link home.
+// A project's Focus, board and list record themselves as its last view
+// (vq:last-view:{KEY}); its other pages (a ticket, settings) mark that
+// view in the sidebar, Focus until one is recorded (ruling T-R2).
+(function () {
+  var side = document.getElementById("vq-sidebar");
+  var menu = document.querySelector("[data-menu-button]");
+  var backdrop = document.querySelector("[data-sidebar-backdrop]");
+  if (!side) {
+    return;
+  }
+  var project = side.dataset.placeProject;
+  var view = side.dataset.placeView;
+  try {
+    if (project && (view === "focus" || view === "board" || view === "list")) {
+      localStorage.setItem("vq:last-view:" + project, view);
+    } else if (project && side.querySelector("[data-last-view]")) {
+      var last = localStorage.getItem("vq:last-view:" + project);
+      var to = last && side.querySelector('[data-nav-view="' + last + '"]');
+      if (to) {
+        side.querySelectorAll("[data-nav-view][data-current]").forEach(function (a) {
+          a.removeAttribute("data-current");
+        });
+        to.setAttribute("data-current", "");
+      }
+    }
+  } catch (e) {
+    // No storage (a private window): Focus stays marked.
+  }
+  function reveal() {
+    var cur = side.querySelector('[data-nav-project][aria-current="page"]');
+    if (!cur || !side.checkVisibility()) {
+      return;
+    }
+    var s = side.getBoundingClientRect();
+    var r = cur.getBoundingClientRect();
+    if (r.top < s.top || r.bottom > s.bottom) {
+      side.scrollTop += r.top - s.top - (s.height - r.height) / 2;
+    }
+  }
+  reveal();
+  function isOpen() {
+    return side.hasAttribute("data-open");
+  }
+  function open() {
+    side.setAttribute("data-open", "");
+    if (backdrop) {
+      backdrop.hidden = false;
+    }
+    if (menu) {
+      menu.setAttribute("aria-expanded", "true");
+    }
+    reveal();
+  }
+  function close(refocus) {
+    if (!isOpen()) {
+      return;
+    }
+    side.removeAttribute("data-open");
+    if (backdrop) {
+      backdrop.hidden = true;
+    }
+    if (menu) {
+      menu.setAttribute("aria-expanded", "false");
+      if (refocus) {
+        menu.focus();
+      }
+    }
+  }
+  document.addEventListener("vq:sidebar-open", open);
+  if (menu) {
+    menu.addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (isOpen()) {
+        close(false);
+      } else {
+        open();
+        var first = side.querySelector("a");
+        if (first) {
+          first.focus({ preventScroll: true });
+        }
+      }
+    });
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", function () { close(false); });
+  }
+  side.addEventListener("click", function (ev) {
+    if (ev.target.closest && ev.target.closest("a")) {
+      close(false);
+    }
+  });
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && isOpen() && !document.querySelector("dialog[open]")) {
+      ev.preventDefault();
+      close(true);
+    }
+  });
+  // Grown past md, the drawer is the sidebar again.
+  window.addEventListener("resize", function () {
+    if (isOpen() && window.matchMedia("(min-width: 48rem)").matches) {
+      close(false);
     }
   });
 })();

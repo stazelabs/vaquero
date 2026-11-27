@@ -27,7 +27,7 @@ func avatarColours(sel string) string {
 }
 
 // VAQ-149: the profile page at phone and desktop widths, light and dark.
-// The header's avatar takes the theme's tile colours, saving a name shows
+// The sidebar's avatar takes the theme's tile colours, saving a name shows
 // it at once, and nothing scrolls sideways.
 func TestE2EProfilePage(t *testing.T) {
 	for _, w := range []int64{375, 1280} {
@@ -37,6 +37,10 @@ func TestE2EProfilePage(t *testing.T) {
 				p := open(t, env, w, 900)
 				p.scheme(scheme)
 				p.goTo("/")
+				if w < 768 {
+					// Below md the profile link is in the sidebar's drawer.
+					p.click("[data-menu-button]")
+				}
 				p.reloaded(func() { p.click("[data-profile-link]") }, `location.pathname === "/profile"`)
 				if !eval[bool](p, visible(`#name form`)) || !eval[bool](p, visible(`#avatar form`)) {
 					t.Fatal("no profile forms")

@@ -151,6 +151,8 @@ func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 var shortcuts = [][2]string{
 	{"c", "New ticket"},
 	{"/", "Search"},
+	{"⌘K / Ctrl+K", "Search, even while typing"},
+	{"g i", "Inbox"},
 	{"g f", "Focus"},
 	{"g b", "Board"},
 	{"g l", "List"},
@@ -310,3 +312,35 @@ const doneCategory = "done"
 
 // readyIcon is the mark beside "Ready": the done category's.
 func readyIcon() string { return CategoryIcon(doneCategory) }
+
+// The sidebar's recipes (VAQ-171). navRow is a 26 px row; navItemClass
+// marks the current item (data-current) with the paper background, a
+// 2 px accent bar on its left and weight 600.
+const (
+	sidebarClass = "flex w-52 shrink-0 flex-col overflow-y-auto overscroll-contain border-r border-line bg-paper-alt px-2 pb-2 " +
+		"max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:hidden max-md:shadow-lg max-md:data-open:flex md:sticky md:top-0 md:h-screen md:self-start"
+	navRow          = "flex h-nav min-w-0 items-center gap-2 rounded-sm px-2 text-sm text-ink/80 hover:bg-paper/60 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+	navItemClass    = navRow + " data-current:bg-paper data-current:font-semibold data-current:text-ink data-current:shadow-[inset_2px_0_0_var(--color-accent)]"
+	navProjectClass = navRow + " aria-[current=page]:font-semibold aria-[current=page]:text-ink"
+	navFootButton   = "inline-flex h-nav w-nav shrink-0 items-center justify-center rounded-sm text-ink/70 hover:bg-paper/60 hover:text-accent"
+	// barTab is a view tab in the top bar; the current one is filled.
+	barTab = "inline-flex h-chip shrink-0 items-center gap-1.5 rounded-sm px-2 text-sm text-ink/70 hover:text-accent aria-[current=page]:bg-paper-alt aria-[current=page]:font-semibold aria-[current=page]:text-ink"
+	// barAction is the top bar's main action (New ticket).
+	barAction = "inline-flex h-chip shrink-0 items-center gap-1 rounded-sm bg-accent px-2 text-xs font-medium text-paper hover:bg-accent/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+)
+
+// projectViewPath is the address of project key's view.
+func projectViewPath(key, view string) string {
+	if view == "focus" {
+		return "/p/" + key
+	}
+	return "/p/" + key + "/" + view
+}
+
+// pageName is the top bar's name for a page without a bar of its own.
+func pageName(title string) string {
+	if title == "" {
+		return "Vaquero"
+	}
+	return title
+}

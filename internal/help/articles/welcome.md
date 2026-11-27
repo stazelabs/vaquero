@@ -23,6 +23,6 @@ Everything lives in one data directory. [Your data and backups](/help/data-and-b
 
 ## Getting around
 
-The bar at the top of every page has Projects (the front page) and Activity (every change, newest first) on the left, then a search box, then your Profile (your name and picture), Help, Admin (version, data, backups, API tokens and the MCP log) and a button for the keyboard shortcuts. On a narrow screen the bar shows icons only. Press `?` on any page for the shortcuts, or read [Keyboard shortcuts](/help/keyboard-shortcuts).
+The sidebar on the left of every page has the search box (`⌘K` or `/` takes you there), then Inbox, My work (the open tickets assigned to you, across your projects) and Activity (every change, newest first). Below them are your projects, by name: the one you are in opens to its Focus, Board and List, and All projects leads to the projects page, where archived projects are too. At the foot are your profile (your name and picture), Help, Admin (version, data, backups, API tokens and the MCP log) and a button for the keyboard shortcuts. The bar above each page names it; in a project it has the Focus, Board and List tabs, Settings and New ticket. On a narrow screen the sidebar is hidden behind the menu button at the left of that bar, and closes when you pick a link, press Escape or tap beside it. Press `?` on any page for the shortcuts, or read [Keyboard shortcuts](/help/keyboard-shortcuts).
 
 Every article here is also plain markdown: add `.md` to its address, or run `vaquero docs` and a topic name.

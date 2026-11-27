@@ -10,8 +10,8 @@ type FocusView struct {
 
 // FocusPage is a project's landing page: Next, In flight and Just finished.
 templ FocusPage(v FocusView) {
-	@Shell(v.Focus.Project.Name) {
-		@projectHeader(v.Focus.Project, "focus", v.Focus.Filter)
+	@ShellWith(v.Focus.Project.Name, projectBar(v.Focus.Project, "focus", v.Focus.Filter)) {
+		@archivedNotice(v.Focus.Project)
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			@filterBar(v.Bar)
 			<div class="mt-4">

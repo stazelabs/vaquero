@@ -50,7 +50,7 @@ func FocusPage(v FocusView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = projectHeader(v.Focus.Project, "focus", v.Focus.Filter).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = archivedNotice(v.Focus.Project).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -87,7 +87,7 @@ func FocusPage(v FocusView) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = Shell(v.Focus.Project.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = ShellWith(v.Focus.Project.Name, projectBar(v.Focus.Project, "focus", v.Focus.Filter)).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

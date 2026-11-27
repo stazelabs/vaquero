@@ -1,0 +1,40 @@
+package templates
+
+import "github.com/stazelabs/vaquero/internal/board"
+
+// MyWorkGroup is one project's tickets on My work.
+type MyWorkGroup struct {
+	Project ProjectIconView
+	Rows    []MyWorkRow
+}
+
+// MyWorkRow is one ticket on My work, with its status's name.
+type MyWorkRow struct {
+	Card   board.Card
+	Status string
+}
+
+// MyWorkPage is /my (ruling T-R3): the owner's open assigned tickets in
+// the projects not archived, grouped by project, priority then the newest
+// change first.
+templ MyWorkPage(groups []MyWorkGroup) {
+	@Shell("My work") {
+		<h1 class={ h1Class }>My work</h1>
+		if len(groups) == 0 {
+			@emptyState("my-work", "Nothing assigned to you.")
+		}
+		for _, g := range groups {
+			<section data-my-project={ g.Project.Key } aria-labelledby={ "my-" + g.Project.Key } class="mt-6">
+				<h2 id={ "my-" + g.Project.Key } class={ h2Class + " flex min-w-0 items-center gap-2" }>
+					@ProjectIcon(g.Project, "sm")
+					<a href={ templ.SafeURL("/p/" + g.Project.Key) } class="min-w-0 truncate hover:text-accent">{ g.Project.Name }</a>
+				</h2>
+				<ul class="mt-2 border-t border-line">
+					for _, r := range g.Rows {
+						@ticketRow(r.Card, r.Status, false)
+					}
+				</ul>
+			</section>
+		}
+	}
+}
