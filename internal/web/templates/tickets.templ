@@ -92,6 +92,27 @@ type TicketView struct {
 	// MoveTargets are the projects the ticket can move to (active ones but
 	// its own), by key; none hides the move form.
 	MoveTargets []Option
+	// Readiness is the side panel's readiness block: nil unless the
+	// project's workflow is on and the ticket a todo.
+	Readiness *ReadinessView
+}
+
+// ReadinessView is whether a todo is ready, or the one reason it isn't.
+// Ask shows the ask button, for the ticket AskKey (its epic's key when the
+// approval to ask for is the epic's); Open is the plan approval waiting for
+// the owner's answer.
+type ReadinessView struct {
+	Ready  bool
+	Reason string
+	Ask    bool
+	AskKey string
+	Open   *ApprovalView
+}
+
+// ApprovalView is an open plan approval with one button per option.
+type ApprovalView struct {
+	ID, Question, Ticket string
+	Options              []Option
 }
 
 // TicketFormPage is the form for a new ticket or an edit.
@@ -405,6 +426,9 @@ templ TicketPage(v TicketView) {
 						}
 					</div>
 				}
+				if v.Readiness != nil {
+					@readinessBlock(v.Key, v.Readiness)
+				}
 				<div>
 					<p class={ labelClass }>Tags</p>
 					if len(v.Tags) == 0 {
@@ -498,6 +522,46 @@ templ LinkTargetOptions(opts []Option) {
 }
 
 // iconField is a side-panel field whose value has a glyph.
+templ readinessBlock(key string, r *ReadinessView) {
+	<div data-readiness>
+		<p class={ labelClass }>Readiness</p>
+		if r.Ready {
+			<p class="flex items-center gap-1.5 text-ink">
+				<span class={ categoryTint("done") }>
+					@Icon(readyIcon())
+				</span>
+				Ready
+			</p>
+		} else if r.Reason != "" {
+			<p class="text-ink">{ r.Reason }</p>
+		}
+		if r.Ask && r.Open == nil {
+			<form method="post" action={ templ.SafeURL("/t/" + key + "/approval/ask") } class="mt-2">
+				<button type="submit" class={ btnSecondary }>Ask for approval</button>
+			</form>
+		}
+		if r.Open != nil {
+			<form method="post" action={ templ.SafeURL("/decisions/" + r.Open.ID + "/answer") } data-approval class="mt-2 space-y-2">
+				<input type="hidden" name="ticket" value={ r.Open.Ticket }/>
+				<p class="text-ink">{ r.Open.Question }</p>
+				<input type="text" name="note" maxlength="500" placeholder="Note (optional)" aria-label="Note" class={ fieldClass }/>
+				<div class="flex flex-wrap gap-2">
+					for i, o := range r.Open.Options {
+						<button type="submit" name="option" value={ o.Value } class={ approvalBtn(i) }>{ o.Label }</button>
+					}
+				</div>
+			</form>
+		}
+	</div>
+}
+
+func approvalBtn(i int) string {
+	if i == 0 {
+		return btnPrimary
+	}
+	return btnSecondary
+}
+
 templ iconField(label, value, icon, tint string) {
 	<div>
 		<p class={ labelClass }>{ label }</p>

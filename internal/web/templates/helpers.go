@@ -260,3 +260,8 @@ func removeImageNote(kind string) string {
 	}
 	return " Uploading it again brings it back."
 }
+
+// readyIcon is the mark beside "Ready": the done category's.
+const doneCategory = "done"
+
+func readyIcon() string { return CategoryIcon(doneCategory) }

@@ -76,6 +76,8 @@ A ticket that isn't ready says why, as what to do:
 
 {what} is the description, the plan, its parent, or a file's path; {why} is that git isn't installed, no repository is set, the repository settings changed since approval, or the repository can't be read. A ticket whose files can't be checked is never ready.
 
+The ticket page shows a todo's readiness in its side panel: Ready, or the one reason. Where the reason is to ask for approval, an Ask for approval button asks a plan approval of the ticket (or of its epic, when that is where to ask); the open approval then shows on the page with a button for each option and a note, and the owner answers it there. The inbox will take this over.
+
 The ready queue (`vaquero ready`, `GET /api/v1/ready`, the `ready_tickets` tool) and the board's ready mark leave out a ticket that isn't ready. Every ticket in the API answer, and the summary of a todo ticket in a list, carries `readiness`: `ready`, the `reasons` (one at most, none for a ticket that isn't a todo), `action` (`ask` or `ask_again`) and `epic` (the key of the epic to ask on, when the approval to ask for is the epic's). When the ticket has repo files, `readiness` also has `files`: each file's `path` as pinned and its `state`: `unchanged`, `changed`, `renamed` (with `now`, its path on main), `gone` (no longer on main, or no longer referenced), `added` (referenced, but not pinned by the approval) or `unchecked`. `vaquero ticket show` lists them under Files. Opened from the ticket's reference, the file view says when a file changed since the approval, with Show changes, was renamed or removed, or can't be checked.
 
 With the workflow off, tickets carry no `readiness`, and ready means what the board's rule says.
