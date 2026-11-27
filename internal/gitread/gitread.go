@@ -103,7 +103,7 @@ var (
 	// ErrPartialRead is a read that needed an object a partial clone
 	// doesn't have (a tree:0 clone's trees, say): not a missing file or
 	// revision, and never fetched from the promisor remote (VAQ-166).
-	ErrPartialRead = errors.New("gitread: " + PartialMessage)
+	ErrPartialRead = errors.New("gitread: this is a partial clone; Vaquero can't read that from it")
 )
 
 // PartialMessage is the sentence for ErrPartialRead, as a page, the API
@@ -451,6 +451,12 @@ func (r *Repos) check(ctx context.Context, dir string, args []string) error {
 		}
 	}
 	switch sub {
+	case "for-each-ref":
+		// Reads of refs only: a --format and a ref prefix as the last
+		// argument (VAQ-165).
+		if len(rest) < 2 || !strings.HasPrefix(rest[len(rest)-1], "refs/") || !slices.ContainsFunc(rest, func(a string) bool { return strings.HasPrefix(a, "--format=") }) {
+			return fmt.Errorf("%w: git for-each-ref %q", ErrRefused, rest)
+		}
 	case "fetch":
 		if ctx.Value(fetchKey{}) == nil {
 			return fmt.Errorf("%w: fetch runs only from Fetch", ErrRefused)

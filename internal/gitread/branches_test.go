@@ -120,3 +120,36 @@ func TestBlobs(t *testing.T) {
 		t.Fatalf("a missing commit: %v", err)
 	}
 }
+
+// VAQ-165: RemoteBranches is one for-each-ref over the remote's tracking
+// refs; CompareTracked is one rev-list.
+func TestRemoteBranchesOneCommand(t *testing.T) {
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("a", "1", "one")
+	seed.Git("push", "-q", "origin", "main")
+	seed.Branch("feature")
+	seed.WriteCommit("b", "1", "two")
+	seed.Git("push", "-q", "origin", "feature")
+	seed.Branch("local-only")
+	rs := gitread.New()
+	g, err := rs.Open(t.Context(), seed.Dir, "main", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := gittest.Record(rs)
+	got, err := g.RemoteBranches(t.Context())
+	if err != nil || len(got) != 2 || !got["main"] || !got["feature"] || got["local-only"] || got["HEAD"] {
+		t.Fatalf("%v %v", got, err)
+	}
+	if n := len(rec.Calls()); n != 1 || rec.Count("for-each-ref") != 1 {
+		t.Fatalf("%d calls", n)
+	}
+	seed.Checkout("feature")
+	seed.WriteCommit("c", "1", "three")
+	rec.Reset()
+	ahead, behind, err := g.CompareTracked(t.Context(), "feature")
+	if err != nil || ahead != 1 || behind != 0 || len(rec.Calls()) != 1 {
+		t.Fatalf("%d %d %v (%d calls)", ahead, behind, err, len(rec.Calls()))
+	}
+}

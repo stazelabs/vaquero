@@ -1,16 +1,19 @@
 package handlers_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stazelabs/vaquero/internal/api"
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/gitread"
 	"github.com/stazelabs/vaquero/internal/gitread/gittest"
+	"github.com/stazelabs/vaquero/internal/web/handlers"
 	"github.com/stazelabs/vaquero/internal/web/webtest"
 )
 
@@ -376,4 +379,89 @@ func TestFileOfATreeLessClone(t *testing.T) {
 		t.Fatalf("api: %d %s", r.Status, r.Body)
 	}
 	contains(t, c2.Get("/p/VAQ/files/docs/a.md").Body, "This is a partial clone; Vaquero can&#39;t read that from it.")
+}
+
+// VAQ-165: the repo status reads the remote's branches once and compares
+// only those; a branch with no remote counterpart costs no git call.
+func TestRepoStatusCostIsFlat(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	bare := gittest.Bare(t)
+	repo := gittest.Clone(t, bare)
+	repo.WriteCommit("a", "1", "one")
+	repo.Git("push", "-q", "origin", "main")
+	for i := range 40 {
+		repo.Branch(fmt.Sprintf("solo-%02d", i))
+	}
+	repo.Checkout("main")
+	setRepo(t, e, repo.Dir)
+	rec := gittest.Record(e.Deps.Git)
+	r := c.API("GET", "/api/v1/projects/VAQ/repo/status", tok, nil)
+	var st api.RepoStatus
+	decode(t, r.Body, &st)
+	if r.Status != 200 || len(st.UnpushedBranches) != 40 || !st.Main.Tracked {
+		t.Fatalf("%d %.300s", r.Status, r.Body)
+	}
+	// Open (2), head, main's compare (2 at most), the local branches, the
+	// remote's branches: none per untracked branch.
+	if n := len(rec.Calls()); n > 8 {
+		t.Fatalf("%d git calls for 40 unpushed branches: %v", n, rec.Calls())
+	}
+	if n := rec.Count("for-each-ref"); n != 2 {
+		t.Fatalf("%d for-each-ref calls", n)
+	}
+}
+
+// VAQ-165: one deadline covers the whole status request.
+func TestRepoStatusHasOneDeadline(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	repo := gittest.Repo(t)
+	repo.WriteCommit("a", "1", "one")
+	setRepo(t, e, repo.Dir)
+	handlers.SetStatusTimeout(t, 50*time.Millisecond)
+	e.Deps.Git.Wrap(func(next gitread.RunFunc) gitread.RunFunc {
+		return func(ctx context.Context, dir string, args []string, env []string, limit int) ([]byte, error) {
+			if gitread.Subcommand(args) == "for-each-ref" {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			return next(ctx, dir, args, env, limit)
+		}
+	})
+	start := time.Now()
+	r := c.API("GET", "/api/v1/projects/VAQ/repo/status", tok, nil)
+	if r.Status != 409 || !strings.Contains(r.Body, "repo_unreadable") || time.Since(start) > 3*time.Second {
+		t.Fatalf("%d %s after %v", r.Status, r.Body, time.Since(start))
+	}
+}
+
+// VAQ-165: the projects list opens each project's repo with at most two
+// git calls, and reads its remote's URL from the second.
+func TestProjectsListGitCallsPerRepo(t *testing.T) {
+	e, c, tok := apiWorld(t)
+	bare := gittest.Bare(t)
+	for i, key := range []string{"VAQ", "OTH", "THR"} {
+		if key != "VAQ" {
+			if _, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: key, Name: key}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		repo := gittest.Clone(t, bare)
+		repo.WriteCommit("a", fmt.Sprint(i), "one")
+		p, err := e.Deps.R.GetProjectByKey(bg, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir, main := repo.Dir, "main"
+		if _, err := e.Deps.Core.UpdateProject(bg, e.Deps.Actor.ID, p.ID, core.ProjectPatch{RepoPath: &dir, MainBranch: &main}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := gittest.Record(e.Deps.Git)
+	r := c.API("GET", "/api/v1/projects", tok, nil)
+	if r.Status != 200 || strings.Count(r.Body, `"remote_url"`) != 3 {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	if n := len(rec.Calls()); n > 6 {
+		t.Fatalf("%d git calls for 3 projects: want at most 2 each", n)
+	}
 }

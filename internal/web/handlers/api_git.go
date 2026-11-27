@@ -9,6 +9,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -29,11 +30,14 @@ const (
 	// maxTicketCommits is how many commits a ticket lists.
 	maxTicketCommits = 50
 	// maxStatusBranches is how many local branches the repo status reads,
-	// and maxUnpushed how many unpushed ones it lists: each branch costs a
-	// git call or two.
+	// and maxUnpushed how many unpushed ones it lists: a branch the remote
+	// has costs one git call, the rest none.
 	maxStatusBranches = 100
 	maxUnpushed       = 50
 )
+
+// statusTimeout is the one deadline of a repo status request (VAQ-165).
+var statusTimeout = 5 * time.Second
 
 // gitMissing is why git can't be used ("Git isn't installed." or "Git 2.31
 // or later is needed."), or "" when it can.
@@ -223,7 +227,8 @@ func ticketCommits(ctx context.Context, d Deps, repo *gitread.Repo, t gen.Ticket
 
 // repoStatus is main against the remote and the local branches that
 // aren't pushed, as of the last fetch: it never fetches. It reads at most
-// maxStatusBranches branches (by name) and lists at most maxUnpushed.
+// maxStatusBranches branches (by name) and lists at most maxUnpushed; the
+// caller bounds the whole of it with one deadline.
 func repoStatus(ctx context.Context, repo *gitread.Repo) (api.RepoStatus, error) {
 	out := api.RepoStatus{UnpushedBranches: []api.BranchStatus{}}
 	// The main branch may be gone since the settings were saved: ErrNoRev.
@@ -238,16 +243,25 @@ func repoStatus(ctx context.Context, repo *gitread.Repo) (api.RepoStatus, error)
 	if err != nil {
 		return out, err
 	}
+	// One read of the remote's branches; only those are compared, and a
+	// local branch with no counterpart is unpushed without a git call.
+	remote, err := repo.RemoteBranches(ctx)
+	if err != nil {
+		return out, err
+	}
 	for _, b := range branches {
 		if b == repo.Main {
 			continue
 		}
-		ahead, behind, tracked, err := repo.Compare(ctx, b, "")
-		if err != nil {
-			return out, err
-		}
-		if tracked && ahead == 0 {
-			continue
+		var ahead, behind int
+		tracked := remote[b]
+		if tracked {
+			if ahead, behind, err = repo.CompareTracked(ctx, b); err != nil {
+				return out, err
+			}
+			if ahead == 0 {
+				continue
+			}
 		}
 		out.UnpushedBranches = append(out.UnpushedBranches, api.BranchStatus{Name: b, Ahead: ahead, Behind: behind, Tracked: tracked})
 		if len(out.UnpushedBranches) == maxUnpushed {
@@ -322,12 +336,14 @@ func APIRepoStatus(d Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		repo, f := openRepo(r.Context(), d, p)
+		ctx, cancel := context.WithTimeout(r.Context(), statusTimeout)
+		defer cancel()
+		repo, f := openRepo(ctx, d, p)
 		if f != nil {
 			api.WriteFailure(w, f)
 			return
 		}
-		out, err := repoStatus(r.Context(), repo)
+		out, err := repoStatus(ctx, repo)
 		if err != nil {
 			gitFail(w, r, d, p, err)
 			return

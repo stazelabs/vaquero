@@ -2,6 +2,7 @@ package gitread
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ type Repo struct {
 
 	repos  *Repos
 	gitDir string
+	url    string // Remote's fetch URL as Open read it, credentials and all
 }
 
 // Commit is one commit as the reads list it.
@@ -100,15 +102,18 @@ func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Rep
 			return nil, ErrPartialClone
 		}
 	}
-	remotes, err := g.Remotes(ctx)
-	if err != nil {
-		return nil, err
-	}
-	switch {
-	case remote != "" && slices.Contains(remotes, remote):
-		g.Remote = remote
-	case remote == "" && slices.Contains(remotes, "origin"):
-		g.Remote = "origin"
+	// One get-url says whether the remote exists (exit 2: no such remote)
+	// and what its URL is, so a repo costs two commands to open (VAQ-165).
+	name := cmp.Or(remote, "origin")
+	if validRemote(name) {
+		out, err := g.git(ctx, "remote", "get-url", name)
+		switch {
+		case err == nil:
+			first, _, _ := strings.Cut(string(out), "\n")
+			g.Remote, g.url = name, strings.TrimSpace(first)
+		case exitCode(err) != 2:
+			return nil, err
+		}
 	}
 	return g, nil
 }
@@ -634,6 +639,23 @@ func (g *Repo) Compare(ctx context.Context, local, remoteRef string) (ahead, beh
 	if err != nil || !there {
 		return 0, 0, false, err
 	}
+	return g.countAhead(ctx, local, remoteRef)
+}
+
+// CompareTracked is Compare of local with the remote's branch of the same
+// name, when RemoteBranches has just said that branch exists: one command,
+// not two.
+func (g *Repo) CompareTracked(ctx context.Context, local string) (ahead, behind int, err error) {
+	if g.Remote == "" || !ValidRev(local) {
+		return 0, 0, ErrInvalid
+	}
+	ahead, behind, _, err = g.countAhead(ctx, local, g.Remote+"/"+local)
+	return ahead, behind, err
+}
+
+// countAhead is rev-list --left-right between a local branch and an
+// existing remote-tracking ref (both checked).
+func (g *Repo) countAhead(ctx context.Context, local, remoteRef string) (ahead, behind int, ok bool, err error) {
 	out, err := g.git(ctx, "rev-list", "--count", "--left-right", "--end-of-options", "refs/heads/"+local+"...refs/remotes/"+remoteRef)
 	if err != nil {
 		return 0, 0, false, err
@@ -703,6 +725,28 @@ func (g *Repo) Branches(ctx context.Context, limit int) ([]string, error) {
 	return names, nil
 }
 
+// RemoteBranches is the branches the repo's remote has, as of the last
+// fetch: the names under refs/remotes/{remote}/ (HEAD and names ValidRev
+// refuses left out), in one command. Nothing without a remote.
+func (g *Repo) RemoteBranches(ctx context.Context) (map[string]bool, error) {
+	if g.Remote == "" {
+		return map[string]bool{}, nil
+	}
+	prefix := "refs/remotes/" + g.Remote + "/"
+	out, err := g.git(ctx, "for-each-ref", "--format=%(refname)", prefix)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]bool{}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		name, ok := strings.CutPrefix(strings.TrimSpace(line), prefix)
+		if ok && name != "HEAD" && ValidRev(name) {
+			names[name] = true
+		}
+	}
+	return names, nil
+}
+
 // Remotes is the repo's remotes, sorted.
 func (g *Repo) Remotes(ctx context.Context) ([]string, error) {
 	out, err := g.git(ctx, "remote")
@@ -724,6 +768,9 @@ func (g *Repo) Remotes(ctx context.Context) ([]string, error) {
 func (g *Repo) remoteURL(ctx context.Context) (string, error) {
 	if g.Remote == "" {
 		return "", nil
+	}
+	if g.url != "" {
+		return g.url, nil
 	}
 	out, err := g.git(ctx, "remote", "get-url", g.Remote)
 	if err != nil {

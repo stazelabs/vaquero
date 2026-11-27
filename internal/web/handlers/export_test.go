@@ -72,3 +72,11 @@ func SetPreviewMaker(t testing.TB, timeout time.Duration, fn func(context.Contex
 	makePreview, thumbTimeout = fn, timeout
 	t.Cleanup(func() { makePreview, thumbTimeout = savedFn, savedTimeout })
 }
+
+// SetStatusTimeout replaces the repo status deadline for one test.
+func SetStatusTimeout(t testing.TB, d time.Duration) {
+	t.Helper()
+	saved := statusTimeout
+	statusTimeout = d
+	t.Cleanup(func() { statusTimeout = saved })
+}
