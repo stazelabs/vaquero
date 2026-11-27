@@ -1,0 +1,32 @@
+{
+  "counts": {
+    "actor_avatars": 1,
+    "actors": 2,
+    "api_tokens": 2,
+    "approvals": 2,
+    "attachments": 2,
+    "blobs": 2,
+    "comments": 3,
+    "decision_tickets": 4,
+    "decisions": 3,
+    "event_tickets": 5,
+    "events": 49,
+    "mcp_calls": 1,
+    "milestones": 1,
+    "plan_revisions": 2,
+    "plans": 1,
+    "project_icons": 1,
+    "project_links": 1,
+    "projects": 2,
+    "settings": 3,
+    "statuses": 13,
+    "tags": 2,
+    "ticket_links": 3,
+    "ticket_old_keys": 1,
+    "ticket_refs": 2,
+    "ticket_tags": 3,
+    "tickets": 9
+  },
+  "schema": 15,
+  "version": "0.1.10"
+}
