@@ -331,7 +331,11 @@ func TestTicketPageDecisionCardsWorkflowOff(t *testing.T) {
 	p := project(t, e)
 	tk := ticket(t, e, p, core.TicketInput{Title: "Plain"})
 	c := e.Client()
-	lacks(t, c.Get("/t/VAQ-1").Body, "data-decision=", "Decisions")
+	empty := c.Get("/t/VAQ-1").Body
+	lacks(t, empty, "data-decision=", "Decisions")
+	// The part stays for a decision asked later, and takes no space empty:
+	// no children at all, so :empty matches, and empty:hidden hides it.
+	contains(t, empty, `data-live class="empty:hidden"></div>`)
 	q, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
 		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionQuestion, Question: "Which way?", Options: []core.Option{{Label: "Left"}},
 	})

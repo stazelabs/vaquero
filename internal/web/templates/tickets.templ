@@ -530,7 +530,7 @@ templ LinkTargetOptions(opts []Option) {
 // like the readiness block, and answering a card refreshes both (the
 // card's HX-Trigger vq:refresh, through app.js's busy rule).
 templ ticketDecisions(v TicketView) {
-	<div id="ticket-decisions" data-ticket-decisions hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#ticket-decisions" hx-swap="outerHTML" hx-disinherit="*" data-live>
+	<div id="ticket-decisions" data-ticket-decisions hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#ticket-decisions" hx-swap="outerHTML" hx-disinherit="*" data-live class="empty:hidden">
 		if len(v.Decisions) > 0 {
 			<section aria-labelledby="ticket-decisions-h">
 				<h2 id="ticket-decisions-h" class={ h2IconClass }>

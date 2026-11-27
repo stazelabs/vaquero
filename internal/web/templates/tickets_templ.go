@@ -2628,7 +2628,7 @@ func ticketDecisions(v TicketView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-trigger=\"vq:change\" hx-select=\"#ticket-decisions\" hx-swap=\"outerHTML\" hx-disinherit=\"*\" data-live>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-trigger=\"vq:change\" hx-select=\"#ticket-decisions\" hx-swap=\"outerHTML\" hx-disinherit=\"*\" data-live class=\"empty:hidden\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
