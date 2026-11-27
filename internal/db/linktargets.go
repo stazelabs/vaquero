@@ -38,6 +38,22 @@ func BackfillEventTickets(ctx context.Context, tx *sql.Tx) error {
 	return runBackfill(ctx, tx, eventTicketsMigration, "event tickets")
 }
 
+// approvalsMovedMigration holds the moved-ticket approval cleanup between
+// its markers.
+const approvalsMovedMigration = "migrations/0014_approvals_moved.sql"
+
+// ClearMovedApprovals applies the move rule to approvals written before
+// it (ruling R-Q13): it deletes each approval asked before its ticket's
+// latest move to another project, and takes each descendant moved after
+// an approval was asked out of that approval's pinned children, keeping
+// every other pin field. Migration 0014 ran it on every database it
+// upgraded; an import runs it after loading an export from a release
+// before that. Its statements are read from the migration, so both always
+// do the same.
+func ClearMovedApprovals(ctx context.Context, tx *sql.Tx) error {
+	return runBackfill(ctx, tx, approvalsMovedMigration, "moved approvals")
+}
+
 // runBackfill runs a migration's backfill statements through tx.
 func runBackfill(ctx context.Context, tx *sql.Tx, migration, what string) error {
 	stmts, err := backfillOf(migration)
