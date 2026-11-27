@@ -17,6 +17,10 @@ Run the {{kind}} audit of {{project}}: find, verify, file. It runs in a clone of
 
 The audit never fixes. It never edits product code, never edits, moves or comments on an existing ticket without the owner's yes, and never pushes, merges or tags. The one exception is the docs audit, which corrects documentation itself, never code (step 3, docs). Everything you record goes into Vaquero through its tools. Anything only the owner can decide is asked as a Vaquero decision, never left in the chat.
 
+The tracker is {{project}}'s real Vaquero, the one these steps read and file into. Reach it through the MCP tools. When a tool a step names is missing from the MCP connection, use the installed `vaquero` CLI with `--agent NAME` instead, and only in a shell that has not sourced the qa scratch environment: `vaquero statuses {{project}}`, `vaquero tickets {{project}} --tag audit-{{kind}}`, `vaquero search WORDS`, `vaquero ticket new {{project}} TITLE --status Backlog --tag audit-{{kind}} --tier TIER --body -` (the body on standard input), `vaquero comment new TICKET -`, `vaquero ticket link TICKET relates OTHER` and `vaquero decision show ID`. Those are the only commands that may reach the tracker.
+
+Outside the qa scratch environment, run no other `vaquero` command that talks to a server, and never a dev build (`go run ./cmd/vaquero`, `bin/vaquero`) against anything but a scratch server. To check a command's spelling, use `go run ./cmd/vaquero help`, `go run ./cmd/vaquero docs` or `go run ./cmd/vaquero workflow`, which need no server.
+
 What to look for comes from the project's audit pack. How to look comes from this text.
 
 ## 1. Find the pack
@@ -69,12 +73,12 @@ select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__navigate,m
 
 Without them, stop: "This audit drives Chrome through Claude in Chrome; connect it and run again." Load the chrome-browser skill before the first browser step when the session lists it.
 
-**Boot a disposable server.** Two Vaquero servers are in play, and they must never be confused. The tracker is where you file findings: only through the MCP tools, never driven in the browser. The scratch server is a copy of the app that only this audit drives, with data that is thrown away.
+**Boot a disposable server.** Two Vaquero servers are in play, and they must never be confused. The tracker is where you file findings: through the MCP tools, or the tracker commands listed at the top in a shell without the scratch environment, and never driven in the browser. The scratch server is a copy of the app that only this audit drives, with data that is thrown away.
 
 - Stop before booting when the pack's **Never targets** or **Boot** section is missing, "none", or still holds the template's `<…>` text.
 - Never touch anything in **Never targets**; a command whose output names one is a stop.
 - Start the scratch server exactly as **Boot** says, in the background, and whatever it says, with a new empty temporary data directory of its own and a free port that isn't the tracker's. When Boot leaves either unset, or points at an existing data directory, stop. Record the port, the PID, the data directory and the log.
-- Every later command in the run that talks to an app server carries the scratch environment. A `vaquero` command without it goes through the saved profile to the tracker; for a Vaquero app, give each one `VAQUERO_SERVER=local` with the scratch `VQ_ADDR` and `VQ_DATA_DIR`, and never `--server` with a saved server's name.
+- Every later command in the run that talks to the app under test carries the scratch environment; the tracker commands listed at the top never do. A `vaquero` command without it goes through the saved profile to the tracker; for a Vaquero app, give each one `VAQUERO_SERVER=local` with the scratch `VQ_ADDR` and `VQ_DATA_DIR`, and never `--server` with a saved server's name.
 - Check the health URL answers (if the server exited, read its log and stop), and note the log's line count so you read only this run's lines.
 - Sign in as the pack says. Open a sign-in link in a new tab, and first confirm its host and port are the scratch server's; if it names anything else, stop.
 - Elevate an account, or make a second one, only on the scratch data, as the pack says, and never without the scratch environment set on that command.

@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -325,6 +326,14 @@ func TestAuditSteps(t *testing.T) {
 		"confirm its host and port are the scratch server's", "only on the scratch data", "`<…>`",
 		"Never edit a source or test file, a doc comment in code included", "Never invent a feature, a ticket key or a date",
 		"stop and report the question's id",
+		// Final review: the tracker's CLI fallback, only outside the
+		// scratch env, and no dev build or installed vaquero elsewhere.
+		"only in a shell that has not sourced the qa scratch environment", "`--agent NAME`",
+		"`vaquero statuses VAQ`", "`vaquero tickets VAQ --tag audit-hygiene`", "`vaquero search WORDS`",
+		"`vaquero ticket new VAQ TITLE --status Backlog --tag audit-hygiene --tier TIER --body -`",
+		"`vaquero comment new TICKET -`", "`vaquero ticket link TICKET relates OTHER`",
+		"run no other `vaquero` command that talks to a server", "never a dev build (`go run ./cmd/vaquero`, `bin/vaquero`) against anything but a scratch server",
+		"`go run ./cmd/vaquero help`", "which need no server",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the audit prompt lacks %q", want)
@@ -427,6 +436,55 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	problems, blocks := qaPackProblems(string(b))
+	for _, p := range problems {
+		t.Error(p)
+	}
+	if blocks < 4 {
+		t.Fatalf("found %d fenced blocks", blocks)
+	}
+	// Final review: the filing exception is the audit prompt's list, in a
+	// shell without the env, never a command spelled out here.
+	for _, want := range []string{"The one exception is filing", "has not sourced `tmp/qa/env`", "`--agent NAME`"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("qa.md lacks %q", want)
+		}
+	}
+}
+
+// The checker itself, final review item 7: a span is found on the whole
+// line before sentences are told apart, so a "; " inside a span never
+// splits it, and a forbidding word inside a span never exempts it.
+func TestQAPackCheckerCatches(t *testing.T) {
+	head := "## Never targets\n\n"
+	for name, text := range map[string]string{
+		"bare in prose":           "Run `vaquero tickets VAQ` first.\n",
+		"semicolon in a span":     "Try `cd /; vaquero tickets VAQ` first.\n",
+		"period in a span":        head + "Never mind. Run `cd /. vaquero tickets VAQ` after.\n",
+		"never inside the span":   head + "Run `echo never; vaquero tickets VAQ` first.\n",
+		"beside a forbidding one": head + "Never run make dev; run `vaquero tickets VAQ` instead.\n",
+		"tracker port in prose":   "Open 127.0.0.1:7878 now.\n",
+		"unguarded QA":            "Run `$QA/bin/vaquero tickets VAQ`.\n",
+		"another binary":          "Run `/opt/homebrew/bin/vaquero tickets VAQ`.\n",
+		"bare in a fenced block":  "```\nvaquero tickets VAQ\n```\n",
+	} {
+		if problems, _ := qaPackProblems(text); len(problems) == 0 {
+			t.Errorf("%s: not caught", name)
+		}
+	}
+	for name, text := range map[string]string{
+		"forbidding sentence": head + "Never run `vaquero server new`; never pass `--server` either.\n",
+		"scratch binary":      "Run `\"${QA:?}/bin/vaquero\" tickets VAQ`.\n",
+	} {
+		if problems, _ := qaPackProblems(text); len(problems) != 0 {
+			t.Errorf("%s: %v", name, problems)
+		}
+	}
+}
+
+// qaPackProblems is TestQAPackRunsOnlyTheScratchBinary's check of a qa
+// pack's text: what breaks the pattern, and how many fenced blocks it has.
+func qaPackProblems(text string) (problems []string, blocks int) {
 	const source = ". /ABSOLUTE/REPO/tmp/qa/env || exit 1"
 	bare := regexp.MustCompile(`(^|[\s;&|(` + "`" + `"])vaquero\s`)
 	binary := regexp.MustCompile(`\S*bin/vaquero\b`)
@@ -434,29 +492,30 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 	unguarded := regexp.MustCompile(`\$\{?(QA|PORT)\b`)
 	clause := regexp.MustCompile(`\.\s|;\s`)
 	allowed := []string{"${QA:?}/bin/vaquero", "$qa/bin/vaquero", "bin/vaquero"}
+	fail := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	check := func(n int, code string) {
 		if bare.MatchString(code) {
-			t.Errorf("qa.md line %d runs a bare vaquero: %s", n, code)
+			fail("qa.md line %d runs a bare vaquero: %s", n, code)
 		}
 		for _, m := range binary.FindAllString(code, -1) {
 			if !slices.Contains(allowed, strings.TrimLeft(m, `"'(`)) {
-				t.Errorf("qa.md line %d runs another vaquero, %s: %s", n, m, code)
+				fail("qa.md line %d runs another vaquero, %s: %s", n, m, code)
 			}
 		}
 		if strings.Contains(code, ":7878") {
-			t.Errorf("qa.md line %d names the tracker's port: %s", n, code)
+			fail("qa.md line %d names the tracker's port: %s", n, code)
 		}
 		rest := strings.NewReplacer("${QA:?}", "", "${PORT:?}", "").Replace(code)
 		if unguarded.MatchString(rest) {
-			t.Errorf("qa.md line %d uses QA or PORT without :?: %s", n, code)
+			fail("qa.md line %d uses QA or PORT without :?: %s", n, code)
 		}
 	}
-	forbids := func(line string) bool {
-		l := strings.ToLower(line)
+	forbids := func(s string) bool {
+		l := strings.ToLower(s)
 		return strings.Contains(l, "never") || strings.Contains(l, "out of bounds")
 	}
-	section, fenced, blocks, firstLine := "", false, 0, false
-	for i, line := range strings.Split(string(b), "\n") {
+	section, fenced, firstLine := "", false, false
+	for i, line := range strings.Split(text, "\n") {
 		n := i + 1
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
 			fenced = !fenced
@@ -468,7 +527,7 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 		}
 		if fenced {
 			if firstLine && blocks > 1 && line != source {
-				t.Errorf("qa.md line %d: block %d doesn't open with %q", n, blocks, source)
+				fail("qa.md line %d: block %d doesn't open with %q", n, blocks, source)
 			}
 			firstLine = false
 			check(n, line)
@@ -477,22 +536,40 @@ func TestQAPackRunsOnlyTheScratchBinary(t *testing.T) {
 		if name, ok := strings.CutPrefix(line, "## "); ok {
 			section = name
 		}
-		// The exemption is per sentence (". " and "; " end one), and only
-		// in Never targets and Limits, so a permitted command beside a
-		// forbidding sentence is still checked.
-		for _, sentence := range clause.Split(line, -1) {
-			if (section == "Never targets" || section == "Limits") && forbids(sentence) {
-				continue
+		// Spans first, on the whole line; then the sentences (". " and
+		// "; " end one) are found with every span blanked out, so neither
+		// a separator nor a forbidding word inside code counts. The
+		// exemption is per sentence, and only in Never targets and Limits,
+		// so a permitted command beside a forbidding sentence is still
+		// checked.
+		locs := spans.FindAllStringIndex(line, -1)
+		masked := []byte(line)
+		for _, l := range locs {
+			for k := l[0] + 1; k < l[1]-1; k++ {
+				masked[k] = '_'
 			}
-			if strings.Contains(sentence, ":7878") {
-				t.Errorf("qa.md line %d names the tracker's port: %s", n, sentence)
+		}
+		starts := []int{0}
+		for _, l := range clause.FindAllStringIndex(string(masked), -1) {
+			starts = append(starts, l[1])
+		}
+		ends := append(starts[1:len(starts):len(starts)], len(line))
+		exempt := make([]bool, len(starts))
+		for j := range starts {
+			exempt[j] = (section == "Never targets" || section == "Limits") && forbids(string(masked[starts[j]:ends[j]]))
+			if !exempt[j] && strings.Contains(line[starts[j]:ends[j]], ":7878") {
+				fail("qa.md line %d names the tracker's port: %s", n, line[starts[j]:ends[j]])
 			}
-			for _, s := range spans.FindAllString(sentence, -1) {
-				check(n, strings.Trim(s, "`"))
+		}
+		for _, l := range locs {
+			j := 0
+			for j+1 < len(starts) && starts[j+1] <= l[0] {
+				j++
+			}
+			if !exempt[j] {
+				check(n, strings.Trim(line[l[0]:l[1]], "`"))
 			}
 		}
 	}
-	if blocks < 4 {
-		t.Fatalf("found %d fenced blocks", blocks)
-	}
+	return problems, blocks
 }

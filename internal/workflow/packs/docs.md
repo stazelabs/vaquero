@@ -31,7 +31,7 @@ Read by the audit workflow prompt (`vaquero workflow audit --project KEY --kind 
 
 ## Extra rules
 
-<Optional. Rules with a higher bar for particular surfaces, such as help articles: their shape, required sections, link rules, and the tests that pin them.>
+<Optional. Rules with a higher bar for particular surfaces, such as help articles: their shape, required sections, link rules, and the tests that pin them. Say how a command a document shows is checked without a server (its help, for example), since the audit never runs one against a live server.>
 
 ## Verify
 

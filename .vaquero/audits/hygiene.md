@@ -15,15 +15,15 @@ Read in full before the sweep:
 Run from the repository root, in this order; stop and tell the owner if the tree isn't clean first (`git status --porcelain`):
 
 ```
-make gen && git diff --exit-code    # generated files match their inputs
-make fmt && git diff --exit-code    # gofmt has nothing to change
+make gen; git status --porcelain     # generated files match their inputs: empty means clean
+make fmt; git status --porcelain     # gofmt has nothing to change: empty means clean
 make vet                       # go vet, and the e2e files under their tag
 make lint                      # modernize-check, then staticcheck under LINT_TOOLCHAIN (go1.27.1)
 VQ_GIT_REQUIRE=1 make test     # every test; the git tests run instead of skipping
 make cover-check               # the floors in coverage-floors.txt
 ```
 
-`make gen` and `make fmt` write to the tree, so they are checks here: when either `git diff` isn't empty, say so in the chat and leave the tree for the owner (the audit never edits code). Any failure here is the gate's, not a ticket: report it and sweep on. `make cover` (coverage by function, lowest first) is context for dimension 8.
+`make gen` and `make fmt` write to the tree, so they are checks here, each read on its own: `git status --porcelain` (not `git diff`, which misses a new untracked generated file) must print nothing after each. A line after `make gen` means the generated files are stale; a line after `make fmt` that wasn't there after `make gen` is gofmt's. Either way, say which in the chat and leave the tree for the owner (the audit never edits code). Any failure here is the gate's, not a ticket: report it and sweep on. `make cover` (coverage by function, lowest first) is context for dimension 8.
 
 Optional, for dimension 5 only, from the main loop, with the owner's say-so because it downloads the tool and the vulnerability database: `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`. Never `go get` it or set `GOFLAGS=-mod=mod`; `git status` must be clean afterwards. A reachable hit is a finding.
 

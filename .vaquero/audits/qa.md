@@ -1,6 +1,6 @@
 # Audit pack: qa
 
-Vaquero's own qa pack, read by the audit workflow prompt when its kind is qa. Two Vaquero servers are in play on this machine: the owner's tracker (the Homebrew install on port 7878, where findings are filed through the MCP tools) and the scratch server this audit boots from the branch under test. They run the same program, so a slip of one environment variable points a command at the owner's data. Every rule below exists to keep the two apart.
+Vaquero's own qa pack, read by the audit workflow prompt when its kind is qa. Two Vaquero servers are in play on this machine: the owner's tracker (the Homebrew install on port 7878, where findings are filed through the MCP tools, or the tracker commands the audit prompt lists when a tool is missing) and the scratch server this audit boots from the branch under test. They run the same program, so a slip of one environment variable points a command at the owner's data. Every rule below exists to keep the two apart.
 
 ## Standards
 
@@ -19,7 +19,7 @@ A command whose output names any of these is a stop.
 - **The owner's data directory**: `~/Library/Application Support/vaquero` on macOS, `${XDG_DATA_HOME:-~/.local/share}/vaquero` on Linux, and everything in it (`vaquero.db`, `token`, `backups/`, `vaquero.env`, `vaquero.log`, `attachments/`).
 - **The owner's saved CLI servers**: `config.json` in the user config directory (`~/Library/Application Support/vaquero/config.json` on macOS, `~/.config/vaquero/config.json` on Linux). Never run `vaquero server new`, `vaquero server use` or `vaquero server delete`, and never pass `--server` with a saved server's name.
 - **The Homebrew service** (`brew services`, labels `sh.brew.vaquero`, `homebrew.mxcl.vaquero`, `homebrew.vaquero`) and its log, `$(brew --prefix)/var/log/vaquero.log`. Never run `brew` at all.
-- **The installed `vaquero`**: never run Homebrew's (on PATH as `/opt/homebrew/bin/vaquero` or similar) or any `vaquero` command without the scratch environment, which resolves the saved profile (the tracker) and starts or restarts the owner's server.
+- **The installed `vaquero`**: never run Homebrew's (on PATH as `/opt/homebrew/bin/vaquero` or similar), or any `vaquero` command without the scratch environment, for anything this audit drives or seeds: without the env a command resolves the saved profile (the tracker) and starts or restarts the owner's server. The one exception is filing. When an MCP tool for a step is missing, the tracker commands the audit prompt lists at its top may run with `--agent NAME`, each in a fresh shell that has not sourced `tmp/qa/env`, and no other command shares that shell.
 - **The developer's own server**: `make dev` on port 7879, its data `./data`, `.env.local`, `tmp/dev.log`. Never run `make dev` or `make db-reset`.
 - **Any git remote.** The scratch repository has none; never add one, never fetch.
 
