@@ -134,7 +134,9 @@ func TestMoveClearsApprovals(t *testing.T) {
 	}
 	events := func() int {
 		var n int
-		_ = d.R.QueryRow(`SELECT count(*) FROM events`).Scan(&n)
+		if err := d.R.QueryRow(`SELECT count(*) FROM events`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
 		return n
 	}
 	before := events()
