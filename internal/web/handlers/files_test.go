@@ -360,3 +360,20 @@ func TestCommitsNoscript(t *testing.T) {
 	_, c, _, _ := gitWorld(t)
 	contains(t, c.Get("/t/VAQ-1").Body, "<noscript>", "Commits need JavaScript here; run vaquero commits VAQ-1.")
 }
+
+// VAQ-166: a clone with commits and no trees says it is a partial clone,
+// not that the file or the main branch is missing.
+func TestFileOfATreeLessClone(t *testing.T) {
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("docs/a.md", "a\n", "one")
+	seed.Git("push", "-q", "origin", "main")
+	clone := gittest.PartialCloneFilter(t, bare, "tree:0", "--no-checkout")
+	e2, c2, tok2 := apiWorld(t)
+	setRepo(t, e2, clone.Dir)
+	r := c2.API("GET", "/api/v1/projects/VAQ/files/docs/a.md", tok2, nil)
+	if r.Status != 409 || !strings.Contains(r.Body, "This is a partial clone; Vaquero can't read that from it.") {
+		t.Fatalf("api: %d %s", r.Status, r.Body)
+	}
+	contains(t, c2.Get("/p/VAQ/files/docs/a.md").Body, "This is a partial clone; Vaquero can&#39;t read that from it.")
+}

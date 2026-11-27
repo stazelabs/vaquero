@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"maps"
+	"strings"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -222,4 +223,22 @@ func TestPinsRecordTheRepo(t *testing.T) {
 	}
 	_, err = c.AnswerDecision(bg, f.Owner.ID, q.ID, core.Answer{Option: "Approve"})
 	fieldErr(t, err, "answer", "A file VAQ-1 references changed since this was asked; ask again.")
+}
+
+// VAQ-166: a repo whose trees aren't there is a partial clone, not "the
+// main branch has no commit."
+func TestAskOnATreeLessCloneSaysPartial(t *testing.T) {
+	c, _, f, _ := pinFixture(t)
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("docs/a.md", "# A\n", "one")
+	seed.Git("push", "-q", "origin", "main")
+	dir := gittest.PartialCloneFilter(t, bare, "tree:0", "--no-checkout").Dir
+	if _, err := c.UpdateProject(bg, f.Owner.ID, f.Project.ID, core.ProjectPatch{RepoPath: &dir}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := c.AskDecision(bg, f.Owner.ID, planApproval(f, f.T1.ID))
+	if got := invalidMsg(err); !strings.Contains(got, "This is a partial clone; Vaquero can't read that from it.") {
+		t.Fatalf("%q", got)
+	}
 }

@@ -53,13 +53,17 @@ const maxDiffstat = 200
 // Open checks path is a git work tree (or a directory in one) and returns
 // its Repo. mainBranch must be a valid ref name and remote "" or a valid
 // remote name (ErrInvalid otherwise); ErrNoGit without git, ErrOldGit
-// with a git older than MinVersion; ErrNotRepo for anything git doesn't
+// with a git older than MinVersion, ErrVersionUnreadable when git version
+// can't be read; ErrNotRepo for anything git doesn't
 // take as a work tree; ErrPartialClone for a partial clone (or a repo
 // whose config names a promisor remote) under a git older than
 // NoLazyFetchVersion.
 func (r *Repos) Open(ctx context.Context, path, mainBranch, remote string) (*Repo, error) {
 	if r.git == "" {
 		return nil, ErrNoGit
+	}
+	if r.versionUnreadable() {
+		return nil, ErrVersionUnreadable
 	}
 	if !r.Available() {
 		return nil, ErrOldGit
@@ -192,7 +196,7 @@ func (g *Repo) object(ctx context.Context, rev, path string) (id, kind string, e
 	out, err := g.git(ctx, "rev-parse", "--verify", "--quiet", "--end-of-options", c+":"+path)
 	if err != nil {
 		if exitCode(err) == 1 {
-			return "", "", ErrNoFile
+			return "", "", g.noFile(ctx, c)
 		}
 		return "", "", err
 	}
@@ -202,6 +206,29 @@ func (g *Repo) object(ctx context.Context, rev, path string) (id, kind string, e
 		return "", "", err
 	}
 	return id, strings.TrimSpace(string(out)), nil
+}
+
+// noFile is ErrNoFile, or ErrPartialRead when commit's tree isn't in a
+// partial clone (so the file may well be there on the remote).
+func (g *Repo) noFile(ctx context.Context, commit string) error {
+	if g.lacksTrees(ctx, commit) {
+		return ErrPartialRead
+	}
+	return ErrNoFile
+}
+
+// lacksTrees reports whether the repo is a partial clone that doesn't have
+// commit's root tree. It asks only after a read failed, so a full clone
+// never pays for it; an answer it can't get is no.
+func (g *Repo) lacksTrees(ctx context.Context, commit string) bool {
+	if !isHash(commit) {
+		return false
+	}
+	if partial, err := g.partialClone(ctx); err != nil || !partial {
+		return false
+	}
+	_, err := g.git(ctx, "cat-file", "-e", commit+"^{tree}")
+	return err != nil
 }
 
 // Blob is path's blob id at rev: "" and ErrNoFile when rev has no such
@@ -247,6 +274,9 @@ func (g *Repo) Blobs(ctx context.Context, commit string, paths []string) (map[st
 		raw, err := g.git(ctx, "ls-tree", args...)
 		if err != nil {
 			if exitCode(err) == 128 {
+				if g.lacksTrees(ctx, commit) {
+					return nil, ErrPartialRead
+				}
 				return nil, fmt.Errorf("%w: %s", ErrNoRev, commit)
 			}
 			return nil, err

@@ -18,9 +18,10 @@
 // fails instead of waiting, and every other command GIT_NO_LAZY_FETCH=1, so
 // a read in a partial clone fails on a missing object instead of fetching
 // it from the promisor remote (git 2.44+; under an older git Open refuses
-// a partial clone, ErrPartialClone). New reads git version once (the one
-// command run outside a repo besides Fetch's helper reads); a git older
-// than 2.31 (MinVersion) isn't used (Available false, ErrOldGit). Standard input is empty. A command has
+// a partial clone, ErrPartialClone). New reads git version (the one
+// command run outside a repo besides Fetch's helper reads), again on the
+// next use when that failed; a git older than 2.31 (MinVersion) isn't used
+// (Available false, ErrOldGit). Standard input is empty. A command has
 // Timeout (Fetch: FetchTimeout), is killed with its process group when it
 // runs over, and its output is read up to MaxOutput (a file shown: MaxShow).
 //
@@ -92,11 +93,22 @@ var (
 	ErrOutputLimit = errors.New("gitread: output too large to read")
 	// ErrOldGit is a git older than MinVersion: found, but not used.
 	ErrOldGit = errors.New("gitread: git 2.31 or later is needed")
+	// ErrVersionUnreadable is a git found whose version couldn't be read
+	// (asked again on the next use): not an old git.
+	ErrVersionUnreadable = errors.New("gitread: couldn't read git's version")
 	// ErrPartialClone is a partial clone (or a repo naming a promisor
 	// remote) under a git older than 2.44, which can't be kept from
 	// fetching missing objects on a read.
 	ErrPartialClone = errors.New("gitread: partial clones need git 2.44 or later")
+	// ErrPartialRead is a read that needed an object a partial clone
+	// doesn't have (a tree:0 clone's trees, say): not a missing file or
+	// revision, and never fetched from the promisor remote (VAQ-166).
+	ErrPartialRead = errors.New("gitread: " + PartialMessage)
 )
+
+// PartialMessage is the sentence for ErrPartialRead, as a page, the API
+// and the CLI show it.
+const PartialMessage = "This is a partial clone; Vaquero can't read that from it."
 
 // The git versions gitread needs: MinVersion for every read (older git
 // lacks options the reads pass), NoLazyFetchVersion for a partial clone
@@ -138,8 +150,12 @@ type RunFunc func(ctx context.Context, dir string, args []string, env []string, 
 // Repos runs git for every project: where git is, the runner, and the
 // fetches in flight (one per repo at a time).
 type Repos struct {
-	git     string
-	version [2]int // major, minor; zero when unknown
+	git string
+
+	vmu      sync.Mutex
+	readVer  func(*Repos) string // git version's output; "" when it failed
+	version  [2]int              // major, minor; zero when unknown
+	verKnown bool                // git version answered (VAQ-166: else asked again)
 
 	mu       sync.Mutex
 	runner   RunFunc
@@ -164,8 +180,9 @@ type FetchFailure struct {
 
 // New finds git on PATH and reads its version once (git version). Without
 // git Available is false and Open answers ErrNoGit; with a git older than
-// MinVersion (or one whose version can't be read) Available is false too
-// and Open answers ErrOldGit.
+// MinVersion Available is false too and Open answers ErrOldGit; when the
+// version can't be read it is read again on the next use (Open answers
+// ErrVersionUnreadable meanwhile).
 func New() *Repos { return newRepos(readVersion) }
 
 // NewWithVersion is New as if git version had answered v (tests check
@@ -174,11 +191,11 @@ func NewWithVersion(v string) *Repos { return newRepos(func(*Repos) string { ret
 
 // newRepos is New with the version read by version (tests give one).
 func newRepos(version func(*Repos) string) *Repos {
-	r := &Repos{fetching: map[string]*flight{}, fetched: map[string]bool{}, failed: map[string]FetchFailure{}}
+	r := &Repos{readVer: version, fetching: map[string]*flight{}, fetched: map[string]bool{}, failed: map[string]FetchFailure{}}
 	r.runner = r.exec
 	if p, err := exec.LookPath("git"); err == nil {
 		r.git = p
-		r.version, _ = parseVersion(version(r))
+		r.ver()
 	}
 	return r
 }
@@ -214,20 +231,54 @@ func parseVersion(s string) ([2]int, bool) {
 	return [2]int{major, minor}, true
 }
 
+// ver is git's version, read when first needed. A read that fails (git
+// timed out, the machine was busy) is asked again on the next use, so one
+// bad moment at startup doesn't leave git off for the process (VAQ-166); an
+// answer, however odd, is kept.
+func (r *Repos) ver() [2]int {
+	if r.git == "" {
+		return [2]int{}
+	}
+	r.vmu.Lock()
+	defer r.vmu.Unlock()
+	if !r.verKnown {
+		out := r.readVer(r)
+		r.version, _ = parseVersion(out)
+		r.verKnown = out != ""
+	}
+	return r.version
+}
+
+// versionUnreadable reports whether git was found but git version has not
+// answered (yet).
+func (r *Repos) versionUnreadable() bool {
+	if r.git == "" {
+		return false
+	}
+	r.ver()
+	r.vmu.Lock()
+	defer r.vmu.Unlock()
+	return !r.verKnown
+}
+
 // atLeast reports whether the git found is version v or later.
 func (r *Repos) atLeast(v [2]int) bool {
-	return r.version[0] > v[0] || r.version[0] == v[0] && r.version[1] >= v[1]
+	got := r.ver()
+	return got[0] > v[0] || got[0] == v[0] && got[1] >= v[1]
 }
 
 // Available reports whether git was found and is MinVersion or later.
 func (r *Repos) Available() bool { return r.git != "" && r.atLeast(MinVersion) }
 
 // Missing is why repository features are off, as a sentence: "Git isn't
-// installed." or "Git 2.31 or later is needed."; "" when Available.
+// installed.", "Couldn't read git's version." or "Git 2.31 or later is
+// needed."; "" when Available.
 func (r *Repos) Missing() string {
 	switch {
 	case r.git == "":
 		return "Git isn't installed."
+	case r.versionUnreadable():
+		return "Couldn't read git's version."
 	case !r.Available():
 		return "Git 2.31 or later is needed."
 	}

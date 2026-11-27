@@ -172,6 +172,8 @@ func repoReason(err error) string {
 		return "git isn't installed."
 	case errors.Is(err, gitread.ErrOldGit):
 		return "git 2.31 or later is needed."
+	case errors.Is(err, gitread.ErrVersionUnreadable):
+		return "couldn't read git's version."
 	case errors.Is(err, gitread.ErrPartialClone):
 		return "partial clones need git 2.44 or later."
 	case errors.Is(err, gitread.ErrNotRepo):
@@ -180,6 +182,15 @@ func repoReason(err error) string {
 		return "the main branch has no commit."
 	}
 	return err.Error() + "."
+}
+
+// cantRead is the refusal's sentence for a repo that can't be read: a
+// partial clone says so plainly (VAQ-166), the rest give repoReason.
+func cantRead(err error) string {
+	if errors.Is(err, gitread.ErrPartialRead) {
+		return gitread.PartialMessage
+	}
+	return "Can't read the repo: " + repoReason(err)
 }
 
 // openProjectRepo is p's repo and main's head, or why they can't be read.
@@ -240,7 +251,7 @@ func (c *Core) pinFiles(ctx context.Context, in DecisionInput) (askedFiles, erro
 	}
 	g, head, err := c.openProjectRepo(ctx, p)
 	if err != nil {
-		return a, invalid("tickets", "Can't read the repo: "+repoReason(err))
+		return a, invalid("tickets", cantRead(err))
 	}
 	paths := make([]string, len(all))
 	for i, f := range all {
@@ -248,7 +259,7 @@ func (c *Core) pinFiles(ctx context.Context, in DecisionInput) (askedFiles, erro
 	}
 	blobs, err := g.Blobs(ctx, head, paths)
 	if err != nil {
-		return a, invalid("tickets", "Can't read the repo: "+repoReason(err))
+		return a, invalid("tickets", cantRead(err))
 	}
 	for _, f := range all {
 		blob, ok := blobs[f.Path]
@@ -371,7 +382,7 @@ func filesUnchanged(ctx context.Context, q *gen.Queries, proj gen.Project, p gen
 		return changed
 	}
 	if v.err != nil {
-		return invalid("answer", "Can't read the repo: "+repoReason(v.err))
+		return invalid("answer", cantRead(v.err))
 	}
 	if v.changed[p.TicketID] {
 		return changed

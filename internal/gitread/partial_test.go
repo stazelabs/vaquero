@@ -176,3 +176,61 @@ func TestMinimumGitVersion(t *testing.T) {
 		t.Fatalf("no git: %q", got)
 	}
 }
+
+// VAQ-166: in a tree:0 clone (commits, no trees) a read that needs a
+// missing object says so, not "no such file" or "no such revision".
+func TestTreeLessCloneSaysPartial(t *testing.T) {
+	bare := gittest.Bare(t)
+	seed := gittest.Clone(t, bare)
+	seed.WriteCommit("docs/a.md", "a\n", "one")
+	seed.Git("push", "-q", "origin", "main")
+	r := gittest.PartialCloneFilter(t, bare, "tree:0", "--no-checkout")
+	_, g := open(t, r)
+	ctx := t.Context()
+	_, errShow := g.Show(ctx, "main", "docs/a.md")
+	_, errBlobs := g.Blobs(ctx, r.Head(), []string{"docs/a.md"})
+	for name, err := range map[string]error{"Show": errShow, "Blobs": errBlobs} {
+		if !errors.Is(err, gitread.ErrPartialRead) || !strings.Contains(err.Error(), gitread.PartialMessage) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	// A file that really isn't there, in a clone that has its trees, stays a missing file.
+	full := gittest.PartialClone(t, bare)
+	_, fg := open(t, full)
+	if _, err := fg.Show(ctx, "main", "docs/nope.md"); !errors.Is(err, gitread.ErrNoFile) {
+		t.Errorf("blob:none clone, absent file: %v", err)
+	}
+}
+
+// VAQ-166: a failed git version read is asked again, and isn't called old.
+func TestVersionReadRetried(t *testing.T) {
+	gittest.Need(t)
+	r := gittest.Repo(t)
+	r.WriteCommit("a.md", "a\n", "one")
+	reads, fail := 0, true
+	rs := gitread.NewWithVersionFunc(func() string {
+		reads++
+		if fail {
+			return ""
+		}
+		return "git version 2.45.0"
+	})
+	if rs.Available() || rs.Missing() != "Couldn't read git's version." {
+		t.Fatalf("unreadable: %v %q", rs.Available(), rs.Missing())
+	}
+	if _, err := rs.Open(t.Context(), r.Dir, "main", ""); !errors.Is(err, gitread.ErrVersionUnreadable) {
+		t.Fatalf("open: %v", err)
+	}
+	fail = false
+	if !rs.Available() || rs.Missing() != "" {
+		t.Fatalf("after the retry: %v %q", rs.Available(), rs.Missing())
+	}
+	if _, err := rs.Open(t.Context(), r.Dir, "main", ""); err != nil {
+		t.Fatal(err)
+	}
+	n := reads
+	rs.Available()
+	if reads != n {
+		t.Fatalf("an answered version was read again")
+	}
+}

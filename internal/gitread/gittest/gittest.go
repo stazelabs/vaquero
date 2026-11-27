@@ -94,9 +94,18 @@ func Clone(t testing.TB, remote *R) *R {
 // origin is its promisor remote.
 func PartialClone(t testing.TB, remote *R) *R {
 	t.Helper()
+	return PartialCloneFilter(t, remote, "blob:none")
+}
+
+// PartialCloneFilter is PartialClone with another filter, such as tree:0
+// (commits only: no tree, so no file at all; give --no-checkout in extra so
+// the checkout doesn't fetch main's trees).
+func PartialCloneFilter(t testing.TB, remote *R, filter string, extra ...string) *R {
+	t.Helper()
 	remote.Git("config", "uploadpack.allowFilter", "true")
 	r := &R{t: t, git: Need(t), Dir: t.TempDir()}
-	cmd := exec.Command(r.git, "clone", "-q", "--filter=blob:none", "file://"+remote.Dir, r.Dir)
+	args := append([]string{"clone", "-q", "--filter=" + filter}, extra...)
+	cmd := exec.Command(r.git, append(args, "file://"+remote.Dir, r.Dir)...)
 	cmd.Env = r.env()
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git clone --filter: %v: %s", err, out)

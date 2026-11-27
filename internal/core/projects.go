@@ -138,6 +138,8 @@ func (c *Core) checkRepo(ctx context.Context, r repoSettings) (repoSettings, fie
 		f.add("repo_path", "Git isn't installed, so repository features are off.")
 	case errors.Is(err, gitread.ErrOldGit):
 		f.add("repo_path", "Git 2.31 or later is needed, so repository features are off.")
+	case errors.Is(err, gitread.ErrVersionUnreadable):
+		f.add("repo_path", "Couldn't read git's version, so repository features are off.")
 	case errors.Is(err, gitread.ErrPartialClone):
 		f.add("repo_path", "Partial clones need git 2.44 or later.")
 	case errors.Is(err, gitread.ErrNotRepo):

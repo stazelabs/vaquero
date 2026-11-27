@@ -54,7 +54,7 @@ func openRepo(ctx context.Context, d Deps, p gen.Project) (*gitread.Repo, *api.F
 		return nil, api.Fail(http.StatusConflict, "no_git", msg)
 	}
 	repo, err := d.Git.Open(ctx, p.RepoPath, p.MainBranch, p.Remote)
-	if errors.Is(err, gitread.ErrNoGit) || errors.Is(err, gitread.ErrOldGit) {
+	if errors.Is(err, gitread.ErrNoGit) || errors.Is(err, gitread.ErrOldGit) || errors.Is(err, gitread.ErrVersionUnreadable) {
 		return nil, api.Fail(http.StatusConflict, "no_git", cmp.Or(d.Git.Missing(), "Git isn't installed."))
 	}
 	if errors.Is(err, gitread.ErrPartialClone) {
@@ -73,6 +73,9 @@ func openRepo(ctx context.Context, d Deps, p gen.Project) (*gitread.Repo, *api.F
 // as openRepo's, logged at warn (not when the client has gone); any other
 // error is nil, for a 500.
 func repoTrouble(ctx context.Context, d Deps, p gen.Project, err error) *api.Failure {
+	if errors.Is(err, gitread.ErrPartialRead) {
+		return api.Fail(http.StatusConflict, "repo_unreadable", gitread.PartialMessage)
+	}
 	var ge *gitread.Error
 	if !errors.Is(err, gitread.ErrNoRev) && !errors.Is(err, gitread.ErrOutputLimit) && !errors.Is(err, context.DeadlineExceeded) &&
 		!(errors.As(err, &ge) && ge.Code == -1) {
