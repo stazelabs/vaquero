@@ -329,7 +329,14 @@ func TestAuditSteps(t *testing.T) {
 		// Final review: the tracker's CLI fallback, only outside the
 		// scratch env, and no dev build or installed vaquero elsewhere.
 		"only in a shell that has not sourced the qa scratch environment", "`--agent NAME`",
-		"`vaquero statuses VAQ`", "`vaquero tickets VAQ --tag audit-hygiene`", "`vaquero search WORDS`",
+		"`vaquero statuses VAQ`", "`vaquero tickets VAQ --tag audit-hygiene --all`", "`vaquero search WORDS`",
+		// The first runs' corrections: every read the steps need, the
+		// question and its relay, a sweep without subagents, and never
+		// another's tab.
+		"`vaquero tickets VAQ`", "`vaquero ticket show TICKET`", "`vaquero decision show ID`",
+		"`vaquero decision ask VAQ QUESTION --option \"File all\" --option \"File none\" --why TEXT`",
+		"`vaquero decision answer ID OPTION --agent NAME --words TEXT`",
+		"When subagents aren't available", "Never close, resize or navigate a tab or window you didn't open",
 		"`vaquero ticket new VAQ TITLE --status Backlog --tag audit-hygiene --tier TIER --body -`",
 		"`vaquero comment new TICKET -`", "`vaquero ticket link TICKET relates OTHER`",
 		"run no other `vaquero` command that talks to a server", "never a dev build (`go run ./cmd/vaquero`, `bin/vaquero`) against anything but a scratch server",

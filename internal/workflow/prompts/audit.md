@@ -17,7 +17,7 @@ Run the {{kind}} audit of {{project}}: find, verify, file. It runs in a clone of
 
 The audit never fixes. It never edits product code, never edits, moves or comments on an existing ticket without the owner's yes, and never pushes, merges or tags. The one exception is the docs audit, which corrects documentation itself, never code (step 3, docs). Everything you record goes into Vaquero through its tools. Anything only the owner can decide is asked as a Vaquero decision, never left in the chat.
 
-The tracker is {{project}}'s real Vaquero, the one these steps read and file into. Reach it through the MCP tools. When a tool a step names is missing from the MCP connection, use the installed `vaquero` CLI with `--agent NAME` instead, and only in a shell that has not sourced the qa scratch environment: `vaquero statuses {{project}}`, `vaquero tickets {{project}} --tag audit-{{kind}}`, `vaquero search WORDS`, `vaquero ticket new {{project}} TITLE --status Backlog --tag audit-{{kind}} --tier TIER --body -` (the body on standard input), `vaquero comment new TICKET -`, `vaquero ticket link TICKET relates OTHER` and `vaquero decision show ID`. Those are the only commands that may reach the tracker.
+The tracker is {{project}}'s real Vaquero, the one these steps read and file into. Reach it through the MCP tools. When a tool a step names is missing from the MCP connection, use the installed `vaquero` CLI with `--agent NAME` instead, and only in a shell that has not sourced the qa scratch environment: to read, `vaquero statuses {{project}}`, `vaquero tickets {{project}}` (every open ticket), `vaquero tickets {{project}} --tag audit-{{kind}} --all` (done and cancelled ones too), `vaquero ticket show TICKET`, `vaquero search WORDS`, `vaquero decisions {{project}} --kind question` and `vaquero decision show ID`; to file, `vaquero ticket new {{project}} TITLE --status Backlog --tag audit-{{kind}} --tier TIER --body -` (the body on standard input; add `--priority 1` or `--priority 2` only for the cases step 7 allows), `vaquero comment new TICKET -`, `vaquero ticket link TICKET relates OTHER`; to ask, `vaquero decision ask {{project}} QUESTION --option "File all" --option "File none" --why TEXT`, and to relay an answer the owner gave in the chat, `vaquero decision answer ID OPTION --agent NAME --words TEXT`, their words quoted. Those are the only commands that may reach the tracker.
 
 Outside the qa scratch environment, run no other `vaquero` command that talks to a server, and never a dev build (`go run ./cmd/vaquero`, `bin/vaquero`) against anything but a scratch server. To check a command's spelling, use `go run ./cmd/vaquero help`, `go run ./cmd/vaquero docs` or `go run ./cmd/vaquero workflow`, which need no server.
 
@@ -31,12 +31,12 @@ Read `.vaquero/audits/{{kind}}.md`. When it is missing, read `.claude/agent-work
 
 The pack's sections are found by their exact `##` headings, the ones `vaquero workflow pack {{kind}}` prints. When one is missing, other than a section the template calls optional, stop and name it. A section's body may be "none", but one still holding the template's `<…>` placeholder text is unfilled: treat it as missing. Text outside the headings is context.
 
-Then read everything the pack's **Standards** section lists, in full. A finding traces to a written rule from those documents, or, in continuity, to a named peer set (step 4); anything else is an opinion and isn't filed.
+Then read everything the pack's **Standards** section lists, in full: where it names a section or an entry of a document, that section or entry, not the whole document. A finding traces to a written rule: one from those documents, or a row of the pack's own **Dimensions**, quoted in the ticket; in continuity, a discontinuity traces to a named peer set instead (step 4). Anything else is an opinion and isn't filed.
 
 Then read the project in Vaquero:
 
 - `list_statuses` (project {{project}}): findings are filed in Backlog, or the project's first backlog status if it has none by that name.
-- `list_tickets` (project {{project}}, tag `audit-{{kind}}`): what earlier audits filed. A finding that matches a cancelled one is dropped unless the code changed since.
+- `list_tickets` (project {{project}}, tag `audit-{{kind}}`, done and cancelled ones included): what earlier audits filed. A finding that matches a cancelled one is dropped unless the code changed since.
 
 ## 2. Choose the focus
 
@@ -46,17 +46,17 @@ The focus is every dimension in the pack (for qa every area, for docs every part
 
 Follow only the part for {{kind}}.
 
-For hygiene, continuity and docs, sweep with Claude Code subagents, one per dimension (or partition), started in a single message so they run in parallel. Each brief carries the dimension's row and any method for it, the rules it rests on quoted from the Standards documents (not paraphrased), the pre-pass output, the pack's **Search surface** with its exclusions (for docs, the partition's files), and the pack's **Known non-findings** word for word. Ask each for at most its 10 strongest findings (15 for docs), each with the rule, `file:line` for every occurrence, the concrete failure or cost, and a proposed fix: evidence, not adjectives. Subagents are read-only: they never edit, never touch the network or a paid service, and never run anything the pack forbids.
+For hygiene, continuity and docs, sweep with Claude Code subagents, one per dimension (or partition), started in a single message so they run in parallel. Each brief carries the dimension's row and any method for it, the rules it rests on quoted from the Standards documents (not paraphrased), the pre-pass output, the pack's **Search surface** with its exclusions (for docs, the partition's files), and the pack's **Known non-findings** word for word. Ask each for at most its 10 strongest findings (15 for docs), each with the rule, `file:line` for every occurrence, the concrete failure or cost, and a proposed fix: evidence, not adjectives. Subagents are read-only: they never edit, never touch the network or a paid service, and never run anything the pack forbids. When subagents aren't available, or the owner said not to start them, sweep each dimension (or partition) yourself, one at a time, with the same brief in mind, and say so in the report.
 
 ### hygiene
 
-1. Run the pack's **Pre-pass** commands first. Never spend a subagent on what a linter finds, and never file what the project's gate would catch: tooling output is context for the sweep, not a ticket. Run an optional tool only for the dimension the pack ties it to.
+1. Run the pack's **Pre-pass** commands first, in a tree no other audit is using: some of them write generated files, so when audits run together, run the pre-pass before the others start or in a worktree of its own (`git worktree add`). Never spend a subagent on what a linter finds, and never file what the project's gate would catch: tooling output is context for the sweep, not a ticket. Run an optional tool only for the dimension the pack ties it to.
 2. Sweep the pack's **Dimensions**. A cross-cutting invariant the pack names belongs to the dimension it names.
 3. Rank by security, then correctness, then performance, then hygiene. A performance finding names the path and why it is hot; a security finding names the attacker and what they get.
 
 ### continuity
 
-1. Read the commits since the last `audit-continuity` ticket was filed (`git log --oneline --since=DATE`, with a time of day, or the last 100 commits on a first run): new view files are where fresh drift lives, so name them in the briefs.
+1. Read the commits since the last `audit-continuity` ticket was filed (`git log --oneline --since=DATE`, with a time of day, or the last 100 commits on a first run): new view files are where fresh drift lives, so name them in the briefs, or, sweeping without subagents, weigh the templates and handlers those commits touched first.
 2. Sweep the pack's **Dimensions**, each with its **Methods** subsection quoted. A deviation row is checked against its quoted rule. A discontinuity row is checked against a peer set: the sibling surfaces that do it the other way.
 3. Partial adoption is measured, not spot-checked: count a shared component's call sites both ways and report the ratio with both lists. The finding is the tail ("use X on the remaining N surfaces", with the list), never "X is inconsistent". Below about a third adoption, report the ratio and don't file.
 4. A narrow-viewport row from source is only a suspicion ("likely breaks below the small breakpoint"); the qa audit confirms it in a browser.
@@ -85,19 +85,19 @@ Without them, stop: "This audit drives Chrome through Claude in Chrome; connect 
 
 **Browser safety.**
 
-- Work in a new tab of your own (`tabs_create_mcp`); never take over the owner's tabs.
+- Work in a new tab of your own (`tabs_create_mcp`); never take over the owner's tabs. Never close, resize or navigate a tab or window you didn't open: `tabs_close_mcp` and `resize_window` accept the owner's ids too. Note the tabs `tabs_context_mcp` lists before you open one.
 - Never trigger a native alert, confirm or prompt dialog: they freeze the extension. Finding one is itself a finding; report the element without clicking it.
 - Stay on the scratch host and port. Don't follow links that leave it, and never navigate to a Never target, the tracker included.
-- Don't read or echo cookies or tokens from page scripts. Return counts and short strings from `javascript_tool`, never whole documents.
+- Don't read or echo cookies or tokens from page scripts. Return counts and short strings from `javascript_tool`, never whole documents. The extension refuses a script whose text holds a query string or fetches an address with `?` in it; check response headers with curl against the scratch server instead, never by working around the refusal.
 - Don't enter real credentials or real email addresses.
 - When an element won't click, a page hangs or the extension stops answering, stop after 2 or 3 attempts and say so. Don't loop.
 - Dialogs that need a person, such as permission prompts and file pickers, are the owner's.
 
 **Walk the areas.** The pack's **Areas** lists flow slices and cross-cutting passes. These passes are known here; the pack may add to them or override one with a `### Pass X` subsection:
 
-- N, console and network: on every page visited, `read_console_messages` (errors) and `read_network_requests` (4xx, 5xx, and any request to another host).
+- N, console and network: on every page visited, `read_console_messages` (errors) and `read_network_requests` (4xx, 5xx, and any request to another host). Both record only from their first call: call each once on the first page, then reload it, so no page goes unchecked.
 - O, dark mode: find whether the theme follows the system or a toggle. When it follows the system, read `matchMedia('(prefers-color-scheme: dark)').matches` with `javascript_tool`; when it is light, ask the owner in the chat to switch it, or mark the pass untested (needs a dark system). Hunt for surfaces that didn't swap.
-- P, narrow viewport: `resize_window` reports success even when it does nothing and has a floor near 600 px, below which the window wedges. Ask for about 600, then measure what you got with `matchMedia` for the breakpoints, never `innerWidth`. Use one fresh window per size: a tab opened after shrinking inherits the wedged width, so close every tab you opened (`tabs_close_mcp`) and call `tabs_context_mcp` with createIfEmpty true for a new window. Close narrowed windows at the end rather than resizing them back. Below the floor, measure a suspect row's intrinsic width in an off-screen container of the target width (288 px for a 320 px phone) and compare its scrollWidth with its clientWidth. Only the page body scrolling sideways is a defect; a table scrolling inside its own overflow wrapper is not.
+- P, narrow viewport: `resize_window` reports success even when it does nothing and has a floor near 600 px, below which the window wedges. Ask for about 600, then measure what you got with `matchMedia` for the breakpoints, never `innerWidth`. Use one fresh window per size: a tab opened after shrinking inherits the wedged width, so close every tab you opened (`tabs_close_mcp`) and call `tabs_context_mcp` with createIfEmpty true for a new window. When the tab group also holds a tab you didn't open, no fresh window can be made and `resize_window` would resize the owner's: don't resize; ask the owner in the chat for a window of the audit's own, or measure only off-screen as below and report the real widths as untested. Close narrowed windows at the end rather than resizing them back. Below the floor, measure a suspect row's intrinsic width in an off-screen container of the target width (288 px for a 320 px phone) and compare its scrollWidth with its clientWidth. Only the page body scrolling sideways is a defect; a table scrolling inside its own overflow wrapper is not.
 - Q, keyboard and focus: focus always visible, order follows the page, Enter and Space work buttons and switches, Escape closes what opened, nothing traps focus.
 - R, validation and errors: submit forms empty, oversized and malformed. Expect an inline error or a toast, never a 500, a lost form or a native dialog.
 - S, role gating: walk as each lower role the pack's Pass S describes; forbidden controls are absent, and a gated URL typed by hand is refused, never a 500.
@@ -113,7 +113,7 @@ On each page: navigate by the app's own links (a URL typed by hand only to test 
 
 **Triage.** Drop environment noise silently: extension chatter, a navigation while the server was starting, anything the pack's **Triage** lists. An odd page that is right for odd scratch data is not a defect. A stale page after a change you know succeeded may be the browser's cache: check the scratch data as the pack says and reload with `?cb=1` before believing it. For each defect left, read the server log from your mark with the pack's greps, and first show the grep matches a request you know succeeded: a zero proves nothing until the pattern is shown to fire.
 
-**Clean up** once step 4's reproductions are done, before asking the owner anything: stop the server by its PID (`kill PID`, never `pkill -f`), do the pack's **Cleanup**, close every tab and window you opened, and ask the owner to switch the system theme back if you asked them to change it.
+**Clean up** once step 4's reproductions are done, before asking the owner anything: stop the server by its PID (`kill PID`, never `pkill -f`), do the pack's **Cleanup**, close every tab and window you opened (and none you didn't), and ask the owner to switch the system theme back if you asked them to change it.
 
 ### docs
 
@@ -124,7 +124,7 @@ The docs audit corrects documentation itself, and files tickets only for what it
 3. Read the last 100 commits (`git log --oneline -100`): shipped features and new packages are where docs drift. Run the pack's **Ground truth** commands for the facts the documents claim.
 4. Edit only the documents the pack's **Surfaces** table names, as it says. Never edit a source or test file, a doc comment in code included; never a path the **Frozen** list names, a generated file, or a dated spec or plan. Drift that needs a change anywhere else is a ticket (steps 4 to 7).
 5. Sweep with one subagent per area in the pack's **Partitions**, each brief carrying the area's files, the **Frozen** list, the ground truth, the **Voice** rules and the **Extra rules** for its area. A finding is the file and line, the claim as written, the evidence at `file:line` in the code, and a proposed replacement.
-6. Drift is: something called planned that shipped, or listed as built that was dropped (worst); a link, path, command, setting, route or symbol that no longer exists; a flow the code no longer performs; two documents that disagree (settle it against the code, fix both); a shipped package the layout section doesn't mention (add one line in its style); and the **Voice** rules, fixed in passing. A dated spec that differs from the build is not drift.
+6. Drift is: something called planned that shipped, or listed as built that was dropped (worst); a link, path, command, setting, route or symbol that no longer exists; a flow the code no longer performs; two documents that disagree (settle it against the code, fix both); a shipped package the layout section doesn't mention (add one line in its style, unless the pack freezes that section: then it is a ticket); and the **Voice** rules, fixed in passing. A dated spec that differs from the build is not drift.
 7. Verify each finding against the code yourself (step 4), then edit: the smallest correct change in the document's own voice. Never invent a feature, a ticket key or a date: a claim you can't verify is deleted or left alone, never replaced with a plausible one. Run a surface's tests from **Extra rules** as soon as you touch it.
 8. Run the check the pack's **Verify** names for the documents you changed (help articles, for example, may be held by tests), and see it pass. If it won't pass, stop and leave the work uncommitted for the owner.
 9. Commit only the paths you changed (`git add` with each path), in the project's commit style, with the areas swept and the corrections in the body. Never push, merge or tag.
@@ -150,11 +150,11 @@ A live, exploitable security hole is told to the owner in the chat at once, not 
 
 ## 5. Look for duplicates
 
-For each finding, search the open tickets: `search` with its key words, and `list_tickets` (project {{project}}, open true), read through for the same hazard. When an open ticket already covers it, don't file it: list it as a duplicate with that ticket's key, and offer the new evidence as a comment on it (step 6).
+For each finding, search the open tickets: `search` with its key words, and `list_tickets` (project {{project}}, open true), read through for the same hazard; read a likely match in full with `get_ticket`, since a search hit shows only a snippet. When an open ticket already covers it, don't file it: list it as a duplicate with that ticket's key, and offer the new evidence as a comment on it (step 6).
 
 ## 6. Ask the owner
 
-Unless the owner already said yes in the chat to filing these findings, ask once with `ask_decision`: kind question, project {{project}}, and in the question every finding numbered, each with its proposed title, tier and one line of evidence, then the duplicates (each with its ticket and the comment you'd add) and one line per dropped finding, so the owner can overrule. Offer two options, "File all" and "File none", and say in why that the owner can answer in words naming the ones to file. Tell the owner the decision's id in the chat: they answer with `vaquero decision answer ID "File all"`, or in words with `--text`. Never answer it on your own; when the owner answers in the chat instead, relay it with `answer_decision`, their words quoted in words.
+Unless the owner already said yes in the chat to filing these findings, ask once with `ask_decision`: kind question, project {{project}}, and in the question every finding numbered, each with its proposed title, tier and one line of evidence, then the duplicates (each with its ticket and the comment you'd add) and one line per dropped finding, so the owner can overrule. Offer two options, "File all" and "File none", and say in why that the owner can answer in words naming the ones to file. Tell the owner the decision's id in the chat: they answer with `vaquero decision answer ID "File all"`, or in words with `--text`. Never answer it on your own; when the owner answers in the chat instead, relay it with `answer_decision`, their words quoted in words. A yes in the chat covers the comments on duplicates only when those comments were shown with the findings it answered; otherwise list them in the report and add none.
 
 Then stop and report the question's id; don't poll for the answer. The owner answers later, and the question holds the findings, so a later run of this audit files them: before sweeping again, it reads the answer with `vaquero decision show ID` (or `list_decisions`, project {{project}}, kind question) and, on a yes, files what was approved. When the owner answers in this chat while you are still here, file then.
 
@@ -167,7 +167,7 @@ For each approved finding, `create_ticket` with:
 - project {{project}}, status Backlog (as step 1 found it);
 - a title that leads with the verb and names the hazard and its scope: "Scope the inbox query to the workspace";
 - tags: `audit-{{kind}}`, and no other;
-- tier: light for a mechanical change, standard for ordinary work in a few places, heavy for cross-cutting or tricky work, design when the fix needs a decision first;
+- tier: light for a mechanical change, standard for ordinary work in a few places, heavy for cross-cutting or tricky work, design when the fix needs a decision first (a small choice the acceptance criteria can state both ways, for the implementer to settle, leaves it standard);
 - priority 1 only for a confirmed exploitable security hole, 2 for a risk of data loss or a broken primary flow; otherwise leave it out;
 - a body in Markdown, with these parts:
   - **Finding**: what is wrong, with the rule it breaks quoted, or for a discontinuity the peer set spelled out.
@@ -180,7 +180,7 @@ Never cite a ticket you haven't created: create it first and use the key it retu
 
 ## 8. Report
 
-Report in the chat:
+Report in the chat, or where the owner's brief for the run says:
 
 - the kind, and the dimensions, areas or partitions covered;
 - the tickets filed, by key;

@@ -21,9 +21,10 @@ make vet                       # go vet, and the e2e files under their tag
 make lint                      # modernize-check, then staticcheck under LINT_TOOLCHAIN (go1.27.1)
 VQ_GIT_REQUIRE=1 make test     # every test; the git tests run instead of skipping
 make cover-check               # the floors in coverage-floors.txt
+for p in $(go list ./... | sed -n 's|^github.com/stazelabs/vaquero/||p'); do grep -q "^$p " coverage-floors.txt || echo "no floor line: $p"; done
 ```
 
-`make gen` and `make fmt` write to the tree, so they are checks here, each read on its own: `git status --porcelain` (not `git diff`, which misses a new untracked generated file) must print nothing after each. A line after `make gen` means the generated files are stale; a line after `make fmt` that wasn't there after `make gen` is gofmt's. Either way, say which in the chat and leave the tree for the owner (the audit never edits code). Any failure here is the gate's, not a ticket: report it and sweep on. `make cover` (coverage by function, lowest first) is context for dimension 8.
+`make gen` and `make fmt` write to the tree, so they are checks here, each read on its own: `git status --porcelain` (not `git diff`, which misses a new untracked generated file) must print nothing after each. A line after `make gen` means the generated files are stale; a line after `make fmt` that wasn't there after `make gen` is gofmt's. Either way, say which in the chat and leave the tree for the owner (the audit never edits code). Any failure here is the gate's, not a ticket: report it and sweep on. `make cover` (coverage by function, lowest first) is context for dimension 8. `make cover-check` names only packages that have a floor, so the last line lists the ones without, for dimension 8's "a new package with no floor line": test helpers (`blobtest`, `configtest`, `coreseed`, `dbtest`, `gittest`, `webtest`), the generated `internal/db/gen`, the e2e tests and one-shot `scripts/` commands are expected there; a product package is the finding. `make cover-check` runs the suite again after `make test`; that is expected.
 
 Optional, for dimension 5 only, from the main loop, with the owner's say-so because it downloads the tool and the vulnerability database: `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`. Never `go get` it or set `GOFLAGS=-mod=mod`; `git status` must be clean afterwards. A reachable hit is a finding.
 
@@ -78,10 +79,12 @@ Skip, never cite: `*_templ.go`, `internal/db/gen/`, `internal/web/static/css/tai
 - **`VQ_MODE=hosted` is refused** at boot until Phase 4.
 - **The e2e tests skip without Chrome** locally; the gate workflow requires it.
 - **Workflow push and pull_request triggers are absent on purpose** (`TestWorkflowsHaveNoPushOrPullRequestTriggers`).
+- **`scripts/backlog-import`** is kept as the record of moving docs/BACKLOG.md into VAQ (its doc comment says so). A one-shot command, not dead code.
+- **The owner's profile API (`api_profile.go`) reads `d.Actor`** on purpose, not `apiActor(r)`: it is the owner's profile whoever asks, and an agent is refused.
 
 ## Verification notes
 
-- **Dead code:** grep the symbol in `.templ` sources (`@Name(` and `{ Name(`), `router.go` (`NewRouter` and `mountAPI`), `internal/mcpserver/tools.go`, the CLI's `cliCommands` table in `cmd/vaquero/cli.go`, `cli_renamed.go`, string references in `app.js` and its `data-` attributes in templates, `Icon("name")` strings against `ui.json`, `scripts/`, `internal/core/coreseed`, and test-only use. A `gen` method counts as used only through a non-test caller.
+- **Dead code:** grep the symbol in `.templ` sources (`@Name(` and `{ Name(`), `router.go` (`NewRouter` and `mountAPI`), `internal/mcpserver/tools.go`, the CLI's `cliCommands` table in `cmd/vaquero/cli.go`, `cli_renamed.go`, string references in `app.js` and its `data-` attributes in templates, `Icon("name")` strings against `ui.json` (many names never appear as an `Icon("…")` literal: they are built or looked up at run time by `CategoryIcon` ("cat-" plus the category), `glyphIcon` ("glyph-" plus a `ProjectGlyphs` name), and the tables behind `PriorityIcon` (`priorityIcons`), `EventIcon` (`eventIcons`, `prefixIcons`) and the admin side list (`adminIcons`); read those before calling a name unused), `scripts/`, `internal/core/coreseed`, and test-only use. A `gen` method counts as used only through a non-test caller.
 - **Core-only writes:** `TestHandlersNeverWriteDirectly` scans only `internal/web/handlers`; check other packages by grepping for `gen.New(`, `.ExecContext(` and `BeginTx(` outside `internal/core`, `internal/db`, `internal/blobs`, `internal/archive` and the offline commands in `cmd/vaquero`.
 - **Events:** an operation emits through `emit` inside its transaction; confirm the `ops` list in `internal/core/*_test.go` holds the operation before calling it untested.
 - **Middleware:** the global chain is the `r.Use` list at the top of `NewRouter`; `/api/v1` and `/mcp` add `APIHeaders` and `APIToken`. A route inside a group inherits them; check the group before calling a guard missing.

@@ -61,7 +61,7 @@ echo "qa=$qa port=$port pid=$(cat "$repo/tmp/qa/pid")"
 Then check:
 
 - **Health:** `curl -fsS "http://127.0.0.1:${PORT:?}/healthz"` prints `ok` (`GET /healthz`, `handlers.Healthz`), and `/ABSOLUTE/REPO/tmp/qa/pid` holds one PID. If either fails, read `${QA:?}/serve.log` and stop.
-- **Which server:** `"${QA:?}/bin/vaquero" version` prints `0.0.0-dev` and `"${QA:?}/bin/vaquero" logs --path` prints a path under the scratch directory. Anything naming port 7878 or the owner's data directory is a stop.
+- **Which server:** `"${QA:?}/bin/vaquero" version` prints `0.0.0-dev` and `"${QA:?}/bin/vaquero" logs --path` prints a path under the scratch directory. Anything naming port 7878 or the owner's data directory is a stop. It prints `${QA:?}/data/vaquero.log`, the background log's path, but Boot's server writes its stderr to `${QA:?}/serve.log`: that is this run's log whatever `logs --path` prints.
 - **Log:** `${QA:?}/serve.log`, slog text: `time=… level=INFO msg=request method=GET path=/p/QA status=200 dur_ms=3 request_id=…`. Requests to `/healthz` and `/static/` log at debug and don't appear. A server the CLI starts by itself (when the first one died) logs to `${QA:?}/data/vaquero.log` instead; check both.
 - **Sign in:** none. Local mode has no sign-in: the browser is the owner at `http://127.0.0.1:PORT/`, with the scratch port. The CLI reads the local token from the scratch data directory by itself; never print it.
 - **A second actor:** agents, not accounts. A scratch command with `--agent qa-bot` acts as an agent called qa-bot (made on first use). There is no second person and no elevation.
@@ -77,7 +77,8 @@ Seed the scratch data through the scratch CLI, everything prefixed `QA`. `QAX` i
 "${QA:?}/bin/vaquero" ticket link QA-2 blocks QA-3
 "${QA:?}/bin/vaquero" comment new QA-1 "QA comment"
 "${QA:?}/bin/vaquero" milestone new QA "QA milestone" --due 2026-12-31
-"${QA:?}/bin/vaquero" claim QA-2 --agent qa-bot
+"${QA:?}/bin/vaquero" claim QA-2 --agent qa-bot --lease 2h
+"${QA:?}/bin/vaquero" ticket move QA-2 Todo
 "${QA:?}/bin/vaquero" project new QAW "QA workflow"
 "${QA:?}/bin/vaquero" project edit QAW --workflow on
 "${QA:?}/bin/vaquero" ticket new QAW "QA planned ticket" --status Todo
@@ -86,6 +87,8 @@ Seed the scratch data through the scratch CLI, everything prefixed `QA`. `QAX` i
 "${QA:?}/bin/vaquero" ticket new QAX "QA ticket to move"
 "${QA:?}/bin/vaquero" ticket new QAX "QA sub-ticket to move" --parent QAX-1
 ```
+
+The claim holds for 2 hours, the longest lease, so slice E's claim note and slice B's "Claimed by qa-bot" are live when walked; renew it with `"${QA:?}/bin/vaquero" heartbeat QA-2 --agent qa-bot --lease 2h` on a longer run. A claim moves a todo to In progress, and Waiting lists only todo cards, so the seed moves QA-2 back to Todo, keeping the claim.
 
 For the repository slice, make a local repository with no remote and attach it:
 
@@ -108,14 +111,14 @@ Flow slices:
 |---|---|---|
 | A | Projects | `/` as cards and as list (`?view=cards`, `?view=list`, remembered), a card's quick settings (name, description, icon choices loaded when opened), New project (`/projects/new`) with a bad key and a good one, an archived project's row |
 | B | Focus | `/p/QA/`: Next, Waiting (with its reasons: blocked, claimed, open sub-tickets), In flight, Finished; the Mine and Agents chips, the Priority, Milestone and Tags menus, a `?tag=` naming no tag ("No tag X in this project."); the first-run steps on an empty project |
-| C | Board | `/p/QA/board`: drag a card between columns and within one (it persists after reload), the backlog and cancelled rails, the milestones panel, filters kept across the Focus, Board and List tabs; a change made by `"${QA:?}/bin/vaquero" ticket move QA-1 "In progress"` shows on the open board without a reload |
+| C | Board | `/p/QA/board`: drag a card between columns and within one (it persists after reload), the backlog and cancelled rails, the milestones panel, filters kept across the Focus, Board and List tabs (probe with `?tag=qa`: priority is a number, `?priority=2`, and a word such as `?priority=high` is ignored, which isn't a lost filter); a change made by `"${QA:?}/bin/vaquero" ticket move QA-1 "In progress"` shows on the open board without a reload |
 | D | List | `/p/QA/list`: groups open and closed (kept across reloads), the Status menu, done and cancelled groups paged by 50 (seed 51 done tickets with `for i in $(seq 51); do "${QA:?}/bin/vaquero" ticket new QA "QA done $i" --status Done >/dev/null; done`) |
 | E | Ticket | New ticket (`/p/QA/new`), the ticket page `/t/QA-1`: edit and save, a stale save (run `"${QA:?}/bin/vaquero" ticket edit QA-1 --title "QA first ticket, edited"` between loading the form and saving: expect the conflict banner, not a lost edit), comments (add, edit, delete behind the confirm dialog), links (the folded Add link form, suggestions by number and by title words), sub-tickets, history with Show changes for a description edit, a claimed ticket's note, Move to another project behind the confirm dialog (move `QAX-1`, with its sub-ticket, into `QA`, not a ticket another slice names), attachments (upload through `"${QA:?}/bin/vaquero" attachment new QA-1 FILE`; the gallery and rows, open and delete) |
-| F | Project settings | `/p/QA/settings`: name and description, statuses (add, rename, up, down, delete; deleting one in use is refused), milestones (edit, close, reopen), tags (rename, rename onto another to see the merge button, delete), icon (monogram, a glyph), project links (depends on, relates, a loop refused), archive and restore. The key change behind the confirm dialog only on `QAX`, after slice E's move. Delete only a `QA-` project made for it |
+| F | Project settings | `/p/QA/settings`: name and description, statuses (add, rename, up, down, delete; deleting one in use is refused), milestones (edit, close, reopen), tags (rename, rename onto another to see the merge button, delete), icon (monogram, a glyph), project links (depends on, relates, a loop refused), archive and restore. The key change only on `QAX`, after slice E's move (it has no confirm dialog; its note says what stops working). Delete only a `QA-` project made for it |
 | G | Agent workflow | `QAW`: the workflow switch and tier map in settings (owner only), the triage statuses button, readiness on `/t/QAW-2` ("Ask for plan approval.") and Ask, the plan on `/t/QAW-1` with Show changes after a second `"${QA:?}/bin/vaquero" plan save`, the approval answer form and Ask again, and Focus's Waiting reasons with the workflow on |
 | H | Repository | `QAW` settings' Repository section (path, main branch, fetch minutes; no remote and no Fetch now, under Limits), `/p/QAW/files/docs/spec.md` with its heading anchor, the ticket's References and Commits sections, "Changed since approval" after an approved plan's file changes in a new commit (`printf 'More.\n' >> "${QA:?}/repo/docs/spec.md" && git -C "${QA:?}/repo" -c user.name=QA -c user.email=qa@example.invalid commit -qam "QA spec edit"`) |
 | I | Search and help | the header search box (`/` focuses it), `/search` with ticket, comment and help hits, `/help`, an article, its `.md` form, the Markdown help link under a description box |
-| J | Activity and profile | `/activity` (newest first, reorders folded), `/profile`: the display name (a name an agent has is refused), the avatar (upload with `"${QA:?}/bin/vaquero" me --avatar FILE`, then remove behind the confirm dialog) |
+| J | Activity and profile | `/activity` (newest first, reorders folded), `/profile`: the display name (a name an agent has is refused; when typing in the browser trips another extension, check the refusal with `"${QA:?}/bin/vaquero" me --name qa-bot` instead, which runs the same core check), the avatar (upload with `"${QA:?}/bin/vaquero" me --avatar FILE`, then remove behind the confirm dialog) |
 | K | Admin | `/admin` (version, data directory, Storage section), `/admin/backups` (Snapshot now, then delete that snapshot), `/admin/tokens` (create a `QA-` token and revoke it), `/admin/mcp` |
 | L | Errors and chrome | the themed 404 for an unknown address (`/nope`), an unknown project or ticket (`/p/NOPE`, `/t/QA-999`) redirecting home with "No project NOPE." or "No ticket QA-999.", `/about/licenses`, the footer's version and links, a key typed in lower case or with leading zeros redirecting to the canonical one |
 

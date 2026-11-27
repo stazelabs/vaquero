@@ -22,8 +22,11 @@ ls internal/help/articles/                                # help articles
 grep -n -A40 'var toolNames' internal/mcpserver/tools.go  # the MCP tools
 go run ./cmd/vaquero help                                 # the CLI's commands and usage
 cat coverage-floors.txt go.mod                            # floors, the Go version and dependencies
-git tag --list 'v*'                                       # releases
+git fetch --tags origin; git tag --list 'v*'             # releases (the fetch only reads)
+ls testdata/upgrade/                                      # v0.1.0.json, v0.1.0.sqlite, …: a fixture per release
 ```
+
+Release tags are made on GitHub by the release workflow (docs/RELEASING.md), so a local clone may not have the newest one: fetch the tags first (the one network use this audit makes, read-only, from the main loop only). When the fetch can't run, the newest fixture in `testdata/upgrade/` names the newest release or the one about to be cut (a fixture is committed just before its release), and docs/RELEASING.md says how a release is made; say in the report which you relied on.
 
 `go run ./cmd/vaquero docs SLUG` prints an article as the binary ships it.
 
@@ -32,7 +35,7 @@ git tag --list 'v*'                                       # releases
 | Surface | Treatment |
 |---|---|
 | `internal/help/articles/*.md` | In scope, under Extra rules: commands, flags, routes, tools, settings, limits, paths and flows, against the code |
-| [README.md](../../README.md) | In scope: the status line, install and build commands, the default data directory, links |
+| [README.md](../../README.md) | In scope: the status line (it names the newest released `v*` tag, from Ground truth), install and build commands, the default data directory, links |
 | [CONTRIBUTING.md](../../CONTRIBUTING.md) | In scope: the gate commands, the e2e note, the workflow and commit rules |
 | [docs/RELEASING.md](../../docs/RELEASING.md) | In scope: the release steps against `.github/workflows/release.yml`, `formula.yml`, `.goreleaser.yaml`, `scripts/publish-formula.sh` and the Makefile's `fixture` and `formula` targets |
 
@@ -58,7 +61,7 @@ git tag --list 'v*'                                       # releases
 
 ## Voice
 
-copy-voice.md applies to every surface: sentence case in titles and headings; no exclamation points, no emoji, no "Oops", "let's" or "you're all set"; few em dashes; the product is "Vaquero" in prose and `vaquero` as a command; plain nouns (project, ticket, status, tag, comment, milestone); never name a competing product (the one exception: the `vaquero import linear` lines in the cli, api and data-and-backups articles) and never name a model provider; real counts, never "ticket(s)"; no vendor-speak ("powerful", "seamless"). Write for someone using Vaquero, not someone reading the code: say what happens, then how.
+copy-voice.md applies to every surface: sentence case in titles and headings; no exclamation points, no emoji, no "Oops", "let's" or "you're all set"; few em dashes; the product is "Vaquero" in prose and `vaquero` as a command; plain nouns (project, ticket, status, tag, comment, milestone); never name a competing product (the one exception, in CLAUDE.md's words: "an importer, which has to say what it imports": the `vaquero import linear` lines in the cli, api and data-and-backups articles) and never name a model provider; real counts, never "ticket(s)"; no vendor-speak ("powerful", "seamless"). Write for someone using Vaquero, not someone reading the code: say what happens, then how.
 
 ## Extra rules
 
@@ -68,12 +71,12 @@ Help articles are what a person using Vaquero reads, and they ship in the binary
 - **Anchors.** Headings get automatic ids, and pages and other articles link to them (`/help/slug#anchor`; `TestHelpLinksResolve`, `TestContextualHelpLinks`). Changing a heading's words changes its anchor: grep for the old anchor first, and leave the heading alone when anything links to it.
 - **Tests that pin the articles**, run as soon as you touch one: `TestArticlesComplete`, `TestHeadings`, `TestHelpLinksResolve`, `TestMCPToolsDocumented`, `TestAPIErrorCodesDocumented`, `TestLocalModeTrustIsDocumented`, `TestMarkdownArticleExamples`, `TestWelcomeNamesEveryTopBarLink`, `TestInstallArticleLeadsWithFirstRun`, `TestAgentTokensDocumented` (`internal/help`); `TestCLICommandsDocumented`, `TestCLISubcommandsDocumented`, `TestCLIFlagsDocumented` (`cmd/vaquero`: every command, sub-verb and flag has its line in `cli.md`); `TestAPIRoutesDocumented` (`internal/web`: every `/api/v1` route as `` `METHOD /path` `` in `api.md`); `TestShortcutsDocumented`, `TestEveryHandledKeyIsListed`, `TestProjectGlyphsDocumented` (`internal/web/templates`). A test that fails on an article's fact means the code moved: correct the article, never the test.
 - **Rendering.** goldmark with tables only: no typographer and no autolinks, so `--` typed as a dash reaches the reader as two hyphens (write a comma or a period) and a bare URL isn't a link. Raw HTML is shown escaped.
-- **Limits and numbers** an article states (10 MB attachments, 256 KB icons, lease lengths, 7 snapshots of each kind, 30 days of MCP log, 512 KiB file view, fetch minutes 5 to 1440) are checked against the constant in code, by name.
+- **Limits and numbers** an article states (10 MB attachments, 256 KB icons, lease lengths, 7 snapshots of each kind, 30 days of MCP log, 512 KiB file view, fetch minutes 5 to 1440) are checked against the constant in code, by name. Sizes follow `units.SizeWords`, which counts in 1024s: 256 MB for 256 MiB is right, and so is 512 KiB; a size is drift only when its value differs from the constant's.
 - **Agents read the articles too** (`/help/{slug}.md`, `vaquero docs`): an example command must run as written. Check its spelling against the code and `go run ./cmd/vaquero help`, never by running it.
 - **No server.** This audit runs no `vaquero` command that talks to a server: never the installed `vaquero` for anything but the tracker commands the audit prompt lists (filing, when an MCP tool is missing), and never a dev build (`go run ./cmd/vaquero`, `bin/vaquero`) against anything but a scratch server. To check a command's spelling, use `go run ./cmd/vaquero help`, `go run ./cmd/vaquero docs` or `go run ./cmd/vaquero workflow`, which need no server.
 
 ## Verify
 
-- **A help article changed:** `go test ./internal/help/... ./internal/web/... ./cmd/vaquero/`, which runs every test that reads the articles. Help articles don't feed the stylesheet (`input.css` scans only templates and `app.js`), so no generated file moves.
+- **A help article changed:** `VQ_GIT_REQUIRE=1 go test ./internal/help/... ./internal/web/... ./cmd/vaquero/`, which runs every test that reads the articles, the git-backed ones that pin repositories.md and agent-workflow.md included (without `VQ_GIT_REQUIRE` they skip when git is missing). It takes about a minute, most of it `cmd/vaquero`. Help articles don't feed the stylesheet (`input.css` scans only templates and `app.js`), so no generated file moves.
 - **Only README.md, CONTRIBUTING.md or docs/RELEASING.md changed:** check every relative link and anchor you touched resolves, and that each command you changed is spelled as the code has it (a make target with `make` listing it, a CLI command with `go run ./cmd/vaquero help`, `docs` or `workflow`, never a command that talks to a server). No test reads them.
 - **Anything else moved** (this audit should never touch code, but if a step ran a generator): the full gate, `make gen && make fmt && make vet && make lint && VQ_GIT_REQUIRE=1 make test`, and `git status` must show only the documents you meant to change.
