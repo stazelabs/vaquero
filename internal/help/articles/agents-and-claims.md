@@ -10,7 +10,7 @@ Several agents can work from one backlog without stepping on each other. Each ag
 
 On this machine an agent uses your token and says who it is. On the command line that is `--agent NAME` or `VAQUERO_AGENT`; through the API it is the `Vaquero-Agent` header. Vaquero creates the agent the first time its name is used, and its comments, edits and claims are recorded under that name. Names are 1 to 80 letters, digits, spaces, dots, dashes or underscores.
 
-A token made for an agent always acts as that agent, whatever name a request gives.
+To give an agent a token of its own, for a client that connects over HTTP, run `vaquero token new NAME --agent AGENT`. That token always acts as that agent, whatever name a request gives. A token made on the Admin page or with `vaquero token new NAME` alone acts as you, and says who it is only through `--agent` or the `Vaquero-Agent` header. See [API tokens](/help/api-tokens#making-a-token).
 
 ## The ready queue
 

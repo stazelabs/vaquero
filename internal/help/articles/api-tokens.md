@@ -10,6 +10,8 @@ An API token lets a program act in Vaquero as you: read projects and tickets, an
 
 On the Admin page, open API tokens, give the token a name that says where it will be used ("laptop scripts", "build agent") and create it. Or run `vaquero token new NAME`. The token starts with `vq_` and is shown once: copy it then, because Vaquero keeps only a fingerprint of it and can't show it again.
 
+A token made this way acts as you. The Admin page can make only that kind. To make a token that acts as an agent, run `vaquero token new NAME --agent AGENT`: Vaquero makes the agent the first time its name is used, and the token is made for it. Whatever it does is recorded under that agent's name, and it keeps acting as that agent whatever name a request gives. `vaquero token list` shows whose each token is.
+
 ## Using it
 
 Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/api). For the command line on another machine, save it as a server: `vaquero server new NAME URL TOKEN`, or `vaquero server new NAME URL -` to paste it on standard input instead.
