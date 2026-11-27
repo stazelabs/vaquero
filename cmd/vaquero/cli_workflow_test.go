@@ -207,6 +207,31 @@ func TestWorkflowTextsNameOnlyWhatExists(t *testing.T) {
 	}
 }
 
+// VAQ-181: Vaquero's own audit packs (.vaquero/audits) name only commands
+// and routes that exist, and no former tool: the qa pack's boot and seed
+// steps run as written. Their other snake_case words are column and
+// setting names, not tools, so only those three kinds are checked.
+func TestAuditPacksNameOnlyWhatExists(t *testing.T) {
+	ex := existing(t)
+	commands := 0
+	for _, k := range workflow.Packs() {
+		b, err := os.ReadFile("../../.vaquero/audits/" + k + ".md")
+		if err != nil {
+			t.Fatal(err)
+		}
+		missing, counts := ex.check(string(b))
+		for _, m := range missing {
+			if !strings.HasPrefix(m, "the MCP tool ") {
+				t.Errorf("the %s pack names %s, which doesn't exist", k, m)
+			}
+		}
+		commands += counts[1]
+	}
+	if commands < 20 {
+		t.Fatalf("found %d commands in the packs", commands)
+	}
+}
+
 // The checker itself: what is missing is found, what exists passes.
 func TestWorkflowExistenceCheck(t *testing.T) {
 	ex := existing(t)

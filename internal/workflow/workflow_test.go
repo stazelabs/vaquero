@@ -3,6 +3,9 @@ package workflow
 import (
 	"errors"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -353,4 +356,60 @@ func packTexts() []string {
 		out = append(out, b)
 	}
 	return out
+}
+
+// VAQ-181: Vaquero's own audit packs, in .vaquero/audits, have every
+// heading of their kind in the template's order, a body under each, no
+// template placeholder left (the audit prompt treats one as a missing
+// section) and no exclamation point.
+func TestVaqueroAuditPacks(t *testing.T) {
+	spans := regexp.MustCompile("`[^`\n]*`")
+	angle := regexp.MustCompile(`<[^<>\n]+>`)
+	for _, kind := range Packs() {
+		b, err := os.ReadFile(filepath.Join("..", "..", ".vaquero", "audits", kind+".md"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		pack := string(b)
+		if m := MissingHeadings(kind, pack); len(m) != 0 {
+			t.Errorf("%s pack lacks %v", kind, m)
+		}
+		var want []string
+		for _, h := range headings[kind] {
+			want = append(want, h.name)
+		}
+		if got := packHeadings(pack); !slices.Equal(got, want) {
+			t.Errorf("%s pack headings %v, want %v", kind, got, want)
+		}
+		// Each section has a body.
+		for i, part := range strings.Split(pack, "\n## ")[1:] {
+			if _, body, _ := strings.Cut(part, "\n"); strings.TrimSpace(body) == "" {
+				t.Errorf("%s pack: section %d is empty", kind, i+1)
+			}
+		}
+		// No placeholder of the template survives, and no <…> outside
+		// code: prose that needs a literal tag puts it in backticks.
+		tmpl, _ := Pack(kind)
+		for _, p := range angle.FindAllString(tmpl, -1) {
+			if strings.Contains(pack, p) {
+				t.Errorf("%s pack still holds the template's %s", kind, p)
+			}
+		}
+		fenced := false
+		for n, line := range strings.Split(pack, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "```") {
+				fenced = !fenced
+				continue
+			}
+			if fenced {
+				continue
+			}
+			if m := angle.FindString(spans.ReplaceAllString(line, "")); m != "" {
+				t.Errorf("%s pack line %d: %s outside code", kind, n+1, m)
+			}
+		}
+		if strings.Contains(pack, "!") {
+			t.Errorf("%s pack: an exclamation point", kind)
+		}
+	}
 }
