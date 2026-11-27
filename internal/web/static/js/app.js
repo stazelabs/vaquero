@@ -251,6 +251,22 @@ window.vqDragging = false;
     }
     return false;
   }
+  // A refresh sent while its part was idle can come back after the owner
+  // started typing in it (a note opened just after an answer). The busy
+  // rule is asked again before the swap: a busy part keeps what it shows
+  // and is flagged, so the recheck below refreshes it later.
+  document.body.addEventListener("htmx:beforeSwap", function (ev) {
+    var d = ev.detail || {};
+    var trig = d.requestConfig && d.requestConfig.triggeringEvent;
+    var el = d.elt;
+    if (!trig || trig.type !== "vq:change" || !el || !el.hasAttribute || !el.hasAttribute("data-live")) {
+      return;
+    }
+    if (busy(el)) {
+      d.shouldSwap = false;
+      el.dataset.vqDeferred = "1";
+    }
+  });
   function recheck() {
     if (!document.hasFocus()) {
       return;

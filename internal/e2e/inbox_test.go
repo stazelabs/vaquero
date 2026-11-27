@@ -266,6 +266,33 @@ func TestInboxFocusSurvivesARefresh(t *testing.T) {
 	p.until(`document.activeElement === document.querySelector(` + js(cardSel(qs[1].ID)) + `)`)
 }
 
+// A refresh sent while the inbox wasn't busy can come back after the
+// owner has started a note (the release run's TestInbox failure: n just
+// after an answer). The busy rule is asked again when the answer lands,
+// so the swap waits and the note keeps its focus and text; it runs once
+// the owner leaves the note empty.
+func TestInboxRefreshInFlightWaitsForANote(t *testing.T) {
+	env, qs, _ := inboxFixture(t)
+	p := open(t, env, 1280, 900)
+	p.srv.failWhen(func(r *http.Request) bool { return r.URL.Path == "/events/stream" })
+	p.goTo("/inbox")
+	p.until(`document.querySelectorAll("[data-inbox] [data-decision]").length === 4`)
+	release := p.srv.holdWhen(t, func(r *http.Request) bool { return r.Method == "GET" && r.URL.Path == "/inbox" })
+	eval[bool](p, `(window.vqOld = document.getElementById("inbox"), htmx.trigger(window.vqOld, "vq:change"), true)`)
+	p.until(`window.vqOld.classList.contains("htmx-request")`)
+	note := cardSel(qs[0].ID) + ` textarea[name="note"]`
+	p.openDetails(cardSel(qs[0].ID) + " details[data-note]")
+	p.typeInto(note, "because")
+	release()
+	p.until(`!window.vqOld.classList.contains("htmx-request")`)
+	p.until(`document.getElementById("inbox").hasAttribute("data-vq-deferred")`)
+	if !eval[bool](p, `document.getElementById("inbox") === window.vqOld && document.activeElement === document.querySelector(`+js(note)+`) && document.activeElement.value === "because"`) {
+		t.Fatal("the refresh replaced the note being typed")
+	}
+	eval[bool](p, `(document.activeElement.value = "", document.activeElement.blur(), true)`)
+	p.until(`document.getElementById("inbox") !== window.vqOld`)
+}
+
 // An answer sent with a note refreshes the inbox once its card has gone:
 // the note, unsent text while the card was there, holds nothing back, and
 // Answered today shows the answer with focus on the next card. The stream
