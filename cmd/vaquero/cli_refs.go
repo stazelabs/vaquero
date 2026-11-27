@@ -9,19 +9,19 @@ import (
 	"github.com/stazelabs/vaquero/internal/api"
 )
 
-// cmdRef adds and removes a ticket's references (VAQ-136); `ticket show`
+// cmdRef creates and deletes a ticket's references (VAQ-136); `ticket show`
 // lists them with their ids.
 func cmdRef(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero ref add TICKET KIND TARGET [--anchor A] [--label L] | remove TICKET ID"
+	const usage = "vaquero ref new TICKET KIND TARGET [--anchor A] [--label L] | delete TICKET ID"
 	c := newCmd(stdout, stderr, usage)
-	anchor := c.fs.String("anchor", "", "add: a heading anchor in the target")
-	label := c.fs.String("label", "", "add: a name to show instead of the target")
+	anchor := c.fs.String("anchor", "", "new: a heading anchor in the target")
+	label := c.fs.String("label", "", "new: a name to show instead of the target")
 	pos, err := c.parse(args, 1, 4)
 	if err != nil {
 		return c.finish(err)
 	}
 	switch {
-	case pos[0] == "add" && len(pos) == 4:
+	case pos[0] == "new" && len(pos) == 4:
 		return c.connected(ctx, nil, func() error {
 			key, err := canon(pos[1])
 			if err != nil {
@@ -41,8 +41,8 @@ func cmdRef(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 			c.emit(ref, func() { fmt.Fprintf(c.stdout, "Added a %s reference to %s.\n", ref.Kind, key) })
 			return nil
 		})
-	case pos[0] == "remove" && len(pos) == 3:
-		if err := c.only("remove"); err != nil {
+	case pos[0] == "delete" && len(pos) == 3:
+		if err := c.only("delete"); err != nil {
 			return c.finish(err)
 		}
 		return c.connected(ctx, nil, func() error {

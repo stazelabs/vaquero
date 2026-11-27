@@ -55,27 +55,28 @@ func cmdTags(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 }
 
 func cmdTag(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero tag rename KEY NAME NEW [--merge] | delete KEY NAME"
+	const usage = "vaquero tag edit KEY NAME --name NEW [--merge] | delete KEY NAME"
 	c := newCmd(stdout, stderr, usage)
+	newName := c.fs.String("name", "", "edit: the tag's new name")
 	merge := c.fs.Bool("merge", false, "merge into the tag the project already has with the new name")
-	pos, err := c.parse(args, 3, 4)
+	pos, err := c.parse(args, 3, 3)
 	if err != nil {
 		return c.finish(err)
 	}
-	takes := map[string][]string{"rename": {"merge"}}
+	takes := map[string][]string{"edit": {"name", "merge"}}
 	if err := c.only(pos[0], takes[pos[0]]...); err != nil {
 		return c.finish(err)
 	}
 	key := pos[1]
 	switch pos[0] {
-	case "rename":
-		if len(pos) != 4 {
-			return c.finish(usageError{usage: usage})
+	case "edit":
+		if !c.set("name") {
+			return c.finish(usageError{usage: usage, hint: "give the tag's new --name"})
 		}
 		// A rename onto a tag the project has is refused until --merge:
 		// say how, not the API's field.
 		c.printCurrent = func(json.RawMessage) { fmt.Fprintln(c.stderr, "Add --merge to merge the two.") }
-		body := map[string]any{"name": pos[3]}
+		body := map[string]any{"name": *newName}
 		if *merge {
 			body["merge"] = true
 		}

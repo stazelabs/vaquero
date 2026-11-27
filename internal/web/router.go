@@ -207,7 +207,7 @@ func mountAPI(r chi.Router, d handlers.Deps) {
 	r.Get("/ready", handlers.APIReady(d))
 	r.Post("/tickets/{ticket}/claim", handlers.APIClaim(d))
 	r.Post("/tickets/{ticket}/heartbeat", handlers.APIHeartbeat(d))
-	r.Post("/tickets/{ticket}/release", handlers.APIRelease(d))
+	r.Post("/tickets/{ticket}/unclaim", handlers.APIUnclaim(d))
 	r.Post("/tickets/{ticket}/comments", handlers.APICommentCreate(d))
 	r.Patch("/comments/{id}", handlers.APICommentUpdate(d))
 	r.Delete("/comments/{id}", handlers.APICommentDelete(d))

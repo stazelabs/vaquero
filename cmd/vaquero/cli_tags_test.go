@@ -25,15 +25,15 @@ func TestCLITags(t *testing.T) {
 		t.Fatalf("%v %+v", err, tags)
 	}
 
-	if out := mustCLI(t, "tag", "rename", "VAQ", "bug", "defect"); strings.TrimSpace(out) != "defect (1 ticket)" {
+	if out := mustCLI(t, "tag", "edit", "VAQ", "bug", "--name", "defect"); strings.TrimSpace(out) != "defect (1 ticket)" {
 		t.Fatalf("%q", out)
 	}
 	// Onto a tag the project has: a conflict (exit 3) until --merge.
-	code, out, errOut := cli(t, "tag", "rename", "VAQ", "defect", "UI")
+	code, out, errOut := cli(t, "tag", "edit", "VAQ", "defect", "--name", "UI")
 	if code != 3 || !strings.Contains(errOut, "VAQ already has the tag ui.") || !strings.Contains(errOut, "Add --merge to merge the two.") || out != "" {
 		t.Fatalf("%d %q %q", code, out, errOut)
 	}
-	if out := mustCLI(t, "tag", "rename", "VAQ", "defect", "UI", "--merge"); strings.TrimSpace(out) != "ui (2 tickets)" {
+	if out := mustCLI(t, "tag", "edit", "VAQ", "defect", "--name", "UI", "--merge"); strings.TrimSpace(out) != "ui (2 tickets)" {
 		t.Fatalf("%q", out)
 	}
 	// The tag's own spelling, whatever was typed.
@@ -45,7 +45,7 @@ func TestCLITags(t *testing.T) {
 		t.Fatalf("%d %q", code, errOut)
 	}
 	for _, args := range [][]string{
-		{"tag", "rename", "VAQ", "ui"},
+		{"tag", "edit", "VAQ", "ui"},
 		{"tag", "delete", "VAQ", "ui", "extra"},
 		{"tag", "delete", "VAQ", "ui", "--merge"},
 		{"tag", "retag", "VAQ", "ui"},

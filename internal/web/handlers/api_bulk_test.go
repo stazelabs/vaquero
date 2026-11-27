@@ -112,12 +112,12 @@ func TestAPIBulkSkipsAfterAFailedClaim(t *testing.T) {
 	c.API("GET", "/api/v1/me", tok, nil) // the agent's first use is an event of its own
 	before := events(t, e)
 	out := bulk(t, c, tok,
-		map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "comment": "Mine now.", "move": "Done", "release": true},
+		map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "comment": "Mine now.", "move": "Done", "unclaim": true},
 		map[string]any{"key": "VAQ-2", "claim": map[string]any{"lease_minutes": 120}, "comment": "Taking this."},
 	)
 	got := out.Items[0]
 	if got.OK || got.Error == nil || got.Error.Code != "invalid" || !strings.HasPrefix(got.Error.Message, "VAQ-1 is claimed by reviewer until") ||
-		strings.Join(got.Skipped, ",") != "comment,move,release" || got.Status != "In progress" {
+		strings.Join(got.Skipped, ",") != "comment,move,unclaim" || got.Status != "In progress" {
 		t.Fatalf("item 1: %+v", got)
 	}
 	if !out.Items[1].OK || out.Items[1].Status != "In progress" {
@@ -139,7 +139,7 @@ func TestAPIBulkSkipsAfterAFailedClaim(t *testing.T) {
 	}
 	// Claiming one's own claim again renews it, so a bulk claim is also a
 	// bulk renewal; release gives it up.
-	out = bulk(t, c, tok, map[string]any{"key": "VAQ-2", "claim": map[string]any{}}, map[string]any{"key": "VAQ-2", "release": true})
+	out = bulk(t, c, tok, map[string]any{"key": "VAQ-2", "claim": map[string]any{}}, map[string]any{"key": "VAQ-2", "unclaim": true})
 	if !out.Items[0].OK || !out.Items[1].OK {
 		t.Fatalf("%+v", out.Items)
 	}
@@ -191,9 +191,9 @@ func TestAPIBulkStaleVersionRunsNothing(t *testing.T) {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
 	before := events(t, e)
-	out := bulk(t, c, tok, map[string]any{"key": "VAQ-2", "version": 1, "claim": map[string]any{}, "update": map[string]any{"title": "x"}, "release": true})
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-2", "version": 1, "claim": map[string]any{}, "update": map[string]any{"title": "x"}, "unclaim": true})
 	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Code != "conflict" || got.Error.Message != "VAQ-2 changed since you read it." ||
-		strings.Join(got.Skipped, ",") != "claim,update,release" || got.Version != 2 || got.Status != "Todo" {
+		strings.Join(got.Skipped, ",") != "claim,update,unclaim" || got.Version != 2 || got.Status != "Todo" {
 		t.Fatalf("stale: %+v", got)
 	}
 	if after := events(t, e); after != before {
@@ -217,7 +217,7 @@ func TestAPIBulkReleaseAfterFinishingMove(t *testing.T) {
 	c.Agent = "builder"
 	c.API("GET", "/api/v1/me", tok, nil)
 	before := events(t, e)
-	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "comment": "Done.", "move": "Done", "release": true})
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "comment": "Done.", "move": "Done", "unclaim": true})
 	if got := out.Items[0]; !got.OK || got.Error != nil || got.Skipped != nil || got.Status != "Done" {
 		t.Fatalf("%+v", got)
 	}
@@ -237,12 +237,12 @@ func TestAPIBulkReleaseAfterFinishingMove(t *testing.T) {
 	if r := c.API("POST", "/api/v1/tickets/VAQ-2/claim", tok, nil); r.Status != 200 {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
-	out = bulk(t, c, tok, map[string]any{"key": "VAQ-2", "move": "Cancelled", "release": true})
+	out = bulk(t, c, tok, map[string]any{"key": "VAQ-2", "move": "Cancelled", "unclaim": true})
 	if got := out.Items[0]; !got.OK || got.Status != "Cancelled" {
 		t.Fatalf("%+v", got)
 	}
 	// Without a claim ended in the item, release is refused as on its own.
-	out = bulk(t, c, tok, map[string]any{"key": "VAQ-3", "comment": "x", "release": true})
+	out = bulk(t, c, tok, map[string]any{"key": "VAQ-3", "comment": "x", "unclaim": true})
 	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Message != "VAQ-3 isn't claimed." {
 		t.Fatalf("%+v", got)
 	}
@@ -306,7 +306,7 @@ func TestAPIBulkStopsWhenTheRequestEnds(t *testing.T) {
 	c := e.Client()
 	before := events(t, e)
 	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Runs."}, map[string]any{"key": "VAQ-2", "comment": "Doesn't.", "move": "Done"},
-		map[string]any{"key": "VAQ-3", "release": true})
+		map[string]any{"key": "VAQ-3", "unclaim": true})
 	if !out.Items[0].OK {
 		t.Fatalf("%+v", out.Items[0])
 	}
@@ -399,7 +399,7 @@ func TestMCPBulkUpdateMatchesTheAPI(t *testing.T) {
 		{"key": "VAQ-1", "comment": "Checked."},
 		{"key": "VAQ-99", "comment": "Missing."},
 		{"key": "VAQ-2", "move": "Nope"},
-		{"key": "VAQ-3", "heartbeat": map[string]any{"lease_minutes": 5}, "release": true},
+		{"key": "VAQ-3", "heartbeat": map[string]any{"lease_minutes": 5}, "unclaim": true},
 		{"key": "VAQ-3", "heartbeat": map[string]any{}},
 	}
 	res, text := mcpCall(t, cs, "bulk_update", map[string]any{"items": items})
@@ -436,12 +436,12 @@ func TestAPIBulkReleaseAfterAClaimEndedElsewhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handlers.OnBulkStep(t, 0, "release", func(context.CancelFunc) {
+	handlers.OnBulkStep(t, 0, "unclaim", func(context.CancelFunc) {
 		if _, err := e.Deps.Core.Release(bg, builder.ID, mustTicketID(t, e, 1)); err != nil {
 			t.Error(err)
 		}
 	})
-	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Stopping.", "release": true})
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Stopping.", "unclaim": true})
 	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Message != "VAQ-1 isn't claimed." {
 		t.Fatalf("%+v", got)
 	}
@@ -454,9 +454,9 @@ func TestAPIBulkCancelledMidItem(t *testing.T) {
 	c := e.Client()
 	handlers.OnBulkStep(t, 0, "move", func(cancel context.CancelFunc) { cancel() })
 	before := events(t, e)
-	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Runs.", "move": "Done", "release": true},
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "comment": "Runs.", "move": "Done", "unclaim": true},
 		map[string]any{"key": "VAQ-2", "comment": "Doesn't."})
-	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Code != "cancelled" || strings.Join(got.Skipped, ",") != "move,release" || got.Status != "" {
+	if got := out.Items[0]; got.OK || got.Error == nil || got.Error.Code != "cancelled" || strings.Join(got.Skipped, ",") != "move,unclaim" || got.Status != "" {
 		t.Fatalf("item 1: %+v", got)
 	}
 	if got := out.Items[1]; got.OK || got.Error == nil || got.Error.Code != "cancelled" || strings.Join(got.Skipped, ",") != "comment" {
@@ -508,8 +508,8 @@ func TestAPIBulkLateCancelKeepsStatusAndVersion(t *testing.T) {
 	e, tok := bulkEnv(t)
 	c := e.Client()
 	c.Agent = "builder"
-	handlers.OnBulkStep(t, 0, "release", func(cancel context.CancelFunc) { cancel() })
-	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "move": "Done", "release": true},
+	handlers.OnBulkStep(t, 0, "unclaim", func(cancel context.CancelFunc) { cancel() })
+	out := bulk(t, c, tok, map[string]any{"key": "VAQ-1", "claim": map[string]any{}, "move": "Done", "unclaim": true},
 		map[string]any{"key": "VAQ-2", "comment": "Doesn't."})
 	var tk struct {
 		Status  string

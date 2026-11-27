@@ -28,26 +28,31 @@ server:
   version      print the release, commit and build date
   stop         stop the background server
   logs         print the server's log (-n 100, -f to follow, --path)
-  backup       list the database snapshots, or restore one
+  backup       list the database snapshots, restore one, or compact the database
   export       write everything to a .tar.gz (vaquero export FILE)
   import       restore an export into an empty instance (vaquero import FILE),
                or Linear's issue CSV into projects (vaquero import linear FILE.csv)
 
-tickets:
+projects:
   projects     list projects
-  project      create, show, edit or re-key a project
+  project      new, show, edit, re-key, set the icon of or link a project
+  statuses     list a project's statuses
+  status       new, edit, move or delete a status
+  milestones   list a project's milestones
+  milestone    new, edit, close or reopen a milestone
+  tags         list a project's tags
+  tag          edit or delete a tag
+  fetch        fetch a project's repository now
+
+tickets:
   tickets      list a project's tickets
-  ticket       show, new, edit or move a ticket
-  comment      add a comment to a ticket
+  ticket       show, new, edit, move, transfer, link or unlink a ticket
+  comment      new: add a comment to a ticket
   plan         show or save a ticket's plan
-  link         link two tickets (blocks, relates, duplicates)
-  unlink       remove the links between two tickets
-  ref          add or remove a ticket's references
+  ref          new or delete a ticket's references
   file         print a file from a project's repository
   commits      list the commits on main that name a ticket
-  attach       attach files to a ticket
-  attachments  list a ticket's files
-  detach       remove an attachment
+  attachment   new, list, delete or move attachments
   search       search tickets and comments
   activity     recent changes
 
@@ -55,19 +60,20 @@ agents:
   ready        list the tickets ready to be worked on
   claim        claim a ticket, with a lease (--lease 30m)
   heartbeat    extend your claim's lease
-  release      give up your claim
+  unclaim      give up your claim
   decisions    list questions, rulings and approvals
   decision     show, ask, rule on, answer or withdraw a decision
   mcp          an MCP server on standard input and output, for agent clients
 
 setup:
-  token        create, list or revoke API tokens
-  profile      add, list, use or remove servers to talk to
+  me           show or edit your profile: name and avatar
+  token        new, list or delete API tokens
+  server       new, list, use or delete servers to talk to
 
 help:
   docs         list the help articles, or print one (vaquero docs cli)
 
-Commands that talk to a server take --profile NAME, --agent NAME and --json.
+Commands that talk to a server take --server NAME, --agent NAME and --json.
 Every command is in: vaquero docs cli
 `
 
@@ -78,6 +84,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stdout, usage)
 		return 0
+	}
+	if tellRenamed(stderr, args) {
+		return 2
 	}
 	switch args[0] {
 	case "version":

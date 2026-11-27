@@ -161,7 +161,7 @@ func TestCLISurvivesRevokedLocalToken(t *testing.T) {
 	mustCLI(t, "projects")
 	old, _ := os.ReadFile(filepath.Join(dataDir, "token"))
 	prefix := strings.TrimSpace(string(old))[:9]
-	mustCLI(t, "token", "revoke", prefix)
+	mustCLI(t, "token", "delete", prefix)
 	mustCLI(t, "projects")
 	if now, _ := os.ReadFile(filepath.Join(dataDir, "token")); string(now) == string(old) {
 		t.Fatal("token file not renewed")

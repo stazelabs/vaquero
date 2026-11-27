@@ -12,7 +12,7 @@ Send an API token in every request:
 
     curl -H "Authorization: Bearer vq_..." http://127.0.0.1:7878/api/v1/me
 
-Make tokens on the Admin page or with `vaquero token create`; see [API tokens](/help/api-tokens). A missing, unknown or revoked token gets `401` with code `unauthorized`, the same answer for every reason.
+Make tokens on the Admin page or with `vaquero token new`; see [API tokens](/help/api-tokens). A missing, unknown or revoked token gets `401` with code `unauthorized`, the same answer for every reason.
 
 On this machine, a request made with your token can act as an agent by naming it in a `Vaquero-Agent` header; the agent is created the first time its name is used, and its comments, edits and claims are recorded under that name. Agent names are 1 to 80 letters, digits, spaces, dots, dashes or underscores; any other name gets `400` with code `bad_request`. A token that belongs to an agent always acts as that agent, whatever the header says.
 
@@ -83,7 +83,7 @@ A ticket in a list has `key`, `title`, `status`, `category`, `priority`, `assign
 | `POST /api/v1/projects/{key}/milestones/{name}/reopen` | Nothing; opens it again and answers with it |
 | `POST /api/v1/projects/{key}/tickets` | `{"title", "body", "status", "priority", "assignee", "parent", "milestone", "tags", "tier", "model"}`; only `title` is required. `tier` is `design`, `light`, `standard` or `heavy`, `model` an exact model id (at most 80 characters); `""` clears either. `number` keeps a number from another tracker, as `vaquero import linear` does. Only the owner, acting directly, sends it (an agent's is `422`), and it is at most 1,000,000,000 and above every number the project has given (else `422`). Numbering goes on after it, and the project's `next_number` says where numbering is |
 | `PATCH /api/v1/tickets/{ticket}` | Any of the ticket fields, plus `add_tags`, `remove_tags` and `version` |
-| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: move to another project, claim, renew (heartbeat), update, comment on, move and release up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
+| `POST /api/v1/tickets/bulk` | `{"items": [...]}`: move to another project, claim, renew (heartbeat), update, comment on, move and unclaim up to 100 tickets in one call; see [Bulk changes](#bulk-changes) |
 | `POST /api/v1/tickets/{ticket}/move` | `{"status", "before", "after"}`: a status and, optionally, the keys of the cards to land between (a key that names no ticket is refused) |
 | `POST /api/v1/tickets/{ticket}/move-to` | `{"project", "version"}`: move the ticket, with its sub-tickets, to the project of that key; `version` is optional. Answers with the ticket under its new key; see [Moving a ticket to another project](/help/projects-and-tickets#moving-a-ticket-to-another-project) |
 | `POST /api/v1/tickets/{ticket}/comments` | `{"body"}` |
@@ -131,7 +131,7 @@ Agents take work from the ready queue and hold it with a claim that expires unle
 | `GET /api/v1/ready` | Ready tickets, urgent first, then high, medium, low and no priority, each in board order: `project=KEY` for one project, `limit=N` (default 50). In a project with the agent workflow on, only tickets that pass [readiness](/help/agent-workflow#readiness) |
 | `POST /api/v1/tickets/{ticket}/claim` | `{"lease_minutes"}`, optional: 1 to 120, default 15. Assigns the ticket to you and moves a backlog or todo ticket to the first in-progress status; claiming your own claim again renews it |
 | `POST /api/v1/tickets/{ticket}/heartbeat` | `{"lease_minutes"}`, optional: extends your claim from now |
-| `POST /api/v1/tickets/{ticket}/release` | Nothing; gives up your claim, keeping the status and assignee |
+| `POST /api/v1/tickets/{ticket}/unclaim` | Nothing; gives up your claim, keeping the status and assignee |
 
 ## Decisions
 
@@ -153,13 +153,13 @@ A decision has `id`, `project`, `tickets`, `kind`, `subject` (approvals), `quest
 
     {"items": [
       {"key": "VAQ-9", "claim": {"lease_minutes": 120}, "comment": "Taking this."},
-      {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "release": true}
+      {"key": "VAQ-10", "version": 3, "update": {"priority": 2}, "move": "In review", "unclaim": true}
     ]}
 
-- An item names a ticket by `key` and any of `project` (another project's key: the ticket moves there with its sub-tickets, as `move-to` moves it, and the rest of the item names that project's statuses and milestones; the project it is already in changes nothing), `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `release` (`true`).
-- An item's actions run in that order: project, claim, heartbeat, update, comment, move, release. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
+- An item names a ticket by `key` and any of `project` (another project's key: the ticket moves there with its sub-tickets, as `ticket transfer` moves it, and the rest of the item names that project's statuses and milestones; the project it is already in changes nothing), `claim` and `heartbeat` (`{}`, or `{"lease_minutes"}`), `update` (the fields `PATCH` takes, without `version`), `comment` (the text), `move` (a status name; the ticket goes to the end of that column, and a move to the status it already has changes nothing, so a retried batch doesn't reorder the column) and `unclaim` (`true`).
+- An item's actions run in that order: project, claim, heartbeat, update, comment, move, unclaim. The first one that fails skips the rest of that item, so a refused claim posts no comment and makes no move.
 - An item's `version` is checked before any of its actions run, and again by its update, as a `PATCH` checks it. If the ticket changed since, the item is a `conflict` and nothing in it runs. A claim or a move to another project in the same item changes the version, which is allowed for: send the version you read. A result names the ticket by its key after the item, its new key when it moved.
-- `heartbeat` renews your claim from now without changing the version, as its endpoint does. A `release` after the same item's update or move ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds; a claim that ended any other way (it lapsed, or was released elsewhere) gets the normal release, which refuses.
+- `heartbeat` renews your claim from now without changing the version, as its endpoint does. An `unclaim` after the same item's update or move ended your claim (a move to a done or cancelled status, a reassignment) has nothing left to do and succeeds; a claim that ended any other way (it lapsed, or was released elsewhere) gets the normal unclaim, which refuses.
 - Items stand alone and run in request order. One refused item never stops the others, and the same key may appear in more than one item.
 - Each action is the same change its own endpoint makes, recorded in the ticket's history the same way.
 - At most 100 items, within the 1 MiB body limit.
@@ -172,7 +172,7 @@ The answer is `200` with one result per item, in request order:
       {"key": "VAQ-9", "ok": true, "status": "In progress", "version": 4},
       {"key": "VAQ-10", "ok": false, "status": "Todo", "version": 5,
        "error": {"code": "conflict", "message": "VAQ-10 changed since you read it."},
-       "skipped": ["move", "release"]}
+       "skipped": ["move", "unclaim"]}
     ]}
 
 `status` and `version` are the ticket as the item left it. `error` has the same `code`, `message` and `fields` as a refusal from the item's own endpoint, and `skipped` lists the actions that didn't run. If the request ends before every item has run (the client went away, or the server is stopping), an item whose actions all ran is `ok` and carries the ticket's `status` and `version`, even when the request ends right after it. Only the item the request was cut off in, and each item after it, have the code `cancelled`, with the actions that didn't run in `skipped`; the actions before those ran.

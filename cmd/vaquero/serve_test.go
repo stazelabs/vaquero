@@ -487,7 +487,7 @@ func TestMovedDataDirKeepsDefaultBlobDir(t *testing.T) {
 	dataDir, addr := localEnv(t)
 	t.Setenv("VQ_BLOB_STORE", "dir")
 	runCLI(t, "projects")
-	if code, _, e := runCLI(t, "project", "create", "VAQ", "Vaquero"); code != 0 {
+	if code, _, e := runCLI(t, "project", "new", "VAQ", "Vaquero"); code != 0 {
 		t.Fatal(e)
 	}
 	if code, _, e := runCLI(t, "ticket", "new", "VAQ", "x"); code != 0 {
@@ -497,7 +497,7 @@ func TestMovedDataDirKeepsDefaultBlobDir(t *testing.T) {
 	if err := os.WriteFile(file, []byte("moved bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, out, e := runCLI(t, "attach", "VAQ-1", file, "--json")
+	code, out, e := runCLI(t, "attachment", "new", "VAQ-1", file, "--json")
 	if code != 0 {
 		t.Fatal(e)
 	}
@@ -516,7 +516,7 @@ func TestMovedDataDirKeepsDefaultBlobDir(t *testing.T) {
 	}
 	t.Setenv("VQ_DATA_DIR", moved)
 	t.Cleanup(func() { killTestServer(moved) })
-	if code, _, e := runCLI(t, "attachments", "VAQ-1"); code != 0 {
+	if code, _, e := runCLI(t, "attachment", "list", "VAQ-1"); code != 0 {
 		t.Fatalf("the moved data directory didn't serve: %s", e)
 	}
 	tok, _ := os.ReadFile(filepath.Join(moved, "token"))

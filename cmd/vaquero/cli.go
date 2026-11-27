@@ -54,7 +54,7 @@ type cmd struct {
 	stdout, stderr io.Writer
 	fs             *flag.FlagSet
 	jsonOut        bool
-	profile        string
+	server         string
 	agent          string
 	usage          string
 	client         *client.Client
@@ -72,11 +72,11 @@ type cmd struct {
 }
 
 // newCmd starts a command whose usage line is usage; every command takes
-// --profile, --agent and --json.
+// --server, --agent and --json.
 func newCmd(stdout, stderr io.Writer, usage string) *cmd {
 	c := &cmd{stdout: stdout, stderr: stderr, usage: usage, fs: flag.NewFlagSet(usage, flag.ContinueOnError)}
 	c.fs.SetOutput(io.Discard)
-	c.fs.StringVar(&c.profile, "profile", "", "server profile")
+	c.fs.StringVar(&c.server, "server", "", "the server to talk to (see vaquero server list)")
 	c.fs.StringVar(&c.agent, "agent", "", "act as this agent (local mode; default $VAQUERO_AGENT)")
 	c.fs.BoolVar(&c.jsonOut, "json", false, "print JSON")
 	return c
@@ -117,12 +117,12 @@ func (c *cmd) set(name string) bool {
 }
 
 // only refuses, as a usage error, any flag given beyond the common ones
-// (--profile, --agent, --json) and those the verb takes.
+// (--server, --agent, --json) and those the verb takes.
 func (c *cmd) only(verb string, takes ...string) error {
 	var extra string
 	c.fs.Visit(func(f *flag.Flag) {
 		switch {
-		case extra != "", f.Name == "profile", f.Name == "agent", f.Name == "json", slices.Contains(takes, f.Name):
+		case extra != "", f.Name == "server", f.Name == "agent", f.Name == "json", slices.Contains(takes, f.Name):
 		default:
 			extra = f.Name
 		}
@@ -133,10 +133,10 @@ func (c *cmd) only(verb string, takes ...string) error {
 	return nil
 }
 
-// connect builds the client for the chosen profile. For the local server
+// connect builds the client for the chosen server. For the local server
 // it starts vaquero when it isn't running and reads the token it wrote.
 func (c *cmd) connect(ctx context.Context) error {
-	p, local, err := client.Resolve(c.profile, os.Getenv)
+	p, local, err := client.Resolve(c.server, os.Getenv)
 	if err != nil {
 		return err
 	}

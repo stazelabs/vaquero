@@ -16,9 +16,7 @@ import (
 )
 
 func init() {
-	cliCommands["attach"] = cmdAttach
-	cliCommands["attachments"] = cmdAttachments
-	cliCommands["detach"] = cmdDetach
+	cliCommands["attachment"] = cmdAttachment
 }
 
 // errFileTooLarge is the server's own message for a file over the limit.
@@ -30,10 +28,28 @@ type attachSource struct {
 	open func() (io.Reader, func(), error)
 }
 
-// cmdAttach is vaquero attach TICKET FILE...: upload each file and print
-// its Markdown reference, to paste into a body or comment.
-func cmdAttach(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero attach TICKET FILE... [--name NAME]  (FILE - reads standard input; it needs --name)"
+// cmdAttachment is vaquero attachment new|list|delete|move.
+func cmdAttachment(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	const usage = "vaquero attachment new TICKET FILE... [--name NAME] | list TICKET | delete ID | move --to sqlite|dir|s3 [--delete-old]"
+	if len(args) > 0 {
+		switch args[0] {
+		case "new":
+			return cmdAttachNew(ctx, stdout, stderr, args[1:])
+		case "list":
+			return cmdAttachList(ctx, stdout, stderr, args[1:])
+		case "delete":
+			return cmdAttachDelete(ctx, stdout, stderr, args[1:])
+		case "move":
+			return cmdAttachmentsMove(ctx, stdout, stderr, args[1:])
+		}
+	}
+	return newCmd(stdout, stderr, usage).finish(usageError{usage: usage})
+}
+
+// cmdAttachNew is vaquero attachment new TICKET FILE...: upload each file and
+// print its Markdown reference, to paste into a body or comment.
+func cmdAttachNew(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	const usage = "vaquero attachment new TICKET FILE... [--name NAME]  (FILE - reads standard input; it needs --name)"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "the file's name, for standard input")
 	pos, err := c.parse(args, 2, -1)
@@ -144,14 +160,9 @@ func errUnwrapped(err error) error {
 	return err
 }
 
-// cmdAttachments is vaquero attachments TICKET: the ticket's files. vaquero
-// attachments move is the offline move to other storage (no ticket key is
-// "move").
-func cmdAttachments(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	if len(args) > 0 && args[0] == "move" {
-		return cmdAttachmentsMove(ctx, stdout, stderr, args[1:])
-	}
-	c := newCmd(stdout, stderr, "vaquero attachments TICKET")
+// cmdAttachList is vaquero attachment list TICKET: the ticket's files.
+func cmdAttachList(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	c := newCmd(stdout, stderr, "vaquero attachment list TICKET")
 	pos, err := c.parse(args, 1, 1)
 	return c.connected(ctx, err, func() error {
 		key, err := canon(pos[0])
@@ -177,9 +188,9 @@ func cmdAttachments(ctx context.Context, stdout, stderr io.Writer, args []string
 	})
 }
 
-// cmdDetach is vaquero detach ID: remove an attachment.
-func cmdDetach(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero detach ID")
+// cmdAttachDelete is vaquero attachment delete ID.
+func cmdAttachDelete(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	c := newCmd(stdout, stderr, "vaquero attachment delete ID")
 	pos, err := c.parse(args, 1, 1)
 	return c.connected(ctx, err, func() error {
 		if err := c.call(ctx, "DELETE", "/api/v1/attachments/"+url.PathEscape(pos[0]), nil, nil); err != nil {

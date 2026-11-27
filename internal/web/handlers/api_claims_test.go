@@ -65,10 +65,14 @@ func TestAPIClaimConflict(t *testing.T) {
 	if r := a.API("POST", "/api/v1/tickets/VAQ-1/claim", tok, map[string]int{"lease_minutes": 500}); r.Status != 422 || !strings.Contains(r.Body, "1 to 120 minutes") {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
-	if r := b.API("POST", "/api/v1/tickets/VAQ-1/release", tok, nil); r.Status != 422 {
+	if r := b.API("POST", "/api/v1/tickets/VAQ-1/unclaim", tok, nil); r.Status != 422 {
 		t.Fatalf("release by other: %d", r.Status)
 	}
-	r = a.API("POST", "/api/v1/tickets/VAQ-1/release", tok, nil)
+	// R-Q8: the old route is gone.
+	if r := a.API("POST", "/api/v1/tickets/VAQ-1/release", tok, nil); r.Status != 404 && r.Status != 405 {
+		t.Fatalf("old release route: %d", r.Status)
+	}
+	r = a.API("POST", "/api/v1/tickets/VAQ-1/unclaim", tok, nil)
 	tk = summaryJSON{}
 	decode(t, r.Body, &tk)
 	if r.Status != 200 || tk.ClaimedBy != "" || tk.Assignee != "builder" {

@@ -27,7 +27,7 @@ Each reference has a kind and, if you like, a label (shown instead of the target
 
 The ticket page lists them under References: a repo path opens the file view, a URL opens in a new tab, and Remove asks before it deletes. References move with a ticket to another project; a repo path is then read against the new project's repository.
 
-From the command line, `vaquero ref add TICKET KIND TARGET --anchor A --label L` and `vaquero ref remove TICKET ID`; `vaquero ticket show` lists a ticket's references with their ids. Agents use the `add_reference` and `remove_reference` [tools](/help/mcp). The [API](/help/api) has `POST /api/v1/tickets/{ticket}/refs` and `DELETE /api/v1/tickets/{ticket}/refs/{id}`, and a ticket's answer has `references`.
+From the command line, `vaquero ref new TICKET KIND TARGET --anchor A --label L` and `vaquero ref delete TICKET ID`; `vaquero ticket show` lists a ticket's references with their ids. Agents use the `create_reference` and `delete_reference` [tools](/help/mcp). The [API](/help/api) has `POST /api/v1/tickets/{ticket}/refs` and `DELETE /api/v1/tickets/{ticket}/refs/{id}`, and a ticket's answer has `references`.
 
 ## Reading files and commits
 

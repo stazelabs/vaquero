@@ -93,7 +93,7 @@ An export from a newer Vaquero is refused; upgrade Vaquero and import again. An 
 
 Attachment files go where `VQ_BLOB_STORE` says, in the shell you run `vaquero import` from or in `vaquero.env` (see [Attachments](/help/attachments#where-the-bytes-are-kept)), and the message names that storage. Before it reads the file, import writes and deletes a small test object there, so wrong credentials or a read-only bucket stop it at once, with nothing changed. The server must start with the same setting. If Vaquero runs under `brew services`, its environment is the service's, not your shell's: if the two differ, the server refuses to start, names both, and changes nothing. Put the storage settings in `vaquero.env` in the data directory, which the service reads (see [Installing and upgrading](/help/installing-and-upgrading#settings-for-the-server)), and start it again.
 
-Tokens are not part of an export. Import removes the `token` file, so the next start makes a new token for the imported owner, and the command line on this machine picks it up. Any other token for the old instance, such as one saved in a profile for another machine or an agent, stops working: make a new one with `vaquero token create`.
+Tokens are not part of an export. Import removes the `token` file, so the next start makes a new token for the imported owner, and the command line on this machine picks it up. Any other token for the old instance, such as one saved as a server for another machine or an agent, stops working: make a new one with `vaquero token new`.
 
 ## Importing from Linear
 
@@ -135,7 +135,7 @@ Where attachment files are kept is set by `VQ_BLOB_STORE` and the settings besid
 
     vaquero stop
     export VQ_BLOB_STORE=dir
-    vaquero attachments move --to dir
+    vaquero attachment move --to dir
 
 `--to` names the new storage: `sqlite` (into the database), `dir` or `s3`. Its directory or bucket comes from `VQ_BLOB_DIR` or the `VQ_S3_` settings, as for the server. If `VQ_BLOB_STORE` in your shell is set to something else, the move stops and says so, since the server must be started with the same storage afterwards. The files are read from where the database says they are now; from a bucket, with the `VQ_S3_ACCESS_KEY_ID` and `VQ_S3_SECRET_ACCESS_KEY` in your shell or in `vaquero.env`.
 

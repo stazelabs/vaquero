@@ -215,8 +215,8 @@ func TestDisplayNameEverywhere(t *testing.T) {
 		t.Fatalf("comment edit: %d %s", r.Status, r.Body)
 	}
 	cs := mcpConnect(t, e, tok, "")
-	if res, text := mcpCall(t, cs, "add_comment", map[string]any{"key": "VAQ-1", "body": "Through MCP."}); res.IsError || !strings.Contains(text, `"author": "Kim Lee"`) && !strings.Contains(text, `"author":"Kim Lee"`) {
-		t.Fatalf("mcp add_comment: %s", text)
+	if res, text := mcpCall(t, cs, "create_comment", map[string]any{"key": "VAQ-1", "body": "Through MCP."}); res.IsError || !strings.Contains(text, `"author": "Kim Lee"`) && !strings.Contains(text, `"author":"Kim Lee"`) {
+		t.Fatalf("mcp create_comment: %s", text)
 	}
 	var att api.Attachment
 	r = c.UploadAs("/api/v1/tickets/VAQ-1/attachments", tok, "notes.txt", "text/plain", []byte("hay"))

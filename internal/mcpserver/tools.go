@@ -105,7 +105,7 @@ type (
 		Update    *fieldArgs `json:"update,omitempty" jsonschema:"Fields to change, as update_ticket takes them."`
 		Comment   *string    `json:"comment,omitempty" jsonschema:"A comment to add, in Markdown."`
 		Move      string     `json:"move,omitempty" jsonschema:"A status to move it to, by name, at the end of its column; its own status changes nothing."`
-		Release   bool       `json:"release,omitempty" jsonschema:"Give up your claim last; already done if an earlier action finished the ticket."`
+		Unclaim   bool       `json:"unclaim,omitempty" jsonschema:"Give up your claim last; already done if an earlier action finished the ticket."`
 	}
 
 	claimArgs struct {
@@ -201,7 +201,7 @@ type (
 		At      string `json:"at,omitempty" jsonschema:"A branch, tag or commit hash to read it at. Leave it out for the main branch."`
 	}
 
-	releaseArgs struct {
+	unclaimArgs struct {
 		Key  string `json:"key" jsonschema:"The ticket's key, such as VAQ-12."`
 		View string `json:"view,omitempty" jsonschema:"summary for a short answer: key, status, category, version, assignee and claim. Leave it out for the whole ticket."`
 	}
@@ -209,9 +209,9 @@ type (
 
 // toolNames is every tool, sorted.
 var toolNames = []string{
-	"add_comment", "add_reference", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
-	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "release_ticket",
-	"remove_reference", "save_plan", "search", "update_ticket",
+	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_plan", "get_ticket",
+	"heartbeat", "link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
+	"search", "unclaim_ticket", "update_ticket",
 }
 
 // ToolNames is every tool's name, sorted.
@@ -337,7 +337,7 @@ func addTools(s *mcp.Server, c *caller) {
 			return viewed(request{method: http.MethodPatch, path: ticketPath(in.Key, ""), body: b}, in.View)
 		})
 	add(s, c, "bulk_update", "Update tickets in bulk", false,
-		"Work several tickets in one call, up to 100. Each item names a ticket and any of project, claim, heartbeat, update, comment, move and release, which run in that order; "+
+		"Work several tickets in one call, up to 100. Each item names a ticket and any of project, claim, heartbeat, update, comment, move and unclaim, which run in that order; "+
 			"the first that fails skips the rest of that item, and a stale version runs none of it. Answers one short result per item, in order: key, ok, status, version, and error and skipped when it failed.",
 		func(in bulkArgs) request {
 			items := make([]map[string]any, len(in.Items))
@@ -366,8 +366,8 @@ func addTools(s *mcp.Server, c *caller) {
 				if it.Move != "" {
 					b["move"] = it.Move
 				}
-				if it.Release {
-					b["release"] = true
+				if it.Unclaim {
+					b["unclaim"] = true
 				}
 				items[i] = b
 			}
@@ -378,7 +378,7 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in moveArgs) request {
 			return viewed(post(ticketPath(in.Key, "/move"), map[string]string{"status": in.Status}), in.View)
 		})
-	add(s, c, "add_comment", "Add a comment", false,
+	add(s, c, "create_comment", "Add a comment", false,
 		"Add a comment to a ticket, in Markdown.",
 		func(in commentArgs) request {
 			return viewed(post(ticketPath(in.Key, "/comments"), map[string]string{"body": in.Body}), in.View)
@@ -437,7 +437,7 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in linkArgs) request {
 			return post(ticketPath(in.Key, "/links"), map[string]string{"kind": in.Kind, "to": in.To})
 		})
-	add(s, c, "add_reference", "Add a reference to a ticket", false,
+	add(s, c, "create_reference", "Add a reference to a ticket", false,
 		"Point a ticket at the document that governs it: a repo path (in the project's repository; it needn't be on main yet) or an http or https URL, as a requirement, design, plan, spec or other. Answers with the reference and its id.",
 		func(in addRefArgs) request {
 			b := map[string]string{"kind": in.Kind, "target": in.Target}
@@ -445,7 +445,7 @@ func addTools(s *mcp.Server, c *caller) {
 			set1(b, "label", in.Label)
 			return post(ticketPath(in.Key, "/refs"), b)
 		})
-	add(s, c, "remove_reference", "Remove a reference from a ticket", false,
+	add(s, c, "delete_reference", "Remove a reference from a ticket", false,
 		"Remove one of a ticket's references, by its id. Answers {\"ok\": true}.",
 		func(in removeRefArgs) request { return del(ticketPath(in.Key, "/refs/"+url.PathEscape(in.ID))) })
 	add(s, c, "claim_ticket", "Claim a ticket", false,
@@ -458,9 +458,9 @@ func addTools(s *mcp.Server, c *caller) {
 		func(in leaseArgs) request {
 			return viewed(post(ticketPath(in.Key, "/heartbeat"), leaseBody(in.LeaseMinutes)), in.View)
 		})
-	add(s, c, "release_ticket", "Release a claim", false,
+	add(s, c, "unclaim_ticket", "Unclaim a ticket", false,
 		"Give up your claim on a ticket, leaving its status and assignee as they are.",
-		func(in releaseArgs) request { return viewed(post(ticketPath(in.Key, "/release"), nil), in.View) })
+		func(in unclaimArgs) request { return viewed(post(ticketPath(in.Key, "/unclaim"), nil), in.View) })
 }
 
 // body is the fields as the API's ticket request names them; only those

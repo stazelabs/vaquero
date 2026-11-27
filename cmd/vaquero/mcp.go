@@ -39,7 +39,7 @@ const mcpLineMax = 4 << 20
 // (--model, else $VAQUERO_MODEL). A value missing is left out; it never
 // fails a call.
 func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero mcp [--profile NAME] [--agent NAME] [--model ID]")
+	c := newCmd(stdout, stderr, "vaquero mcp [--server NAME] [--agent NAME] [--model ID]")
 	var model string
 	c.fs.StringVar(&model, "model", "", "the model this session runs (default $VAQUERO_MODEL), recorded with each change")
 	if _, err := c.parse(args, 0, 0); err != nil {
@@ -58,7 +58,7 @@ func cmdMCP(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 		return c.finish(err)
 	}
 	if ag := strings.TrimSpace(c.client.Agent); ag != "" && (me.Actor.Kind != "agent" || me.Actor.Name != ag) {
-		fmt.Fprintln(stderr, "vaquero mcp: the agent name is ignored: this profile's token isn't the local owner's")
+		fmt.Fprintln(stderr, "vaquero mcp: the agent name is ignored: this server's token isn't the local owner's")
 	}
 	fmt.Fprintf(stderr, "vaquero mcp: connected to %s as %s\n", c.client.BaseURL, me.Actor.Name)
 

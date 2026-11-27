@@ -14,7 +14,7 @@ There are two ways in.
 
     vaquero mcp --agent builder
 
-It talks to the Vaquero on this machine, starting it if it isn't running, with the token Vaquero keeps in its data directory. `--profile NAME` points it at another server. Diagnostics go to standard error; standard output carries only the protocol.
+It talks to the Vaquero on this machine, starting it if it isn't running, with the token Vaquero keeps in its data directory. `--server NAME` points it at another server. Diagnostics go to standard error; standard output carries only the protocol.
 
 For Claude Code, add it once:
 
@@ -41,7 +41,7 @@ Each change an agent makes records where it came from, as the client reports it:
 | `create_ticket` | `project`, `title`, and optionally `body`, `status`, `priority`, `assignee`, `milestone`, `parent`, `tags`, `tier`, `model` |
 | `update_ticket` | `key` and any fields to change (`tier` and `model` among them), plus `add_tags`, `remove_tags` and `version` |
 | `move_ticket` | `key`, `status` |
-| `add_comment` | `key`, `body` |
+| `create_comment` | `key`, `body` |
 | `get_plan` | A ticket's [plan](/help/agent-workflow#plans): `key`, optionally `revision` for an earlier one |
 | `read_file` | A file in the project's [repository](/help/repositories#reading-files-and-commits): `project`, `path`, optionally `at` (a branch, tag or commit hash; the main branch when left out). Answers the same as `GET /api/v1/projects/{key}/files/{path}`; use it to read a ticket's references |
 | `save_plan` | Write or revise a plan: `key`, `body` (the whole text) and `revision`, the one you read (leave it out only for a ticket's first plan); a stale revision is refused |
@@ -49,18 +49,18 @@ Each change an agent makes records where it came from, as the client reports it:
 | `answer_decision` | Relay the owner's answer: `id`, `option` or `text`, optionally `note`, and `words`, the owner's own, quoted. The answer is recorded as relayed by the agent `vaquero mcp --agent NAME` (or `Vaquero-Agent`) names; without an agent, or without `words`, it is refused. An agent never answers as itself |
 | `list_decisions` | Decisions, newest first: optionally `project`, `state`, `kind`, `ticket` and `limit` |
 | `link_tickets` | `key`, `kind` (`blocks`, `relates` or `duplicates`), `to` |
-| `add_reference` | Point a ticket at a document ([references](/help/repositories#references)): `key`, `kind` (`requirement`, `design`, `plan`, `spec` or `other`), `target` (a repo path or an http or https URL), optionally `anchor` and `label`; answers with the reference and its `id` |
-| `remove_reference` | `key`, `id`; answers `{"ok": true}` |
+| `create_reference` | Point a ticket at a document ([references](/help/repositories#references)): `key`, `kind` (`requirement`, `design`, `plan`, `spec` or `other`), `target` (a repo path or an http or https URL), optionally `anchor` and `label`; answers with the reference and its `id` |
+| `delete_reference` | `key`, `id`; answers `{"ok": true}` |
 | `claim_ticket` | `key`, optionally `lease_minutes` (1 to 120, default 15) |
 | `heartbeat` | Renew your claim: `key`, optionally `lease_minutes` |
-| `release_ticket` | Give up your claim: `key` |
-| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `project` (move it to another project, by key), `claim`, `heartbeat`, `update`, `comment`, `move` and `release` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
+| `unclaim_ticket` | Give up your claim: `key` |
+| `bulk_update` | Work up to 100 tickets in one call: `items`, each a `key` with any of `project` (move it to another project, by key), `claim`, `heartbeat`, `update`, `comment`, `move` and `unclaim` (run in that order; `claim` or `heartbeat`, not both) and a `version`, which needs an `update` and is checked before any of them, as the API's [bulk changes](/help/api#bulk-changes) run; one short result per item |
 
-`update_ticket`, `move_ticket`, `add_comment`, `claim_ticket`, `heartbeat` and `release_ticket` also take `view`: `summary` answers with only the ticket's key, status, category, version, assignee and claim (and the comment's id), the API's [short answer](/help/api#short-answers), instead of the whole ticket.
+`update_ticket`, `move_ticket`, `create_comment`, `claim_ticket`, `heartbeat` and `unclaim_ticket` also take `view`: `summary` answers with only the ticket's key, status, category, version, assignee and claim (and the comment's id), the API's [short answer](/help/api#short-answers), instead of the whole ticket.
 
 A tool's answer is the same JSON the API gives. Its structured content, for clients that read it, is that JSON too, except that a list arrives as `{"items": [...]}`, because structured content is always an object. A refusal (an unknown ticket, a claim someone else holds, a stale `version`) is a tool error whose text says what went wrong, the same message the API gives.
 
-The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `add_comment` and `update_ticket`, `move_ticket` it when done, and `release_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words.
+The server tells clients the working loop: take a ticket from `ready_tickets`, `claim_ticket` it, `heartbeat` while working, record progress with `create_comment` and `update_ticket`, `move_ticket` it when done, and `unclaim_ticket` when stopping. Where the agent workflow is on, it also says to write plans with `save_plan`, to park questions and approvals with `ask_decision`, and to record the owner's answers only as relayed, with their words.
 
 ## The activity log
 

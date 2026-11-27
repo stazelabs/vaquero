@@ -60,7 +60,7 @@ func cmdImport(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		return c.finish(err)
 	}
 	c.emit(res, func() {
-		fmt.Fprintf(c.stdout, "Imported %s, %s and %s into %s. Profiles holding a token for the old instance need a new one: vaquero token create.\n",
+		fmt.Fprintf(c.stdout, "Imported %s, %s and %s into %s. Saved servers holding a token for the old instance need a new one: vaquero token new.\n",
 			count(res.Projects, "project"), count(res.Tickets, "ticket"), count(res.Attachments, "attachment"), res.Backend)
 		if line := savedLine(cfg, res.Previous); line != "" {
 			fmt.Fprintln(c.stdout, line)

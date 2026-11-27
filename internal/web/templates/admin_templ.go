@@ -701,7 +701,7 @@ func storageSection(s StorageInfo, brew bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</code>) and run <code class=\"font-mono text-xs text-ink\">vaquero attachments move --to sqlite|dir|s3</code>, which saves the new settings in vaquero.env. ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</code>) and run <code class=\"font-mono text-xs text-ink\">vaquero attachment move --to sqlite|dir|s3</code>, which saves the new settings in vaquero.env. ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

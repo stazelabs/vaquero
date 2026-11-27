@@ -268,7 +268,7 @@ func setNow(t *testing.T, at time.Time) {
 func seedData(t *testing.T) (dataDir string) {
 	t.Helper()
 	dataDir = startBackground(t)
-	if code, _, e := runCLI(t, "project", "create", "VAQ", "Vaquero"); code != 0 {
+	if code, _, e := runCLI(t, "project", "new", "VAQ", "Vaquero"); code != 0 {
 		t.Fatalf("project new: %s", e)
 	}
 	if code, _, e := runCLI(t, "stop"); code != 0 {
@@ -356,7 +356,7 @@ func TestRestoreReplacesAndKeepsPrevious(t *testing.T) {
 	name := snapshotNow(t, dataDir)
 	// A change after the snapshot, which the restore undoes.
 	runCLI(t, "projects") // starts the server again
-	if code, _, e := runCLI(t, "project", "create", "OTH", "Other"); code != 0 {
+	if code, _, e := runCLI(t, "project", "new", "OTH", "Other"); code != 0 {
 		t.Fatalf("project new: %s", e)
 	}
 	runCLI(t, "stop")

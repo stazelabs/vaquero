@@ -15,7 +15,7 @@ func TestMCPCallsLogged(t *testing.T) {
 	long := strings.Repeat("word ", 60)
 	mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-1"})
 	mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-99"})
-	mcpCall(t, cs, "add_comment", map[string]any{"key": "VAQ-1", "body": long})
+	mcpCall(t, cs, "create_comment", map[string]any{"key": "VAQ-1", "body": long})
 	cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "drop_tables", Arguments: map[string]any{}})
 	cs.CallTool(t.Context(), &mcp.CallToolParams{Name: "get_ticket", Arguments: map[string]any{"key": 12}})
 	rows, err := e.Deps.R.ListMCPCalls(bg, mcpListAll())
@@ -27,7 +27,7 @@ func TestMCPCallsLogged(t *testing.T) {
 	}
 	// Newest first.
 	want := []struct{ tool, outcome string }{
-		{"get_ticket", "bad_arguments"}, {"drop_tables", "unknown_tool"}, {"add_comment", "ok"},
+		{"get_ticket", "bad_arguments"}, {"drop_tables", "unknown_tool"}, {"create_comment", "ok"},
 		{"get_ticket", "not_found"}, {"get_ticket", "ok"},
 	}
 	for i, w := range want {

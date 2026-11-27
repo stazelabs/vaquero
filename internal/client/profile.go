@@ -90,8 +90,8 @@ func (c Config) Find(name string) (Profile, bool) {
 	return Profile{}, false
 }
 
-// Resolve picks the profile to use: name (a --profile flag) if given, else
-// VAQUERO_PROFILE, else the saved current one, else "local". local is true
+// Resolve picks the server to use: name (the --server flag) if given, else
+// VAQUERO_SERVER (VAQUERO_PROFILE too, for one release), else the saved current one, else "local". local is true
 // for the local server, whose address and data directory come from the
 // same VQ_MODE, VQ_ADDR and VQ_DATA_DIR `vaquero serve` reads (config.Local;
 // the server-only settings aren't read), and whose token is read from the
@@ -101,7 +101,7 @@ func Resolve(name string, getenv func(string) string) (p Profile, local bool, er
 	if err != nil {
 		return p, false, err
 	}
-	for _, n := range []string{name, getenv("VAQUERO_PROFILE"), cfg.Current, "local"} {
+	for _, n := range []string{name, getenv("VAQUERO_SERVER"), getenv("VAQUERO_PROFILE"), cfg.Current, "local"} {
 		if n != "" {
 			name = n
 			break
@@ -110,7 +110,7 @@ func Resolve(name string, getenv func(string) string) (p Profile, local bool, er
 	if name != "local" {
 		p, ok := cfg.Find(name)
 		if !ok {
-			return p, false, fmt.Errorf("no profile called %s; add one with: vaquero profile add %s URL TOKEN", name, name)
+			return p, false, fmt.Errorf("no server called %s; add one with: vaquero server new %s URL TOKEN", name, name)
 		}
 		return p, false, nil
 	}

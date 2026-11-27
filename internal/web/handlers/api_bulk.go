@@ -31,18 +31,18 @@ type bulkItem struct {
 	Update    *ticketRequest `json:"update"`
 	Comment   *string        `json:"comment"`
 	Move      *string        `json:"move"`
-	Release   bool           `json:"release"`
+	Unclaim   bool           `json:"unclaim"`
 }
 
 // bulkActions is the fixed order an item's actions run in.
 // A move to another project runs first, so the rest of the item names the
 // new project's statuses and milestones.
-var bulkActions = []string{"project", "claim", "heartbeat", "update", "comment", "move", "release"}
+var bulkActions = []string{"project", "claim", "heartbeat", "update", "comment", "move", "unclaim"}
 
 // actions are the item's actions, in bulkActions order.
 func (it bulkItem) actions() []string {
 	has := map[string]bool{"project": it.Project != nil, "claim": it.Claim != nil, "heartbeat": it.Heartbeat != nil, "update": it.Update != nil, "comment": it.Comment != nil,
-		"move": it.Move != nil, "release": it.Release}
+		"move": it.Move != nil, "unclaim": it.Unclaim}
 	var out []string
 	for _, a := range bulkActions {
 		if has[a] {
@@ -70,7 +70,7 @@ func checkBulk(items []bulkItem) map[string]string {
 			fields[at+".key"] = fmt.Sprintf("Item %d has no key.", n)
 		}
 		if len(it.actions()) == 0 {
-			fields[at] = fmt.Sprintf("Item %d has nothing to do. Give it a project, claim, heartbeat, update, comment, move or release.", n)
+			fields[at] = fmt.Sprintf("Item %d has nothing to do. Give it a project, claim, heartbeat, update, comment, move or unclaim.", n)
 		}
 		if it.Version != 0 && it.Update == nil {
 			fields[at+".version"] = fmt.Sprintf("Item %d has a version but no update to check it against.", n)
@@ -92,14 +92,14 @@ func checkBulk(items []bulkItem) map[string]string {
 }
 
 // APITicketsBulk is POST /api/v1/tickets/bulk {items: [{key, version?,
-// project?, claim?, heartbeat?, update?, comment?, move?, release?}]}: up to 100
+// project?, claim?, heartbeat?, update?, comment?, move?, unclaim?}]}: up to 100
 // items, each run on its own, in request order, as the request's actor.
 // Each action is the same core operation its own endpoint makes, with its
 // own transaction and event (a heartbeat has none, as on its endpoint);
 // the call itself writes nothing. Within an item the actions run project
 // (a move to another project, by key: the ticket and its sub-tickets, as
 // POST /tickets/{ticket}/move-to; its own project is nothing to do), claim,
-// heartbeat, update, comment, move, release, and the first failure skips
+// heartbeat, update, comment, move, unclaim, and the first failure skips
 // the rest of that item. A key may appear more than once; its items run in
 // order. A call that can't run as sent (no items, more than 100, an item
 // with no key or nothing to do) is a 422 and runs nothing. When the
@@ -215,8 +215,8 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 	by := apiActor(r).ID
 	// held: the caller holds a live claim on the ticket, from before the
 	// item or from its claim. ended: this item's update or move ended that
-	// claim (a finishing move, a reassignment), so its release has nothing
-	// left to do. A claim ended any other way gets the normal release.
+	// claim (a finishing move, a reassignment), so its unclaim has nothing
+	// left to do. A claim ended any other way gets the normal unclaim.
 	held := t.ClaimedBy.Valid && t.ClaimedBy.String == by && t.ClaimExpiresAt.String > timefmt.Format(d.Now())
 	ended := false
 	cur := t
@@ -280,7 +280,7 @@ func runBulkItem(r *http.Request, d Deps, i int, it bulkItem, cancel context.Can
 					after(nt)
 				}
 			}
-		case "release":
+		case "unclaim":
 			if !held || !ended {
 				if nt, err = d.Core.Release(ctx, by, t.ID); err == nil {
 					cur = nt

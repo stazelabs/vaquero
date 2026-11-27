@@ -8,11 +8,11 @@ An API token lets a program act in Vaquero as you: read projects and tickets, an
 
 ## Making a token
 
-On the Admin page, open API tokens, give the token a name that says where it will be used ("laptop scripts", "build agent") and create it. Or run `vaquero token create NAME`. The token starts with `vq_` and is shown once: copy it then, because Vaquero keeps only a fingerprint of it and can't show it again.
+On the Admin page, open API tokens, give the token a name that says where it will be used ("laptop scripts", "build agent") and create it. Or run `vaquero token new NAME`. The token starts with `vq_` and is shown once: copy it then, because Vaquero keeps only a fingerprint of it and can't show it again.
 
 ## Using it
 
-Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/api). For the command line on another machine, save it in a profile: `vaquero profile add NAME URL TOKEN`, or `vaquero profile add NAME URL -` to paste it on standard input instead.
+Send it as `Authorization: Bearer vq_...` with every request to [the API](/help/api). For the command line on another machine, save it as a server: `vaquero server new NAME URL TOKEN`, or `vaquero server new NAME URL -` to paste it on standard input instead.
 
 ## The local token
 
@@ -20,7 +20,7 @@ On this machine you don't need to make one for the command line. The server keep
 
 ## Seeing and revoking tokens
 
-The API tokens page (and `vaquero token list`) shows each token's name, the first few characters of it, whose it is, when it was made and when it was last used. Revoke one there, or with `vaquero token revoke PREFIX`; it stops working at once.
+The API tokens page (and `vaquero token list`) shows each token's name, the first few characters of it, whose it is, when it was made and when it was last used. Delete one there, or with `vaquero token delete PREFIX`; it stops working at once.
 
 ## Who can use the local server
 

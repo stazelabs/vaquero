@@ -102,7 +102,7 @@ func TestCLIShowsReadinessFiles(t *testing.T) {
 	r.WriteCommit("docs/a.md", "# A\n", "a")
 	mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir, "--workflow", "on")
 	mustCLI(t, "ticket", "new", "VAQ", "Build it", "--tier", "light")
-	mustCLI(t, "ref", "add", "VAQ-1", "spec", "docs/a.md")
+	mustCLI(t, "ref", "new", "VAQ-1", "spec", "docs/a.md")
 	id := strings.TrimSpace(mustCLI(t, "decision", "ask", "VAQ", "Approve the plan?", "--approval", "plan", "--ticket", "VAQ-1"))
 	mustCLI(t, "decision", "answer", id, "Approve")
 	if out := mustCLI(t, "ticket", "show", "VAQ-1"); !strings.Contains(out, "Readiness: ready\nFiles: docs/a.md unchanged\n") {

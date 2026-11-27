@@ -14,11 +14,11 @@ On the ticket page, drop files on the Attachments area, choose them with Choose 
 
 From the command line:
 
-    vaquero attach VAQ-12 screenshot.png trace.log
-    vaquero attachments VAQ-12
-    vaquero detach 01M89WJCM72AW7ZD4DHSKJ0RQ1
+    vaquero attachment new VAQ-12 screenshot.png trace.log
+    vaquero attachment list VAQ-12
+    vaquero attachment delete 01M89WJCM72AW7ZD4DHSKJ0RQ1
 
-`vaquero attach` prints a Markdown reference for each file, ready to paste into a description or comment. `-` reads standard input, with `--name` for the file's name. See [The command line](/help/cli). Over the API, upload with a multipart form; see [The API](/help/api).
+`vaquero attachment new` prints a Markdown reference for each file, ready to paste into a description or comment. `-` reads standard input, with `--name` for the file's name. See [The command line](/help/cli). Over the API, upload with a multipart form; see [The API](/help/api).
 
 Only the person who attached a file, or the owner, can remove it.
 
@@ -52,7 +52,7 @@ By default, in the database file, with everything else. These settings move them
 | `VQ_S3_SECRET_ACCESS_KEY` | For `s3`: the secret; never logged |
 | `VQ_S3_REGION` | For `s3`: the region; default `auto` |
 
-All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, or the same one pointed somewhere else (another `VQ_BLOB_DIR`, or another S3 endpoint or bucket), saying where the files are, since their bytes would be out of reach. To move attachments to other storage, stop the server and run `vaquero attachments move`; see [Your data and backups](/help/data-and-backups#moving-attachments-to-other-storage).
+All four of the endpoint, bucket, key and secret are needed for `s3`. Once a server has stored attachments, it refuses to start with a different `VQ_BLOB_STORE`, or the same one pointed somewhere else (another `VQ_BLOB_DIR`, or another S3 endpoint or bucket), saying where the files are, since their bytes would be out of reach. To move attachments to other storage, stop the server and run `vaquero attachment move`; see [Your data and backups](/help/data-and-backups#moving-attachments-to-other-storage).
 
 ## Backups
 

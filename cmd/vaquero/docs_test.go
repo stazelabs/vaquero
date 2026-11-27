@@ -60,7 +60,7 @@ func TestCLISubcommandsDocumented(t *testing.T) {
 		{"cli_cmds.go", "cmdProject", "project"},
 		{"cli_cmds.go", "cmdTicket", "ticket"},
 		{"cli_cmds.go", "cmdToken", "token"},
-		{"cli_cmds.go", "cmdProfile", "profile"},
+		{"cli_cmds.go", "cmdServer", "server"},
 		{"cli_statuses.go", "cmdStatus", "status"},
 		{"cli_milestones.go", "cmdMilestone", "milestone"},
 	} {

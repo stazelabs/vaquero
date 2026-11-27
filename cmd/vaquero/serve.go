@@ -131,7 +131,7 @@ func serve(ctx context.Context, cfg config.Config, logger *slog.Logger) (err err
 	// A move stopped part way: the storage above is still the one in use,
 	// and the copies it made wait for the move to be run again.
 	if _, err := os.Stat(filepath.Join(cfg.DataDir, moveFile)); err == nil {
-		logger.Warn("an interrupted attachments move left copies in its target; run vaquero attachments move again to finish it", "record", filepath.Join(cfg.DataDir, moveFile))
+		logger.Warn("an interrupted attachments move left copies in its target; run vaquero attachment move again to finish it", "record", filepath.Join(cfg.DataDir, moveFile))
 	}
 	owner, err := c.EnsureOwner(ctx)
 	if err != nil {

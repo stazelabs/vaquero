@@ -60,7 +60,7 @@ func cmdMilestones(ctx context.Context, stdout, stderr io.Writer, args []string)
 }
 
 func cmdMilestone(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero milestone add KEY NAME [--description TEXT|-] [--due DATE] | edit KEY NAME [--name NEW] [--description TEXT|-] [--due DATE] | close KEY NAME | reopen KEY NAME"
+	const usage = "vaquero milestone new KEY NAME [--description TEXT|-] [--due DATE] | edit KEY NAME [--name NEW] [--description TEXT|-] [--due DATE] | close KEY NAME | reopen KEY NAME"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
@@ -69,7 +69,7 @@ func cmdMilestone(ctx context.Context, stdout, stderr io.Writer, args []string) 
 	if err != nil {
 		return c.finish(err)
 	}
-	takes := map[string][]string{"add": {"description", "due"}, "edit": {"name", "description", "due"}}
+	takes := map[string][]string{"new": {"description", "due"}, "edit": {"name", "description", "due"}}
 	if err := c.only(pos[0], takes[pos[0]]...); err != nil {
 		return c.finish(err)
 	}
@@ -102,7 +102,7 @@ func cmdMilestone(ctx context.Context, stdout, stderr io.Writer, args []string) 
 		body["due_on"] = *due
 	}
 	switch pos[0] {
-	case "add":
+	case "new":
 		body["name"] = ms
 		return call("POST", milestonesPath(key), body)
 	case "edit":

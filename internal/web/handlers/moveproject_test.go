@@ -193,8 +193,8 @@ func TestMCPMoveToProject(t *testing.T) {
 	if res.IsError || !strings.Contains(text, `"key": "OTH-2"`) || !strings.Contains(text, `"VAQ-1"`) {
 		t.Fatalf("get_ticket by old key: %s", text)
 	}
-	res, text = mcpCall(t, cs, "add_comment", map[string]any{"key": "vaq-1", "body": "Moved.", "view": "summary"})
+	res, text = mcpCall(t, cs, "create_comment", map[string]any{"key": "vaq-1", "body": "Moved.", "view": "summary"})
 	if res.IsError || !strings.Contains(text, `"key": "OTH-2"`) {
-		t.Fatalf("add_comment by old key: %s", text)
+		t.Fatalf("create_comment by old key: %s", text)
 	}
 }

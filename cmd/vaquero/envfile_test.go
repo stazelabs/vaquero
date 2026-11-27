@@ -60,7 +60,7 @@ func TestMoveWritesEnvFile(t *testing.T) {
 	moveSnapshot = func(context.Context, *sql.DB, string, appdb.Kind, time.Time) (appdb.BackupInfo, error) {
 		return appdb.BackupInfo{}, errors.New("disk full")
 	}
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 {
 		t.Fatalf("%d %q", code, e)
 	}
 	moveSnapshot = saved
@@ -68,7 +68,7 @@ func TestMoveWritesEnvFile(t *testing.T) {
 		t.Fatalf("a failed move changed the file: %q", b)
 	}
 
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 || !strings.Contains(out, config.EnvFilePath(dataDir)) {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -83,7 +83,7 @@ func TestMoveWritesEnvFile(t *testing.T) {
 	}
 
 	s3Env(t)
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "s3"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "s3"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	vals, mode = envFile(t, dataDir)
@@ -101,7 +101,7 @@ func TestMoveWritesEnvFile(t *testing.T) {
 	for _, k := range []string{"VQ_S3_ENDPOINT", "VQ_S3_BUCKET", "VQ_S3_ACCESS_KEY_ID", "VQ_S3_SECRET_ACCESS_KEY"} {
 		t.Setenv(k, "")
 	}
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "sqlite", "--delete-old"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "sqlite", "--delete-old"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	vals, _ = envFile(t, dataDir)
@@ -117,7 +117,7 @@ func TestMoveWritesEnvFile(t *testing.T) {
 // file names, and a file naming other storage is refused, saying so.
 func TestServeBootsFromEnvFile(t *testing.T) {
 	dataDir, want := movedFrom(t, "sqlite")
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	if err := bootOnce(t, dataDir, nil); err != nil {
@@ -238,7 +238,7 @@ func TestRedactNeverLeaks(t *testing.T) {
 	withStores(t, nil)
 	movedFrom(t, "sqlite")
 	s3Env(t)
-	code, out, e := runCLI(t, "attachments", "move", "--to", "s3")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "s3")
 	if code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -247,13 +247,13 @@ func TestRedactNeverLeaks(t *testing.T) {
 		t.Fatalf("the move doesn't show the redacted keys: %q", out)
 	}
 	// Moving again (nothing to do) and --json.
-	_, out, e = runCLI(t, "attachments", "move", "--to", "s3", "--json")
+	_, out, e = runCLI(t, "attachment", "move", "--to", "s3", "--json")
 	configtest.NoLeak(t, "the move's JSON", out+e)
 	for _, k := range []string{"VQ_S3_ENDPOINT", "VQ_S3_BUCKET", "VQ_S3_ACCESS_KEY_ID", "VQ_S3_SECRET_ACCESS_KEY"} {
 		t.Setenv(k, "")
 	}
 	// A refusal that reads the file: the stopped server's settings.
-	_, out, e = runCLI(t, "attachments", "move", "--to", "s3")
+	_, out, e = runCLI(t, "attachment", "move", "--to", "s3")
 	configtest.NoLeak(t, "a refused move", out+e)
 
 	dir := t.TempDir()
@@ -285,7 +285,7 @@ func TestRedactNeverLeaks(t *testing.T) {
 // written as its path.
 func TestMovedDataDirBootsFromEnvFile(t *testing.T) {
 	dataDir, _ := movedFrom(t, "sqlite")
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	moved := filepath.Join(t.TempDir(), "moved")
@@ -300,7 +300,7 @@ func TestMovedDataDirBootsFromEnvFile(t *testing.T) {
 	}
 	outside := filepath.Join(t.TempDir(), "files")
 	t.Setenv("VQ_BLOB_DIR", outside)
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	if vals, _ := envFile(t, dataDir); vals["VQ_BLOB_DIR"] != outside {
@@ -319,13 +319,13 @@ func TestMoveSavesSettingsForStorageInUse(t *testing.T) {
 	withStores(t, nil)
 	dataDir, _ := movedFrom(t, "sqlite")
 	s3Env(t)
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "s3"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "s3"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	if err := os.Remove(config.EnvFilePath(dataDir)); err != nil {
 		t.Fatal(err)
 	}
-	code, out, e := runCLI(t, "attachments", "move", "--to", "s3")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "s3")
 	if code != 0 || !strings.Contains(out, "Attachments are already stored there. Saved VQ_BLOB_STORE=s3") || !strings.Contains(out, config.EnvFilePath(dataDir)) {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -333,7 +333,7 @@ func TestMoveSavesSettingsForStorageInUse(t *testing.T) {
 	if vals, mode := envFile(t, dataDir); mode != 0o600 || vals["VQ_S3_SECRET_ACCESS_KEY"] != configtest.Secret || vals["VQ_BLOB_STORE"] != "s3" {
 		t.Fatalf("%o %v", mode, vals)
 	}
-	code, out, e = runCLI(t, "attachments", "move", "--to", "s3", "--json")
+	code, out, e = runCLI(t, "attachment", "move", "--to", "s3", "--json")
 	configtest.NoLeak(t, "the JSON", out+e)
 	if code != 1 || !strings.Contains(e, "Attachments are already stored there.") {
 		t.Fatalf("%d %q %q", code, out, e)
@@ -344,7 +344,7 @@ func TestMoveSavesSettingsForStorageInUse(t *testing.T) {
 // vaquero.env names says what to change.
 func TestRestoreNotesEnvFileStorage(t *testing.T) {
 	dataDir, _ := movedFrom(t, "sqlite")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}

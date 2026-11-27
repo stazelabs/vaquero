@@ -48,9 +48,10 @@ func cmdStatuses(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdStatus(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero status add KEY NAME --category C [--before S | --after S] | rename KEY NAME NEW | move KEY NAME --before S | --after S | delete KEY NAME"
+	const usage = "vaquero status new KEY NAME --category C [--before S | --after S] | edit KEY NAME --name NEW | move KEY NAME --before S | --after S | delete KEY NAME"
 	c := newCmd(stdout, stderr, usage)
 	category := c.fs.String("category", "", "the new status's category")
+	newName := c.fs.String("name", "", "edit: the status's new name")
 	before := c.fs.String("before", "", "the status it goes before")
 	after := c.fs.String("after", "", "the status it goes after")
 	pos, err := c.parse(args, 3, 4)
@@ -77,13 +78,13 @@ func cmdStatus(ctx context.Context, stdout, stderr io.Writer, args []string) int
 	if c.set("after") {
 		place["after"] = *after
 	}
-	takes := map[string][]string{"add": {"category", "before", "after"}, "move": {"before", "after"}}
+	takes := map[string][]string{"new": {"category", "before", "after"}, "edit": {"name"}, "move": {"before", "after"}}
 	if err := c.only(pos[0], takes[pos[0]]...); err != nil {
 		return c.finish(err)
 	}
 	key := pos[1]
 	switch pos[0] {
-	case "add":
+	case "new":
 		if len(pos) != 3 {
 			return c.finish(usageError{usage: usage})
 		}
@@ -92,11 +93,11 @@ func cmdStatus(ctx context.Context, stdout, stderr io.Writer, args []string) int
 		}
 		place["name"], place["category"] = pos[2], *category
 		return call("POST", statusesPath(key), place)
-	case "rename":
-		if len(pos) != 4 {
-			return c.finish(usageError{usage: usage})
+	case "edit":
+		if len(pos) != 3 || !c.set("name") {
+			return c.finish(usageError{usage: usage, hint: "give the status's new --name"})
 		}
-		return call("PATCH", statusesPath(key, pos[2]), map[string]string{"name": pos[3]})
+		return call("PATCH", statusesPath(key, pos[2]), map[string]string{"name": *newName})
 	case "move":
 		if len(pos) != 3 || len(place) == 0 {
 			return c.finish(usageError{usage: usage})

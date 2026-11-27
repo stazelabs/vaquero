@@ -266,7 +266,7 @@ func TestStorageSection(t *testing.T) {
 	c := e.Client()
 	page := c.Get("/admin").Body
 	contains(t, page, "Storage", "In the database", "No attachments yet.",
-		"VQ_BLOB_STORE", "sqlite", "default", "vaquero attachments move --to")
+		"VQ_BLOB_STORE", "sqlite", "default", "vaquero attachment move --to")
 
 	p := project(t, e)
 	tk := ticket(t, e, p, core.TicketInput{Title: "Has files"})

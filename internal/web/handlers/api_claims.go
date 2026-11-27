@@ -128,7 +128,7 @@ func decodeLease(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
 }
 
 // claimAction is POST /api/v1/tickets/{ticket}/claim, /heartbeat or
-// /release: op runs as the request's actor and the ticket is the answer,
+// /unclaim: op runs as the request's actor and the ticket is the answer,
 // short with ?view=summary.
 func claimAction(d Deps, withLease bool, op func(r *http.Request, by, ticketID string, lease time.Duration) (gen.Ticket, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -169,8 +169,8 @@ func APIHeartbeat(d Deps) http.HandlerFunc {
 	})
 }
 
-// APIRelease is POST /api/v1/tickets/{ticket}/release.
-func APIRelease(d Deps) http.HandlerFunc {
+// APIUnclaim is POST /api/v1/tickets/{ticket}/unclaim (R-Q8).
+func APIUnclaim(d Deps) http.HandlerFunc {
 	return claimAction(d, false, func(r *http.Request, by, id string, _ time.Duration) (gen.Ticket, error) {
 		return d.Core.Release(r.Context(), by, id)
 	})

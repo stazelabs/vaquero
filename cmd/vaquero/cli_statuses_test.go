@@ -34,16 +34,16 @@ func TestCLIStatuses(t *testing.T) {
 		t.Fatalf("%q", table)
 	}
 
-	if out := mustCLI(t, "status", "add", "vaq", "Needs decision", "--category", "backlog"); strings.TrimSpace(out) != "Needs decision (backlog), position 2" {
+	if out := mustCLI(t, "status", "new", "vaq", "Needs decision", "--category", "backlog"); strings.TrimSpace(out) != "Needs decision (backlog), position 2" {
 		t.Fatalf("%q", out)
 	}
-	mustCLI(t, "status", "add", "VAQ", "Blocked", "--category", "in progress", "--after", "in review")
-	mustCLI(t, "status", "add", "VAQ", "Triage", "--before", "Backlog", "--category", "backlog")
+	mustCLI(t, "status", "new", "VAQ", "Blocked", "--category", "in progress", "--after", "in review")
+	mustCLI(t, "status", "new", "VAQ", "Triage", "--before", "Backlog", "--category", "backlog")
 	if got := statusOrderCLI(t); got != "Triage, Backlog, Needs decision, Todo, In progress, In review, Blocked, Done, Cancelled" {
 		t.Fatal(got)
 	}
 	mustCLI(t, "status", "move", "VAQ", "Blocked", "--before", "In progress")
-	mustCLI(t, "status", "rename", "VAQ", "triage", "Inbox")
+	mustCLI(t, "status", "edit", "VAQ", "triage", "--name", "Inbox")
 	if got := statusOrderCLI(t); got != "Inbox, Backlog, Needs decision, Todo, Blocked, In progress, In review, Done, Cancelled" {
 		t.Fatal(got)
 	}
@@ -59,10 +59,10 @@ func TestCLIStatuses(t *testing.T) {
 	if code, _, errOut := cli(t, "status", "delete", "VAQ", "Todo"); code != 1 || !strings.Contains(errOut, "Move this status's tickets first.") {
 		t.Fatalf("%d %q", code, errOut)
 	}
-	if code, _, errOut := cli(t, "status", "rename", "VAQ", "Nope", "X"); code != 1 || !strings.Contains(errOut, "No status Nope in VAQ.") {
+	if code, _, errOut := cli(t, "status", "edit", "VAQ", "Nope", "--name", "X"); code != 1 || !strings.Contains(errOut, "No status Nope in VAQ.") {
 		t.Fatalf("%d %q", code, errOut)
 	}
-	if code, _, errOut := cli(t, "status", "add", "VAQ", "X"); code != 2 || !strings.Contains(errOut, "--category") {
+	if code, _, errOut := cli(t, "status", "new", "VAQ", "X"); code != 2 || !strings.Contains(errOut, "--category") {
 		t.Fatalf("no category: %d %q", code, errOut)
 	}
 	if code, _, errOut := cli(t, "status", "move", "VAQ", "Todo"); code != 2 || !strings.Contains(errOut, "usage:") {
@@ -73,10 +73,10 @@ func TestCLIStatuses(t *testing.T) {
 	}
 	// A flag that doesn't apply to the verb is a usage error.
 	for _, args := range [][]string{
-		{"status", "rename", "VAQ", "Todo", "Ready", "--before", "Done"},
+		{"status", "edit", "VAQ", "Todo", "--name", "Ready", "--before", "Done"},
 		{"status", "delete", "VAQ", "Todo", "--after", "Done"},
 		{"status", "move", "VAQ", "Todo", "--before", "Done", "--category", "done"},
-		{"status", "rename", "VAQ", "Todo", "Ready", "--category", "todo"},
+		{"status", "edit", "VAQ", "Todo", "--name", "Ready", "--category", "todo"},
 	} {
 		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, "usage:") {
 			t.Errorf("%v: %d %q", args, code, errOut)
@@ -87,7 +87,7 @@ func TestCLIStatuses(t *testing.T) {
 	}
 
 	// --agent: the change is the agent's.
-	mustCLI(t, "status", "add", "VAQ", "Spare", "--category", "todo", "--agent", "planner")
+	mustCLI(t, "status", "new", "VAQ", "Spare", "--category", "todo", "--agent", "planner")
 	evs, err := e.Deps.R.ListEventsNewest(t.Context(), 1)
 	if err != nil || evs[0].Kind != "status.created" || evs[0].ActorName != "planner" {
 		t.Fatalf("%v %+v", err, evs)

@@ -97,10 +97,15 @@ func TestProfilesRoundTrip(t *testing.T) {
 	if p, local, err := client.Resolve("", get); err != nil || !local || p.Name != "local" {
 		t.Fatalf("env: %+v %v %v", p, local, err)
 	}
+	env["VAQUERO_SERVER"] = "team"
+	if p, local, err := client.Resolve("", get); err != nil || local || p.Name != "team" {
+		t.Fatalf("VAQUERO_SERVER wins over VAQUERO_PROFILE: %+v %v %v", p, local, err)
+	}
+	delete(env, "VAQUERO_SERVER")
 	if p, _, err := client.Resolve("team", get); err != nil || p.URL != "https://vq.example" {
 		t.Fatalf("flag: %+v %v", p, err)
 	}
-	if _, _, err := client.Resolve("nope", get); err == nil || !strings.Contains(err.Error(), "no profile called nope") {
+	if _, _, err := client.Resolve("nope", get); err == nil || !strings.Contains(err.Error(), "no server called nope") {
 		t.Fatalf("%v", err)
 	}
 }

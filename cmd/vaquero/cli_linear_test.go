@@ -124,7 +124,7 @@ func TestImportLinearKeepsKeysNumbersStatusesAndLabels(t *testing.T) {
 // the numbers are kept.
 func TestImportLinearIntoAnotherKey(t *testing.T) {
 	cliEnv(t)
-	mustCLI(t, "project", "create", "OPS", "Operations")
+	mustCLI(t, "project", "new", "OPS", "Operations")
 	out := mustCLI(t, "import", "linear", linearSample, "--project", "ops")
 	if !strings.Contains(out, "Imported 9 tickets into OPS (Operations).") {
 		t.Fatalf("%s", out)

@@ -12,8 +12,8 @@ import (
 // show, and removed by project unlink A ID (or the other project's key).
 func TestCLIProjectLinks(t *testing.T) {
 	e := cliEnv(t)
-	mustCLI(t, "project", "create", "WEB", "Web app")
-	mustCLI(t, "project", "create", "APP", "Mobile app")
+	mustCLI(t, "project", "new", "WEB", "Web app")
+	mustCLI(t, "project", "new", "APP", "Mobile app")
 
 	if out := mustCLI(t, "project", "link", "app", "depends-on", "web"); strings.TrimSpace(out) != "APP depends on WEB." {
 		t.Fatalf("%q", out)

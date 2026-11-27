@@ -25,7 +25,7 @@ import (
 	"github.com/stazelabs/vaquero/internal/units"
 )
 
-const moveUsage = "vaquero attachments move --to sqlite|dir|s3 [--delete-old]"
+const moveUsage = "vaquero attachment move --to sqlite|dir|s3 [--delete-old]"
 
 // moveFile, in the data directory, records a move from before its first
 // copy until it has switched (and, with --delete-old, deleted the old
@@ -88,7 +88,7 @@ var moveFreeBytes = appdb.FreeBytes
 // moveSnapshot saves the premove snapshot, replaceable by a test.
 var moveSnapshot = appdb.SnapshotNext
 
-// cmdAttachmentsMove is vaquero attachments move: every attachment's bytes
+// cmdAttachmentsMove is vaquero attachment move: every attachment's bytes
 // copied to other storage, with the server stopped.
 //
 // Each file is read from the storage the database records (blob_store,
@@ -298,7 +298,7 @@ func moveAttachments(ctx context.Context, cfg config.Config, deleteOld bool, get
 				return res, nil
 			}
 			if plan.DeleteOld {
-				return res, message(fmt.Sprintf("An earlier move to %s finished before it deleted the old copies in %s. Run vaquero attachments move --to %s --delete-old to delete them, or delete %s to keep them.",
+				return res, message(fmt.Sprintf("An earlier move to %s finished before it deleted the old copies in %s. Run vaquero attachment move --to %s --delete-old to delete them, or delete %s to keep them.",
 					plan.To.Backend, plan.From.where(cfg.DataDir), plan.To.Backend, filepath.Join(cfg.DataDir, moveFile)))
 			}
 			removeMovePlan(cfg.DataDir)

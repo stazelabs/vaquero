@@ -82,11 +82,11 @@ func TestAPIWritesSummaryView(t *testing.T) {
 		t.Fatalf("move: %s", r.Body)
 	}
 
-	r = c.API("POST", "/api/v1/tickets/VAQ-1/release?view=summary", tok, nil)
+	r = c.API("POST", "/api/v1/tickets/VAQ-1/unclaim?view=summary", tok, nil)
 	if r.Status != 200 {
 		t.Fatalf("release: %d %s", r.Status, r.Body)
 	}
-	if m := checkSummary(t, "release", r.Body, false); m["claimed_by"] != nil || m["assignee"] != "builder" {
+	if m := checkSummary(t, "unclaim", r.Body, false); m["claimed_by"] != nil || m["assignee"] != "builder" {
 		t.Fatalf("release: %s", r.Body)
 	}
 
@@ -114,7 +114,7 @@ func TestAPIUnknownViewWritesNothing(t *testing.T) {
 	}{
 		{"POST", "/api/v1/tickets/VAQ-1/claim?view=short", nil},
 		{"POST", "/api/v1/tickets/VAQ-1/heartbeat?view=short", nil},
-		{"POST", "/api/v1/tickets/VAQ-1/release?view=short", nil},
+		{"POST", "/api/v1/tickets/VAQ-1/unclaim?view=short", nil},
 		{"PATCH", "/api/v1/tickets/VAQ-1?view=short", map[string]string{"title": "x"}},
 		{"POST", "/api/v1/tickets/VAQ-1/move?view=short", map[string]string{"status": "Done"}},
 		{"POST", "/api/v1/tickets/VAQ-1/comments?view=short", map[string]string{"body": "x"}},
@@ -141,9 +141,9 @@ func TestMCPWritesSummaryView(t *testing.T) {
 		{"claim_ticket", map[string]any{"key": "VAQ-1", "view": "summary"}, false},
 		{"heartbeat", map[string]any{"key": "VAQ-1", "view": "summary"}, false},
 		{"update_ticket", map[string]any{"key": "VAQ-1", "title": "Renamed", "view": "summary"}, false},
-		{"add_comment", map[string]any{"key": "VAQ-1", "body": "On it.", "view": "summary"}, true},
+		{"create_comment", map[string]any{"key": "VAQ-1", "body": "On it.", "view": "summary"}, true},
 		{"move_ticket", map[string]any{"key": "VAQ-1", "status": "In review", "view": "summary"}, false},
-		{"release_ticket", map[string]any{"key": "VAQ-1", "view": "summary"}, false},
+		{"unclaim_ticket", map[string]any{"key": "VAQ-1", "view": "summary"}, false},
 	} {
 		res, text := mcpCall(t, cs, tc.tool, tc.args)
 		if res.IsError {

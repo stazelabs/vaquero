@@ -22,9 +22,9 @@ type apiTicket = api.Ticket
 var cliCommands = map[string]func(ctx context.Context, stdout, stderr io.Writer, args []string) int{
 	"projects": cmdProjects, "project": cmdProject,
 	"tickets": cmdTickets, "ticket": cmdTicket,
-	"comment": cmdComment, "plan": cmdPlan, "decisions": cmdDecisions, "decision": cmdDecision, "ref": cmdRef, "link": cmdLink, "unlink": cmdUnlink, "docs": cmdDocs,
+	"comment": cmdComment, "plan": cmdPlan, "decisions": cmdDecisions, "decision": cmdDecision, "ref": cmdRef, "docs": cmdDocs,
 	"search": cmdSearch, "activity": cmdActivity,
-	"token": cmdToken, "profile": cmdProfile,
+	"token": cmdToken, "server": cmdServer,
 }
 
 // canon is a ticket key in its canonical form, for paths.
@@ -71,7 +71,7 @@ func cmdProjects(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero project create KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] [--repo PATH] [--main-branch NAME] [--remote NAME] [--fetch-minutes N] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
+	const usage = "vaquero project new KEY NAME [--description TEXT] | show KEY | edit KEY [--name NAME] [--description TEXT] [--workflow on|off] [--repo PATH] [--main-branch NAME] [--remote NAME] [--fetch-minutes N] | key KEY NEWKEY | icon KEY --monogram|--glyph NAME|--image FILE|--remove-image | link KEY depends-on|relates OTHER | unlink KEY ID|OTHER"
 	c := newCmd(stdout, stderr, usage)
 	name := c.fs.String("name", "", "new name")
 	desc := c.fs.String("description", "", "description (- reads standard input)")
@@ -134,7 +134,7 @@ func cmdProject(ctx context.Context, stdout, stderr io.Writer, args []string) in
 		return c.finish(usageError{usage: usage, hint: "project icon takes one of --monogram, --glyph NAME, --image FILE and --remove-image"})
 	}
 	switch pos[0] {
-	case "create":
+	case "new":
 		if len(pos) != 3 {
 			return c.finish(usageError{usage: usage})
 		}
@@ -490,7 +490,13 @@ func linkWords(l api.Link) string {
 }
 
 func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS | move-to TICKET KEY [--version N]"
+	const usage = "vaquero ticket show TICKET | new KEY TITLE [fields] | edit TICKET [fields] [--add-tag T] [--remove-tag T] [--version N] | move TICKET STATUS | transfer TICKET KEY [--version N] | link TICKET blocks|relates|duplicates OTHER | unlink TICKET OTHER"
+	switch {
+	case len(args) > 0 && args[0] == "link":
+		return cmdTicketLink(ctx, stdout, stderr, args[1:])
+	case len(args) > 0 && args[0] == "unlink":
+		return cmdTicketUnlink(ctx, stdout, stderr, args[1:])
+	}
 	c := newCmd(stdout, stderr, usage)
 	title := c.fs.String("title", "", "title")
 	body := c.fs.String("body", "", "description (- reads standard input)")
@@ -622,7 +628,7 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 			show()
 			return nil
 		})
-	case "move-to":
+	case "transfer":
 		if len(pos) != 3 {
 			return c.finish(usageError{usage: usage})
 		}
@@ -651,14 +657,18 @@ func cmdTicket(ctx context.Context, stdout, stderr io.Writer, args []string) int
 }
 
 func cmdComment(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero comment TICKET TEXT  (TEXT - reads standard input)")
-	pos, err := c.parse(args, 2, 2)
+	const usage = "vaquero comment new TICKET TEXT  (TEXT - reads standard input)"
+	c := newCmd(stdout, stderr, usage)
+	pos, err := c.parse(args, 3, 3)
+	if err == nil && pos[0] != "new" {
+		err = usageError{usage: usage}
+	}
 	return c.connected(ctx, err, func() error {
-		key, err := canon(pos[0])
+		key, err := canon(pos[1])
 		if err != nil {
 			return err
 		}
-		body, err := text(pos[1])
+		body, err := text(pos[2])
 		if err != nil {
 			return err
 		}
@@ -671,8 +681,9 @@ func cmdComment(ctx context.Context, stdout, stderr io.Writer, args []string) in
 	})
 }
 
-func cmdLink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero link TICKET blocks|relates|duplicates OTHER"
+// cmdTicketLink is vaquero ticket link.
+func cmdTicketLink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	const usage = "vaquero ticket link TICKET blocks|relates|duplicates OTHER"
 	c := newCmd(stdout, stderr, usage)
 	pos, err := c.parse(args, 3, 3)
 	if err == nil && pos[1] != "blocks" && pos[1] != "relates" && pos[1] != "duplicates" {
@@ -692,8 +703,9 @@ func cmdLink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	})
 }
 
-func cmdUnlink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	c := newCmd(stdout, stderr, "vaquero unlink TICKET OTHER")
+// cmdTicketUnlink is vaquero ticket unlink.
+func cmdTicketUnlink(ctx context.Context, stdout, stderr io.Writer, args []string) int {
+	c := newCmd(stdout, stderr, "vaquero ticket unlink TICKET OTHER")
 	pos, err := c.parse(args, 2, 2)
 	return c.connected(ctx, err, func() error {
 		key, err := canon(pos[0])
@@ -785,14 +797,14 @@ func cmdActivity(ctx context.Context, stdout, stderr io.Writer, args []string) i
 }
 
 func cmdToken(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero token create NAME | list | revoke PREFIX"
+	const usage = "vaquero token new NAME | list | delete PREFIX"
 	c := newCmd(stdout, stderr, usage)
 	pos, err := c.parse(args, 1, 2)
 	if err != nil {
 		return c.finish(err)
 	}
 	switch {
-	case pos[0] == "create" && len(pos) == 2:
+	case pos[0] == "new" && len(pos) == 2:
 		return c.connected(ctx, nil, func() error {
 			var t api.Token
 			if err := c.call(ctx, "POST", "/api/v1/tokens", map[string]string{"name": pos[1]}, &t); err != nil {
@@ -823,7 +835,7 @@ func cmdToken(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 			})
 			return nil
 		})
-	case pos[0] == "revoke" && len(pos) == 2:
+	case pos[0] == "delete" && len(pos) == 2:
 		return c.connected(ctx, nil, func() error {
 			if err := c.call(ctx, "POST", "/api/v1/tokens/"+url.PathEscape(pos[1])+"/revoke", nil, nil); err != nil {
 				return err
@@ -837,9 +849,10 @@ func cmdToken(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 	return c.finish(usageError{usage: usage})
 }
 
-// cmdProfile manages saved profiles; it never talks to a server.
-func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero profile add NAME URL TOKEN|- | list | use NAME | remove NAME"
+// cmdServer manages saved servers (client.Config's profiles, kept on disk
+// under that name); it never talks to a server.
+func cmdServer(_ context.Context, stdout, stderr io.Writer, args []string) int {
+	const usage = "vaquero server new NAME URL TOKEN|- | list | use NAME | delete NAME"
 	c := newCmd(stdout, stderr, usage)
 	pos, err := c.parse(args, 1, 4)
 	if err != nil {
@@ -858,7 +871,7 @@ func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int 
 		return -1
 	}
 	switch {
-	case pos[0] == "add" && len(pos) == 4:
+	case pos[0] == "new" && len(pos) == 4:
 		if pos[1] == "local" {
 			return c.finish(fmt.Errorf("local is built in; pick another name"))
 		}
@@ -895,17 +908,17 @@ func cmdProfile(_ context.Context, stdout, stderr io.Writer, args []string) int 
 		return exitOK
 	case pos[0] == "use" && len(pos) == 2:
 		if pos[1] != "local" && find(pos[1]) < 0 {
-			return c.finish(fmt.Errorf("no profile called %s", pos[1]))
+			return c.finish(fmt.Errorf("no server called %s", pos[1]))
 		}
 		cfg.Current = pos[1]
 		if pos[1] == "local" {
 			cfg.Current = ""
 		}
 		return c.finish(cfg.Save())
-	case pos[0] == "remove" && len(pos) == 2:
+	case pos[0] == "delete" && len(pos) == 2:
 		i := find(pos[1])
 		if i < 0 {
-			return c.finish(fmt.Errorf("no profile called %s", pos[1]))
+			return c.finish(fmt.Errorf("no server called %s", pos[1]))
 		}
 		cfg.Profiles = append(cfg.Profiles[:i], cfg.Profiles[i+1:]...)
 		if cfg.Current == pos[1] {

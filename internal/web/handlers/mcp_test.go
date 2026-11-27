@@ -62,9 +62,9 @@ func mcpCall(t *testing.T, cs *mcp.ClientSession, name string, args map[string]a
 }
 
 var frozenTools = []string{
-	"add_comment", "add_reference", "answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_ticket", "get_plan", "get_ticket", "heartbeat",
-	"link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "release_ticket",
-	"remove_reference", "save_plan", "search", "update_ticket",
+	"answer_decision", "ask_decision", "bulk_update", "claim_ticket", "create_comment", "create_reference", "create_ticket", "delete_reference", "get_plan", "get_ticket",
+	"heartbeat", "link_tickets", "list_decisions", "list_projects", "list_tickets", "move_ticket", "read_file", "ready_tickets", "recent_activity", "save_plan",
+	"search", "unclaim_ticket", "update_ticket",
 }
 
 func TestMCPToolList(t *testing.T) {
@@ -108,13 +108,13 @@ func TestMCPClaimLoop(t *testing.T) {
 	if res.IsError || !strings.Contains(text, `"claimed_by": "builder"`) {
 		t.Fatalf("claim: %s", text)
 	}
-	if res, text := mcpCall(t, cs, "add_comment", map[string]any{"key": "vaq-1", "body": "Working on it."}); res.IsError {
+	if res, text := mcpCall(t, cs, "create_comment", map[string]any{"key": "vaq-1", "body": "Working on it."}); res.IsError {
 		t.Fatalf("comment: %s", text)
 	}
 	if res, text := mcpCall(t, cs, "heartbeat", map[string]any{"key": "VAQ-1"}); res.IsError {
 		t.Fatalf("heartbeat: %s", text)
 	}
-	if res, text := mcpCall(t, cs, "release_ticket", map[string]any{"key": "VAQ-1"}); res.IsError || strings.Contains(text, "claimed_by") {
+	if res, text := mcpCall(t, cs, "unclaim_ticket", map[string]any{"key": "VAQ-1"}); res.IsError || strings.Contains(text, "claimed_by") {
 		t.Fatalf("release: %s", text)
 	}
 	_, text = mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-1"})
@@ -300,22 +300,22 @@ func TestMCPToolErrorCarriesFields(t *testing.T) {
 func TestMCPReferences(t *testing.T) {
 	e, tok := agentEnv(t)
 	cs := mcpConnect(t, e, tok, "builder")
-	res, text := mcpCall(t, cs, "add_reference", map[string]any{"key": "VAQ-1", "kind": "design", "target": "https://example.com/d", "label": "Mock"})
+	res, text := mcpCall(t, cs, "create_reference", map[string]any{"key": "VAQ-1", "kind": "design", "target": "https://example.com/d", "label": "Mock"})
 	var ref struct{ ID, Kind, Target, Label string }
 	if err := json.Unmarshal([]byte(text), &ref); res.IsError || err != nil || ref.ID == "" || ref.Label != "Mock" {
 		t.Fatalf("add: %v %s", err, text)
 	}
-	if res, text := mcpCall(t, cs, "add_reference", map[string]any{"key": "VAQ-1", "kind": "spec", "target": "javascript:x"}); !res.IsError || !strings.Contains(text, "Use a repo path or an http or https URL.") {
+	if res, text := mcpCall(t, cs, "create_reference", map[string]any{"key": "VAQ-1", "kind": "spec", "target": "javascript:x"}); !res.IsError || !strings.Contains(text, "Use a repo path or an http or https URL.") {
 		t.Fatalf("refused: %s", text)
 	}
 	_, text = mcpCall(t, cs, "get_ticket", map[string]any{"key": "VAQ-1"})
 	if !strings.Contains(text, `"references"`) || !strings.Contains(text, ref.ID) {
 		t.Fatalf("get_ticket: %s", text)
 	}
-	if res, text := mcpCall(t, cs, "remove_reference", map[string]any{"key": "VAQ-1", "id": ref.ID}); res.IsError || !strings.Contains(text, `"ok"`) {
+	if res, text := mcpCall(t, cs, "delete_reference", map[string]any{"key": "VAQ-1", "id": ref.ID}); res.IsError || !strings.Contains(text, `"ok"`) {
 		t.Fatalf("remove: %s", text)
 	}
-	if res, _ := mcpCall(t, cs, "remove_reference", map[string]any{"key": "VAQ-1", "id": ref.ID}); !res.IsError {
+	if res, _ := mcpCall(t, cs, "delete_reference", map[string]any{"key": "VAQ-1", "id": ref.ID}); !res.IsError {
 		t.Fatal("removed twice")
 	}
 }

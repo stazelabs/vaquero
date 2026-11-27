@@ -184,7 +184,7 @@ func movePending(dataDir string) bool {
 func TestMoveSQLiteToDirHandsOffToServe(t *testing.T) {
 	dataDir, want := movedFrom(t, "sqlite")
 	t.Setenv("VQ_BLOB_STORE", "dir")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -240,7 +240,7 @@ func TestMoveSQLiteToDirHandsOffToServe(t *testing.T) {
 // previews included, and serve boots on sqlite.
 func TestMoveDirToSQLiteDeletesOld(t *testing.T) {
 	dataDir, want := movedFrom(t, "dir")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "sqlite", "--delete-old")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "sqlite", "--delete-old")
 	if code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -270,7 +270,7 @@ func TestMoveThroughS3(t *testing.T) {
 	t.Setenv("VQ_S3_BUCKET", "vq")
 	t.Setenv("VQ_S3_ACCESS_KEY_ID", "AKIATEST")
 	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "s3cr3t-key-DO-NOT-LEAK")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "s3")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "s3")
 	if code != 0 || strings.Contains(out+e, "DO-NOT-LEAK") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -292,12 +292,12 @@ func TestMoveThroughS3(t *testing.T) {
 	if err := writeEnvFile(dataDir, map[string]string{"VQ_S3_SECRET_ACCESS_KEY": ""}); err != nil {
 		t.Fatal(err)
 	}
-	code, _, e = runCLI(t, "attachments", "move", "--to", "dir")
+	code, _, e = runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "VQ_S3_SECRET_ACCESS_KEY") {
 		t.Fatalf("%d %q", code, e)
 	}
 	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "s3cr3t-key-DO-NOT-LEAK")
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old"); code != 0 {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old"); code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "dir", "")); !maps.Equal(got, want) {
@@ -338,7 +338,7 @@ func TestMoveResumesAfterAnInterruption(t *testing.T) {
 		}
 		return s
 	})
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 1 || !strings.Contains(e, "the disk went away") || !strings.Contains(e, "Attachments are still stored in sqlite") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -359,7 +359,7 @@ func TestMoveResumesAfterAnInterruption(t *testing.T) {
 	}
 
 	withStores(t, nil)
-	code, out, e = runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, out, e = runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 0 || !strings.Contains(out, "1 copied by an earlier run") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -384,7 +384,7 @@ func TestMoveRecopiesAVanishedCopy(t *testing.T) {
 		}
 		return s
 	})
-	if code, _, _ := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+	if code, _, _ := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 {
 		t.Fatal("the first run passed")
 	}
 	dir := backendStore(t, dataDir, "dir", "")
@@ -392,7 +392,7 @@ func TestMoveRecopiesAVanishedCopy(t *testing.T) {
 		dir.Delete(t.Context(), k)
 	}
 	withStores(t, nil)
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 || strings.Contains(out, "earlier run") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -434,7 +434,7 @@ func TestMoveDeleteOldDeletesNothingWhenACheckFails(t *testing.T) {
 		}
 		return s
 	})
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 1 || !strings.Contains(e, "doesn't match the original") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -445,7 +445,7 @@ func TestMoveDeleteOldDeletesNothingWhenACheckFails(t *testing.T) {
 		t.Fatalf("settings changed:\n%s\n%s", before, after)
 	}
 	withStores(t, nil)
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "1 copied by an earlier run") {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "1 copied by an earlier run") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 	if got := attachmentBytes(t, dataDir, backendStore(t, dataDir, "dir", "")); !maps.Equal(got, want) {
@@ -463,7 +463,7 @@ func TestMoveStopsOnAMissingFile(t *testing.T) {
 	if err := old.Delete(t.Context(), key); err != nil {
 		t.Fatal(err)
 	}
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "is missing from sqlite") || !strings.Contains(e, "-") {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -491,14 +491,14 @@ func TestMoveRefusals(t *testing.T) {
 		{"same place through VQ_BLOB_DIR", map[string]string{"VQ_BLOB_DIR": filepath.Join(dataDir, "attachments")}, []string{"--to", "dir"}, 1, "already stored there"},
 		{"no target", nil, nil, 2, "--to"},
 		{"unknown target", nil, []string{"--to", "tape"}, 2, "--to"},
-		{"stray argument", nil, []string{"--to", "sqlite", "VAQ-1"}, 2, "vaquero attachments move"},
+		{"stray argument", nil, []string{"--to", "sqlite", "VAQ-1"}, 2, "vaquero attachment move"},
 		{"other VQ_BLOB_STORE", map[string]string{"VQ_BLOB_STORE": "s3"}, []string{"--to", "sqlite"}, 1, "VQ_BLOB_STORE is s3"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for k, v := range tc.env {
 				t.Setenv(k, v)
 			}
-			code, _, e := runCLI(t, append([]string{"attachments", "move"}, tc.args...)...)
+			code, _, e := runCLI(t, append([]string{"attachment", "move"}, tc.args...)...)
 			if code != tc.code || !strings.Contains(e, tc.want) {
 				t.Fatalf("%d %q", code, e)
 			}
@@ -511,7 +511,7 @@ func TestMoveRefusals(t *testing.T) {
 
 func TestMoveRefusesRunningServer(t *testing.T) {
 	startBackground(t)
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "Stop vaquero first") {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -522,7 +522,7 @@ func TestMoveNothingToMove(t *testing.T) {
 	if err := bootOnce(t, dataDir, nil); err != nil {
 		t.Fatal(err)
 	}
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 || !strings.Contains(out, "There are no attachments to move") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -541,7 +541,7 @@ func TestMoveRefusesAnOlderDatabase(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataDir, "vaquero.db"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "older Vaquero") {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -570,7 +570,7 @@ func TestMoveChecksFreeSpace(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "store")
 	t.Setenv("VQ_BLOB_DIR", root)
 	free(total - 1)
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 1 || !strings.Contains(e, "free in "+root) || asked != root {
 		t.Fatalf("%d %q, asked %q", code, e, asked)
 	}
@@ -582,22 +582,22 @@ func TestMoveChecksFreeSpace(t *testing.T) {
 	onDataVolume(true)
 	size := dbSize(t, filepath.Join(dataDir, "vaquero.db"))
 	free(total + size + appdb.MinBackupMargin - 1)
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 || !strings.Contains(e, "free in "+root) {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 || !strings.Contains(e, "free in "+root) {
 		t.Fatalf("same volume: %d %q", code, e)
 	}
 	free(total + size + appdb.MinBackupMargin)
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 		t.Fatal(e)
 	}
 
 	// Into the database: the snapshot holds the copies as well.
 	size = dbSize(t, filepath.Join(dataDir, "vaquero.db"))
 	free(total + size + total + appdb.MinBackupMargin - 1)
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "sqlite"); code != 1 || !strings.Contains(e, "free in "+dataDir) || asked != dataDir {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "sqlite"); code != 1 || !strings.Contains(e, "free in "+dataDir) || asked != dataDir {
 		t.Fatalf("sqlite: %d %q, asked %q", code, e, asked)
 	}
 	free(total + size + total + appdb.MinBackupMargin)
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "sqlite"); code != 0 {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "sqlite"); code != 0 {
 		t.Fatal(e)
 	}
 }
@@ -613,13 +613,13 @@ func TestMoveElsewhereCleansAnInterruptedMove(t *testing.T) {
 		}
 		return s
 	})
-	if code, _, _ := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+	if code, _, _ := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 {
 		t.Fatal("the first run passed")
 	}
 	withStores(t, nil)
 	second := filepath.Join(t.TempDir(), "second")
 	t.Setenv("VQ_BLOB_DIR", second)
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 || !strings.Contains(e, "Removed 1 file an interrupted move left in dir "+first) {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -637,7 +637,7 @@ func TestMoveFinishesAfterTheSwitch(t *testing.T) {
 	for _, deleteOld := range []bool{true, false} {
 		t.Run(map[bool]string{true: "delete old", false: "keep old"}[deleteOld], func(t *testing.T) {
 			dataDir, want := movedFrom(t, "sqlite")
-			if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+			if code, _, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 				t.Fatal(e)
 			}
 			// What the killed run's file said.
@@ -651,7 +651,7 @@ func TestMoveFinishesAfterTheSwitch(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dataDir, "move.pending"), append(b, '\n'), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+			code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 			if code != 0 || !strings.Contains(out, "finished") {
 				t.Fatalf("%d %q %q", code, out, e)
 			}
@@ -675,7 +675,7 @@ func TestServeWarnsOfAnInterruptedMove(t *testing.T) {
 		}
 		return s
 	})
-	if code, _, _ := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+	if code, _, _ := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 {
 		t.Fatal("the move passed")
 	}
 	cfg := testConfig(t, freeAddr(t), dataDir)
@@ -695,7 +695,7 @@ func TestServeWarnsOfAnInterruptedMove(t *testing.T) {
 
 func TestMoveJSON(t *testing.T) {
 	movedFrom(t, "sqlite")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--json")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--json")
 	var res moveResult
 	if code != 0 || json.Unmarshal([]byte(out), &res) != nil || res.Moved != 2 || res.Copied != 2 || res.Backend != "dir" {
 		t.Fatalf("%d %q %q", code, out, e)
@@ -717,7 +717,7 @@ func TestMoveDeleteFailureAfterTheSwitch(t *testing.T) {
 		}
 		return s
 	})
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 1 || !strings.Contains(e, "Moved 2 attachments to dir, but the old copies in sqlite couldn't all be deleted (read-only)") {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -728,7 +728,7 @@ func TestMoveDeleteFailureAfterTheSwitch(t *testing.T) {
 		t.Fatal(err)
 	}
 	withStores(t, nil)
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir")
 	if code != 0 || !strings.Contains(out, "finished") || !strings.Contains(out, "Deleted the old copies from sqlite") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -752,7 +752,7 @@ func premoves(t *testing.T, dataDir string) []string {
 // shows it.
 func TestMoveSnapshotsBeforeTheSwitch(t *testing.T) {
 	dataDir, _ := movedFrom(t, "sqlite")
-	code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 0 {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -803,7 +803,7 @@ func TestMoveSnapshotFailureSwitchesNothing(t *testing.T) {
 		return appdb.BackupInfo{}, errors.New("disk full")
 	}
 	t.Cleanup(func() { moveSnapshot = saved })
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 1 || !strings.Contains(e, "couldn't save a snapshot first") || !strings.Contains(e, "disk full") ||
 		!strings.Contains(e, "Attachments are still stored in sqlite") {
 		t.Fatalf("%d %q", code, e)
@@ -818,7 +818,7 @@ func TestMoveSnapshotFailureSwitchesNothing(t *testing.T) {
 		t.Fatalf("the old storage must still boot: %v", err)
 	}
 	moveSnapshot = saved
-	if code, out, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "2 copied by an earlier run") {
+	if code, out, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old"); code != 0 || !strings.Contains(out, "2 copied by an earlier run") {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
 }
@@ -844,7 +844,7 @@ func TestMoveRefusesACaseVariantDir(t *testing.T) {
 	dataDir, want := movedFrom(t, "dir")
 	upper := caseInsensitive(t, filepath.Join(dataDir, "attachments"))
 	t.Setenv("VQ_BLOB_DIR", upper)
-	code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 	if code != 1 || !strings.Contains(e, sameStorageRefusal) {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -866,7 +866,7 @@ func TestMoveRefusesAliasedBuckets(t *testing.T) {
 	t.Setenv("VQ_S3_BUCKET", "vq")
 	t.Setenv("VQ_S3_ACCESS_KEY_ID", "AKIATEST")
 	t.Setenv("VQ_S3_SECRET_ACCESS_KEY", "secret")
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "s3"); code != 0 {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "s3"); code != 0 {
 		t.Fatal(e)
 	}
 	bucket := fakeS3Store(t, "s3.example.test:9000/vq")
@@ -875,7 +875,7 @@ func TestMoveRefusesAliasedBuckets(t *testing.T) {
 	fakeBuckets.Unlock()
 	before := objectKeys(t, bucket)
 	t.Setenv("VQ_S3_ENDPOINT", "alias.example.test:9000")
-	code, _, e := runCLI(t, "attachments", "move", "--to", "s3", "--delete-old")
+	code, _, e := runCLI(t, "attachment", "move", "--to", "s3", "--delete-old")
 	if code != 1 || !strings.Contains(e, sameStorageRefusal) {
 		t.Fatalf("%d %q", code, e)
 	}
@@ -917,7 +917,7 @@ func TestMoveAliasedLeftoversDeleteNothing(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("VQ_BLOB_DIR", tc.dir)
-			code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+			code, _, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 			if code != 1 || !strings.Contains(e, "These are the same storage; nothing was deleted.") {
 				t.Fatalf("%d %q", code, e)
 			}
@@ -939,7 +939,7 @@ func TestMoveRefusesNestedDirs(t *testing.T) {
 		dataDir, // the source inside the target
 	} {
 		t.Setenv("VQ_BLOB_DIR", dir)
-		code, _, e := runCLI(t, "attachments", "move", "--to", "dir", "--delete-old")
+		code, _, e := runCLI(t, "attachment", "move", "--to", "dir", "--delete-old")
 		if code != 1 || !strings.Contains(e, "is inside") {
 			t.Fatalf("%s: %d %q", dir, code, e)
 		}
@@ -962,7 +962,7 @@ func TestMoveDeleteOldOnlyDeletesAttachmentKeys(t *testing.T) {
 	if err := old.Put(t.Context(), stray, strings.NewReader("mine"), 4, "text/plain"); err != nil {
 		t.Fatal(err)
 	}
-	code, out, e := runCLI(t, "attachments", "move", "--to", "sqlite", "--delete-old")
+	code, out, e := runCLI(t, "attachment", "move", "--to", "sqlite", "--delete-old")
 	if code != 0 || !strings.Contains(e, stray) {
 		t.Fatalf("%d %q %q", code, out, e)
 	}
@@ -983,7 +983,7 @@ func TestMoveElsewhereRemovesTempFiles(t *testing.T) {
 		}
 		return s
 	})
-	if code, _, _ := runCLI(t, "attachments", "move", "--to", "dir"); code != 1 {
+	if code, _, _ := runCLI(t, "attachment", "move", "--to", "dir"); code != 1 {
 		t.Fatal("the first run passed")
 	}
 	instance := readSetting(t, dataDir, "instance_id")
@@ -993,7 +993,7 @@ func TestMoveElsewhereRemovesTempFiles(t *testing.T) {
 	}
 	withStores(t, nil)
 	t.Setenv("VQ_BLOB_DIR", filepath.Join(t.TempDir(), "second"))
-	if code, _, e := runCLI(t, "attachments", "move", "--to", "dir"); code != 0 {
+	if code, _, e := runCLI(t, "attachment", "move", "--to", "dir"); code != 0 {
 		t.Fatal(e)
 	}
 	if _, err := os.Stat(tmp); !os.IsNotExist(err) {

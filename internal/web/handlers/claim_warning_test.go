@@ -69,7 +69,7 @@ func TestAPIWriteAnswersNoWarningForClaimant(t *testing.T) {
 	if r.Status != 200 || strings.Contains(r.Body, "warning") {
 		t.Fatalf("%d %s", r.Status, r.Body)
 	}
-	bot.API("POST", "/api/v1/tickets/VAQ-1/release", tok, nil)
+	bot.API("POST", "/api/v1/tickets/VAQ-1/unclaim", tok, nil)
 	if r := c.API("PATCH", "/api/v1/tickets/VAQ-1", tok, map[string]string{"title": "Free"}); strings.Contains(r.Body, "warning") {
 		t.Fatalf("%s", r.Body)
 	}

@@ -25,9 +25,9 @@ A ticket is ready when it is in a todo status, has no assignee and no claim, not
 
 Only one agent can hold a ticket. A second claim is refused with the holder's name and when its lease ends. A ticket that is done or cancelled, or assigned to someone else, can't be claimed.
 
-While it works, the agent renews the lease with `vaquero heartbeat VAQ-12` (again with `--lease` if it wants). Renewing doesn't change the ticket's version, so it never makes the agent's own edits conflict. When it is finished, or wants to stop, `vaquero release VAQ-12` gives up the claim and leaves the ticket's status and assignee as they are.
+While it works, the agent renews the lease with `vaquero heartbeat VAQ-12` (again with `--lease` if it wants). Renewing doesn't change the ticket's version, so it never makes the agent's own edits conflict. When it is finished, or wants to stop, `vaquero unclaim VAQ-12` gives up the claim and leaves the ticket's status and assignee as they are.
 
-Only the holder can renew or release a claim, and only while its lease is running.
+Only the holder can renew or unclaim a claim, and only while its lease is running.
 
 ## Claims are advisory
 
@@ -45,4 +45,4 @@ A claimed card shows who holds it, with a robot for an agent, and how long its l
 
 ## Agents over MCP
 
-Agent clients can do all of this with MCP tools instead of commands: `ready_tickets`, `claim_ticket`, `heartbeat` and `release_ticket`. [MCP](/help/mcp) explains connecting one, and the Admin page's MCP activity shows every call agents made.
+Agent clients can do all of this with MCP tools instead of commands: `ready_tickets`, `claim_ticket`, `heartbeat` and `unclaim_ticket`. [MCP](/help/mcp) explains connecting one, and the Admin page's MCP activity shows every call agents made.

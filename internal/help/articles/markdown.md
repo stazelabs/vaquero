@@ -92,7 +92,7 @@ Every link is marked so search engines don't follow it, and a link that would ru
 
 ## Images and attachments
 
-An image is a link with `!` in front: `![what it shows](address)`. Only an attachment shows as an image. Pasting or dropping a file into a description or comment attaches it and writes the reference for you, an image for a picture and a link for any other file; `vaquero attach` prints the same reference. See [Attachments](/help/attachments).
+An image is a link with `!` in front: `![what it shows](address)`. Only an attachment shows as an image. Pasting or dropping a file into a description or comment attaches it and writes the reference for you, an image for a picture and a link for any other file; `vaquero attachment new` prints the same reference. See [Attachments](/help/attachments).
 
     ![The error dialog](/attachments/01M89WJCM72AW7ZD4DHSKJ0RQ1/error.png)
     [trace.log](/attachments/01M89WJD1B4C3PZ8N2X7GQ5K6V/trace.log)

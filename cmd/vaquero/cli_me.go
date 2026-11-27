@@ -13,8 +13,8 @@ func init() {
 	cliCommands["me"] = cmdMe
 }
 
-// cmdMe is vaquero me (VAQ-149, ruling P-R3; "profile" names connection
-// profiles): the owner's profile, and with flags a change to it. Only the
+// cmdMe is vaquero me (VAQ-149, ruling P-R3; "server" names a saved
+// connection): the owner's profile, and with flags a change to it. Only the
 // owner, not an agent, changes it.
 func cmdMe(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	const usage = "vaquero me [--name NAME] [--avatar FILE | --remove-avatar]"

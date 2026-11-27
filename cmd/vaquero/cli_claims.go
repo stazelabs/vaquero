@@ -18,7 +18,7 @@ func init() {
 	cliCommands["ready"] = cmdReady
 	cliCommands["claim"] = cmdClaimAction("claim", true)
 	cliCommands["heartbeat"] = cmdClaimAction("heartbeat", true)
-	cliCommands["release"] = cmdClaimAction("release", false)
+	cliCommands["unclaim"] = cmdClaimAction("unclaim", false)
 }
 
 // cmdReady lists the ready queue.
@@ -64,7 +64,7 @@ func cmdReady(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 	})
 }
 
-// cmdClaimAction is vaquero claim, heartbeat or release: verb TICKET, with
+// cmdClaimAction is vaquero claim, heartbeat or unclaim: verb TICKET, with
 // --lease for the first two.
 func cmdClaimAction(verb string, withLease bool) func(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	return func(ctx context.Context, stdout, stderr io.Writer, args []string) int {
@@ -100,8 +100,8 @@ func cmdClaimAction(verb string, withLease bool) func(ctx context.Context, stdou
 				return err
 			}
 			c.emit(t, func() {
-				if verb == "release" {
-					fmt.Fprintf(c.stdout, "Released %s.\n", t.Key)
+				if verb == "unclaim" {
+					fmt.Fprintf(c.stdout, "Gave up the claim on %s.\n", t.Key)
 					return
 				}
 				fmt.Fprintf(c.stdout, "%s is claimed by %s until %s.\n", t.Key, t.ClaimedBy, untilWords(t.ClaimExpiresAt))

@@ -138,7 +138,7 @@ func dirObjects(t *testing.T, root string) int {
 	return n
 }
 
-const importTail = ". Profiles holding a token for the old instance need a new one: vaquero token create.\n"
+const importTail = ". Saved servers holding a token for the old instance need a new one: vaquero token new.\n"
 
 func TestRoundTrip(t *testing.T) {
 	for _, backend := range []string{"sqlite", "dir"} {

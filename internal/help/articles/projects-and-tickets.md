@@ -79,7 +79,7 @@ A milestone is a named goal with a description and an optional due date. The boa
 
 ## Moving a ticket to another project
 
-On a ticket's page, choose a project under "Move to project", then Move ticket and Confirm. From the command line it is `vaquero ticket move-to VAQ-12 OTH`; the API has `POST /api/v1/tickets/{ticket}/move-to`, and a [bulk change](/help/api#bulk-changes) can move tickets too.
+On a ticket's page, choose a project under "Move to project", then Move ticket and Confirm. From the command line it is `vaquero ticket transfer VAQ-12 OTH`; the API has `POST /api/v1/tickets/{ticket}/move-to`, and a [bulk change](/help/api#bulk-changes) can move tickets too.
 
 - The ticket takes the next number in its new project (`OTH-31`). Its old key keeps leading to it: `/t/VAQ-12` goes to `/t/OTH-31`, and the API, the command line and agents accept `VAQ-12` and answer for `OTH-31`. A ticket that moves again, or back, keeps every old key.
 - Its sub-tickets move with it, each taking a new number too. A sub-ticket can't move on its own: move its parent, or detach it first.

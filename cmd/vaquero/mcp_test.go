@@ -61,7 +61,7 @@ func TestMCPBridgeRoundTrip(t *testing.T) {
 		initLine,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
 		`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"add_comment","arguments":{"key":"VAQ-1","body":"Via stdio."}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"create_comment","arguments":{"key":"VAQ-1","body":"Via stdio."}}}`,
 	}, "\n") + "\n"
 	code, out, errOut := bridge(t, strings.NewReader(in), "--agent", "builder")
 	if code != 0 {
@@ -119,7 +119,7 @@ func TestMCPBridgeServerDown(t *testing.T) {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "gone")
+	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--server", "gone")
 	if code != 1 || out != "" || !strings.Contains(errOut, "127.0.0.1:1") {
 		t.Fatalf("exit %d out %q err %q", code, out, errOut)
 	}
@@ -218,12 +218,12 @@ func TestMCPBridgeWarnsWhenAgentIgnored(t *testing.T) {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "bot", "--agent", "builder")
-	if code != 0 || strings.Count(errOut, "the agent name is ignored: this profile's token isn't the local owner's") != 1 || len(answers(t, out)) != 1 {
+	code, out, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--server", "bot", "--agent", "builder")
+	if code != 0 || strings.Count(errOut, "the agent name is ignored: this server's token isn't the local owner's") != 1 || len(answers(t, out)) != 1 {
 		t.Fatalf("exit %d\nerr %s\nout %s", code, errOut, out)
 	}
 	// With the owner's token the agent applies, and nothing is warned.
-	if _, _, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--profile", "t", "--agent", "builder"); strings.Contains(errOut, "ignored") {
+	if _, _, errOut := bridge(t, strings.NewReader(initLine+"\n"), "--server", "t", "--agent", "builder"); strings.Contains(errOut, "ignored") {
 		t.Fatalf("warned for the owner: %s", errOut)
 	}
 }
@@ -251,7 +251,7 @@ func TestMCPBridgeSendsHarnessAndModel(t *testing.T) {
 	in := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"codex","version":"1.2"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_comment","arguments":{"key":"VAQ-1","body":"With provenance."}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_comment","arguments":{"key":"VAQ-1","body":"With provenance."}}}`,
 	}, "\n") + "\n"
 	t.Setenv("VAQUERO_MODEL", "ignored-when-the-flag-is-given")
 	code, out, errOut := bridge(t, strings.NewReader(in), "--model", "gpt-x")
@@ -274,7 +274,7 @@ func TestMCPBridgeModelFromEnvWithoutClientInfo(t *testing.T) {
 	mustCLI(t, "ticket", "new", "VAQ", "Bridge me")
 	in := strings.Join([]string{
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{}}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_comment","arguments":{"key":"VAQ-1","body":"No harness."}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_comment","arguments":{"key":"VAQ-1","body":"No harness."}}}`,
 	}, "\n") + "\n"
 	t.Setenv("VAQUERO_MODEL", "env-model")
 	code, out, errOut := bridge(t, strings.NewReader(in))
