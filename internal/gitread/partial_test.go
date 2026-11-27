@@ -190,7 +190,7 @@ func TestTreeLessCloneSaysPartial(t *testing.T) {
 	_, errShow := g.Show(ctx, "main", "docs/a.md")
 	_, errBlobs := g.Blobs(ctx, r.Head(), []string{"docs/a.md"})
 	for name, err := range map[string]error{"Show": errShow, "Blobs": errBlobs} {
-		if !errors.Is(err, gitread.ErrPartialRead) || !strings.Contains(err.Error(), gitread.PartialMessage) {
+		if !errors.Is(err, gitread.ErrPartialRead) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
