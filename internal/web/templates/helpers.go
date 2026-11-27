@@ -242,6 +242,17 @@ func hasImages(as []AttachmentRow) bool {
 	return false
 }
 
+// hasFiles reports whether any attachment is not an image, so the rows list
+// is drawn only when it has rows.
+func hasFiles(as []AttachmentRow) bool {
+	for _, a := range as {
+		if !a.Image {
+			return true
+		}
+	}
+	return false
+}
+
 // moveQuestion is the confirm dialog's question before a ticket moves to
 // another project.
 func moveQuestion(v TicketView) string {

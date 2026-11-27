@@ -331,22 +331,23 @@ templ TicketPage(v TicketView) {
 							}
 						</ul>
 					}
-					<ul class="mt-2 space-y-1">
-						for _, a := range v.Attachments {
-							if a.Image {
-								continue
-							}
-							<li class="flex flex-wrap items-center gap-x-3 text-sm">
-								<a href={ templ.SafeURL(a.URL) } class="break-all text-accent hover:underline">{ a.Name }</a>
-								<span class="text-xs text-muted">{ a.Size } · { a.By } · { a.Ago }</span>
-								if a.CanDelete {
-									<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") }>
-										<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
-									</form>
+					if hasFiles(v.Attachments) {
+						<ul class="mt-2 space-y-1">
+							for _, a := range v.Attachments {
+								if !a.Image {
+									<li class="flex flex-wrap items-center gap-x-3 text-sm">
+										<a href={ templ.SafeURL(a.URL) } class="break-all text-accent hover:underline">{ a.Name }</a>
+										<span class="text-xs text-muted">{ a.Size } · { a.By } · { a.Ago }</span>
+										if a.CanDelete {
+											<form method="post" action={ templ.SafeURL("/t/" + v.Key + "/attachments/" + a.ID + "/delete") }>
+												<button type="submit" class="text-xs text-muted hover:text-danger" aria-label={ "Remove " + a.Name }>Remove</button>
+											</form>
+										}
+									</li>
 								}
-							</li>
-						}
-					</ul>
+							}
+						</ul>
+					}
 					<div
 						data-attach-well
 						{ attachAttrs(v.Key)... }
