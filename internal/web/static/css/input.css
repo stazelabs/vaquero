@@ -6,13 +6,16 @@
 
 /* Theme tokens. Use only these colours, plus opacity modifiers like
    text-ink/70. Templates never carry a raw colour value. System fonts only:
-   nothing is downloaded. Placeholder palette until the brand is designed. */
+   nothing is downloaded. Placeholder palette until the brand is designed:
+   near-neutral surfaces (chroma at most 0.006), separated by 1 px line
+   rules rather than shadows; the accent marks the current place, counts,
+   the focus ring and the main button. */
 @theme {
-  --color-ink: oklch(0.24 0.02 50);         /* body text */
-  --color-paper: oklch(0.985 0.008 85);     /* page background */
-  --color-paper-alt: oklch(0.955 0.012 80); /* cards, columns */
-  --color-line: oklch(0.88 0.015 75);       /* borders */
-  --color-muted: oklch(0.55 0.02 60);       /* secondary text */
+  --color-ink: oklch(0.2 0.01 60);          /* body text */
+  --color-paper: oklch(0.99 0.002 85);      /* page background */
+  --color-paper-alt: oklch(0.965 0.003 85); /* lanes, columns, panels */
+  --color-line: oklch(0.91 0.004 85);       /* hairline rules and borders */
+  --color-muted: oklch(0.52 0.01 70);       /* secondary text */
   --color-accent: oklch(0.55 0.13 45);      /* saddle rust: links, primary buttons */
   --color-danger: oklch(0.52 0.19 27);
   --color-warn: oklch(0.62 0.13 75);
@@ -38,15 +41,35 @@
   --color-tile-7-ink: oklch(0.42 0.085 350); /* rose */
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Type: labels and meta, body, section titles, page titles. */
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+  --text-lg: 18px;
+  --text-lg--line-height: 24px;
+  /* Heights (h-row, h-nav, h-chip, h-bar): a ticket row, a sidebar row, a
+     chip or small button, the top bar. Other spacing is on Tailwind's
+     4 px step. */
+  --spacing-row: 28px;
+  --spacing-nav: 26px;
+  --spacing-chip: 24px;
+  --spacing-bar: 38px;
+  /* rounded-sm for controls, chips and panels, rounded-md for
+     dialogs and tiles. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-ink: oklch(0.93 0.01 80);
-    --color-paper: oklch(0.19 0.01 60);
-    --color-paper-alt: oklch(0.23 0.012 60);
-    --color-line: oklch(0.33 0.015 60);
-    --color-muted: oklch(0.68 0.02 70);
+    --color-ink: oklch(0.93 0.005 80);
+    --color-paper: oklch(0.17 0.004 60);
+    --color-paper-alt: oklch(0.21 0.005 60);
+    --color-line: oklch(0.29 0.006 60);
+    --color-muted: oklch(0.66 0.01 70);
     --color-accent: oklch(0.72 0.12 50);
     --color-danger: oklch(0.68 0.17 27);
     --color-warn: oklch(0.78 0.12 80);

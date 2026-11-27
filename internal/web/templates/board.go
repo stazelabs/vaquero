@@ -2,37 +2,29 @@ package templates
 
 import (
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/a-h/templ"
 
 	"github.com/stazelabs/vaquero/internal/board"
 	"github.com/stazelabs/vaquero/internal/db/gen"
 	"github.com/stazelabs/vaquero/internal/timefmt"
 )
 
-func chipClass(on bool) string {
-	base := "rounded-full border px-3 py-0.5 text-xs "
-	if on {
-		return base + "border-accent bg-accent text-paper"
-	}
-	return base + "border-line text-ink/80 hover:border-accent"
-}
-
-// cardClass gives ready cards the accent edge, and a ring while the card's
-// link has focus (j and k move it); drag adds the grab cursor of a card
-// that can be dragged (the board's, not Focus's).
-func cardClass(ready, drag bool) string {
-	base := "rounded-md border border-line bg-paper p-2 shadow-sm hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
-	if drag {
-		base = "cursor-grab " + base
-	}
+// cardClass is a board card: the accent edge when ready, and a ring while
+// the card's link has focus (j and k move it), with the grab cursor.
+func cardClass(ready bool) string {
+	base := "rounded-sm border border-line bg-paper px-2 py-1.5 hover:border-accent/60 focus-within:ring-2 focus-within:ring-accent"
+	base = "cursor-grab " + base
 	if ready {
-		return base + " border-l-4 border-l-accent"
+		return base + " border-l-2 border-l-accent"
 	}
 	return base
 }
 
 func priorityClass(p int64) string {
-	base := "inline-flex items-center gap-0.5 text-[10px] "
+	base := "inline-flex items-center gap-0.5 text-xs "
 	switch {
 	case p == 1:
 		return base + "font-semibold text-danger"
@@ -147,4 +139,45 @@ func listPageHref(p gen.Project, f board.Filter, g ListGroup) string {
 	q.Set("group", g.Column.Status.ID)
 	q.Set("offset", strconv.Itoa(g.Next))
 	return "/p/" + p.Key + "/list?" + q.Encode()
+}
+
+// cardAttrs are the attributes every drawing of a ticket carries, card or
+// row: app.js finds tickets by data-card (drags, j and k), and tests and
+// scripts read data-ready.
+func cardAttrs(k board.Card) templ.OrderedAttributes {
+	return templ.OrderedAttributes{
+		{Key: "data-card", Value: k.Key},
+		{Key: "data-ready", Value: k.Ready},
+	}
+}
+
+// hasCardMeta reports whether a board card has anything for its meta line.
+func hasCardMeta(k board.Card) bool {
+	return k.Ready || k.Priority > 0 || k.Tier != "" || len(k.Tags) > 0 || k.When != "" || k.ClaimedBy != "" || showAssignee(k)
+}
+
+// priorityMarkClass is a row's priority slot: always as wide as a glyph,
+// so the numbers line up, tinted as the card's priority is.
+func priorityMarkClass(p int64) string {
+	base := "flex w-3.5 shrink-0 items-center "
+	switch p {
+	case 1:
+		return base + "text-danger"
+	case 2:
+		return base + "text-accent"
+	}
+	return base + "text-muted"
+}
+
+// keyPrefix and keyNumber split a ticket key: a row shows the number
+// alone inside its project ("12") and keeps "VAQ-" for screen readers.
+func keyPrefix(key string) string {
+	if i := strings.LastIndexByte(key, '-'); i >= 0 {
+		return key[:i+1]
+	}
+	return ""
+}
+
+func keyNumber(key string) string {
+	return key[len(keyPrefix(key)):]
 }

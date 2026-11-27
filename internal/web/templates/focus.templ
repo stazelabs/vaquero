@@ -68,17 +68,11 @@ templ FocusSection(fo board.Focus) {
 						@IconClass("waiting", "h-3.5 w-3.5 shrink-0")
 						{ itoa(int64(len(fo.Waiting))) } waiting
 					</summary>
-					<ul class="mt-2 space-y-1">
+					<ol class="mt-1">
 						for _, w := range fo.Waiting {
-							<li data-card={ w.Key } class="rounded-md px-1 py-1 text-sm focus-within:ring-2 focus-within:ring-accent">
-								<a href={ templ.SafeURL("/t/" + w.Key) } class="block hover:text-accent">
-									<span class="font-mono text-[10px] text-muted">{ w.Key }</span>
-									<span class="block leading-snug text-ink">{ w.Title }</span>
-									<span class="block text-xs text-muted">{ w.Reason }</span>
-								</a>
-							</li>
+							@ticketRow(w.Card, w.Reason, false)
 						}
-					</ul>
+					</ol>
 				</details>
 			}
 		</section>
@@ -133,10 +127,11 @@ templ FocusSection(fo board.Focus) {
 	</div>
 }
 
+// focusCards are a lane's tickets as rows.
 templ focusCards(cs []board.Card) {
-	<ol class="space-y-2">
+	<ol>
 		for _, k := range cs {
-			@cardItem(k, cardClass(k.Ready, false))
+			@ticketRow(k, "", false)
 		}
 	</ol>
 }

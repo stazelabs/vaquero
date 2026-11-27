@@ -18,25 +18,44 @@ import (
 const (
 	// htmxConfig turns off the htmx features the CSP forbids.
 	htmxConfig   = `{"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}`
-	h1Class      = "text-2xl font-semibold tracking-tight text-ink"
-	h2Class      = "text-sm font-semibold uppercase tracking-wider text-muted"
-	btnBase      = "inline-flex items-center justify-center rounded-md px-4 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+	h1Class      = "text-lg font-semibold tracking-tight text-ink"
+	h2Class      = "text-base font-semibold text-ink"
+	btnBase      = "inline-flex h-8 items-center justify-center gap-1.5 rounded-sm px-3 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 max-sm:h-10.5"
 	btnPrimary   = btnBase + " bg-accent text-paper hover:bg-accent/90"
-	btnSecondary = btnBase + " border border-line bg-paper-alt text-ink hover:border-accent"
+	btnSecondary = btnBase + " border border-line bg-paper text-ink hover:border-accent"
 	btnDanger    = btnBase + " border border-danger/40 text-danger hover:bg-danger/10"
 	btnLink      = "text-sm text-accent hover:underline"
 	navLink      = "text-sm font-medium text-ink/70 hover:text-accent"
 	navIconLink  = navLink + " inline-flex items-center gap-1.5"
 	h2IconClass  = h2Class + " flex items-center gap-1.5"
-	panelClass   = "rounded-lg border border-line bg-paper-alt p-5"
-	inputClass   = "block w-full rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 aria-[invalid=true]:border-danger"
+	panelClass   = "rounded-sm border border-line bg-paper-alt p-4"
+	inputBase    = "block w-full rounded-sm border border-line bg-paper px-2.5 text-sm text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 aria-[invalid=true]:border-danger"
+	inputClass   = inputBase + " py-1.5"
 	// fieldClass is a one-line control (text box or select): a fixed height,
 	// since browsers size a select's box their own way and it would not line
-	// up with a text box beside it. Below sm the text is 1rem (input.css).
-	fieldClass = inputClass + " h-9.5 max-sm:h-10.5"
+	// up with a text box beside it; buttons share it. Below sm the text is
+	// 1rem (input.css), so both grow.
+	fieldClass = inputBase + " h-8 max-sm:h-10.5"
 	labelClass = "mb-1 block text-xs font-semibold uppercase tracking-wider text-ink/80"
+	// rowClass is a ticket as one 28 px line (Focus's lanes, the list): a
+	// priority mark, the number, the title (rowTitle, cut with an
+	// ellipsis), then the trailing meta. Rows are divided by line rules.
+	rowClass = "flex h-row min-w-0 items-center gap-2 border-b border-line px-1.5 text-sm hover:bg-paper/60 focus-within:ring-2 focus-within:ring-inset focus-within:ring-accent"
+	rowTitle = "min-w-0 flex-1 truncate text-ink"
+	// rowMeta is a row's trailing part: faces, claims, a day. It never
+	// wraps; a long reason is cut too.
+	rowMeta    = "ml-auto flex max-w-1/2 shrink-0 items-center gap-1.5 text-xs text-muted"
 	proseClass = "prose-vq text-sm leading-relaxed text-ink"
 )
+
+// chipClass is a 24 px filter chip, filled with the accent when on.
+func chipClass(on bool) string {
+	base := "inline-flex h-chip items-center rounded-sm border px-2 text-xs "
+	if on {
+		return base + "border-accent bg-accent text-paper"
+	}
+	return base + "border-line text-ink/80 hover:border-accent"
+}
 
 func pageTitle(t string) string {
 	if t == "" {
