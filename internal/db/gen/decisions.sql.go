@@ -124,8 +124,8 @@ func (q *Queries) CountOpenDecisionsNaming(ctx context.Context, ids []string) (i
 const createDecision = `-- name: CreateDecision :exec
 
 INSERT INTO decisions (id, project_id, run_id, kind, subject, question, options, recommendation, why,
-    state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at, recommended)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateDecisionParams struct {
@@ -147,6 +147,7 @@ type CreateDecisionParams struct {
 	RelayedWords   string
 	AskedBy        string
 	AskedAt        string
+	Recommended    string
 }
 
 // Decisions (questions, rulings, approvals), the tickets each names, and
@@ -171,6 +172,7 @@ func (q *Queries) CreateDecision(ctx context.Context, arg CreateDecisionParams) 
 		arg.RelayedWords,
 		arg.AskedBy,
 		arg.AskedAt,
+		arg.Recommended,
 	)
 	return err
 }
@@ -228,7 +230,7 @@ func (q *Queries) DeleteTicketApprovals(ctx context.Context, ids []string) error
 }
 
 const getDecision = `-- name: GetDecision :one
-SELECT id, project_id, run_id, kind, subject, question, options, recommendation, why, state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at FROM decisions WHERE id = ?
+SELECT id, project_id, run_id, kind, subject, question, options, recommendation, why, state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at, recommended FROM decisions WHERE id = ?
 `
 
 func (q *Queries) GetDecision(ctx context.Context, id string) (Decision, error) {
@@ -253,6 +255,7 @@ func (q *Queries) GetDecision(ctx context.Context, id string) (Decision, error) 
 		&i.RelayedWords,
 		&i.AskedBy,
 		&i.AskedAt,
+		&i.Recommended,
 	)
 	return i, err
 }
@@ -502,7 +505,7 @@ func (q *Queries) ListDecisionTicketPins(ctx context.Context, decisionID string)
 }
 
 const listDecisions = `-- name: ListDecisions :many
-SELECT d.id, d.project_id, d.run_id, d.kind, d.subject, d.question, d.options, d.recommendation, d.why, d.state, d.answer, d.answer_note, d.answered_by, d.answered_at, d.relayed_by, d.relayed_words, d.asked_by, d.asked_at FROM decisions d
+SELECT d.id, d.project_id, d.run_id, d.kind, d.subject, d.question, d.options, d.recommendation, d.why, d.state, d.answer, d.answer_note, d.answered_by, d.answered_at, d.relayed_by, d.relayed_words, d.asked_by, d.asked_at, d.recommended FROM decisions d
 WHERE (?1 IS NULL OR d.project_id = ?1)
   AND (?2 IS NULL OR d.state = ?2)
   AND (?3 IS NULL OR d.kind = ?3)
@@ -556,6 +559,7 @@ func (q *Queries) ListDecisions(ctx context.Context, arg ListDecisionsParams) ([
 			&i.RelayedWords,
 			&i.AskedBy,
 			&i.AskedAt,
+			&i.Recommended,
 		); err != nil {
 			return nil, err
 		}

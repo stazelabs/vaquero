@@ -60,6 +60,7 @@ type DecisionInput struct {
 	Kind, Subject       string
 	Question            string
 	Options             []Option
+	Recommended         string // an option's label, any case; "" for none
 	Recommendation, Why string
 }
 
@@ -170,6 +171,20 @@ func checkDecision(ctx context.Context, q *gen.Queries, in DecisionInput, kinds 
 		f.add("options", "An approval needs an Approve option.")
 	}
 	in.Options = opts
+	in.Recommended = strings.TrimSpace(norm.NFC.String(in.Recommended))
+	switch {
+	case in.Recommended == "":
+	case in.Kind == DecisionRuling:
+		f.add("recommended", "A ruling records its answer; it has no recommendation.")
+		in.Recommended = ""
+	default:
+		i := slices.IndexFunc(opts, func(o Option) bool { return strings.EqualFold(o.Label, in.Recommended) })
+		if i < 0 {
+			f.add("recommended", "Recommend one of the options.")
+		} else {
+			in.Recommended = opts[i].Label
+		}
+	}
 	var ids []string
 	for _, id := range in.TicketIDs {
 		if !slices.Contains(ids, id) {
@@ -455,7 +470,7 @@ func (c *Core) AskDecision(ctx context.Context, by string, in DecisionInput) (ge
 		}
 		d = gen.Decision{
 			ID: idgen.New(), ProjectID: cd.project.ID, RunID: nullString(cd.in.RunID), Kind: cd.in.Kind, Subject: cd.in.Subject,
-			Question: cd.in.Question, Options: cd.options, Recommendation: cd.in.Recommendation, Why: cd.in.Why,
+			Question: cd.in.Question, Options: cd.options, Recommended: cd.in.Recommended, Recommendation: cd.in.Recommendation, Why: cd.in.Why,
 			State: "open", AskedBy: by, AskedAt: timefmt.Format(c.Now()),
 		}
 		if err := createDecision(ctx, q, d, cd.tickets, files); err != nil {
@@ -494,7 +509,7 @@ func (c *Core) RecordRuling(ctx context.Context, by string, in DecisionInput, a 
 		now := timefmt.Format(c.Now())
 		d = gen.Decision{
 			ID: idgen.New(), ProjectID: cd.project.ID, RunID: nullString(cd.in.RunID), Kind: DecisionRuling,
-			Question: cd.in.Question, Options: cd.options, Recommendation: cd.in.Recommendation, Why: cd.in.Why,
+			Question: cd.in.Question, Options: cd.options, Recommended: cd.in.Recommended, Recommendation: cd.in.Recommendation, Why: cd.in.Why,
 			State: "answered", Answer: answer, AnswerNote: note, AnsweredBy: nullString(by), AnsweredAt: nullString(now),
 			AskedBy: by, AskedAt: now,
 		}

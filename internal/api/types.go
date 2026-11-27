@@ -360,6 +360,7 @@ type Decision struct {
 	Question       string             `json:"question"`
 	Options        []DecisionOption   `json:"options"`
 	Approves       string             `json:"approves,omitempty"`
+	Recommended    string             `json:"recommended"`
 	Recommendation string             `json:"recommendation,omitempty"`
 	Why            string             `json:"why,omitempty"`
 	State          string             `json:"state"`

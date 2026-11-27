@@ -216,7 +216,7 @@ func ApprovalAskAgain(d Deps) http.HandlerFunc {
 		_ = json.Unmarshal([]byte(open.Options), &opts)
 		in := core.DecisionInput{
 			ProjectID: target.ProjectID, TicketIDs: ids, Kind: core.DecisionApproval, Subject: "plan",
-			Question: open.Question, Options: opts, Recommendation: open.Recommendation, Why: open.Why,
+			Question: open.Question, Options: opts, Recommended: open.Recommended, Recommendation: open.Recommendation, Why: open.Why,
 		}
 		if len(ids) == 1 && ids[0] == target.ID {
 			in.Question = approvalQuestion(targetKey, target) // with the title as it is now

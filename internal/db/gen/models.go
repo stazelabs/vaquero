@@ -97,6 +97,7 @@ type Decision struct {
 	RelayedWords   string
 	AskedBy        string
 	AskedAt        string
+	Recommended    string
 }
 
 type DecisionTicket struct {

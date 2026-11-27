@@ -15,8 +15,8 @@ func TestAPIDecisionsRoundTrip(t *testing.T) {
 	}
 	r := c.API("POST", "/api/v1/decisions", tok, map[string]any{
 		"project": "vaq", "tickets": []string{"vaq-1"}, "kind": "question", "question": "Which board order?",
-		"options":        []map[string]string{{"label": "By priority", "tradeoff": "Urgent first"}, {"label": "By age"}},
-		"recommendation": "By priority", "why": "It decides what agents pick up.", "run": "run-7",
+		"options":     []map[string]string{{"label": "By priority", "tradeoff": "Urgent first"}, {"label": "By age"}},
+		"recommended": "by priority", "recommendation": "Urgent work first.", "why": "It decides what agents pick up.", "run": "run-7",
 	})
 	if r.Status != 201 {
 		t.Fatalf("ask: %d %s", r.Status, r.Body)
@@ -25,7 +25,7 @@ func TestAPIDecisionsRoundTrip(t *testing.T) {
 	decode(t, r.Body, &q)
 	if q.ID == "" || q.Project != "VAQ" || len(q.Tickets) != 1 || q.Tickets[0] != "VAQ-1" || q.Kind != "question" || q.State != "open" ||
 		q.AskedBy != "Owner" || q.AskedAt == "" || q.Run != "run-7" || len(q.Options) != 2 || q.Options[0].Tradeoff != "Urgent first" ||
-		q.Recommendation != "By priority" || q.Why == "" || q.AnsweredBy != "" || q.Answered != "" {
+		q.Recommended != "By priority" || q.Recommendation != "Urgent work first." || q.Why == "" || q.AnsweredBy != "" || q.Answered != "" {
 		t.Fatalf("%+v", q)
 	}
 	if got := c.API("GET", "/api/v1/decisions/"+q.ID, tok, nil); got.Status != 200 || got.Body != r.Body {
@@ -212,12 +212,16 @@ func TestMCPDecisionToolsMatchTheAPI(t *testing.T) {
 	cs := mcpConnect(t, e, tok, "builder")
 	res, text := mcpCall(t, cs, "ask_decision", map[string]any{
 		"project": "VAQ", "tickets": []string{"VAQ-1"}, "kind": "approval", "subject": "plan", "question": "Approve the plan?",
+		"recommended": "approve", "recommendation": "It is small.",
 	})
 	if res.IsError || !strings.Contains(text, `"asked_by": "builder"`) {
 		t.Fatalf("ask: %s", text)
 	}
 	var q api.Decision
 	decode(t, text, &q)
+	if q.Recommended != "Approve" {
+		t.Fatalf("recommended %q", q.Recommended)
+	}
 	for _, args := range []map[string]any{
 		{},
 		{"project": "VAQ", "state": "open"},
@@ -302,5 +306,28 @@ func TestAPIDecisionShowsWhatWasAsked(t *testing.T) {
 	r = c.API("POST", "/api/v1/decisions", tok, map[string]any{"project": "VAQ", "tickets": []string{"VAQ-1"}, "kind": "question", "question": "Which?"})
 	if strings.Contains(r.Body, `"asked"`) {
 		t.Fatalf("%s", r.Body)
+	}
+}
+
+// VAQ-172: a recommended label that isn't an option is a 422 naming the
+// field; one that differs in case is stored as the option spells it.
+func TestAPIDecisionRecommendedMiss(t *testing.T) {
+	_, c, tok := apiWorld(t)
+	var e apiErrBody
+	r := c.API("POST", "/api/v1/decisions", tok, map[string]any{
+		"project": "VAQ", "kind": "question", "question": "Which?", "recommended": "C",
+		"options": []map[string]string{{"label": "A"}, {"label": "B"}},
+	})
+	decode(t, r.Body, &e)
+	if r.Status != 422 || e.Error.Fields["recommended"] != "Recommend one of the options." {
+		t.Fatalf("%d %s", r.Status, r.Body)
+	}
+	r = c.API("POST", "/api/v1/decisions", tok, map[string]any{
+		"project": "VAQ", "kind": "ruling", "question": "Which?", "recommended": "A", "answer": map[string]string{"text": "A"},
+		"options": []map[string]string{{"label": "A"}, {"label": "B"}},
+	})
+	decode(t, r.Body, &e)
+	if r.Status != 422 || e.Error.Fields["recommended"] == "" {
+		t.Fatalf("ruling: %d %s", r.Status, r.Body)
 	}
 }

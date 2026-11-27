@@ -13,7 +13,7 @@ import (
 func TestExportImportKeepsDecisionsAndApprovals(t *testing.T) {
 	d, store := seeded(t)
 	queries := []string{
-		`SELECT id, project_id, ifnull(run_id, '-'), kind, subject, question, options, recommendation, why, state, answer,
+		`SELECT id, project_id, ifnull(run_id, '-'), kind, subject, question, options, recommended, recommendation, why, state, answer,
 			answer_note, ifnull(answered_by, '-'), ifnull(answered_at, '-'), ifnull(relayed_by, '-'), relayed_words, asked_by, asked_at
 			FROM decisions ORDER BY id`,
 		`SELECT decision_id, ticket_id FROM decision_tickets ORDER BY decision_id, ticket_id`,

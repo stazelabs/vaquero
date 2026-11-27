@@ -22,12 +22,12 @@ func TestCLIDecisionAnswer(t *testing.T) {
 	mustCLI(t, "ticket", "new", "VAQ", "Board order")
 	mustCLI(t, "ticket", "new", "VAQ", "Board colours")
 	id := strings.TrimSpace(mustCLI(t, "decision", "ask", "VAQ", "Which board order?", "--ticket", "VAQ-1",
-		"--option", "By priority: urgent first", "--option", "By age", "--recommend", "By priority", "--agent", "builder"))
+		"--option", "By priority: urgent first", "--option", "By age", "--recommend", "by priority", "--recommend-why", "Cheaper to read.", "--agent", "builder"))
 	if len(id) != 26 {
 		t.Fatalf("ask printed %q", id)
 	}
 	show := mustCLI(t, "decision", "show", id)
-	for _, want := range []string{"Which board order?", "VAQ-1", "By priority: urgent first", "By age", "Open", "builder"} {
+	for _, want := range []string{"Which board order?", "VAQ-1", "By priority: urgent first", "By age", "Open", "builder", "Recommended: By priority", "Cheaper to read."} {
 		if !strings.Contains(show, want) {
 			t.Errorf("show lacks %q:\n%s", want, show)
 		}

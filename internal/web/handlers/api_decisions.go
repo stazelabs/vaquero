@@ -29,6 +29,7 @@ type decisionRequest struct {
 	Subject        string               `json:"subject"`
 	Question       string               `json:"question"`
 	Options        []api.DecisionOption `json:"options"`
+	Recommended    string               `json:"recommended"`
 	Recommendation string               `json:"recommendation"`
 	Why            string               `json:"why"`
 	Answer         *rulingAnswerRequest `json:"answer"`
@@ -89,7 +90,7 @@ func APIDecisionCreate(d Deps) http.HandlerFunc {
 		}
 		di := core.DecisionInput{
 			ProjectID: p.ID, TicketIDs: ids, RunID: in.Run, Kind: strings.TrimSpace(in.Kind), Subject: in.Subject,
-			Question: in.Question, Options: opts, Recommendation: in.Recommendation, Why: in.Why,
+			Question: in.Question, Options: opts, Recommended: in.Recommended, Recommendation: in.Recommendation, Why: in.Why,
 		}
 		by := apiActor(r).ID
 		var dec gen.Decision
@@ -338,7 +339,7 @@ func decisionDTOs(ctx context.Context, d Deps, decs []gen.Decision) ([]api.Decis
 		}
 		o := api.Decision{
 			ID: dec.ID, Project: key, Tickets: []string{}, Run: dec.RunID.String, Kind: dec.Kind, Subject: dec.Subject,
-			Question: dec.Question, Options: []api.DecisionOption{}, Recommendation: dec.Recommendation, Why: dec.Why,
+			Question: dec.Question, Options: []api.DecisionOption{}, Recommended: dec.Recommended, Recommendation: dec.Recommendation, Why: dec.Why,
 			State: dec.State, Answer: dec.Answer, Note: dec.AnswerNote, AnsweredAt: dec.AnsweredAt.String,
 			Words: dec.RelayedWords, AskedAt: dec.AskedAt,
 		}

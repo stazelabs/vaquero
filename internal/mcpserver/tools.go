@@ -167,7 +167,8 @@ type (
 		Tickets        []string         `json:"tickets,omitempty" jsonschema:"The tickets it concerns, by key, all in the project. A plan approval names at least one; leave it out for a project-level decision."`
 		Subject        string           `json:"subject,omitempty" jsonschema:"For an approval: plan, merge or release."`
 		Options        []decisionOption `json:"options,omitempty" jsonschema:"The answers offered, each a label and its trade-off. An approval's must include Approve, the only option that approves; without options it offers Approve and Request changes."`
-		Recommendation string           `json:"recommendation,omitempty" jsonschema:"The option you recommend, and why."`
+		Recommended    string           `json:"recommended,omitempty" jsonschema:"The label of the option you recommend; it must be one of the options."`
+		Recommendation string           `json:"recommendation,omitempty" jsonschema:"Why you recommend it."`
 		Why            string           `json:"why,omitempty" jsonschema:"Why the decision matters."`
 		Run            string           `json:"run,omitempty" jsonschema:"The run it was made in."`
 		Answer         string           `json:"answer,omitempty" jsonschema:"For a ruling only: the option you chose, by label, or your answer in words."`
@@ -416,7 +417,7 @@ func addTools(s *mcp.Server, c *caller) {
 		"Park a question for the owner, ask for an approval, or record a ruling you made (kind ruling, with answer and note), open to the owner's overruling. Never answer your own question: relay the owner's answer with answer_decision.",
 		func(in askDecisionArgs) request {
 			b := map[string]any{"project": in.Project, "kind": in.Kind, "question": in.Question}
-			for k, v := range map[string]string{"subject": in.Subject, "recommendation": in.Recommendation, "why": in.Why, "run": in.Run} {
+			for k, v := range map[string]string{"subject": in.Subject, "recommended": in.Recommended, "recommendation": in.Recommendation, "why": in.Why, "run": in.Run} {
 				if v != "" {
 					b[k] = v
 				}

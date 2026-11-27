@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -651,5 +652,61 @@ func TestOverruledAnswerIsClipped(t *testing.T) {
 	old, _ := p["overruled"].(map[string]any)
 	if old["answer"] != strings.Repeat("é", 200) || old["note"] != strings.Repeat("é", 200) {
 		t.Fatalf("%v", old)
+	}
+}
+
+// VAQ-172, ruling T-R4: the recommended option is one of the options,
+// stored as its label spelled by the options.
+func TestAskRecommended(t *testing.T) {
+	c, _, f := newFixture(t)
+	a := builder(t, c, f)
+	in := question(f)
+	in.Options = []core.Option{{Label: "A"}, {Label: "B"}}
+
+	in.Recommended = "b"
+	d, err := c.AskDecision(bg, a.ID, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Recommended != "B" || decisionRow(t, c, d.ID).Recommended != "B" {
+		t.Fatalf("stored %q", d.Recommended)
+	}
+
+	in.Recommended = "C"
+	_, err = c.AskDecision(bg, a.ID, in)
+	var inv *core.Invalid
+	if !errors.As(err, &inv) || inv.Fields["recommended"] != "Recommend one of the options." {
+		t.Fatalf("%v", err)
+	}
+
+	in.Recommended = ""
+	if d, err = c.AskDecision(bg, a.ID, in); err != nil || d.Recommended != "" {
+		t.Fatalf("%q %v", d.Recommended, err)
+	}
+
+	// An approval with no options offers Approve and Request changes.
+	ap := core.DecisionInput{ProjectID: f.Project.ID, TicketIDs: []string{f.T1.ID}, Kind: core.DecisionApproval, Subject: "plan",
+		Question: "Approve the plan?", Recommended: "approve"}
+	if d, err = c.AskDecision(bg, a.ID, ap); err != nil || d.Recommended != "Approve" {
+		t.Fatalf("%q %v", d.Recommended, err)
+	}
+
+	// With no options at all, nothing can be recommended.
+	in.Options, in.Recommended = nil, "A"
+	if _, err = c.AskDecision(bg, a.ID, in); !errors.As(err, &inv) || inv.Fields["recommended"] == "" {
+		t.Fatalf("%v", err)
+	}
+}
+
+func TestRulingRefusesRecommended(t *testing.T) {
+	c, _, f := newFixture(t)
+	a := builder(t, c, f)
+	in := question(f)
+	in.Kind = core.DecisionRuling
+	in.Recommended = "By age"
+	_, err := c.RecordRuling(bg, a.ID, in, core.Answer{Option: "By age"})
+	var inv *core.Invalid
+	if !errors.As(err, &inv) || inv.Fields["recommended"] != "A ruling records its answer; it has no recommendation." {
+		t.Fatalf("%v", err)
 	}
 }

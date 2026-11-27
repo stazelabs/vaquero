@@ -50,14 +50,15 @@ func cmdDecisions(ctx context.Context, stdout, stderr io.Writer, args []string) 
 // (direct); with --agent it is relayed by that agent and needs --words,
 // the owner's answer quoted.
 func cmdDecision(ctx context.Context, stdout, stderr io.Writer, args []string) int {
-	const usage = "vaquero decision show ID | ask KEY QUESTION [--ticket T]... [--option \"LABEL: TRADE-OFF\"]... [--approval plan|merge|release] [--recommend TEXT] [--why TEXT] [--run R]" +
+	const usage = "vaquero decision show ID | ask KEY QUESTION [--ticket T]... [--option \"LABEL: TRADE-OFF\"]... [--approval plan|merge|release] [--recommend LABEL] [--recommend-why TEXT] [--why TEXT] [--run R]" +
 		" | rule KEY QUESTION ANSWER [same flags] [--note TEXT] | answer ID [OPTION] [--text TEXT] [--note TEXT] [--words TEXT] | withdraw ID"
 	c := newCmd(stdout, stderr, usage)
 	var tickets, options stringList
 	c.fs.Var(&tickets, "ticket", "a ticket it concerns (repeatable)")
 	c.fs.Var(&options, "option", "an option, LABEL or LABEL: TRADE-OFF (repeatable)")
 	approval := c.fs.String("approval", "", "ask for an approval of a plan, merge or release")
-	recommend := c.fs.String("recommend", "", "the option you recommend")
+	recommend := c.fs.String("recommend", "", "the label of the option you recommend")
+	recommendWhy := c.fs.String("recommend-why", "", "why you recommend it")
 	why := c.fs.String("why", "", "why it matters")
 	run := c.fs.String("run", "", "the run it belongs to")
 	note := c.fs.String("note", "", "a note on the answer")
@@ -67,7 +68,7 @@ func cmdDecision(ctx context.Context, stdout, stderr io.Writer, args []string) i
 	if err != nil {
 		return c.finish(err)
 	}
-	askFlags := []string{"ticket", "option", "recommend", "why", "run"}
+	askFlags := []string{"ticket", "option", "recommend", "recommend-why", "why", "run"}
 	verb := pos[0]
 	shape := map[string]struct {
 		min, max int
@@ -118,7 +119,7 @@ func cmdDecision(ctx context.Context, stdout, stderr io.Writer, args []string) i
 			if len(opts) > 0 {
 				b["options"] = opts
 			}
-			for k, v := range map[string]string{"recommendation": *recommend, "why": *why, "run": *run} {
+			for k, v := range map[string]string{"recommended": *recommend, "recommendation": *recommendWhy, "why": *why, "run": *run} {
 				if v != "" {
 					b[k] = v
 				}
@@ -206,8 +207,13 @@ func printDecision(w io.Writer, d api.Decision) {
 			}
 		}
 	}
-	if d.Recommendation != "" {
-		fmt.Fprintf(w, "\nRecommended: %s\n", d.Recommendation)
+	if d.Recommended != "" {
+		fmt.Fprintf(w, "\nRecommended: %s\n", d.Recommended)
+		if d.Recommendation != "" {
+			fmt.Fprintf(w, "Why: %s\n", d.Recommendation)
+		}
+	} else if d.Recommendation != "" {
+		fmt.Fprintf(w, "\nRecommendation: %s\n", d.Recommendation)
 	}
 	if d.Why != "" {
 		fmt.Fprintf(w, "Why it matters: %s\n", d.Why)

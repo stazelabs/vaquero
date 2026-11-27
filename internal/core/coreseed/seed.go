@@ -206,6 +206,14 @@ func Seed(ctx context.Context, c *core.Core, q *gen.Queries, store blobs.Store, 
 	}, core.Answer{Option: "light", Note: "Docs only."}); err != nil {
 		return err
 	}
+	// A question with a recommended option (VAQ-172).
+	if _, err := c.AskDecision(ctx, agent.ID, core.DecisionInput{
+		ProjectID: vaq.ID, TicketIDs: []string{child.ID}, Kind: core.DecisionQuestion,
+		Question: "Which format for the install guide?", Options: []core.Option{{Label: "Markdown", Tradeoff: "Plain"}, {Label: "HTML"}},
+		Recommended: "markdown", Recommendation: "It reads anywhere.",
+	}); err != nil {
+		return err
+	}
 	approval, err := c.AskDecision(ctx, agent.ID, core.DecisionInput{
 		ProjectID: vaq.ID, TicketIDs: []string{parent.ID, child.ID}, Kind: core.DecisionApproval, Subject: "plan",
 		Question: "Approve the release plan?",

@@ -3,8 +3,8 @@
 
 -- name: CreateDecision :exec
 INSERT INTO decisions (id, project_id, run_id, kind, subject, question, options, recommendation, why,
-    state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    state, answer, answer_note, answered_by, answered_at, relayed_by, relayed_words, asked_by, asked_at, recommended)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: AddDecisionTicket :exec
 INSERT INTO decision_tickets (decision_id, ticket_id, requirement_hash, plan_revision, parent_id, children, files)

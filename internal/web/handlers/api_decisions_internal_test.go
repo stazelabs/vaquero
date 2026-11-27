@@ -191,7 +191,7 @@ func TestDecisionAnswerGolden(t *testing.T) {
 		}
 	}
 	want := `{"id":"` + dec.ID + `","project":"VAQ","tickets":["VAQ-1"],"kind":"approval","subject":"plan",` +
-		`"question":"Approve the plan?","options":[{"label":"Approve"},{"label":"Request changes"}],"approves":"Approve",` +
+		`"question":"Approve the plan?","options":[{"label":"Approve"},{"label":"Request changes"}],"approves":"Approve","recommended":"",` +
 		`"state":"open","asked_by":"builder","asked_at":"` + dec.AskedAt + `",` +
 		`"asked":[{"ticket":"VAQ-1","plan_revision":1,"children":[{"key":"VAQ-2","title":"Columns"},{"key":"VAQ-4","title":"Filters"},{"key":"VAQ-5","title":"One column"}]}]}`
 
