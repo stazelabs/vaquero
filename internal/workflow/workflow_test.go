@@ -209,3 +209,30 @@ func TestAllowedWords(t *testing.T) {
 		}
 	}
 }
+
+// Task 4: the plan prompt reads the ticket, writes acceptance criteria when
+// there are none, saves the plan and asks for its approval, and stops there:
+// it never approves, answers or starts the work.
+func TestPlanSteps(t *testing.T) {
+	plan, _ := Get("plan")
+	out, err := Render(plan, map[string]string{"ticket": "VAQ-12"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"`get_ticket`", "`list_decisions`", "`read_file`", "`update_ticket`", "`save_plan`", "`ask_decision`",
+		"acceptance criteria", "kind question", "kind approval", "subject plan", "never approves",
+		"VAQ-12", "CLAUDE.md", "tier",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the plan prompt lacks %q", want)
+		}
+	}
+	// The steps come in order: read, save the plan, then ask for approval.
+	if r, s, a := strings.Index(out, "`get_ticket`"), strings.Index(out, "`save_plan`"), strings.LastIndex(out, "kind approval"); r > s || s > a {
+		t.Errorf("out of order: get_ticket %d, save_plan %d, approval %d", r, s, a)
+	}
+	if strings.Contains(out, "!") {
+		t.Error("an exclamation point")
+	}
+}
