@@ -57,7 +57,7 @@ Every command that talks to a server takes `--server NAME`, `--agent NAME` and `
 | `vaquero ticket link TICKET blocks\|relates\|duplicates OTHER` | Link two tickets |
 | `vaquero ref new TICKET KIND TARGET [--anchor A] [--label L]` | Add a [reference](/help/repositories#references): `KIND` is `requirement`, `design`, `plan`, `spec` or `other`, `TARGET` a repo path or an http or https URL |
 | `vaquero ref delete TICKET ID` | Remove one of a ticket's references; `ticket show` lists them with their ids |
-| `vaquero file KEY PATH [--at REV]` | Print a file from the project's [repository](/help/repositories#reading-files-and-commits) as it is on the main branch, or at a branch, tag or commit hash; a file too large to show (over 512 KiB) or not text is an error |
+| `vaquero file KEY PATH [--at REV]` | Print a file from the project's [repository](/help/repositories#reading-files-and-commits) as it is on the main branch, or at a branch, tag or commit hash; a file too large to show (over 512 KiB) or not text is an error; on a terminal control characters are left out, piped or redirected the file is exact |
 | `vaquero commits TICKET` | The commits on the main branch whose message names the ticket, as `(VAQ-12)`, newest first (at most 50), with the lines added and removed and the first release tag that contains them |
 | `vaquero fetch KEY` | Fetch the project's [repository](/help/repositories#fetching) remote now. Prints "Fetched KEY."; a failed fetch exits 1 with git's first line. |
 | `vaquero ticket unlink TICKET OTHER` | Remove the links between two tickets |

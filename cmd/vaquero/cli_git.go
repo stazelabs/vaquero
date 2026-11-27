@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/stazelabs/vaquero/internal/api"
@@ -45,8 +46,42 @@ func cmdFetch(ctx context.Context, stdout, stderr io.Writer, args []string) int 
 	})
 }
 
+// stdoutIsTerminal says whether w is a terminal; a variable so tests can
+// force either answer.
+var stdoutIsTerminal = func(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// terminalSafe leaves out what could drive a terminal from a repository's
+// text (VAQ-204): every control character but tab, newline and the CR of a
+// CRLF pair, DEL and the C1 range U+0080 to U+009F. Plain text is unchanged.
+func terminalSafe(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i, r := range s {
+		switch {
+		case r == '\t', r == '\n':
+		case r == '\r':
+			if !strings.HasPrefix(s[i+1:], "\n") {
+				continue
+			}
+		case r < 0x20, r >= 0x7f && r <= 0x9f:
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // cmdFile prints a file from a project's repository as it is, text only:
-// a file too large to show or not text is an error naming why.
+// a file too large to show or not text is an error naming why. On a terminal
+// control characters are left out (terminalSafe); piped or redirected the
+// text is exact.
 func cmdFile(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 	const usage = "vaquero file KEY PATH [--at REV]"
 	c := newCmd(stdout, stderr, usage)
@@ -71,7 +106,11 @@ func cmdFile(ctx context.Context, stdout, stderr io.Writer, args []string) int {
 		case f.Text == nil:
 			return fmt.Errorf("%s isn't text", f.Path)
 		}
-		_, err := io.WriteString(c.stdout, *f.Text)
+		text := *f.Text
+		if stdoutIsTerminal(c.stdout) {
+			text = terminalSafe(text)
+		}
+		_, err := io.WriteString(c.stdout, text)
 		return err
 	})
 }

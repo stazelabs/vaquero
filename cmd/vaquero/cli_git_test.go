@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -105,5 +106,59 @@ func TestCLICommitsHostileTag(t *testing.T) {
 	out := mustCLI(t, "commits", "VAQ-1")
 	if strings.ContainsRune(out, '\u009b') || !strings.Contains(out, "Released in v12J.") {
 		t.Fatalf("%q", out)
+	}
+}
+
+func TestTerminalSafe(t *testing.T) {
+	for _, tc := range []struct{ name, in, want string }{
+		{"plain markdown", "# Title\n\n- a\t`b` é 日本\n", "# Title\n\n- a\t`b` é 日本\n"},
+		{"crlf kept", "a\r\nb\r\n", "a\r\nb\r\n"},
+		{"bare cr dropped", "a\rb\r", "ab"},
+		{"cr before cr", "a\r\rb", "ab"},
+		{"clear screen", "x\x1b[2Jy", "x[2Jy"},
+		{"osc 52", "x\x1b]52;c;SGVsbG8=\x07y", "x]52;c;SGVsbG8=y"},
+		{"osc 8", "\x1b]8;;http://e.x\x1b\\link\x1b]8;;\x1b\\", "]8;;http://e.x\\link]8;;\\"},
+		{"del and csi", "a\x7fb\u009bc\u0080d\u009fe", "abcde"},
+		{"other c0", "a\x00b\x07c\x08d", "abcd"},
+		{"tabs and newlines", "a\tb\nc", "a\tb\nc"},
+		{"just above c1", " x", " x"},
+	} {
+		if got := terminalSafe(tc.in); got != tc.want {
+			t.Errorf("%s: terminalSafe(%q) = %q, want %q", tc.name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestFileStripsControlsOnATerminal(t *testing.T) {
+	cliEnv(t)
+	mustCLI(t, "ticket", "new", "VAQ", "Board")
+	r := gittest.Repo(t)
+	const raw = "ok\x1b[2J\x1b]52;c;QQ==\x07\u009bx\x7fy\ta\r\nb\rc\n"
+	r.WriteCommit("docs/x.txt", raw, "Add (VAQ-1)")
+	mustCLI(t, "project", "edit", "VAQ", "--repo", r.Dir)
+
+	old := stdoutIsTerminal
+	t.Cleanup(func() { stdoutIsTerminal = old })
+
+	stdoutIsTerminal = func(io.Writer) bool { return true }
+	out := mustCLI(t, "file", "VAQ", "docs/x.txt")
+	if want := "ok[2J]52;c;QQ==xy\ta\r\nbc\n"; out != want {
+		t.Fatalf("terminal: %q, want %q", out, want)
+	}
+	for _, bad := range []string{"\x1b", "\x07", "\u009b", "\x7f"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("terminal output holds %q", bad)
+		}
+	}
+
+	stdoutIsTerminal = func(io.Writer) bool { return false }
+	if out := mustCLI(t, "file", "VAQ", "docs/x.txt"); out != raw {
+		t.Fatalf("piped: %q, want %q", out, raw)
+	}
+
+	stdoutIsTerminal = func(io.Writer) bool { return true }
+	var f api.File
+	if err := json.Unmarshal([]byte(mustCLI(t, "file", "VAQ", "docs/x.txt", "--json")), &f); err != nil || f.Text == nil || *f.Text != raw {
+		t.Fatalf("json: %v %+v", err, f)
 	}
 }
