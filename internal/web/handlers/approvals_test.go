@@ -2,6 +2,7 @@ package handlers_test
 
 import (
 	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -224,4 +225,50 @@ func TestRepoChangedOffersAsk(t *testing.T) {
 	contains(t, page, "Can&#39;t check its files: the repository settings changed since approval.", `action="/t/VAQ-1/approval/ask"`)
 	resp := c.Post("/t/VAQ-1/approval/ask", nil)
 	contains(t, c.Follow(resp).Body, "Asked for approval of the plan for VAQ-1.")
+}
+
+// VAQ-195: a move leaves the ticket's open decisions in the old project;
+// the ticket page in the new project shows only its own project's.
+func TestApprovalsAreTheCurrentProjectsAfterAMove(t *testing.T) {
+	e, c, tk := approvalWorld(t)
+	other, err := e.Deps.Core.CreateProject(bg, e.Deps.Actor.ID, core.ProjectInput{Key: "OTH", Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	on := true
+	if _, err := e.Deps.Core.UpdateProject(bg, e.Deps.Actor.ID, other.ID, core.ProjectPatch{Workflow: &on}); err != nil {
+		t.Fatal(err)
+	}
+	c.Post("/t/VAQ-1/approval/ask", nil)
+	old := openApprovalID(t, e)
+	moved, err := e.Deps.Core.MoveTicketToProject(bg, e.Deps.Actor.ID, tk.ID, other.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "OTH-" + strconv.FormatInt(moved.Number, 10)
+
+	page := c.Get("/t/" + key).Body
+	lacks(t, page, "data-approval", `action="/decisions/`)
+	contains(t, page, `action="/t/`+key+`/approval/ask"`)
+
+	r := c.Post("/t/"+key+"/approval/ask", nil)
+	contains(t, c.Follow(r).Body, "data-approval")
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'open'`, old); n != 1 {
+		t.Fatal("the old project's decision was touched")
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE state = 'open' AND project_id = ?`, other.ID); n != 1 {
+		t.Fatalf("%d open in the new project", n)
+	}
+
+	r = c.Post("/t/"+key+"/approval/ask-again", nil)
+	contains(t, c.Follow(r).Body, "Asked again for approval of the plan for "+key+".")
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'open'`, old); n != 1 {
+		t.Fatal("Ask again withdrew the old project's decision")
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE state = 'open' AND project_id = ?`, other.ID); n != 1 {
+		t.Fatalf("%d open in the new project", n)
+	}
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE state = 'withdrawn' AND project_id = ?`, other.ID); n != 1 {
+		t.Fatalf("%d withdrawn in the new project", n)
+	}
 }

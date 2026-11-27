@@ -43,7 +43,7 @@ func readinessView(r *http.Request, d Deps, t gen.Ticket, p gen.Project, status 
 	if gone {
 		return v, nil
 	}
-	open, err := openPlanApproval(r, d, target.ID)
+	open, err := openPlanApproval(r, d, target)
 	if err != nil {
 		return nil, err
 	}
@@ -96,11 +96,12 @@ func approvalTarget(r *http.Request, d Deps, t gen.Ticket, key string) (readines
 	return rd, et, rd.Epic, nil
 }
 
-// openPlanApproval is the newest open plan approval naming the ticket, or
-// nil.
-func openPlanApproval(r *http.Request, d Deps, ticketID string) (*gen.Decision, error) {
+// openPlanApproval is the newest open plan approval naming the ticket in
+// its current project, or nil. A move leaves its decisions in the old
+// project (VAQ-195); they can't count here and aren't shown.
+func openPlanApproval(r *http.Request, d Deps, ticket gen.Ticket) (*gen.Decision, error) {
 	ds, err := d.R.ListDecisions(r.Context(), gen.ListDecisionsParams{
-		State: "open", Kind: core.DecisionApproval, TicketID: ticketID, Lim: 20,
+		State: "open", Kind: core.DecisionApproval, TicketID: ticket.ID, ProjectID: ticket.ProjectID, Lim: 20,
 	})
 	if err != nil {
 		return nil, err
@@ -147,7 +148,7 @@ func ApprovalAsk(d Deps) http.HandlerFunc {
 			redirectWithFlash(w, r, flash.Error, key+" has nothing to ask for.", back)
 			return
 		}
-		if open, err := openPlanApproval(r, d, target.ID); err != nil {
+		if open, err := openPlanApproval(r, d, target); err != nil {
 			serverError(w, r, d, err)
 			return
 		} else if open != nil {
@@ -197,7 +198,7 @@ func ApprovalAskAgain(d Deps) http.HandlerFunc {
 				target, targetKey = et, ek
 			}
 		}
-		open, err := openPlanApproval(r, d, target.ID)
+		open, err := openPlanApproval(r, d, target)
 		if err != nil {
 			serverError(w, r, d, err)
 			return
@@ -214,7 +215,7 @@ func ApprovalAskAgain(d Deps) http.HandlerFunc {
 		var opts []core.Option
 		_ = json.Unmarshal([]byte(open.Options), &opts)
 		in := core.DecisionInput{
-			ProjectID: open.ProjectID, TicketIDs: ids, Kind: core.DecisionApproval, Subject: "plan",
+			ProjectID: target.ProjectID, TicketIDs: ids, Kind: core.DecisionApproval, Subject: "plan",
 			Question: open.Question, Options: opts, Recommendation: open.Recommendation, Why: open.Why,
 		}
 		if len(ids) == 1 && ids[0] == target.ID {
