@@ -109,7 +109,7 @@ func TestAskOnTheEpicWhenReadinessSaysSo(t *testing.T) {
 func TestTicketPageWorkflowOffHasNoReadiness(t *testing.T) {
 	e := webtest.New(t)
 	ticket(t, e, project(t, e), core.TicketInput{Title: "Plain"})
-	lacks(t, e.Client().Get("/t/VAQ-1").Body, "data-readiness", "data-approval", "approval/ask")
+	lacks(t, e.Client().Get("/t/VAQ-1").Body, "data-readiness", `id="readiness"`, "data-approval", "approval/ask")
 	// The routes refuse with the workflow off.
 	c := e.Client()
 	r := c.Post("/t/VAQ-1/approval/ask", nil)

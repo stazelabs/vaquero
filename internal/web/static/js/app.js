@@ -204,6 +204,19 @@ window.vqDragging = false;
         pending = true;
         return;
       }
+      // A part holding a focused field (a note being typed) is left alone,
+      // and refreshed once when focus leaves it.
+      var active = document.activeElement;
+      if (active && el.contains(active) && active.matches("input, textarea, select, [contenteditable]")) {
+        el.addEventListener("focusout", function onOut(ev) {
+          if (ev.relatedTarget && el.contains(ev.relatedTarget)) {
+            return;
+          }
+          el.removeEventListener("focusout", onOut);
+          window.htmx.trigger(el, "vq:change");
+        });
+        return;
+      }
       window.htmx.trigger(el, "vq:change");
     });
   }

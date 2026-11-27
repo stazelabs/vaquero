@@ -56,3 +56,29 @@ func TestE2EAskAndApprove(t *testing.T) {
 		}
 	}
 }
+
+// VAQ-210: the readiness block follows changes like the plan does. A ticket
+// page open on Ready reads the change a new plan revision makes, with the
+// ask button (no approval is waiting, so Ask for approval is the one shown), without a reload.
+func TestReadinessFollowsPlan(t *testing.T) {
+	env := webtest.New(t)
+	f := newProject(t, env, "APP")
+	ctx := context.Background()
+	if _, err := env.Deps.Core.UpdateProject(ctx, env.Deps.Actor.ID, f.project.ID, core.ProjectPatch{Workflow: new(true)}); err != nil {
+		t.Fatal(err)
+	}
+	tk := f.ticket("Build it", "", func(in *core.TicketInput) { in.Tier = "light" })
+	if _, err := env.Deps.Core.SavePlan(ctx, env.Deps.Actor.ID, tk.ID, "The plan.", 0); err != nil {
+		t.Fatal(err)
+	}
+	p := open(t, env, 1280, 900)
+	p.goTo("/t/APP-1")
+	p.until(`document.querySelector("[data-readiness]").textContent.includes("Ask for plan approval.")`)
+	p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-approval]")`)
+	p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
+		`!document.querySelector("[data-approval]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
+	if _, err := env.Deps.Core.SavePlan(ctx, env.Deps.Actor.ID, tk.ID, "The plan, revised.", 1); err != nil {
+		t.Fatal(err)
+	}
+	p.until(`document.querySelector("#readiness").textContent.includes("Changed since approval: the plan. Ask again.") && !!document.querySelector('#readiness form[action="/t/APP-1/approval/ask"] button')`)
+}

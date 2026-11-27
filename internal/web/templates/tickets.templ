@@ -523,8 +523,10 @@ templ LinkTargetOptions(opts []Option) {
 	}
 }
 
+// readinessBlock is live like the plan: a plan, an edit or an answer made
+// elsewhere changes what it says without a reload.
 templ readinessBlock(key string, r *ReadinessView) {
-	<div data-readiness>
+	<div data-readiness id="readiness" hx-get={ "/t/" + key } hx-trigger="vq:change" hx-select="#readiness" hx-swap="outerHTML" data-live>
 		if r.Todo {
 			<p class={ labelClass }>Readiness</p>
 		} else {
