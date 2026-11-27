@@ -22,11 +22,11 @@ ls internal/help/articles/                                # help articles
 grep -n -A40 'var toolNames' internal/mcpserver/tools.go  # the MCP tools
 go run ./cmd/vaquero help                                 # the CLI's commands and usage
 cat coverage-floors.txt go.mod                            # floors, the Go version and dependencies
-git fetch --tags origin; git tag --list 'v*'             # releases (the fetch only reads)
+GIT_TERMINAL_PROMPT=0 git fetch --tags origin; git tag --list 'v*'   # releases (downloads tags and remote branches; changes no local branch or work tree)
 ls testdata/upgrade/                                      # v0.1.0.json, v0.1.0.sqlite, …: a fixture per release
 ```
 
-Release tags are made on GitHub by the release workflow (docs/RELEASING.md), so a local clone may not have the newest one: fetch the tags first (the one network use this audit makes, read-only, from the main loop only). When the fetch can't run, the newest fixture in `testdata/upgrade/` names the newest release or the one about to be cut (a fixture is committed just before its release), and docs/RELEASING.md says how a release is made; say in the report which you relied on.
+Release tags are made on GitHub by the release workflow (docs/RELEASING.md), so a local clone may not have the newest one: fetch the tags first (the one network use this audit makes, from the main loop only: it downloads tags and remote branches and changes no local branch or work tree; `GIT_TERMINAL_PROMPT=0` makes a credential prompt fail at once). When the fetch can't run or fails, the newest fixture in `testdata/upgrade/` names the newest release or the one about to be cut (a fixture is committed just before its release), and docs/RELEASING.md says how a release is made; say in the report which you relied on.
 
 `go run ./cmd/vaquero docs SLUG` prints an article as the binary ships it.
 
