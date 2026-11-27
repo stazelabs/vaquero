@@ -744,6 +744,21 @@ window.vqFocusTarget = function (card) {
       close(false);
     }
   });
+  // So does a search sent from it, and a page brought back from the
+  // back-forward cache with the drawer open.
+  side.addEventListener("submit", function () { close(false); });
+  window.addEventListener("pageshow", function (ev) {
+    if (ev.persisted) {
+      close(false);
+    }
+  });
+  // The search hint names the platform's key: Cmd on macOS (the server's
+  // default), else Ctrl.
+  var hint = side.querySelector("[data-search-hint]");
+  var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+  if (hint && !/mac/i.test(platform)) {
+    hint.textContent = "Ctrl+K";
+  }
   document.addEventListener("keydown", function (ev) {
     if (ev.key === "Escape" && isOpen() && !document.querySelector("dialog[open]")) {
       ev.preventDefault();
@@ -1316,7 +1331,7 @@ window.vqFocusTarget = function (card) {
       return;
     }
     var k = ev.key;
-    if (k >= "1" && k <= "9") {
+    if (/^[1-9]$/.test(k)) {
       var b = card.querySelector('[data-option="' + k + '"]');
       if (b) {
         b.click();

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
@@ -177,6 +178,23 @@ func TestShell(t *testing.T) {
 		}
 	})
 
+	// The search hint names Cmd on macOS (the server's default) and Ctrl
+	// elsewhere.
+	t.Run("hint", func(t *testing.T) {
+		for platform, want := range map[string]string{"macOS": "⌘K", "Linux": "Ctrl+K"} {
+			pg := open(t, env, 1280, 700)
+			if _, err := chromedp.Call(pg.ctx, emulation.SetUserAgentOverride, emulation.SetUserAgentOverrideParams{
+				UserAgent: "Mozilla/5.0", Platform: platform, UserAgentMetadata: &emulation.UserAgentMetadata{Platform: platform},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			pg.goTo("/p/WEB")
+			if got := eval[string](pg, `document.querySelector("[data-search-hint]").textContent`); got != want {
+				t.Errorf("%s: the hint reads %q, want %q", platform, got, want)
+			}
+		}
+	})
+
 	t.Run("keys", func(t *testing.T) {
 		pg := open(t, env, 1280, 800)
 		pg.goTo("/p/WEB")
@@ -197,7 +215,7 @@ func TestShell(t *testing.T) {
 }
 
 // phoneDrawer is the sidebar as a drawer at 375 px in scheme: the menu
-// opens it; a link, Escape and the backdrop close it; the page
+// opens it; a link, a search, Escape and the backdrop close it; the page
 // never scrolls sideways.
 func phoneDrawer(t *testing.T, env *webtest.Env, scheme string) {
 	pg := open(t, env, 375, 800)
@@ -249,4 +267,16 @@ func phoneDrawer(t *testing.T, env *webtest.Env, scheme string) {
 	pg.do(clickAt((r.Right+375)/2, 400))
 	pg.until(closed)
 	wide("closed again")
+
+	// A search sent from the drawer closes it on its way (held back here).
+	pg.click(menu)
+	pg.until(opened)
+	eval[bool](pg, `(window.addEventListener("submit", function (ev) { ev.preventDefault(); }), true)`)
+	pg.do(focus("#vq-search"))
+	pg.key("card")
+	pg.key(enter)
+	pg.until(closed)
+	if got := pg.path(); got != "/p/WEB/board" {
+		t.Fatalf("path %s; the held-back search navigated", got)
+	}
 }

@@ -43,7 +43,11 @@ const (
 	// priority mark, the number, the title (rowTitle, cut with an
 	// ellipsis), then the trailing meta. Rows are divided by line rules.
 	rowClass = "flex h-row min-w-0 items-center gap-2 border-b border-line px-1.5 text-sm hover:bg-paper/60 focus-within:ring-2 focus-within:ring-inset focus-within:ring-accent"
-	rowTitle = "min-w-0 flex-1 truncate text-ink"
+	// rowOnPaper is a row on the page's paper (the list, the inbox, My
+	// work), whose hover is paper-alt; rowClass's paper hover is for
+	// Focus's lanes, which are paper-alt.
+	rowOnPaper = "flex h-row min-w-0 items-center gap-2 border-b border-line px-1.5 text-sm hover:bg-paper-alt focus-within:ring-2 focus-within:ring-inset focus-within:ring-accent"
+	rowTitle   = "min-w-0 flex-1 truncate text-ink"
 	// rowMeta is a row's trailing part: faces, claims, a day. It never
 	// wraps; a long reason is cut too.
 	rowMeta    = "ml-auto flex max-w-1/2 shrink-0 items-center gap-1.5 text-xs text-muted"

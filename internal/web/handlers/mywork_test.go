@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -58,14 +59,33 @@ func TestMyWork(t *testing.T) {
 	lacks(t, page, "Nothing assigned to you.", "alpha shipped", "alpha dropped", "alpha the agent", "alpha nobody", "old archived")
 	// Alpha before Beta; within Alpha the urgent one first.
 	order := []string{`data-my-project="ALP"`, "alpha urgent", "alpha no priority", `data-my-project="BET"`, "beta high"}
-	at := -1
+	pos := -1
 	for _, s := range order {
 		i := strings.Index(page, s)
-		if i <= at {
-			t.Fatalf("%q out of order (at %d, after %d)", s, i, at)
+		if i <= pos {
+			t.Fatalf("%q out of order (at %d, after %d)", s, i, pos)
 		}
-		at = i
+		pos = i
 	}
+	// Within one priority the newest change comes first.
+	var newer gen.Ticket
+	at(e, 2*time.Hour, func() { ticket(t, e, beta, core.TicketInput{Title: "beta tie older", AssigneeID: owner, Priority: 3}) })
+	at(e, time.Hour, func() {
+		newer = ticket(t, e, beta, core.TicketInput{Title: "beta tie newer", AssigneeID: owner, Priority: 3})
+	})
+	page = e.Client().Get("/my").Body
+	if i, j := strings.Index(page, "beta tie newer"), strings.Index(page, "beta tie older"); i < 0 || j < 0 || i > j {
+		t.Fatalf("the tie is out of order: newer at %d, older at %d", i, j)
+	}
+	// A claim shows beside the status.
+	if _, err := e.Deps.Core.Claim(bg, owner, newer.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	page = e.Client().Get("/my").Body
+	row := page[strings.Index(page, `data-card="`+"BET-3"+`"`):]
+	row = row[:strings.Index(row, "</li>")]
+	contains(t, row, "In progress", `title="Claimed by `, "data-claim-expires=")
+
 	// The sidebar marks My work.
 	contains(t, sidebar(t, page), `href="/my" data-current aria-current="page"`)
 }

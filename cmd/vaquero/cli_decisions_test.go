@@ -80,7 +80,8 @@ func TestCLIDecisionAnswer(t *testing.T) {
 		t.Fatalf("%q", out)
 	}
 	for _, args := range [][]string{{"decision"}, {"decision", "answer"}, {"decision", "ask", "VAQ"}, {"decision", "rule", "VAQ", "Q?"}, {"decision", "nod", "x"},
-		{"decision", "answer", id, "Yes", "--text", "No"}, {"decision", "show", id, "--note", "x"}} {
+		{"decision", "answer", id, "Yes", "--text", "No"}, {"decision", "show", id, "--note", "x"},
+		{"decision", "rule", "VAQ", "Q?", "Yes", "--option", "Yes", "--recommend", "Yes"}} {
 		if code, _, errOut := cli(t, args...); code != 2 || !strings.Contains(errOut, "usage") {
 			t.Errorf("%v: %d %q", args, code, errOut)
 		}

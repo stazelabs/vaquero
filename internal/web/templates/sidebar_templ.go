@@ -129,7 +129,7 @@ func sidebar() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\"> <kbd aria-hidden=\"true\" class=\"pointer-events-none absolute inset-y-0 right-1.5 my-auto flex h-4 items-center rounded-sm border border-line px-1 font-mono text-xs text-muted\">⌘K</kbd></form><ul class=\"shrink-0\"><li>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\"> <kbd data-search-hint aria-hidden=\"true\" class=\"pointer-events-none absolute inset-y-0 right-1.5 my-auto flex h-4 items-center rounded-sm border border-line px-1 font-mono text-xs text-muted\">⌘K</kbd></form><ul class=\"shrink-0\"><li>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -752,7 +752,7 @@ func menuButton() templ.Component {
 			templ_7745c5c3_Var39 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<a href=\"/\" role=\"button\" data-menu-button aria-label=\"Menu\" aria-controls=\"vq-sidebar\" aria-expanded=\"false\" class=\"-ml-1 inline-flex h-chip w-chip shrink-0 items-center justify-center rounded-sm text-ink/80 hover:text-accent md:hidden\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<a href=\"/\" data-menu-button aria-label=\"Menu\" aria-controls=\"vq-sidebar\" aria-expanded=\"false\" class=\"-ml-1 inline-flex h-chip w-chip shrink-0 items-center justify-center rounded-sm text-ink/80 hover:text-accent md:hidden\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

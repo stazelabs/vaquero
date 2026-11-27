@@ -263,7 +263,15 @@ templ cardItem(k board.Card) {
 // why it waits (reason, which then stands for the claim and assignee), with full the list's ready mark, tier and tags,
 // then the claim or the assignee's face, then the day it finished.
 templ ticketRow(k board.Card, reason string, full bool) {
-	<li { cardAttrs(k)... } class={ rowClass }>
+	@ticketRowWith(k, reason, full, reason == "", full)
+}
+
+// ticketRowWith is ticketRow with its choices named: claim shows a live
+// claim even beside a reason (My work's status; Focus's reasons name the
+// claim themselves), and onPaper is a row on the page's paper, whose
+// hover is paper-alt (Focus's lanes are paper-alt).
+templ ticketRowWith(k board.Card, reason string, full, claim, onPaper bool) {
+	<li { cardAttrs(k)... } class={ rowFor(onPaper) }>
 		<a href={ templ.SafeURL("/t/" + k.Key) } class="flex h-full min-w-0 flex-1 items-center gap-2 focus:outline-none" title={ k.Title }>
 			<span class={ priorityMarkClass(k.Priority) }>
 				if k.Priority > 0 {
@@ -271,7 +279,7 @@ templ ticketRow(k board.Card, reason string, full bool) {
 					<span class="sr-only">{ PriorityLabel(k.Priority) }</span>
 				}
 			</span>
-			<span class="w-8 shrink-0 font-mono text-xs text-muted"><span class="sr-only">{ keyPrefix(k.Key) }</span>{ keyNumber(k.Key) }</span>
+			<span class="min-w-8 shrink-0 font-mono text-xs text-muted"><span class="sr-only">{ keyPrefix(k.Key) }</span>{ keyNumber(k.Key) }</span>
 			<span class={ rowTitle }>{ k.Title }</span>
 			<span class={ rowMeta }>
 				if reason != "" {
@@ -291,7 +299,7 @@ templ ticketRow(k board.Card, reason string, full bool) {
 						<span class="truncate rounded-sm bg-accent/10 px-1 text-ink/80">{ t }</span>
 					}
 				}
-				if reason == "" && k.ClaimedBy != "" {
+				if claim && k.ClaimedBy != "" {
 					@claimChip(k, "inline-flex min-w-0 items-center gap-1 truncate text-accent", "h-3.5 w-3.5 shrink-0")
 				}
 				if reason == "" && showAssignee(k) {

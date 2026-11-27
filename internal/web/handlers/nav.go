@@ -18,7 +18,9 @@ func Nav(d Deps) func(http.Handler) http.Handler {
 			r = r.WithContext(templates.WithNav(ctx, placeOf(r.URL.Path), func() (templates.Nav, error) {
 				rows, err := d.R.ListNavProjects(ctx)
 				if err != nil {
-					d.Logger.WarnContext(ctx, "read sidebar", "err", err)
+					if ctx.Err() == nil {
+						d.Logger.WarnContext(ctx, "read sidebar", "err", err)
+					}
 					return templates.Nav{}, err
 				}
 				n := templates.Nav{Projects: make([]templates.NavProject, 0, len(rows))}
@@ -28,7 +30,9 @@ func Nav(d Deps) func(http.Handler) http.Handler {
 				}
 				// A failed count keeps the projects and shows no count.
 				if c, err := d.R.CountInbox(ctx); err != nil {
-					d.Logger.WarnContext(ctx, "read inbox count", "err", err)
+					if ctx.Err() == nil {
+						d.Logger.WarnContext(ctx, "read inbox count", "err", err)
+					}
 				} else {
 					n.InboxCount = int(c)
 				}

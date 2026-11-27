@@ -37,7 +37,7 @@ templ InboxSection(v InboxView) {
 				@groupHead("inbox-review", "Review", len(v.Review))
 				<ul class="mt-2 border-t border-line">
 					for _, r := range v.Review {
-						<li data-card={ r.Key } data-review={ r.Key } class={ rowClass }>
+						<li data-card={ r.Key } data-review={ r.Key } class={ rowOnPaper }>
 							<a href={ templ.SafeURL("/t/" + r.Key) } data-ticket-link class="flex h-full min-w-0 flex-1 items-center gap-2 focus:outline-none" title={ r.Title }>
 								<span class={ priorityMarkClass(r.Priority) }>
 									if r.Priority > 0 {
@@ -64,7 +64,7 @@ templ InboxSection(v InboxView) {
 				@groupHead("inbox-check", "Check", len(v.Check))
 				<ul class="mt-2 border-t border-line">
 					for _, l := range v.Check {
-						<li data-lapse={ strconv.FormatInt(l.Seq, 10) } class={ rowClass }>
+						<li data-lapse={ strconv.FormatInt(l.Seq, 10) } class={ rowOnPaper }>
 							<a href={ templ.SafeURL("/t/" + l.Key) } class="flex h-full min-w-0 flex-1 items-center gap-2 focus:outline-none" title={ l.Title }>
 								<span class={ rowTitle }>{ l.Agent + "'s claim on " + l.Key + " lapsed " + l.Ago }</span>
 							</a>
@@ -81,7 +81,7 @@ templ InboxSection(v InboxView) {
 					for _, r := range v.Rulings {
 						<li class="border-b border-line">
 							<details data-ruling={ r.Card.ID } data-keep={ "ruling-" + r.Card.ID }>
-								<summary class="flex h-row min-w-0 cursor-pointer items-center gap-2 px-1.5 text-sm hover:bg-paper/60">
+								<summary class="flex h-row min-w-0 cursor-pointer items-center gap-2 px-1.5 text-sm hover:bg-paper-alt">
 									<span class={ rowTitle }>{ r.Question }</span>
 									<span class={ rowMeta }><span class="truncate">{ r.Ruled }</span></span>
 								</summary>
@@ -187,7 +187,12 @@ templ DecisionCard(c DecisionCardView) {
 				</div>
 			}
 			if c.Error != "" {
-				<p role="alert" data-card-error class="mt-2 text-xs text-danger">{ c.Error }</p>
+				<p role="alert" class="mt-2 text-xs">
+					<span data-card-error class="text-danger">{ c.Error }</span>
+					if k := openTicketAfter(c); k != "" {
+						<a data-open-ticket href={ templ.SafeURL("/t/" + k) } class="ml-1 text-accent hover:underline">Open { k }</a>
+					}
+				</p>
 			}
 			<div class="mt-2 flex items-start gap-3">
 				<details data-note open?={ c.Note != "" } class="min-w-0 flex-1">

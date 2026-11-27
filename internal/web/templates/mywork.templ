@@ -8,7 +8,8 @@ type MyWorkGroup struct {
 	Rows    []MyWorkRow
 }
 
-// MyWorkRow is one ticket on My work, with its status's name.
+// MyWorkRow is one ticket on My work, with its status's name, and its
+// claim beside it when one is live.
 type MyWorkRow struct {
 	Card   board.Card
 	Status string
@@ -31,7 +32,7 @@ templ MyWorkPage(groups []MyWorkGroup) {
 				</h2>
 				<ul class="mt-2 border-t border-line">
 					for _, r := range g.Rows {
-						@ticketRow(r.Card, r.Status, false)
+						@ticketRowWith(r.Card, r.Status, false, true, true)
 					}
 				</ul>
 			</section>

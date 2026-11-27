@@ -151,6 +151,15 @@ func cardAttrs(k board.Card) templ.OrderedAttributes {
 	}
 }
 
+// rowFor is a ticket row's class: on the page's paper, else in a Focus
+// lane on paper-alt.
+func rowFor(onPaper bool) string {
+	if onPaper {
+		return rowOnPaper
+	}
+	return rowClass
+}
+
 // hasCardMeta reports whether a board card has anything for its meta line.
 func hasCardMeta(k board.Card) bool {
 	return k.Ready || k.Priority > 0 || k.Tier != "" || len(k.Tags) > 0 || k.When != "" || k.ClaimedBy != "" || showAssignee(k)

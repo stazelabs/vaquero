@@ -362,7 +362,7 @@ func coversLine(asked []api.DecisionAsked) string {
 // protocol-relative address to a browser.
 func localBack(r *http.Request) string {
 	b := r.PostFormValue("back")
-	if !strings.HasPrefix(b, "/") || strings.HasPrefix(b, "//") || strings.ContainsRune(b, '\\') || slices.ContainsFunc([]rune(b), func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+	if !strings.HasPrefix(b, "/") || strings.HasPrefix(b, "//") || strings.ContainsRune(b, '\\') || strings.IndexFunc(b, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return inboxPath
 	}
 	return b

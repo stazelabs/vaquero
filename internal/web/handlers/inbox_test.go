@@ -394,6 +394,24 @@ func TestInboxAnswerRefusedArchivedOrWithdrawn(t *testing.T) {
 	}
 }
 
+// A stale plan on an inbox card links to the ticket, where Ask again is;
+// on the ticket page the readiness block is beside it, so no link.
+func TestInboxStalePlanLinksTheTicket(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	workflowOn(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Build it"})
+	savePlan(t, e, tk.ID, "The plan.", 0)
+	d := planApproval(t, e, agent(t, e).ID, p, tk.ID)
+	savePlan(t, e, tk.ID, "A new plan.", 1)
+	c := e.Client()
+	r := c.PostHX("/inbox/"+d.ID+"/answer", url.Values{"option": {"Approve"}, "back": {"/inbox"}})
+	contains(t, r.Body, "The plan or requirement for VAQ-1 changed since this was asked; ask again.", `data-open-ticket href="/t/VAQ-1"`, "Open VAQ-1")
+	r = c.PostHX("/inbox/"+d.ID+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
+	contains(t, r.Body, "The plan or requirement for VAQ-1 changed since this was asked; ask again.")
+	lacks(t, r.Body, "data-open-ticket")
+}
+
 // The sidebar's count is its own live part: always there (empty at
 // zero, so it can appear), refreshed from /inbox/count.
 func TestInboxBadgeFragment(t *testing.T) {
@@ -420,6 +438,14 @@ func TestInboxBadgeFragment(t *testing.T) {
 	}
 	contains(t, r.Body, `id="vq-inbox-badge"`)
 	lacks(t, r.Body, "data-inbox-count")
+}
+
+// The confirm dialog's Withdraw question says it can be asked again.
+func TestInboxWithdrawCopy(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	q := ask(t, e, agent(t, e).ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Which?"})
+	contains(t, inboxCard(t, e.Client().Get("/inbox").Body, q.ID), `data-confirm="Withdraw this question? It can be asked again."`)
 }
 
 // Answered today shows how each answer came: direct or relayed.

@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // DecisionCardView is one decision as a card the owner answers in place:
@@ -108,9 +109,20 @@ func kindLabel(c DecisionCardView) string {
 // withdrawQuestion is the confirm dialog's question for a card's Withdraw.
 func withdrawQuestion(c DecisionCardView) string {
 	if c.Kind == "approval" {
-		return "Withdraw this approval? The agent can ask again."
+		return "Withdraw this approval? It can be asked again."
 	}
-	return "Withdraw this question? The agent can ask again."
+	return "Withdraw this question? It can be asked again."
+}
+
+// openTicketAfter is the ticket an inbox card's refusal links to: a plan
+// approval refused as stale ("…; ask again.") is asked again from its
+// ticket's page. On that page (Back is the ticket) the readiness block's
+// Ask again is beside the card, so "" there.
+func openTicketAfter(c DecisionCardView) string {
+	if c.PlanKey == "" || !strings.HasSuffix(c.Error, "; ask again.") || strings.HasPrefix(c.Back, "/t/") {
+		return ""
+	}
+	return c.PlanKey
 }
 
 func cardAnswerURL(id string) string   { return "/inbox/" + url.PathEscape(id) + "/answer" }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -77,8 +78,9 @@ func cmdDecision(ctx context.Context, stdout, stderr io.Writer, args []string) i
 		"show":     {2, 2, nil},
 		"withdraw": {2, 2, nil},
 		"ask":      {3, 3, append([]string{"approval"}, askFlags...)},
-		"rule":     {4, 4, append([]string{"note"}, askFlags...)},
-		"answer":   {2, 3, []string{"text", "note", "words"}},
+		// A ruling records its answer: no --recommend (ruling T-R4).
+		"rule":   {4, 4, append([]string{"note"}, slices.DeleteFunc(slices.Clone(askFlags), func(f string) bool { return f == "recommend" })...)},
+		"answer": {2, 3, []string{"text", "note", "words"}},
 	}
 	s, ok := shape[verb]
 	if !ok || len(pos) < s.min || len(pos) > s.max {

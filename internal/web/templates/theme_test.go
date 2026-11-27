@@ -115,7 +115,7 @@ func TestThemeTokens(t *testing.T) {
 				t.Errorf("%s %s has chroma %v, want at most 0.006", scheme, n, c.C)
 			}
 		}
-		for _, p := range [][2]string{{"muted", "paper"}, {"ink", "paper-alt"}, {"ink", "paper"}} {
+		for _, p := range [][2]string{{"muted", "paper"}, {"muted", "paper-alt"}, {"ink", "paper-alt"}, {"ink", "paper"}} {
 			if r := contrast(col(p[0]), col(p[1])); r < 4.5 {
 				t.Errorf("%s %s on %s is %.2f:1, want at least 4.5:1", scheme, p[0], p[1], r)
 			}
