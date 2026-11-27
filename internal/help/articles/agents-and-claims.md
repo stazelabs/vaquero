@@ -19,7 +19,7 @@ A ticket is ready when it is in a todo status, has no assignee and no claim, not
     vaquero ready VAQ
     vaquero ready --limit 5 --json
 
-## Claiming, renewing and releasing
+## Claiming, renewing and unclaiming
 
 `vaquero claim VAQ-12` claims a ticket for 15 minutes; `--lease 45m` asks for longer, from 1 minute to 2 hours. Claiming assigns the ticket to the agent and moves it from backlog or todo to the project's first in-progress status. Claiming a ticket you already hold renews the claim.
 

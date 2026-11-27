@@ -47,7 +47,7 @@ When a fetch fails, the settings page shows when and why (git's first line, such
 
 ## When git is missing
 
-Without git installed, the section says "Git isn't installed, so repository features are off." and its fields are disabled, and the file view and a ticket's Commits say "Git isn't installed." Vaquero needs git 2.31 or later; with an older git they say "Git 2.31 or later is needed." instead. Nothing else in Vaquero depends on git.
+Without git installed, the section says "Git isn't installed, so repository features are off." and its fields are disabled, and the file view and a ticket's Commits say "Git isn't installed." Vaquero needs git 2.31 or later; with an older git they say "Git 2.31 or later is needed." instead, and "Couldn't read git's version." when git doesn't say which it is. Nothing else in Vaquero depends on git.
 
 A partial clone (one cloned with `--filter`, which leaves some file contents on the remote) needs git 2.44 or later: Vaquero never downloads a missing file to read it, and only from 2.44 can git be told not to. With an older git the repository is refused with "Partial clones need git 2.44 or later." In a partial clone a file whose contents aren't on disk can't be shown, and a readiness check that needs one says "Can't check its files: the repository can't be read." until a fetch or checkout brings it.
 
