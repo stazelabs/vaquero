@@ -24,7 +24,7 @@ Answer a core error with `invalidOrError`: a `*core.Invalid` re-renders the form
 
 - `api*.go` handlers answer JSON only: `api.WriteJSON`, `api.WriteFailure`, and `apiCoreFail` for core errors (a conflict carries the current ticket). Decode bodies with `api.Decode` (unknown fields refused). The actor is `apiActor(r)`, never `d.Actor`.
 - Tickets are addressed by key and other objects by name in requests; internal ids appear only for comments and links, which have no key.
-- The API is additive once released: add fields and endpoints, never rename or remove.
+- Until hosted mode the API may change as the product needs (owner, direction reset 2026-11-26: "break anything"); say what changed in the release notes. Data on disk still migrates.
 
 ## MCP tools
 
