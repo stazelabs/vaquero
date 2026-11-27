@@ -188,3 +188,41 @@ func decisionTicket(t *testing.T, env *webtest.Env, id string) string {
 	}
 	return ids[0]
 }
+
+// VAQ-172: the ticket page lists the decisions naming its ticket as the
+// inbox's cards and answers them in place, at phone and desktop widths:
+// the card leaves, the page doesn't reload and goes no wider.
+func TestTicketPageAnswersItsDecisions(t *testing.T) {
+	for _, w := range []int64{375, 1280} {
+		t.Run(fmt.Sprint(w), func(t *testing.T) {
+			env := webtest.New(t)
+			ctx := context.Background()
+			f := newProject(t, env, "APP")
+			tk := f.ticket("Build it", "")
+			for _, q := range []string{"Which way?", "Which colour?"} {
+				if _, err := env.Deps.Core.AskDecision(ctx, env.Deps.Actor.ID, core.DecisionInput{ProjectID: f.project.ID, TicketIDs: []string{tk.ID},
+					Kind: core.DecisionQuestion, Question: q, Options: []core.Option{{Label: "Left"}, {Label: "Right"}}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := open(t, env, w, 900)
+			p.goTo("/t/APP-1")
+			const cards = `[data-ticket-decisions] [data-decision]`
+			p.until(`document.querySelectorAll("` + cards + `").length === 2`)
+			if sw := eval[int64](p, `document.documentElement.scrollWidth`); sw > w {
+				t.Fatalf("the page is %d px wide at %d px", sw, w)
+			}
+			eval[bool](p, `window.vqSamePage = true`)
+			p.click(cards + ` button[value="Left"]`)
+			p.until(`document.querySelectorAll("` + cards + `").length === 1`)
+			if !eval[bool](p, `window.vqSamePage === true`) {
+				t.Fatal("the page reloaded")
+			}
+			p.click(cards + ` button[value="Right"]`)
+			p.until(`document.querySelectorAll("` + cards + `").length === 0 && !document.querySelector("[data-ticket-decisions] h2")`)
+			if sw := eval[int64](p, `document.documentElement.scrollWidth`); sw > w {
+				t.Fatalf("the page is %d px wide at %d px", sw, w)
+			}
+		})
+	}
+}

@@ -358,10 +358,11 @@ func coversLine(asked []api.DecisionAsked) string {
 }
 
 // localBack is the form's back when it is a path on this site, else the
-// inbox.
+// inbox. A control character refuses it: a TAB makes "/\t/evil.example" a
+// protocol-relative address to a browser.
 func localBack(r *http.Request) string {
 	b := r.PostFormValue("back")
-	if !strings.HasPrefix(b, "/") || strings.HasPrefix(b, "//") || strings.ContainsAny(b, "\\\r\n") {
+	if !strings.HasPrefix(b, "/") || strings.HasPrefix(b, "//") || strings.ContainsRune(b, '\\') || slices.ContainsFunc([]rune(b), func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return inboxPath
 	}
 	return b
@@ -499,4 +500,20 @@ func TicketPlan(d Deps) http.HandlerFunc {
 		}
 		renderPart(w, r, d, http.StatusOK, templates.PlanFragment(pv))
 	}
+}
+
+// ticketDecisionCards is every open decision naming the ticket in its
+// project now (a move leaves earlier ones in the old project, VAQ-195),
+// newest first, as the inbox's cards with the ticket page as their back,
+// and extra (the open plan approval readiness shows, which may name its
+// epic instead) when it isn't among them.
+func ticketDecisionCards(ctx context.Context, d Deps, t gen.Ticket, extra *gen.Decision, key string) ([]templates.DecisionCardView, error) {
+	decs, err := d.R.ListDecisions(ctx, gen.ListDecisionsParams{State: "open", TicketID: t.ID, ProjectID: t.ProjectID, Lim: 50})
+	if err != nil {
+		return nil, err
+	}
+	if extra != nil && !slices.ContainsFunc(decs, func(x gen.Decision) bool { return x.ID == extra.ID }) {
+		decs = append(decs, *extra)
+	}
+	return decisionCards(ctx, d, decs, "/t/"+key)
 }

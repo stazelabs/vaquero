@@ -96,24 +96,21 @@ type TicketView struct {
 	// project's workflow is on and the ticket a todo or has an open plan
 	// approval.
 	Readiness *ReadinessView
+	// Decisions are the open decisions naming the ticket, as the inbox's
+	// cards, answered in place (VAQ-172).
+	Decisions []DecisionCardView
 }
 
 // ReadinessView is whether a todo is ready, or the one reason it isn't
 // (Todo set), and the plan approval waiting for the owner's answer (Open,
 // whatever the status). Ask shows the ask button while nothing is open;
-// Open shows its answer form and Ask again.
+// Open shows Ask again (the answer form is the page's decision card).
 type ReadinessView struct {
 	Todo   bool
 	Ready  bool
 	Reason string
 	Ask    bool
-	Open   *ApprovalView
-}
-
-// ApprovalView is an open plan approval with one button per option.
-type ApprovalView struct {
-	ID, Question, Ticket string
-	Options              []Option
+	Open   bool
 }
 
 // TicketFormPage is the form for a new ticket or an edit.
@@ -364,6 +361,7 @@ templ TicketPage(v TicketView) {
 						</button>
 					</div>
 				</section>
+				@ticketDecisions(v)
 				<section id="comments">
 					<h2 class={ h2IconClass }>
 						@Icon("comment")
@@ -526,6 +524,29 @@ templ LinkTargetOptions(opts []Option) {
 	}
 }
 
+// ticketDecisions is the open decisions naming the ticket, as the inbox's
+// cards with the ticket page as their back. The part is always there, so a
+// decision asked while the page is open can appear; it follows changes
+// like the readiness block, and answering a card refreshes both (the
+// card's HX-Trigger vq:refresh, through app.js's busy rule).
+templ ticketDecisions(v TicketView) {
+	<div id="ticket-decisions" data-ticket-decisions hx-get={ "/t/" + v.Key } hx-trigger="vq:change" hx-select="#ticket-decisions" hx-swap="outerHTML" hx-disinherit="*" data-live>
+		if len(v.Decisions) > 0 {
+			<section aria-labelledby="ticket-decisions-h">
+				<h2 id="ticket-decisions-h" class={ h2IconClass }>
+					@Icon("decision")
+					Decisions
+				</h2>
+				<div class="mt-2 space-y-3">
+					for _, c := range v.Decisions {
+						@DecisionCard(c)
+					}
+				</div>
+			</section>
+		}
+	</div>
+}
+
 // readinessBlock is live like the plan: a plan, an edit or an answer made
 // elsewhere changes what it says without a reload.
 templ readinessBlock(key string, r *ReadinessView) {
@@ -545,34 +566,17 @@ templ readinessBlock(key string, r *ReadinessView) {
 		} else if r.Reason != "" {
 			<p class="text-ink">{ r.Reason }</p>
 		}
-		if r.Ask && r.Open == nil {
+		if r.Ask && !r.Open {
 			<form method="post" action={ templ.SafeURL("/t/" + key + "/approval/ask") } class="mt-2">
 				<button type="submit" class={ btnSecondary }>Ask for approval</button>
 			</form>
 		}
-		if r.Open != nil {
-			<form method="post" action={ templ.SafeURL("/decisions/" + r.Open.ID + "/answer") } data-approval class="mt-2 space-y-2">
-				<input type="hidden" name="ticket" value={ r.Open.Ticket }/>
-				<p class="text-ink">{ r.Open.Question }</p>
-				<input type="text" name="note" maxlength="500" placeholder="Note (optional)" aria-label="Note" class={ fieldClass }/>
-				<div class="flex flex-wrap gap-2">
-					for i, o := range r.Open.Options {
-						<button type="submit" name="option" value={ o.Value } class={ approvalBtn(i) }>{ o.Label }</button>
-					}
-				</div>
-			</form>
+		if r.Open {
 			<form method="post" action={ templ.SafeURL("/t/" + key + "/approval/ask-again") } data-ask-again class="mt-2">
 				<button type="submit" class={ btnSecondary }>Ask again</button>
 			</form>
 		}
 	</div>
-}
-
-func approvalBtn(i int) string {
-	if i == 0 {
-		return btnPrimary
-	}
-	return btnSecondary
 }
 
 // iconField is a side-panel field whose value has a glyph.

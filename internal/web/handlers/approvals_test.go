@@ -3,6 +3,7 @@ package handlers_test
 import (
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stazelabs/vaquero/internal/core"
@@ -38,7 +39,7 @@ func TestTicketPageShowsReadinessAndAsks(t *testing.T) {
 		t.Fatalf("%d open approvals", n)
 	}
 	page = c.Follow(r).Body
-	contains(t, page, "Approve the plan for VAQ-1", "data-approval", `action="/decisions/`, `value="Approve"`, `value="Request changes"`, `name="note"`)
+	contains(t, page, "Approve the plan for VAQ-1", "data-decision", `action="/inbox/`, `value="Approve"`, `value="Request changes"`, `name="note"`)
 	lacks(t, page, `action="/t/VAQ-1/approval/ask"`)
 
 	// A second ask shows the open one and writes nothing.
@@ -53,13 +54,13 @@ func TestAnswerApprovalMakesTicketReady(t *testing.T) {
 	e, c, _ := approvalWorld(t)
 	c.Post("/t/VAQ-1/approval/ask", nil)
 	id := openApprovalID(t, e)
-	r := c.Post("/decisions/"+id+"/answer", url.Values{"option": {"Approve"}, "note": {"ok"}, "ticket": {"VAQ-1"}})
+	r := c.Post("/inbox/"+id+"/answer", url.Values{"option": {"Approve"}, "note": {"ok"}, "back": {"/t/VAQ-1"}})
 	if r.Status != 303 || r.Location != "/t/VAQ-1" {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 	page := c.Follow(r).Body
 	contains(t, page, "Answered", "data-readiness", "Ready")
-	lacks(t, page, "Ask for plan approval.", "data-approval")
+	lacks(t, page, "Ask for plan approval.", "data-decision")
 	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE answered_by IS NOT NULL AND relayed_by IS NULL AND answer_note = 'ok'`); n != 1 {
 		t.Fatalf("answer not direct: %d", n)
 	}
@@ -73,7 +74,7 @@ func TestAnswerRefusalIsAToast(t *testing.T) {
 	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Title: &title}, 0); err != nil {
 		t.Fatal(err)
 	}
-	r := c.Post("/decisions/"+id+"/answer", url.Values{"option": {"Approve"}, "ticket": {"VAQ-1"}})
+	r := c.Post("/inbox/"+id+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
 	if r.Status != 303 || r.Location != "/t/VAQ-1" {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
@@ -100,7 +101,7 @@ func TestAskOnTheEpicWhenReadinessSaysSo(t *testing.T) {
 	if r.Status != 303 {
 		t.Fatalf("%d", r.Status)
 	}
-	contains(t, c.Follow(r).Body, "Approve the plan for VAQ-1", "data-approval")
+	contains(t, c.Follow(r).Body, "Approve the plan for VAQ-1", "data-decision")
 	if n := dbCount(t, e, `SELECT count(*) FROM decision_tickets dt JOIN decisions d ON d.id = dt.decision_id WHERE d.state = 'open' AND dt.ticket_id = ?`, epic.ID); n != 1 {
 		t.Fatalf("asked on the epic: %d", n)
 	}
@@ -109,7 +110,7 @@ func TestAskOnTheEpicWhenReadinessSaysSo(t *testing.T) {
 func TestTicketPageWorkflowOffHasNoReadiness(t *testing.T) {
 	e := webtest.New(t)
 	ticket(t, e, project(t, e), core.TicketInput{Title: "Plain"})
-	lacks(t, e.Client().Get("/t/VAQ-1").Body, "data-readiness", `id="readiness"`, "data-approval", "approval/ask")
+	lacks(t, e.Client().Get("/t/VAQ-1").Body, "data-readiness", `id="readiness"`, "data-decision", "approval/ask")
 	// The routes refuse with the workflow off.
 	c := e.Client()
 	r := c.Post("/t/VAQ-1/approval/ask", nil)
@@ -121,7 +122,7 @@ func TestTicketPageWorkflowOffHasNoReadiness(t *testing.T) {
 
 func TestApprovalFormsRefuseCrossSite(t *testing.T) {
 	e, c, _ := approvalWorld(t)
-	for _, path := range []string{"/t/VAQ-1/approval/ask", "/decisions/anything/answer"} {
+	for _, path := range []string{"/t/VAQ-1/approval/ask", "/inbox/anything/answer"} {
 		if r := c.PostCrossSite(path, url.Values{"option": {"Approve"}}); r.Status != 403 {
 			t.Errorf("%s: %d, want 403", path, r.Status)
 		}
@@ -150,9 +151,9 @@ func TestAskAgainReplacesAStaleOpenApproval(t *testing.T) {
 	if _, err := e.Deps.Core.PatchTicket(bg, e.Deps.Actor.ID, tk.ID, core.TicketPatch{Body: &body}, 0); err != nil {
 		t.Fatal(err)
 	}
-	r := c.Post("/decisions/"+old+"/answer", url.Values{"option": {"Approve"}, "ticket": {"VAQ-1"}})
+	r := c.Post("/inbox/"+old+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
 	page := c.Follow(r).Body
-	contains(t, page, "changed since this was asked; ask again. Use Ask again.", "data-approval",
+	contains(t, page, "changed since this was asked; ask again.", "data-decision",
 		`action="/t/VAQ-1/approval/ask-again"`, "Ask again")
 	lacks(t, page, `action="/t/VAQ-1/approval/ask"`)
 
@@ -160,7 +161,7 @@ func TestAskAgainReplacesAStaleOpenApproval(t *testing.T) {
 	if r.Status != 303 || r.Location != "/t/VAQ-1" {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
-	contains(t, c.Follow(r).Body, "Asked again for approval of the plan for VAQ-1.", "data-approval")
+	contains(t, c.Follow(r).Body, "Asked again for approval of the plan for VAQ-1.", "data-decision")
 	if n := openApprovals(t, e); n != 1 {
 		t.Fatalf("%d open approvals", n)
 	}
@@ -168,10 +169,10 @@ func TestAskAgainReplacesAStaleOpenApproval(t *testing.T) {
 		t.Fatal("the stale approval wasn't withdrawn")
 	}
 	id := openApprovalID(t, e)
-	r = c.Post("/decisions/"+id+"/answer", url.Values{"option": {"Approve"}, "ticket": {"VAQ-1"}})
+	r = c.Post("/inbox/"+id+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
 	page = c.Follow(r).Body
 	contains(t, page, "Answered", "Ready")
-	lacks(t, page, "data-approval")
+	lacks(t, page, "data-decision")
 
 	// With nothing waiting, Ask again says so and asks nothing.
 	r = c.Post("/t/VAQ-1/approval/ask-again", nil)
@@ -189,14 +190,14 @@ func TestOpenApprovalShowsOnABacklogTicket(t *testing.T) {
 	workflowOn(t, e)
 	tk := ticket(t, e, p, core.TicketInput{Title: "Later", StatusID: statusID(t, e, "Backlog")})
 	c := e.Client()
-	lacks(t, c.Get("/t/VAQ-1").Body, "data-readiness", "data-approval")
+	lacks(t, c.Get("/t/VAQ-1").Body, "data-readiness", "data-decision")
 	if _, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
 		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionApproval, Subject: "plan", Question: "Approve the plan for VAQ-1?",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	page := c.Get("/t/VAQ-1").Body
-	contains(t, page, "data-approval", "Approve the plan for VAQ-1?", `value="Approve"`, `action="/t/VAQ-1/approval/ask-again"`)
+	contains(t, page, "data-decision", "Approve the plan for VAQ-1?", `value="Approve"`, `action="/t/VAQ-1/approval/ask-again"`)
 	lacks(t, page, "Ask for plan approval.", `action="/t/VAQ-1/approval/ask"`, ">Ready<")
 	// Asking from the page is for todos alone: readiness says nothing to ask.
 	r := c.Post("/t/VAQ-1/approval/ask", nil)
@@ -248,11 +249,11 @@ func TestApprovalsAreTheCurrentProjectsAfterAMove(t *testing.T) {
 	key := "OTH-" + strconv.FormatInt(moved.Number, 10)
 
 	page := c.Get("/t/" + key).Body
-	lacks(t, page, "data-approval", `action="/decisions/`)
+	lacks(t, page, "data-decision", `action="/inbox/`)
 	contains(t, page, `action="/t/`+key+`/approval/ask"`)
 
 	r := c.Post("/t/"+key+"/approval/ask", nil)
-	contains(t, c.Follow(r).Body, "data-approval")
+	contains(t, c.Follow(r).Body, "data-decision")
 	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id = ? AND state = 'open'`, old); n != 1 {
 		t.Fatal("the old project's decision was touched")
 	}
@@ -271,4 +272,73 @@ func TestApprovalsAreTheCurrentProjectsAfterAMove(t *testing.T) {
 	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE state = 'withdrawn' AND project_id = ?`, other.ID); n != 1 {
 		t.Fatalf("%d withdrawn in the new project", n)
 	}
+}
+
+// VAQ-172: the ticket page lists every open decision naming the ticket as
+// the inbox's cards, answered in place with the page as their back; the
+// readiness block keeps Ready or its reason and Ask again, and has no
+// answer form of its own.
+func TestTicketPageDecisionCards(t *testing.T) {
+	e, c, tk := approvalWorld(t)
+	other := ticket(t, e, mustProject(t, e), core.TicketInput{Title: "Elsewhere"})
+	q, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
+		ProjectID: tk.ProjectID, TicketIDs: []string{tk.ID}, Kind: core.DecisionQuestion,
+		Question: "Which way?", Options: []core.Option{{Label: "Left"}, {Label: "Right"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
+		ProjectID: tk.ProjectID, TicketIDs: []string{other.ID}, Kind: core.DecisionQuestion, Question: "Unrelated?", Options: []core.Option{{Label: "Yes"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c.Post("/t/VAQ-1/approval/ask", nil)
+	ap := openApprovalID(t, e)
+
+	page := c.Get("/t/VAQ-1").Body
+	contains(t, page, `id="ticket-decisions"`, `data-decision="`+q.ID+`"`, `data-decision="`+ap+`"`,
+		`hx-post="/inbox/`+q.ID+`/answer"`, `name="back" value="/t/VAQ-1"`, `value="Left"`, `value="Approve"`, "Add a note", "Withdraw",
+		`action="/t/VAQ-1/approval/ask-again"`)
+	lacks(t, page, "data-approval", `action="/decisions/`, "Unrelated?")
+	if n := strings.Count(page, "data-decision="); n != 2 {
+		t.Fatalf("%d cards, want 2", n)
+	}
+
+	// Answering from the page: the card leaves, the page's live parts
+	// refresh, and the readiness block reads Ready.
+	r := c.PostHX("/inbox/"+ap+"/answer", url.Values{"option": {"Approve"}, "back": {"/t/VAQ-1"}})
+	if r.Status != 200 || strings.TrimSpace(r.Body) != "" || r.Header.Get("HX-Trigger") != "vq:refresh" {
+		t.Fatalf("%d %q %q", r.Status, r.Body, r.Header.Get("HX-Trigger"))
+	}
+	page = c.Get("/t/VAQ-1").Body
+	contains(t, page, "Ready", `data-decision="`+q.ID+`"`)
+	lacks(t, page, `data-decision="`+ap+`"`, "Ask for plan approval.")
+
+	// Without htmx the answer returns to the page.
+	r = c.Post("/inbox/"+q.ID+"/answer", url.Values{"option": {"Left"}, "back": {"/t/VAQ-1"}})
+	if r.Status != 303 || r.Location != "/t/VAQ-1" {
+		t.Fatalf("%d %q", r.Status, r.Location)
+	}
+	page = c.Follow(r).Body
+	contains(t, page, "Answered.", `id="ticket-decisions"`)
+	lacks(t, page, "data-decision=", "Decisions")
+}
+
+// The cards are for any ticket, the workflow on or not.
+func TestTicketPageDecisionCardsWorkflowOff(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	tk := ticket(t, e, p, core.TicketInput{Title: "Plain"})
+	c := e.Client()
+	lacks(t, c.Get("/t/VAQ-1").Body, "data-decision=", "Decisions")
+	q, err := e.Deps.Core.AskDecision(bg, e.Deps.Actor.ID, core.DecisionInput{
+		ProjectID: p.ID, TicketIDs: []string{tk.ID}, Kind: core.DecisionQuestion, Question: "Which way?", Options: []core.Option{{Label: "Left"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := c.Get("/t/VAQ-1").Body
+	contains(t, page, `data-decision="`+q.ID+`"`, "Decisions")
+	lacks(t, page, "data-readiness")
 }

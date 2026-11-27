@@ -14,6 +14,8 @@ A plan approval says what approving covers, as it was asked: "Covers VAQ-12 (pla
 
 Choosing an option answers at once, as your own direct answer. Add a note first if you want one: it opens a box whose text goes with the answer. The card then leaves the list and the next card takes the keyboard focus. When the answer can't be taken, the card stays and says why under its buttons: the plan or requirement changed since it was asked, the project was archived, or it was answered already (in another tab, the command line or by an agent relaying you). Withdraw, behind a confirmation, takes back a question or approval nobody needs any more.
 
+The same cards appear on a ticket's page, under Decisions above the comments, for every open decision that names the ticket; they answer in place the same way, and the ticket's readiness follows the answer.
+
 A link to a decision, `/decisions/ID`, opens the inbox at its card; `vaquero decision show` prints that link while the decision waits.
 
 ## Review, Check and rulings

@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
-
-	"github.com/go-chi/chi/v5"
 
 	"github.com/stazelabs/vaquero/internal/core"
 	"github.com/stazelabs/vaquero/internal/db/gen"
@@ -21,9 +18,11 @@ import (
 // status it carries the open plan approval the owner can answer (ruling
 // R-Q15), the ticket's own or, for a todo, its epic's when readiness says
 // to ask there. A ticket that isn't a todo with nothing open has no block.
-func readinessView(r *http.Request, d Deps, t gen.Ticket, p gen.Project, status gen.Status, key string) (*templates.ReadinessView, error) {
+// The second answer is that open approval, which the page shows as a card
+// (it may name the epic, not the ticket).
+func readinessView(r *http.Request, d Deps, t gen.Ticket, p gen.Project, status gen.Status, key string) (*templates.ReadinessView, *gen.Decision, error) {
 	if p.Workflow != 1 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	todo := status.Category == "todo"
 	var rd readiness.Readiness // readiness says nothing of a ticket that isn't a todo
@@ -32,7 +31,7 @@ func readinessView(r *http.Request, d Deps, t gen.Ticket, p gen.Project, status 
 		var err error
 		rd, target, _, err = approvalTarget(r, d, t, key)
 		if gone = errors.Is(err, errEpicGone); err != nil && !gone {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	v := &templates.ReadinessView{Todo: todo, Ready: rd.Ready, Ask: asks(rd) && !gone}
@@ -40,25 +39,17 @@ func readinessView(r *http.Request, d Deps, t gen.Ticket, p gen.Project, status 
 		v.Reason = rd.Reasons[0]
 	}
 	if gone {
-		return v, nil
+		return v, nil, nil
 	}
 	open, err := openPlanApproval(r, d, target)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if open == nil && !todo {
-		return nil, nil
+		return nil, nil, nil
 	}
-	if open != nil {
-		var opts []core.Option
-		_ = json.Unmarshal([]byte(open.Options), &opts)
-		a := &templates.ApprovalView{ID: open.ID, Question: open.Question, Ticket: key}
-		for _, o := range opts {
-			a.Options = append(a.Options, templates.Option{Value: o.Label, Label: o.Label})
-		}
-		v.Open = a
-	}
-	return v, nil
+	v.Open = open != nil
+	return v, open, nil
 }
 
 // asks reports whether readiness's action is to ask for a plan approval.
@@ -229,32 +220,6 @@ func ApprovalAskAgain(d Deps) http.HandlerFunc {
 			return
 		}
 		redirectWithFlash(w, r, flash.Success, "Asked again for approval of the plan for "+targetKey+".", back)
-	}
-}
-
-// DecisionAnswer is POST /decisions/{id}/answer: the owner's direct answer
-// (an option and an optional note). The form's ticket field says which
-// ticket page to return to.
-func DecisionAnswer(d Deps) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		back := "/"
-		if k, ok := core.ParseTicketKey(r.PostFormValue("ticket")); ok {
-			back = "/t/" + k.String()
-		}
-		_, err := d.Core.AnswerDecision(r.Context(), d.Actor.ID, chi.URLParam(r, "id"), core.Answer{
-			Option: r.PostFormValue("option"), Note: strings.TrimSpace(r.PostFormValue("note")),
-		})
-		var inv *core.Invalid
-		if errors.As(err, &inv) && strings.HasSuffix(inv.Fields["answer"], "; ask again.") {
-			// Stale since asked: the page offers Ask again beside it.
-			redirectWithFlash(w, r, flash.Error, inv.Fields["answer"]+" Use Ask again.", back)
-			return
-		}
-		if err != nil {
-			approvalFailed(w, r, d, err, back)
-			return
-		}
-		redirectWithFlash(w, r, flash.Success, "Answered.", back)
 	}
 }
 

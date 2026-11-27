@@ -33,7 +33,7 @@ func TestE2EAskAndApprove(t *testing.T) {
 				p.scheme(scheme)
 				p.goTo("/t/APP-1")
 				p.until(`document.querySelector("[data-readiness]").textContent.includes("Ask for plan approval.")`)
-				p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-approval]")`)
+				p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-ticket-decisions] [data-decision]")`)
 				// Ruling R-Q14: edited while the approval waits, Approve is
 				// refused, and Ask again replaces it with one that approves.
 				body := "The plan, with rails."
@@ -41,12 +41,14 @@ func TestE2EAskAndApprove(t *testing.T) {
 					t.Fatal(err)
 				}
 				p.goTo("/t/APP-1")
-				p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
-					`document.body.textContent.includes("Use Ask again.") && !!document.querySelector("[data-approval]")`)
+				// The refusal shows in the card, in place.
+				p.click(`[data-ticket-decisions] [data-decision] button[value="Approve"]`)
+				p.until(`!!document.querySelector("[data-ticket-decisions] [data-decision] [data-card-error]") && document.querySelector("[data-ticket-decisions] [data-decision] [data-card-error]").textContent.includes("ask again.")`)
 				p.reloaded(func() { p.click(`[data-ask-again] button[type=submit]`) },
-					`document.body.textContent.includes("Asked again for approval") && !!document.querySelector("[data-approval]")`)
-				p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
-					`!document.querySelector("[data-approval]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
+					`document.body.textContent.includes("Asked again for approval") && !!document.querySelector("[data-ticket-decisions] [data-decision]")`)
+				// Answered in place: the card leaves and readiness reads Ready.
+				p.click(`[data-ticket-decisions] [data-decision] button[value="Approve"]`)
+				p.until(`!document.querySelector("[data-ticket-decisions] [data-decision]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
 				if sw := eval[int64](p, `document.documentElement.scrollWidth`); sw > w {
 					t.Fatalf("the page is %d px wide at %d px", sw, w)
 				}
@@ -75,18 +77,18 @@ func TestReadinessFollowsPlan(t *testing.T) {
 	p := open(t, env, 1280, 900)
 	p.goTo("/t/APP-1")
 	p.until(`document.querySelector("[data-readiness]").textContent.includes("Ask for plan approval.")`)
-	p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-approval]")`)
-	p.reloaded(func() { p.click(`[data-approval] button[value="Approve"]`) },
-		`!document.querySelector("[data-approval]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
+	p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-ticket-decisions] [data-decision]")`)
+	p.click(`[data-ticket-decisions] [data-decision] button[value="Approve"]`)
+	p.until(`!document.querySelector("[data-ticket-decisions] [data-decision]") && document.querySelector("[data-readiness]").textContent.includes("Ready")`)
 	if _, err := env.Deps.Core.SavePlan(ctx, env.Deps.Actor.ID, tk.ID, "The plan, revised.", 1); err != nil {
 		t.Fatal(err)
 	}
 	p.until(`document.querySelector("#readiness").textContent.includes("Changed since approval: the plan. Ask again.") && !!document.querySelector('#readiness form[action="/t/APP-1/approval/ask"] button')`)
 }
 
-// VAQ-210: a note typed in the open approval form survives a refresh that
-// comes after focus has left the field, and the block refreshes once the
-// note is cleared.
+// VAQ-210, VAQ-172: a note typed in the ticket page's decision card
+// survives a refresh that comes after focus has left the field, and the
+// part refreshes once the note is cleared.
 func TestReadinessKeepsUnsentNote(t *testing.T) {
 	env := webtest.New(t)
 	f := newProject(t, env, "APP")
@@ -101,19 +103,21 @@ func TestReadinessKeepsUnsentNote(t *testing.T) {
 	p := open(t, env, 1280, 900)
 	p.goTo("/t/APP-1")
 	p.until(`document.querySelector("[data-readiness]").textContent.includes("Ask for plan approval.")`)
-	p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-approval]")`)
-	const note = `[data-approval] input[name=note], [data-approval] textarea[name=note]`
+	p.reloaded(func() { p.click(`[data-readiness] button[type=submit]`) }, `!!document.querySelector("[data-ticket-decisions] [data-decision]")`)
+	card := `[data-ticket-decisions] [data-decision]`
+	p.openDetails(card + " details[data-note]")
+	note := card + ` textarea[name="note"]`
 	p.typeInto(note, "keep me")
-	eval[bool](p, `(window.vqBlock = document.getElementById("readiness"), document.activeElement.blur(), true)`)
+	eval[bool](p, `(window.vqBlock = document.getElementById("ticket-decisions"), document.activeElement.blur(), true)`)
 	if _, err := env.Deps.Core.SavePlan(ctx, env.Deps.Actor.ID, tk.ID, "The plan, revised.", 1); err != nil {
 		t.Fatal(err)
 	}
 	p.until(`document.getElementById("plan").textContent.includes("revised")`)
-	if !eval[bool](p, `window.vqBlock.isConnected && document.getElementById("readiness") === window.vqBlock && document.querySelector(`+js(note)+`).value === "keep me"`) {
-		t.Fatalf("the note was lost: %s", eval[string](p, `document.getElementById("readiness").textContent`))
+	if !eval[bool](p, `window.vqBlock.isConnected && document.getElementById("ticket-decisions") === window.vqBlock && document.querySelector(`+js(note)+`).value === "keep me"`) {
+		t.Fatalf("the note was lost: %s", eval[string](p, `document.getElementById("ticket-decisions").textContent`))
 	}
 	// Clearing it and leaving the field lets the held refresh through.
 	p.do(focus(note))
 	eval[bool](p, `(document.querySelector(`+js(note)+`).value = "", document.activeElement.blur(), true)`)
-	p.until(`document.getElementById("readiness") !== window.vqBlock && document.querySelector(` + js(note) + `).value === ""`)
+	p.until(`document.getElementById("ticket-decisions") !== window.vqBlock && document.querySelector(` + js(note) + `).value === ""`)
 }

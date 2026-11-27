@@ -91,7 +91,6 @@ func NewRouter(d handlers.Deps) http.Handler {
 		r.With(fs).Post("/profile", handlers.ProfileSave(d))
 		r.Post("/profile/avatar", handlers.ProfileAvatarSave(d))
 		r.Post("/profile/avatar/delete", handlers.ProfileAvatarRemove(d))
-		r.Post("/decisions/{id}/answer", handlers.DecisionAnswer(d))
 		r.Get("/decisions/{id}", handlers.DecisionLink(d))
 		r.Get("/inbox", handlers.Inbox(d))
 		r.Post("/inbox/{id}/answer", handlers.InboxAnswer(d))

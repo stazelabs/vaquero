@@ -415,7 +415,11 @@ func ticketView(r *http.Request, d Deps, t gen.Ticket, p gen.Project) (templates
 	if v.Plan, err = planView(r, d, t.ID, now); err != nil {
 		return v, err
 	}
-	if v.Readiness, err = readinessView(r, d, t, p, v.Status, v.Key); err != nil {
+	var asked *gen.Decision
+	if v.Readiness, asked, err = readinessView(r, d, t, p, v.Status, v.Key); err != nil {
+		return v, err
+	}
+	if v.Decisions, err = ticketDecisionCards(ctx, d, t, asked, v.Key); err != nil {
 		return v, err
 	}
 	events, err := d.R.ListTicketEvents(ctx, sqlNull(t.ID))

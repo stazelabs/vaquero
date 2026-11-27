@@ -469,3 +469,23 @@ func TestDecisionLinkRedirects(t *testing.T) {
 		t.Fatalf("%d %q", r.Status, r.Location)
 	}
 }
+
+// A card's back is a path on this site: a control character (a TAB makes
+// "/\t/evil.example" a protocol-relative address to a browser), a
+// backslash, "//" or a scheme sends the answer to the inbox instead.
+func TestLocalBackRefusesControlCharacters(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	c := e.Client()
+	for _, back := range []string{"/\t/evil.example", "/\x01x", "/\x1fx", "/\x7fx", "/a\nb", "/a\rb", `/\evil`, "//evil.example", "https://evil.example", ""} {
+		q := ask(t, e, e.Deps.Actor.ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Now?", Options: []core.Option{{Label: "Yes"}}})
+		r := c.Post("/inbox/"+q.ID+"/answer", url.Values{"option": {"Yes"}, "back": {back}})
+		if r.Status != http.StatusSeeOther || r.Location != "/inbox" {
+			t.Errorf("back %q: %d %q", back, r.Status, r.Location)
+		}
+	}
+	q := ask(t, e, e.Deps.Actor.ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Now?", Options: []core.Option{{Label: "Yes"}}})
+	if r := c.Post("/inbox/"+q.ID+"/answer", url.Values{"option": {"Yes"}, "back": {"/t/VAQ-1"}}); r.Location != "/t/VAQ-1" {
+		t.Errorf("a good back: %q", r.Location)
+	}
+}
