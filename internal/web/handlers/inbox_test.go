@@ -362,6 +362,38 @@ func refreshesAfterSettle(r *webtest.Response) bool {
 	return r.Header.Get("HX-Trigger") == "" && r.Header.Get("HX-Trigger-After-Settle") == `{"vq:refresh":{"target":"body"}}`
 }
 
+// Review Focus 2: a card answered after its project was archived, or
+// after the decision was withdrawn, comes back with core's sentence.
+func TestInboxAnswerRefusedArchivedOrWithdrawn(t *testing.T) {
+	e := webtest.New(t)
+	p := project(t, e)
+	a := agent(t, e)
+	c := e.Client()
+	q := ask(t, e, a.ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Which?", Options: []core.Option{{Label: "Yes"}}})
+	if err := e.Deps.Core.SetProjectArchived(bg, e.Deps.Actor.ID, p.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	r := c.PostHX("/inbox/"+q.ID+"/answer", url.Values{"option": {"Yes"}})
+	if r.Status != http.StatusOK {
+		t.Fatalf("%d", r.Status)
+	}
+	contains(t, r.Body, `id="decision-`+q.ID+`"`, "data-card-error", "Restore this project to record decisions in it.", "data-hold")
+	lacks(t, r.Body, "<html")
+	if err := e.Deps.Core.SetProjectArchived(bg, e.Deps.Actor.ID, p.ID, false); err != nil {
+		t.Fatal(err)
+	}
+
+	w := ask(t, e, a.ID, core.DecisionInput{ProjectID: p.ID, Kind: core.DecisionQuestion, Question: "Gone?", Options: []core.Option{{Label: "Yes"}}})
+	if err := e.Deps.Core.WithdrawDecision(bg, a.ID, w.ID); err != nil {
+		t.Fatal(err)
+	}
+	r = c.PostHX("/inbox/"+w.ID+"/answer", url.Values{"option": {"Yes"}})
+	contains(t, r.Body, `id="decision-`+w.ID+`"`, "data-card-error", "This decision was withdrawn.")
+	if n := dbCount(t, e, `SELECT count(*) FROM decisions WHERE id IN (?, ?) AND state != 'answered'`, q.ID, w.ID); n != 2 {
+		t.Fatal("a refused answer was recorded")
+	}
+}
+
 // The sidebar's count is its own live part: always there (empty at
 // zero, so it can appear), refreshed from /inbox/count.
 func TestInboxBadgeFragment(t *testing.T) {

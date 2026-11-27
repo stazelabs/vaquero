@@ -330,7 +330,7 @@ func phoneWidth(t *testing.T, env, empty *webtest.Env, width int64) {
 		{env, []string{
 			"/", "/p/WEB", "/p/WEB?tag=ui&priority=2&mine=1", "/p/WEB/board", "/p/WEB/board?tag=ui&priority=2&mine=1", "/p/WEB/list", "/p/WEB/new", "/p/WEB/settings",
 			"/t/WEB-3", "/t/WEB-7", "/t/WEB-1/edit", "/projects/new", "/search?q=beta", "/search?q=check", "/activity",
-			"/t/WEB-9", "/help", "/help/cli", "/help/api", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
+			"/t/WEB-9", "/inbox", "/my", "/help", "/help/cli", "/help/api", "/help/keyboard-shortcuts", "/admin", "/admin/tokens", "/about/licenses",
 		}},
 	} {
 		p := open(t, c.env, width, 800)

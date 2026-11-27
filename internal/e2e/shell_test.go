@@ -135,6 +135,28 @@ func TestShell(t *testing.T) {
 		}
 	})
 
+	// From md (768 px) the sidebar sits beside the page and the menu
+	// button is gone.
+	t.Run("tablet", func(t *testing.T) {
+		for _, scheme := range []string{"light", "dark"} {
+			pg := open(t, env, 768, 900)
+			pg.scheme(scheme)
+			pg.goTo("/p/WEB/board")
+			if !eval[bool](pg, visible(sidebarSel)) {
+				t.Fatalf("%s: no sidebar at 768 px", scheme)
+			}
+			if eval[bool](pg, visible(`[data-menu-button]`)) {
+				t.Fatalf("%s: the menu button shows at 768 px", scheme)
+			}
+			if eval[bool](pg, visible(`[data-sidebar-backdrop]`)) {
+				t.Fatalf("%s: the backdrop shows at 768 px", scheme)
+			}
+			if w := eval[int64](pg, `document.documentElement.scrollWidth`); w > 768 {
+				t.Errorf("%s: the page is %d px wide at 768 px", scheme, w)
+			}
+		}
+	})
+
 	t.Run("last view", func(t *testing.T) {
 		pg := open(t, env, 1280, 700)
 		pg.goTo("/t/WEB-1")
@@ -150,54 +172,9 @@ func TestShell(t *testing.T) {
 	})
 
 	t.Run("phone", func(t *testing.T) {
-		pg := open(t, env, 375, 800)
-		pg.goTo("/p/WEB")
-		menu := `[data-menu-button]`
-		closed := `!document.querySelector(` + js(sidebarSel) + `).checkVisibility() && document.querySelector(` + js(menu) + `).getAttribute("aria-expanded") === "false"`
-		opened := `document.querySelector(` + js(sidebarSel) + `).checkVisibility() && document.querySelector(` + js(menu) + `).getAttribute("aria-expanded") === "true" && document.querySelector("[data-sidebar-backdrop]").checkVisibility()`
-		wide := func(when string) {
-			t.Helper()
-			if w := eval[int64](pg, `document.documentElement.scrollWidth`); w > 375 {
-				t.Errorf("%s: the page is %d px wide at 375 px", when, w)
-			}
+		for _, scheme := range []string{"light", "dark"} {
+			t.Run(scheme, func(t *testing.T) { phoneDrawer(t, env, scheme) })
 		}
-		pg.until(closed)
-		wide("closed")
-
-		// The menu opens the drawer; a link closes it on its way.
-		pg.click(menu)
-		pg.until(opened)
-		wide("open")
-		shot(t, pg, "body", "shell-375-drawer")
-		pg.reloaded(func() { pg.click(sidebarSel + ` [data-nav-view="board"]`) }, `location.pathname === "/p/WEB/board"`)
-		pg.until(closed)
-
-		// A link closes it as it is clicked, before the next page arrives
-		// (here held back, so the drawer is seen to close on its own).
-		pg.click(menu)
-		pg.until(opened)
-		eval[bool](pg, `(window.addEventListener("click", function (ev) { ev.preventDefault(); }), true)`)
-		pg.click(sidebarSel + ` [data-nav-view="list"]`)
-		pg.until(closed)
-		if got := pg.path(); got != "/p/WEB/board" {
-			t.Fatalf("path %s; the held-back link navigated", got)
-		}
-		pg.goTo("/p/WEB/board")
-
-		// Escape closes it and gives focus back to the menu button.
-		pg.click(menu)
-		pg.until(opened)
-		pg.key(escape)
-		pg.until(closed)
-		pg.until(focusedOn(menu))
-
-		// So does the backdrop, beside the drawer.
-		pg.click(menu)
-		pg.until(opened)
-		r := pg.rect(sidebarSel)
-		pg.do(clickAt((r.Right+375)/2, 400))
-		pg.until(closed)
-		wide("closed again")
 	})
 
 	t.Run("keys", func(t *testing.T) {
@@ -217,4 +194,59 @@ func TestShell(t *testing.T) {
 		pg.goTo("/p/WEB")
 		pg.reloaded(func() { pg.key("g"); pg.key("i") }, `location.pathname === "/inbox"`)
 	})
+}
+
+// phoneDrawer is the sidebar as a drawer at 375 px in scheme: the menu
+// opens it; a link, Escape and the backdrop close it; the page
+// never scrolls sideways.
+func phoneDrawer(t *testing.T, env *webtest.Env, scheme string) {
+	pg := open(t, env, 375, 800)
+	pg.scheme(scheme)
+	pg.goTo("/p/WEB")
+	menu := `[data-menu-button]`
+	closed := `!document.querySelector(` + js(sidebarSel) + `).checkVisibility() && document.querySelector(` + js(menu) + `).getAttribute("aria-expanded") === "false"`
+	opened := `document.querySelector(` + js(sidebarSel) + `).checkVisibility() && document.querySelector(` + js(menu) + `).getAttribute("aria-expanded") === "true" && document.querySelector("[data-sidebar-backdrop]").checkVisibility()`
+	wide := func(when string) {
+		t.Helper()
+		if w := eval[int64](pg, `document.documentElement.scrollWidth`); w > 375 {
+			t.Errorf("%s: the page is %d px wide at 375 px", when, w)
+		}
+	}
+	pg.until(closed)
+	wide("closed")
+
+	// The menu opens the drawer; a link closes it on its way.
+	pg.click(menu)
+	pg.until(opened)
+	wide("open")
+	shot(t, pg, "body", "shell-375-drawer-"+scheme)
+	pg.reloaded(func() { pg.click(sidebarSel + ` [data-nav-view="board"]`) }, `location.pathname === "/p/WEB/board"`)
+	pg.until(closed)
+
+	// A link closes it as it is clicked, before the next page arrives
+	// (here held back, so the drawer is seen to close on its own).
+	pg.click(menu)
+	pg.until(opened)
+	eval[bool](pg, `(window.addEventListener("click", function (ev) { ev.preventDefault(); }), true)`)
+	pg.click(sidebarSel + ` [data-nav-view="list"]`)
+	pg.until(closed)
+	if got := pg.path(); got != "/p/WEB/board" {
+		t.Fatalf("path %s; the held-back link navigated", got)
+	}
+	pg.goTo("/p/WEB/board")
+
+	// Escape closes it and gives focus back to the menu button.
+	pg.click(menu)
+	pg.until(opened)
+	pg.key(escape)
+	pg.until(closed)
+	pg.until(focusedOn(menu))
+
+	// So does the backdrop, beside the drawer.
+	pg.click(menu)
+	pg.until(opened)
+	r := pg.rect(sidebarSel)
+	pg.do(clickAt((r.Right+375)/2, 400))
+	pg.until(closed)
+	wide("closed again")
 }
